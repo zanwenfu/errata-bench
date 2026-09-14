@@ -139,46 +139,73 @@ async def process_entry(
                 # using the commands the builder read out of the repo. Graded
                 # runs are then offline: a build that never happened prints
                 # FAIL exactly like a failing test.
-                prep_kw = dict(
+                # Prepare once, on the child tree, and commit the result to an
+                # image. The graded runs start from that image so they inherit
+                # apt packages and globally installed tools, none of which live
+                # in the mounted tree. Each graded run still mounts its own
+                # tree, so the three source states stay distinct.
+                tag = f"eb-prep-{entry.commit_sha[:12].lower()}"
+                prep, prepared_image = verifier.prepare(
+                    tree=pas,
                     image=spec.image,
                     toolchain=spec.toolchain,
                     install_command=spec.install_command,
                     setup_commands=spec.setup_commands,
                     cache_host=cache,
                     workdir=spec.work_dir or None,
+                    tag=tag,
                 )
-                # Each tree is a separate filesystem, so each needs installing.
-                prep = verifier.prepare(tree=pas, **prep_kw)
-                if prep.outcome is Outcome.PASS:
-                    prep_ctrl = verifier.prepare(tree=ctrl, **prep_kw)
-                    prep_fail = verifier.prepare(tree=fail, **prep_kw)
-                    if prep_ctrl.outcome is not Outcome.PASS:
-                        prep = prep_ctrl
-                    elif prep_fail.outcome is not Outcome.PASS:
-                        prep = prep_fail
+                try:
+                    if prep.outcome is not Outcome.PASS or not prepared_image:
+                        res.verified = False
+                        res.diagnosis = (
+                            "prepare-failed: dependency install did not succeed, "
+                            "so no conclusion can be drawn about this entry"
+                        )
+                        res.prepare_output = prep.stdout[-1500:]
+                        res.verifier_seconds = time.monotonic() - t1
+                        return res
 
-                if prep.outcome is not Outcome.PASS:
-                    res.verified = False
-                    res.diagnosis = (
-                        "prepare-failed: dependency install did not succeed, so "
-                        "no conclusion can be drawn about this entry"
+                    # The image carries global tooling, but anything the install
+                    # wrote under /w is masked when a different tree is mounted.
+                    # ctrl and fail are different trees, so the install runs
+                    # again in each. Cheap when it is a no-op (Python installs
+                    # to site-packages); necessary for node_modules.
+                    inst_kw = dict(
+                        image=prepared_image,
+                        toolchain=spec.toolchain,
+                        install_command=spec.install_command,
+                        cache_host=cache,
+                        workdir=spec.work_dir or None,
                     )
-                    res.prepare_output = prep.stdout[-1500:]
-                    res.verifier_seconds = time.monotonic() - t1
-                    return res
+                    for label, t in (("control", ctrl), ("fail", fail)):
+                        r = verifier.install_in_tree(tree=t, **inst_kw)
+                        if r.outcome is not Outcome.PASS:
+                            res.verified = False
+                            res.diagnosis = (
+                                f"prepare-failed: install into the {label} tree "
+                                "did not succeed, so no conclusion can be drawn"
+                            )
+                            res.prepare_output = r.stdout[-1500:]
+                            res.verifier_seconds = time.monotonic() - t1
+                            return res
 
-                kw = dict(
-                    image=spec.image,
-                    toolchain=spec.toolchain,
-                    test_command=spec.test_command,
-                    cache_host=cache,
-                )
-                verdict = Verdict(
-                    control=verifier.run_test(tree=ctrl, **kw),
-                    fail_run=verifier.run_test(tree=fail, **kw),
-                    pass_run=verifier.run_test(tree=pas, **kw),
-                    prepare=prep,
-                )
+                    kw = dict(
+                        image=prepared_image,
+                        toolchain=spec.toolchain,
+                        test_command=spec.test_command,
+                        cache_host=cache,
+                    )
+                    verdict = Verdict(
+                        control=verifier.run_test(tree=ctrl, **kw),
+                        fail_run=verifier.run_test(tree=fail, **kw),
+                        pass_run=verifier.run_test(tree=pas, **kw),
+                        prepare=prep,
+                    )
+                finally:
+                    # Never leave a prepared image behind, on any exit path.
+                    if prepared_image and prepared_image != spec.image:
+                        verifier.discard_image(prepared_image)
             except Exception as e:
                 res.verifier_error = f"{type(e).__name__}: {e}"
                 res.verifier_seconds = time.monotonic() - t1

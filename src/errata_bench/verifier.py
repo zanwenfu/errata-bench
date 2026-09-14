@@ -171,32 +171,103 @@ class Verifier:
         setup_commands: list[list[str]],
         cache_host: Path,
         workdir: str | None,
-    ) -> RunResult:
-        """Everything the repo says it needs, with the network ON, once.
+        tag: str,
+    ) -> tuple[RunResult, str | None]:
+        """Everything the repo says it needs, then commit it to an image.
 
-        setup_commands run first (``corepack enable``, a codegen step), then the
-        install command the builder read out of the repo. Any failure here is
-        reported as prepare-failed rather than being allowed to masquerade as a
-        failing test.
+        Preparation has to survive into the graded runs, and almost none of it
+        lives in the mounted tree: apt packages, a globally installed ``uv``,
+        site-packages and corepack shims all sit outside ``/w``. Measured
+        directly -- ``apt-get update`` in one container then ``apt-get install``
+        in the next fails with "Unable to locate package", and a ``pip
+        install``ed ``uv`` is simply gone from the following container.
+
+        So every command runs chained in a single container, which is then
+        committed to ``tag``. The graded runs start from that image and inherit
+        the whole prepared filesystem. Returns the result and the tag to use
+        (None when preparation failed, so nothing dangling is left behind).
         """
         cache_dir = CACHE_DIRS.get(toolchain)
-        last = RunResult(Outcome.PASS, 0, "(nothing to prepare)", 0.0)
-        for cmd in [*setup_commands, install_command]:
-            if not cmd:
-                continue
-            last = self._docker(
-                tree=tree,
-                image=image,
-                command=cmd,
-                cache_dir=cache_dir,
-                cache_host=cache_host,
-                network=True,
-                workdir=workdir,
-                timeout_s=max(self.timeout_s, 900),
+        commands = [c for c in [*setup_commands, install_command] if c]
+        if not commands:
+            return RunResult(Outcome.PASS, 0, "(nothing to prepare)", 0.0), image
+
+        work = "/w" if not workdir else f"/w/{workdir.strip('/')}"
+        script = " && ".join(shlex.join(c) for c in commands)
+
+        argv = ["docker", "run", "-w", work, "-v", f"{tree}:/w"]
+        if cache_dir:
+            cache_host.mkdir(parents=True, exist_ok=True)
+            argv += ["-v", f"{cache_host}:{cache_dir}"]
+        argv += ["--name", tag, image, "sh", "-c", script]
+
+        start = time.monotonic()
+        try:
+            proc = subprocess.run(
+                argv, capture_output=True, text=True, timeout=max(self.timeout_s, 900)
             )
-            if last.outcome is not Outcome.PASS:
-                return last
-        return last
+        except subprocess.TimeoutExpired:
+            subprocess.run(["docker", "rm", "-f", tag], capture_output=True)
+            return RunResult(Outcome.ERROR, None, "prepare timed out", time.monotonic() - start), None
+
+        out = (proc.stdout or "") + (proc.stderr or "")
+        elapsed = time.monotonic() - start
+
+        if proc.returncode != 0:
+            subprocess.run(["docker", "rm", "-f", tag], capture_output=True)
+            return RunResult(Outcome.FAIL, proc.returncode, out[-20_000:], elapsed), None
+
+        commit = subprocess.run(
+            ["docker", "commit", tag, tag], capture_output=True, text=True, timeout=300
+        )
+        subprocess.run(["docker", "rm", "-f", tag], capture_output=True)
+        if commit.returncode != 0:
+            return RunResult(
+                Outcome.ERROR, commit.returncode,
+                f"commit failed: {commit.stderr[:500]}", elapsed,
+            ), None
+
+        return RunResult(Outcome.PASS, 0, out[-20_000:], elapsed), tag
+
+    def install_in_tree(
+        self,
+        *,
+        tree: Path,
+        image: str,
+        toolchain: str,
+        install_command: list[str],
+        cache_host: Path,
+        workdir: str | None,
+    ) -> RunResult:
+        """Re-run the install against one tree, for artifacts that live in it.
+
+        Committing a prepared image carries global state -- apt packages, a
+        system ``uv``, corepack shims -- but not anything the install wrote
+        under ``/w``: each graded run mounts its own tree over that path, which
+        masks it. Measured: ``node_modules`` created while preparing is simply
+        absent when a different tree is mounted, while global tooling survives.
+
+        Python installs commonly land in system site-packages and need nothing
+        here; Node installs land in ``node_modules`` and need this for every
+        tree. Runs with the network on, before the graded run goes offline.
+        """
+        if not install_command:
+            return RunResult(Outcome.PASS, 0, "(no install)", 0.0)
+        return self._docker(
+            tree=tree,
+            image=image,
+            command=install_command,
+            cache_dir=CACHE_DIRS.get(toolchain),
+            cache_host=cache_host,
+            network=True,
+            workdir=workdir,
+            timeout_s=max(self.timeout_s, 900),
+        )
+
+    @staticmethod
+    def discard_image(tag: str) -> None:
+        """Remove a prepared image. Safe to call for a tag that never existed."""
+        subprocess.run(["docker", "rmi", "-f", tag], capture_output=True)
 
     def run_test(
         self,
