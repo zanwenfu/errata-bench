@@ -305,3 +305,24 @@ of content, not keyword overlap, and it was the right one.
 `sound_triage`, because the agent told the user and filed it as issue #237.
 Correct triage, correctly recognised. Cross-session evidence proved its value as
 an instrument while confirming this particular deferral was handled well.
+
+---
+
+## The filtered pool, for extrapolation
+
+Applying the substance filter (drop injected XML blocks, bare acknowledgements,
+turns under 8 words) and requiring at least 4 prior conversational turns:
+
+| kind | filtered candidates |
+|---|---:|
+| correction | 12,563 |
+| failure_report | 2,364 |
+| rejection | 207 |
+| takeover | 92 |
+| **total** | **15,226** |
+
+These are the denominators any yield estimate must use. Note how thin the two
+rarest classes are: `rejection` and `takeover` together are under 300 moments,
+so neither can support a benchmark slice on its own regardless of their hit
+rate. The corpus's usable signal is overwhelmingly corrections and failure
+reports.
