@@ -1,0 +1,7 @@
+# The SWE-chat corpus is 12 GB and lives outside the repo.
+# data/swe-chat is a symlink to it; see README.
+data/
+*.pyc
+__pycache__/
+.venv/
+.env
