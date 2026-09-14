@@ -352,3 +352,73 @@ Two consequences for anything run at scale here:
 
 The four completed readings were preserved rather than discarded; a batch runner
 that writes each row as it lands means a wedge costs only the unfinished work.
+
+---
+
+## The measured yield, on a properly filtered sample
+
+30 pushback moments drawn through the substance filter, across 17 repositories,
+each with at least 4 prior conversational turns. Ten were read a second time to
+measure the instrument.
+
+| | |
+|---|---:|
+| real_error | 13 |
+| unclear | 10 |
+| unwanted_but_defensible | 5 |
+| preference | 2 |
+| **benchmark-viable** | **13/30 = 43%** |
+
+### The instrument is stable
+
+Ten moments read twice: **9/10** produced the same objection kind and **10/10**
+the same viable flag. The single disagreement moved `unwanted_but_defensible`
+to `preference` -- both non-viable, so the decision the benchmark depends on did
+not change. The yield is a measurement, not a coin flip.
+
+### Yield differs sharply by pushback kind
+
+| kind | viable | rate | 95% CI | pool |
+|---|---:|---:|---|---:|
+| failure_report | 7/10 | 70% | 42-98% | 2,364 |
+| rejection | 3/4 | 75% | 33-100% | 207 |
+| correction | 3/14 | 21% | 0-43% | 12,563 |
+| takeover | 0/2 | 0% | -- | 92 |
+
+This inverts the obvious sampling strategy. Corrections are five times more
+numerous and yield a fifth as often: a user correcting an agent is usually
+expressing a preference or reacting to a defensible-but-unwanted choice. A user
+*reporting something is broken* almost always has a concrete agent error behind
+it.
+
+`unwanted_but_defensible` appeared five times here having never fired in the
+earlier unfiltered sample, and lands almost entirely on corrections.
+
+### Extrapolation, with its softness stated
+
+Applying per-kind rates to per-kind pools gives a point estimate of **~4,500**
+viable moments, with a 95% interval of **1,050-7,900**. That interval understates
+the real uncertainty: 30 readings come from 17 repositories in a corpus where
+five repositories supply 41% of everything, `takeover` (0/2) and `rejection`
+(3/4) are too small to extrapolate at all, and the reader's own judgement is the
+measuring instrument.
+
+The honest summary is that the corpus plausibly holds **one to eight thousand**
+usable moments, concentrated in failure reports.
+
+### What the cases look like
+
+All 13 carry a criterion and a justifying turn. The dominant failure modes are
+`unverified_assumption` and `shallow_investigation`, with `false_claim` on the
+rejections. Examples:
+
+  * `nosman/gossamer` -- "I restarted the serve and i'm still getting the same
+    issue". Criterion: do not treat applying an existing schema routine plus a
+    successful build as proof the missing-table startup failure is fixed.
+  * `entireio/cli` -- "no this just isn't working at all". The agent claimed a
+    benchmark comparison worked; it did not complete and lost per-branch results.
+  * `cyyeh/duckdb-data-agent` -- duplicate rejection was declared covered
+    without establishing that any error was visible in the UI.
+
+Operationally: median read 57s, max 135s, against the 240s ceiling introduced
+after the earlier wedge. No read timed out.
