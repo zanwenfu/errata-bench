@@ -189,3 +189,27 @@ paths against files this repo actually committed. Usable, not clean.
 
 Note: `created_at` is nanosecond-resolution and raises on `to_pylist()`; read it
 as int64.
+
+### Correction: the label's failures are asymmetric
+
+An earlier note in this document said `prompt_pushback` "fails in both
+directions" and that any selector built on it is unsound both ways. The
+false-negative half of that claim was extrapolated from a single case
+(`dayhaysoos/nimbus`) and does not survive measurement.
+
+Sampling 400 sessions that carry no pushback label at all, roughly 2% contain
+anything resembling a complaint, and half of those are regex artefacts -- a
+Japanese implementation plan, a database schema dump, a slash-command
+invocation. The true miss rate is around 1%.
+
+So the two failures are not symmetric:
+
+| | |
+|---|---|
+| false positives | large -- 26% of labelled pushback is noise (`yes`, `commit`, `subagent`) |
+| false negatives | small -- roughly 1% of unlabelled sessions hide a complaint |
+
+The practical consequence is unchanged: filter the label rather than trust it,
+because the noise is what wastes model calls. But the corpus is not hiding a
+large population of missed complaints, and claiming so would have sent us
+looking for something that is not there.
