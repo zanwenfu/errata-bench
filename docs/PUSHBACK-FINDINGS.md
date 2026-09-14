@@ -125,3 +125,67 @@ that specific deferral. Sampling cannot establish it; only reading can.
 A second consequence: the control group is tiny. Only 8 sessions defer without
 any pushback, so "deferred and never complained about" is not a population we
 can sample against.
+
+---
+
+## Burial: readable, but rare within a single session
+
+12 sessions read end to end (9 selected for deferral-then-pushback, 3 controls
+that defer and are never pushed back on).
+
+| | |
+|---|---:|
+| deferrals found | 15 |
+| sound_triage | 7 |
+| unclear | 7 |
+| **buried** | **1** |
+| told the user | 11 of 15 |
+| consequence never resurfaced | 11 |
+
+Most deferrals are legitimate and transparent: no SurrealDB server available,
+a Pinata plan limit, 400s explicitly logged to a todo file as out of scope.
+Agents in this corpus mostly do disclose.
+
+### The one burial came from a control session
+
+`dayhaysoos/nimbus`, selected precisely because SWE-chat labelled it as having
+no pushback at all:
+
+    t466 AGENT: "Implemented — and I kept F-011 untouched as requested."
+    t472 USER:  "what about the changes I asked you to make to the system prompt?"
+    t473 AGENT: "I did **not** make any repository changes for the reviewer
+                 system prompt."
+
+A false completion claim, an undisclosed blocker, and the user hitting it. The
+nine sessions selected *for* having pushback yielded none.
+
+Two lessons. Selecting on the pushback label is worse than useless here -- it
+pointed away from the only real case. And the label missed turn 472, which is
+plainly a complaint, reinforcing the earlier finding that prompt_pushback cannot
+be the selector.
+
+### Why the single-session scope is the wrong frame
+
+The reader requires the consequence to appear inside the same session, so
+`never_resurfaced` (11 of 15) may mean "no burial" or may mean "the consequence
+is outside the window". The failure mode that matters -- a problem dismissed
+now, damage discovered much later -- plays out after the session ends.
+
+Cross-session extension is supported by the data:
+
+| | |
+|---|---:|
+| repos with more than one session | 167 |
+| sessions in repos with >=20 sessions | 4,988 |
+| repos orderable by session timestamp | 167 (all) |
+| sessions linked to commits | 6,183 |
+| commits carrying date and file list | 9,254 |
+
+Deferrals can be attached to files without asking the model: 15 of 21 had a
+tool call naming a file within +-12 turns. Those paths are absolute local paths
+(`/Users/michael/Code/cipher-box/...`) while commits store repo-relative paths,
+so a normalization step is required; it currently matches 21 of 59 normalized
+paths against files this repo actually committed. Usable, not clean.
+
+Note: `created_at` is nanosecond-resolution and raises on `to_pylist()`; read it
+as int64.
