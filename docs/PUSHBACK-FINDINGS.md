@@ -326,3 +326,26 @@ rarest classes are: `rejection` and `takeover` together are under 300 moments,
 so neither can support a benchmark slice on its own regardless of their hit
 rate. The corpus's usable signal is overwhelmingly corrections and failure
 reports.
+
+---
+
+## Operational: reads can hang indefinitely, and asyncio.wait_for does not save you
+
+The filtered run wedged after exactly four readings -- the first concurrency
+batch -- and sat for 32 minutes with five ESTABLISHED sockets to the API, the
+process sleeping at 0% CPU with six seconds of total CPU time.
+
+The reads were wrapped in `asyncio.wait_for(..., timeout=480)`. It never fired.
+A stalled socket inside the SDK's HTTP client is not cancellable from the event
+loop, so the coroutine simply never resumes and no error row is ever written.
+The run produces neither results nor failures: it looks like slow progress.
+
+Two consequences for anything run at scale here:
+
+  * Set an explicit client-level timeout, so a stalled request raises instead of
+    hanging. A wrapper timeout around the await is not sufficient.
+  * Treat "no new rows and no errors" as a hang signal rather than as slowness.
+    Watch the results file's modification time, not just the row count.
+
+The four completed readings were preserved rather than discarded; a batch runner
+that writes each row as it lands means a wedge costs only the unfinished work.
