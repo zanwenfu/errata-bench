@@ -120,6 +120,7 @@ def load_entries(
 
     entries: list[Entry] = []
     seen_per_repo: dict[str, int] = {}
+    seen_sha: set[str] = set()
 
     for i in range(commits.num_rows):
         if commits.column("status")[i].as_py() != "ok":
@@ -128,6 +129,14 @@ def load_entries(
         rid = commits.column("repo_id")[i].as_py()
         if not sha or not rid or rid not in meta:
             continue  # some commit_sha values are null
+
+        # One commit can appear on several rows: a session spans checkpoint
+        # boundaries, and commits.parquet carries a row per (commit, checkpoint).
+        # Without this, the same commit is triaged repeatedly and any per-repo
+        # cap counts one commit as several.
+        if sha in seen_sha:
+            continue
+        seen_sha.add(sha)
 
         files = _parse_files_changed(commits.column("files_changed")[i].as_py())
         if not files:
