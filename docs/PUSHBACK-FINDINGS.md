@@ -233,3 +233,25 @@ repository and find nothing, reporting "no consequence" for a structural reason
 that has nothing to do with the agent's behaviour.
 
 **Key every cross-session join on `sessions.parquet`.**
+
+### The timestamp columns use different units
+
+`sessions.created_at` is `timestamp[ns]`; `commits.author_date` is
+`timestamp[us]`. Casting both to int64 and comparing places every commit in
+January 1970, so "did any commit land after this session" is uniformly false.
+
+That produced `later_commits=0` for every deferral across five repos -- which
+reads as "nothing to trace" and is entirely a bug. With the units reconciled,
+`entireio/cli` has 1,080 of 1,081 commits after its earliest session.
+
+A uniformly-zero result is the signature of a comparison that can never be true.
+The same shape appeared earlier in this project when `--network=none` made all
+three container states fail identically.
+
+`src/errata_bench/timeline.py` normalises both columns to nanoseconds, keys
+repository identity on `sessions.parquet`, and converts absolute tool-call paths
+to repo-relative ones.
+
+**A real boundary, not a bug:** commits stop at roughly the last recorded
+session, so a consequence landing after the corpus window is absent. Absence of
+a later commit is weak evidence, not proof that nothing happened.
