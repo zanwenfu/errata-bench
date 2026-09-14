@@ -198,9 +198,11 @@ false-negative half of that claim was extrapolated from a single case
 (`dayhaysoos/nimbus`) and does not survive measurement.
 
 Sampling 400 sessions that carry no pushback label at all, roughly 2% contain
-anything resembling a complaint, and half of those are regex artefacts -- a
-Japanese implementation plan, a database schema dump, a slash-command
-invocation. The true miss rate is around 1%.
+anything resembling a complaint under a loose pattern, and half of those are
+artefacts -- a Japanese implementation plan, a database schema dump, a
+slash-command invocation. Under a strict pattern (phrases that are complaints
+in almost any context) the contrast is sharper: 0 of 500 unlabelled sessions
+versus 10 of 500 labelled ones. The label under-selects noise, not complaints.
 
 So the two failures are not symmetric:
 
