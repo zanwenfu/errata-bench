@@ -23,7 +23,13 @@ from . import workspace
 from .builder import run_builder
 from .corpus import Entry
 from .spec import Spec
-from .verifier import Outcome, RunResult, Verdict, Verifier  # noqa: F401
+from .verifier import (  # noqa: F401
+    Outcome,
+    RunResult,
+    Verdict,
+    Verifier,
+    control_command,
+)
 
 
 @dataclass
@@ -202,18 +208,19 @@ async def process_entry(
                         test_command=spec.test_command,
                         cache_host=cache,
                     )
-                    # The control proves the parent tree builds and its own
-                    # tests pass. When the commit ADDS a test file, the child's
-                    # command names a path the parent never had, so the runner
-                    # errors -- which looks like a broken parent but is only an
-                    # impossible request. Run the control only when every test
-                    # file it names exists at the parent.
-                    ctrl_ok = all(
-                        (ctrl / tf).is_file() for tf in spec.test_files
-                    ) if spec.test_files else True
-
+                    # The control proves the parent builds and its own tests
+                    # pass. When the commit ADDS a test file, the child's
+                    # command may name that path explicitly and the runner
+                    # errors at the parent -- an impossible request, not a
+                    # broken parent. Strip the paths and run the surrounding
+                    # suite; a package-scoped command is unchanged. Refusing
+                    # such entries outright would reject valid tasks: an agent
+                    # given the parent plus a new test must write the code to
+                    # make it pass, which is the construction we want.
+                    ctrl_cmd = control_command(spec.test_command, spec.test_files)
+                    ctrl_ok = ctrl_cmd is not None
                     control_run = (
-                        verifier.run_test(tree=ctrl, **kw)
+                        verifier.run_test(tree=ctrl, **{**kw, "test_command": ctrl_cmd})
                         if ctrl_ok
                         else RunResult(Outcome.ERROR, None, "control not applicable", 0.0)
                     )

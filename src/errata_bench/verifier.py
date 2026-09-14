@@ -115,6 +115,68 @@ CACHE_DIRS: dict[str, str] = {
 }
 
 
+def control_command(test_command: list[str], test_files: list[str]) -> list[str] | None:
+    """The test command with explicit test-file paths removed.
+
+    The control proves the parent tree builds and its own tests pass. When a
+    commit ADDS a test file, the child's command may name that path explicitly
+    (``pnpm test --runTestsByPath src/health/health.controller.spec.ts``), and
+    at the parent the runner errors on a file that was never there -- which
+    reads as a broken parent but is only an impossible request.
+
+    Dropping the paths runs the surrounding suite instead, which is exactly
+    what the control wants to know. A command that is already package-scoped
+    (``go test ./internal/git/hooks -v``) is unchanged, and measurably passes
+    at the parent without the added file.
+
+    Returns None when every argument would be stripped, leaving nothing to run.
+    """
+    if not test_files:
+        return test_command
+
+    bases = {f.rsplit("/", 1)[-1] for f in test_files} | set(test_files)
+
+    # Flags that take the path as their argument. Dropping the path alone would
+    # leave the flag dangling, which most runners reject.
+    PATH_FLAGS = {
+        "--runTestsByPath",
+        "--testPathPattern",
+        "--spec",
+        "-run",
+        "--file",
+    }
+
+    def strip(args: list[str]) -> list[str]:
+        kept: list[str] = []
+        for a in args:
+            if a in bases or a.rsplit("/", 1)[-1] in bases:
+                # Also drop the flag immediately preceding it, if it exists
+                # only to introduce this path.
+                if kept and kept[-1] in PATH_FLAGS:
+                    kept.pop()
+                continue
+            kept.append(a)
+        return kept
+
+    if len(test_command) >= 3 and test_command[0] in ("sh", "bash") and test_command[1] == "-c":
+        # Operate on the script text, not on shlex tokens: splitting and
+        # re-joining turns `&&` into a quoted literal '&&', which silently
+        # breaks the `cd <dir> &&` prefix these commands rely on.
+        script = test_command[2]
+        head, sep, tail = script.partition("&&")
+        target = tail if sep else script
+        kept = strip(target.split())
+        if len(kept) <= 1:
+            return None
+        rebuilt = " ".join(kept)
+        if sep:
+            rebuilt = f"{head.strip()} && {rebuilt}"
+        return [test_command[0], test_command[1], rebuilt]
+
+    kept = strip(test_command)
+    return kept if len(kept) > 1 else None
+
+
 def split_workdir(test_command: list[str]) -> tuple[str | None, list[str]]:
     """Pull a leading ``cd <dir> &&`` out of a shell-wrapped command.
 
