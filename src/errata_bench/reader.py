@@ -236,9 +236,38 @@ def build_excerpt(turns: list[dict], pushback_turn: int, *, max_chars: int = 60_
             lines.append(f"[turn {n}] -> result: {content[:400]}")
 
     text = "\n".join(lines)
-    if len(text) > max_chars:
-        # Keep the opening request and the run-up to the pushback; the middle of
-        # a long session is where tool noise lives.
-        head, tail = text[: max_chars // 4], text[-(3 * max_chars // 4) :]
-        text = f"{head}\n\n[... {len(text) - max_chars} chars of middle elided ...]\n\n{tail}"
+    if len(text) <= max_chars:
+        return text
+
+    # Overrun: squeeze tool traffic rather than cutting the conversation. An
+    # earlier version elided the middle, which cost 13 of 25 readings part of
+    # their context -- including 3 of the 6 that produced a usable case. Tool
+    # results are the bulk (59% of a large excerpt) while the user/agent
+    # narrative is under a third, so tightening the former is enough.
+    for tool_budget, result_budget in ((200, 200), (100, 80), (60, 40)):
+        squeezed: list[str] = []
+        for t in turns:
+            n = t.get("turn_number")
+            if n is None or n > pushback_turn:
+                continue
+            kind = t.get("turn_type") or ""
+            if kind in ("progress", "file_snapshot", "system_event", "queue_operation"):
+                continue
+            content = (t.get("content") or "").strip()
+            if kind == "user_prompt":
+                marker = " <-- THE PUSHBACK" if n == pushback_turn else ""
+                squeezed.append(f"\n[turn {n}] USER{marker}:\n{content[:4000]}")
+            elif kind == "assistant_response":
+                squeezed.append(f"\n[turn {n}] AGENT:\n{content[:4000]}")
+            elif kind == "assistant_thinking":
+                squeezed.append(f"\n[turn {n}] AGENT (thinking):\n{content[:800]}")
+            elif kind == "tool_use":
+                tool = t.get("tool_name") or "?"
+                detail = t.get("command") or t.get("file_path") or content[:150]
+                squeezed.append(f"[turn {n}] AGENT calls {tool}: {str(detail)[:tool_budget]}")
+            elif kind == "tool_result" and content:
+                squeezed.append(f"[turn {n}] -> result: {content[:result_budget]}")
+        text = "\n".join(squeezed)
+        if len(text) <= max_chars:
+            break
     return text

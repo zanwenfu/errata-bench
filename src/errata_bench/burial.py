@@ -186,44 +186,72 @@ def find_failure_turns(turns: list[dict], *, min_gap: int = 5) -> list[int]:
     return hits
 
 
-def build_session_excerpt(turns: list[dict], *, max_chars: int = 90_000) -> str:
+def build_session_excerpt(
+    turns: list[dict], *, max_chars: int = 90_000
+) -> tuple[str, set[int]]:
     """Render a whole session, keeping the narrative and compressing tool noise.
 
-    Sessions reach ~1,750 turns but only ~40 are conversational. Failing tool
-    results get more room than passing ones, since a problem the agent met is
-    exactly what this reader needs to see.
+    Returns the text and the set of turn numbers actually rendered.
+
+    An earlier version capped the total and elided the middle when it overran.
+    That was badly wrong: deferrals live in the middle of a long session, so it
+    removed precisely what this reader exists to find. On FSM1/cipher-box it
+    dropped 243,353 of 333,402 characters and left 4 of 40 flagged failure turns
+    visible, and the reader said so -- "the supplied transcript explicitly
+    elides 243402 characters, including most of the initially listed failure
+    turns, so findings are limited to visible evidence."
+
+    Measuring where the characters went showed the cap was unnecessary. Tool
+    results alone were 59% of that excerpt while the whole user/agent narrative
+    was 27%. So the budget is spent by content type instead: every user prompt
+    and agent response survives in full, failing tool results keep enough to
+    diagnose, and passing tool traffic is squeezed hard. Nothing is elided.
+
+    If a session still overruns after that, tool detail is tightened further
+    rather than cutting any part of the conversation.
     """
-    lines: list[str] = []
-    for t in turns:
-        kind = t.get("turn_type") or ""
-        n = t.get("turn_number")
-        if kind in ("progress", "file_snapshot", "system_event", "queue_operation"):
-            continue
-        content = (t.get("content") or "").strip()
 
-        if kind == "user_prompt":
-            lines.append(f"\n[turn {n}] USER:\n{content[:3000]}")
-        elif kind == "assistant_response":
-            lines.append(f"\n[turn {n}] AGENT:\n{content[:3000]}")
-        elif kind == "assistant_thinking":
-            lines.append(f"\n[turn {n}] AGENT (thinking):\n{content[:1200]}")
-        elif kind == "tool_use":
-            tool = t.get("tool_name") or "?"
-            detail = t.get("command") or t.get("file_path") or content[:150]
-            lines.append(f"[turn {n}] calls {tool}: {str(detail)[:200]}")
-        elif kind == "tool_result":
-            failed = bool(content and FAILURE_SIGNAL.search(content[:3000]))
-            budget = 1200 if failed else 200
-            tag = " [FAILURE]" if failed else ""
-            if content:
+    def render(passing_budget: int, tool_use_budget: int, thinking_budget: int) -> tuple[str, set[int]]:
+        lines: list[str] = []
+        rendered: set[int] = set()
+        for t in turns:
+            kind = t.get("turn_type") or ""
+            n = t.get("turn_number")
+            if kind in ("progress", "file_snapshot", "system_event", "queue_operation"):
+                continue
+            content = (t.get("content") or "").strip()
+
+            if kind == "user_prompt":
+                lines.append(f"\n[turn {n}] USER:\n{content[:3000]}")
+            elif kind == "assistant_response":
+                lines.append(f"\n[turn {n}] AGENT:\n{content[:3000]}")
+            elif kind == "assistant_thinking":
+                if not thinking_budget:
+                    continue
+                lines.append(f"\n[turn {n}] AGENT (thinking):\n{content[:thinking_budget]}")
+            elif kind == "tool_use":
+                tool = t.get("tool_name") or "?"
+                detail = t.get("command") or t.get("file_path") or content[:150]
+                lines.append(f"[turn {n}] calls {tool}: {str(detail)[:tool_use_budget]}")
+            elif kind == "tool_result":
+                if not content:
+                    continue
+                failed = bool(FAILURE_SIGNAL.search(content[:3000]))
+                budget = 1200 if failed else passing_budget
+                tag = " [FAILURE]" if failed else ""
                 lines.append(f"[turn {n}] -> result{tag}: {content[:budget]}")
+            else:
+                continue
+            if n is not None:
+                rendered.add(n)
+        return "\n".join(lines), rendered
 
-    text = "\n".join(lines)
-    if len(text) > max_chars:
-        head = text[: max_chars // 3]
-        tail = text[-(2 * max_chars // 3) :]
-        text = f"{head}\n\n[... {len(text) - max_chars} chars elided from the middle ...]\n\n{tail}"
-    return text
+    # Progressively tighter tool budgets. The conversation is never touched.
+    for passing, tool_use, thinking in ((200, 200, 1200), (80, 100, 600), (40, 60, 0)):
+        text, rendered = render(passing, tool_use, thinking)
+        if len(text) <= max_chars:
+            return text, rendered
+    return text, rendered
 
 
 async def read_session(
@@ -244,14 +272,17 @@ async def read_session(
         model=MODEL,
         output_type=BurialReading,
     )
-    failures = find_failure_turns(turns)
+    excerpt, rendered = build_session_excerpt(turns)
+    # Only hint at turns the reader can actually see. Pointing it at turns that
+    # were never rendered asks it to assess invisible text, which is how the
+    # previous run flagged 40 failure turns while showing 4 of them.
+    failures = [n for n in find_failure_turns(turns) if n in rendered]
     hint = (
         f"Tool results reporting failures appear at turns: {failures[:40]}. "
         "These are starting points only -- some are routine and were handled fine.\n\n"
         if failures
         else ""
     )
-    excerpt = build_session_excerpt(turns)
     tail = (
         f"\n\n{'=' * 70}\nLATER WORK IN THIS REPOSITORY, AFTER THE SESSION ENDED\n{'=' * 70}\n{evidence}"
         if evidence
