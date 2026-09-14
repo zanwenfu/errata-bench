@@ -1,0 +1,17 @@
+[project]
+name = "errata-bench"
+version = "0.1.0"
+description = "Turning real developer-agent sessions into a runnable benchmark"
+requires-python = ">=3.12"
+dependencies = [
+    "pyarrow>=21",
+    "openai>=2",
+    "openai-agents>=0.2",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["src"]
