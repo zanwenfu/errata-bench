@@ -18,6 +18,36 @@ from pydantic import BaseModel, Field
 
 MODEL = "gpt-6-astra"
 
+# The SDK's defaults are Timeout(connect=5, read=600, write=600, pool=600) with
+# max_retries=2, so one stalled read can block for 600s and up to 1,800s across
+# retries. A filtered run wedged for 32 minutes on exactly that, producing
+# neither results nor errors -- and an asyncio.wait_for around the await cannot
+# cancel it, because the blocking happens below the event loop. The timeout has
+# to be set on the client itself.
+REQUEST_TIMEOUT_S = 120.0
+MAX_RETRIES = 1
+_client_configured = False
+
+
+def configure_client() -> None:
+    """Install an API client that fails fast instead of hanging."""
+    global _client_configured
+    if _client_configured:
+        return
+    import os
+
+    from agents import set_default_openai_client
+    from openai import AsyncOpenAI
+
+    set_default_openai_client(
+        AsyncOpenAI(
+            api_key=os.environ.get("OPENAI_API_KEY"),
+            timeout=REQUEST_TIMEOUT_S,
+            max_retries=MAX_RETRIES,
+        )
+    )
+    _client_configured = True
+
 
 class Evidence(BaseModel):
     """A specific thing the agent said or did, locatable in the transcript."""
@@ -186,6 +216,7 @@ async def read_pushback(
     """Run the reader over one pushback moment."""
     from agents import Agent, Runner
 
+    configure_client()
     excerpt = build_excerpt(turns, pushback_turn)
     agent = Agent(
         name="pushback-reader",

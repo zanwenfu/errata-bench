@@ -336,9 +336,12 @@ batch -- and sat for 32 minutes with five ESTABLISHED sockets to the API, the
 process sleeping at 0% CPU with six seconds of total CPU time.
 
 The reads were wrapped in `asyncio.wait_for(..., timeout=480)`. It never fired.
-A stalled socket inside the SDK's HTTP client is not cancellable from the event
-loop, so the coroutine simply never resumes and no error row is ever written.
-The run produces neither results nor failures: it looks like slow progress.
+The cause is more mundane than a broken socket: the SDK ships
+`Timeout(connect=5, read=600, write=600, pool=600)` with `max_retries=2`, so a
+single stalled read blocks for 600s and up to 1,800s across retries -- about the
+32 minutes observed. The wrapper cannot cancel it because the blocking happens
+below the event loop. The run produces neither results nor failures: it looks
+like slow progress.
 
 Two consequences for anything run at scale here:
 
