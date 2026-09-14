@@ -215,3 +215,21 @@ The practical consequence is unchanged: filter the label rather than trust it,
 because the noise is what wastes model calls. But the corpus is not hiding a
 large population of missed complaints, and claiming so would have sent us
 looking for something that is not there.
+
+### repo_id disagrees between tables for 7% of sessions
+
+`conversations.parquet` and `sessions.parquet` both carry `repo_id`, and for
+**397 of 5,785 sessions (6.9%)** they disagree. The disagreements are
+systematic, pairing a repo with what looks like its fork:
+
+    conversations          sessions
+    marcus-sa/brain        osabiohq/osabio
+    cyyeh/duckdb-data-agent  wanshicheng/duckdb-data-agent
+
+This surfaced as a burial row recorded under `marcus-sa/brain` whose session the
+sessions table places in `osabiohq/osabio` -- a repo with 235 sessions. A
+cross-session join keyed on the conversations value would search the wrong
+repository and find nothing, reporting "no consequence" for a structural reason
+that has nothing to do with the agent's behaviour.
+
+**Key every cross-session join on `sessions.parquet`.**
