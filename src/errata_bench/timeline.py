@@ -32,17 +32,29 @@ from .corpus import CORPUS
 NS_PER_US = 1000
 
 
+# Multiplier from each arrow timestamp unit to nanoseconds.
+_UNIT_SCALE = {"ns": 1, "us": 1_000, "ms": 1_000_000, "s": 1_000_000_000}
+
+
 def _to_ns(column, arrow_type) -> list[int | None]:
-    """Normalise an arrow timestamp column to integer nanoseconds."""
+    """Normalise an arrow timestamp column to integer nanoseconds.
+
+    The unit is read from the arrow type object, not sniffed out of its string
+    form. A substring test is wrong here and fails silently: ``"s," in
+    "timestamp[ns, tz=UTC]"`` is true because of the ``ns,``, so a nanosecond
+    column took the seconds branch and was scaled by a further 10^9. Every
+    session timestamp then exceeded every commit timestamp, and "did any commit
+    land after this session" answered zero for the whole corpus -- which reads
+    as "nothing to trace" rather than as a bug.
+    """
     raw = column.cast("int64").to_pylist()
-    unit = str(arrow_type)
-    if "us" in unit:
-        return [None if v is None else v * NS_PER_US for v in raw]
-    if "ms" in unit:
-        return [None if v is None else v * NS_PER_US * 1000 for v in raw]
-    if "s," in unit or unit.endswith("[s]"):
-        return [None if v is None else v * NS_PER_US * 1_000_000 for v in raw]
-    return raw  # already nanoseconds
+    unit = getattr(arrow_type, "unit", None)
+    if unit not in _UNIT_SCALE:
+        raise ValueError(f"unexpected timestamp unit {unit!r} on {arrow_type}")
+    scale = _UNIT_SCALE[unit]
+    if scale == 1:
+        return raw
+    return [None if v is None else v * scale for v in raw]
 
 
 @dataclass
