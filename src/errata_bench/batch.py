@@ -23,7 +23,7 @@ from . import workspace
 from .builder import run_builder
 from .corpus import Entry
 from .spec import Spec
-from .verifier import Outcome, Verdict, Verifier  # noqa: F401  (Outcome used below)
+from .verifier import Outcome, RunResult, Verdict, Verifier  # noqa: F401
 
 
 @dataclass
@@ -55,6 +55,12 @@ class Result:
     # tail of the install output when preparation failed, so the cause is
     # diagnosable without re-running the entry
     prepare_output: str = ""
+    # tails of the graded runs. Without these a control=fail is undiagnosable:
+    # it could be the harness, a test file absent at the parent, or a genuinely
+    # broken parent -- and telling them apart meant paying for the entry twice.
+    control_output: str = ""
+    fail_output: str = ""
+    pass_output: str = ""
 
     @property
     def agrees(self) -> bool | None:
@@ -196,11 +202,27 @@ async def process_entry(
                         test_command=spec.test_command,
                         cache_host=cache,
                     )
+                    # The control proves the parent tree builds and its own
+                    # tests pass. When the commit ADDS a test file, the child's
+                    # command names a path the parent never had, so the runner
+                    # errors -- which looks like a broken parent but is only an
+                    # impossible request. Run the control only when every test
+                    # file it names exists at the parent.
+                    ctrl_ok = all(
+                        (ctrl / tf).is_file() for tf in spec.test_files
+                    ) if spec.test_files else True
+
+                    control_run = (
+                        verifier.run_test(tree=ctrl, **kw)
+                        if ctrl_ok
+                        else RunResult(Outcome.ERROR, None, "control not applicable", 0.0)
+                    )
                     verdict = Verdict(
-                        control=verifier.run_test(tree=ctrl, **kw),
+                        control=control_run,
                         fail_run=verifier.run_test(tree=fail, **kw),
                         pass_run=verifier.run_test(tree=pas, **kw),
                         prepare=prep,
+                        control_applicable=ctrl_ok,
                     )
                 finally:
                     # Never leave a prepared image behind, on any exit path.
@@ -217,6 +239,14 @@ async def process_entry(
             res.control = verdict.control.outcome.value
             res.fail_run = verdict.fail_run.outcome.value
             res.pass_run = verdict.pass_run.outcome.value
+            # Keep the tails only where they explain something: a passing
+            # control needs no explanation, a failing one always does.
+            if verdict.control.outcome is not Outcome.PASS:
+                res.control_output = verdict.control.stdout[-2000:]
+            if verdict.fail_run.outcome is not Outcome.FAIL:
+                res.fail_output = verdict.fail_run.stdout[-2000:]
+            if verdict.pass_run.outcome is not Outcome.PASS:
+                res.pass_output = verdict.pass_run.stdout[-2000:]
             return res
 
     except Exception:

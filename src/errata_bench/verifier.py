@@ -72,8 +72,19 @@ class Verdict:
             and self.pass_run.outcome is Outcome.PASS
         )
 
+    # Set when the control could not be run as specified -- e.g. the child's
+    # test command names a file that does not exist at the parent because the
+    # commit added it. That is not evidence about the entry either way.
+    control_applicable: bool = True
+
     @property
     def diagnosis(self) -> str:
+        if not self.control_applicable:
+            return (
+                "control-inapplicable: the child's test command names a file "
+                "absent at the parent, so the parent's health could not be "
+                "checked with it"
+            )
         if self.prepare is not None and self.prepare.outcome is not Outcome.PASS:
             return (
                 "prepare-failed: dependency install did not succeed, so no "
