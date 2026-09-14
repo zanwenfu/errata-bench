@@ -255,3 +255,53 @@ to repo-relative ones.
 **A real boundary, not a bug:** commits stop at roughly the last recorded
 session, so a consequence landing after the corpus window is absent. Absence of
 a later commit is weak evidence, not proof that nothing happened.
+
+---
+
+## After fixing the excerpt truncation
+
+Both readers were re-run with intact transcripts.
+
+### The readers are reproducible
+
+24 of 25 pushback verdicts were identical across runs. The 12 readings whose
+excerpts were never truncated all held, so the single change is attributable to
+restored context rather than run-to-run noise. That matters: every earlier number
+in this document came from single readings, and this is the first evidence they
+are stable enough to quote.
+
+The one change, `marcus-sa/brain` turn 3984, went `unclear -> real_error` and
+became viable. With the middle of the session restored, the reader could see the
+instruction at turn 1989 and the agent's own commitment at 2941, which is what
+makes the user's terse "createActivatedSession needs inflight tracker" legible
+as an ignored instruction rather than an unexplained complaint.
+
+### Burial findings rose modestly
+
+| | truncated run | intact run |
+|---|---:|---:|
+| deferrals found | 29 | 33 |
+| buried | 4 | 5 |
+| viable sessions | 2 | 3 |
+
+The two badly truncated sessions gained deferrals, as expected: `FSM1/cipher-box`
+4 -> 8 and `oddessentials` 2 -> 3. The untruncated sessions were stable.
+
+### Cross-session tracing works, verified against the repository
+
+`later_commit_fixed_it` fired for the first time, on the session that had lost
+65% of its transcript. The reader quoted a commit subject verbatim:
+
+    refactor(types): eliminate final 20 typing.Any tokens, QG-40 complete (P5c)
+
+Checked against the repository, that subject matches exactly **1 of 110** later
+commits, and that commit touches `aggregators.py` -- the file the agent had
+deferred with "| aggregators.py | 46 | 46 | Deferred to #237 |".
+
+So the mechanism is sound: the reader picked one commit from 110 on the strength
+of content, not keyword overlap, and it was the right one.
+
+**But it is not a benchmark case.** The reader judged that deferral
+`sound_triage`, because the agent told the user and filed it as issue #237.
+Correct triage, correctly recognised. Cross-session evidence proved its value as
+an instrument while confirming this particular deferral was handled well.
