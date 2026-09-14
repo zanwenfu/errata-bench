@@ -29,6 +29,9 @@ class SpecCitations(BaseModel):
     test_command: str = Field(
         description="file path + line/key you read the test command from, or '' if none exists"
     )
+    install_command: str = Field(
+        description="file path + line/key you read the dependency-install command from (lockfile, packageManager field, CI workflow, Makefile, contributing docs), or ''"
+    )
     image: str = Field(
         description="file path + line/key stating the language version, or ''"
     )
@@ -56,7 +59,22 @@ class SpecOutput(BaseModel):
     )
     test_command: list[str] = Field(
         default_factory=list,
-        description="argv to run in the container, e.g. ['go','test','./pkg/gsync/']. Scope to the relevant package, not the whole suite.",
+        description="argv to run in the container, e.g. ['go','test','./pkg/gsync/']. Scope to the relevant package, not the whole suite. If the module lives in a subdirectory, use ['sh','-c','cd <subdir> && <command>'].",
+    )
+    install_command: list[str] = Field(
+        default_factory=list,
+        description=(
+            "argv that installs this project's dependencies INCLUDING its test "
+            "dependencies, read from the repo. Examples: ['go','mod','download'], "
+            "['pnpm','install','--frozen-lockfile'], ['pip','install','-e','.[test]'], "
+            "['uv','sync','--extra','test']. The base image has only the bare "
+            "language runtime -- pytest, jest and friends are NOT present unless "
+            "this command installs them."
+        ),
+    )
+    work_dir: str = Field(
+        default="",
+        description="Repo-relative directory the install and tests run in, when the project is not at the repo root (e.g. 'api'). Empty means the repo root.",
     )
     image: str = Field(
         default="", description="Docker image at the version the repo declares, e.g. 'golang:1.25'."
@@ -97,6 +115,20 @@ Determine:
   2. The exact command that runs it -- scoped to the relevant package or file, \
 not the entire suite.
   3. The Docker image, using the language version the repository declares.
+  4. The command that installs dependencies, INCLUDING test dependencies.
+  5. The directory the project actually lives in, if not the repo root.
+
+Point 4 matters as much as the others. The container starts with only a bare \
+language runtime: pytest, jest, vitest and similar are NOT installed. Read how \
+this repository installs its own dependencies -- the lockfile tells you the \
+package manager (pnpm-lock.yaml means pnpm, yarn.lock means yarn), package.json \
+may pin one in "packageManager", and the CI workflow shows the exact invocation. \
+For Python, test dependencies are often an extra or a separate requirements \
+file. If the project needs a step before installing -- enabling corepack, \
+building generated code -- put those in setup_commands, in order.
+
+Point 5 matters for monorepos: if the module lives in a subdirectory, set \
+work_dir to it and write the test command as ['sh','-c','cd <subdir> && ...'].
 
 CRITICAL RULE: report only what you actually read in this repository. Do not \
 guess a test command because it is conventional for the language. If the repo \
@@ -244,6 +276,8 @@ async def run_builder(
         image=out.image,
         toolchain=out.toolchain,
         setup_commands=out.setup_commands,
+        install_command=out.install_command,
+        work_dir=out.work_dir,
         citations=cites,
         blocked_reason=out.blocked_reason,
     )

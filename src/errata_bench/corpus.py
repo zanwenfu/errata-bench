@@ -73,6 +73,7 @@ def _parse_files_changed(raw: str | None) -> list[tuple[str, str]]:
 def load_entries(
     *,
     require_test_change: bool = True,
+    require_source_change: bool = False,
     max_files: int | None = None,
     languages: set[str] | None = None,
     limit: int | None = None,
@@ -160,6 +161,12 @@ def load_entries(
         )
 
         if require_test_change and not entry.test_files:
+            continue
+        # A commit that touches only tests has no source change for an agent to
+        # make. Its new assertions usually pass at the parent too, which the
+        # verifier reports as no-signal -- two of batch 1's three no-signal
+        # cases were exactly this, and each cost a model call to discover.
+        if require_source_change and not entry.source_files:
             continue
         if per_repo_cap is not None:
             n = seen_per_repo.get(rid, 0)

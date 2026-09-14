@@ -23,7 +23,7 @@ from . import workspace
 from .builder import run_builder
 from .corpus import Entry
 from .spec import Spec
-from .verifier import Outcome, Verdict, Verifier
+from .verifier import Outcome, Verdict, Verifier  # noqa: F401  (Outcome used below)
 
 
 @dataclass
@@ -52,6 +52,9 @@ class Result:
     # evidence quality
     uncited: list[str] = field(default_factory=list)
     unresolved_citations: list[str] = field(default_factory=list)
+    # tail of the install output when preparation failed, so the cause is
+    # diagnosable without re-running the entry
+    prepare_output: str = ""
 
     @property
     def agrees(self) -> bool | None:
@@ -132,15 +135,38 @@ async def process_entry(
                 pas = co.export_tree(co.child_sha, ws / "pass")
 
                 cache = ws / "cache"
-                # Dependencies come down once, with the network on. Graded runs
-                # are offline; a build that never happened prints FAIL exactly
-                # like a failing test.
-                verifier.warm_cache(
-                    tree=pas,
+                # Dependencies come down once per tree, with the network on,
+                # using the commands the builder read out of the repo. Graded
+                # runs are then offline: a build that never happened prints
+                # FAIL exactly like a failing test.
+                prep_kw = dict(
                     image=spec.image,
                     toolchain=spec.toolchain,
+                    install_command=spec.install_command,
+                    setup_commands=spec.setup_commands,
                     cache_host=cache,
+                    workdir=spec.work_dir or None,
                 )
+                # Each tree is a separate filesystem, so each needs installing.
+                prep = verifier.prepare(tree=pas, **prep_kw)
+                if prep.outcome is Outcome.PASS:
+                    prep_ctrl = verifier.prepare(tree=ctrl, **prep_kw)
+                    prep_fail = verifier.prepare(tree=fail, **prep_kw)
+                    if prep_ctrl.outcome is not Outcome.PASS:
+                        prep = prep_ctrl
+                    elif prep_fail.outcome is not Outcome.PASS:
+                        prep = prep_fail
+
+                if prep.outcome is not Outcome.PASS:
+                    res.verified = False
+                    res.diagnosis = (
+                        "prepare-failed: dependency install did not succeed, so "
+                        "no conclusion can be drawn about this entry"
+                    )
+                    res.prepare_output = prep.stdout[-1500:]
+                    res.verifier_seconds = time.monotonic() - t1
+                    return res
+
                 kw = dict(
                     image=spec.image,
                     toolchain=spec.toolchain,
@@ -151,6 +177,7 @@ async def process_entry(
                     control=verifier.run_test(tree=ctrl, **kw),
                     fail_run=verifier.run_test(tree=fail, **kw),
                     pass_run=verifier.run_test(tree=pas, **kw),
+                    prepare=prep,
                 )
             except Exception as e:
                 res.verifier_error = f"{type(e).__name__}: {e}"

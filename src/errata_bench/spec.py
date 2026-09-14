@@ -72,8 +72,15 @@ class Spec:
     test_files: list[str] = field(default_factory=list)
     test_command: list[str] = field(default_factory=list)
     image: str = ""
-    toolchain: str = ""  # key into verifier.TOOLCHAINS
+    toolchain: str = ""  # key into verifier.CACHE_DIRS
     setup_commands: list[list[str]] = field(default_factory=list)
+    # How this project installs its own dependencies, read from the repo. The
+    # base image carries only a bare runtime, so without this pytest/jest are
+    # simply absent -- which is how 11 of 30 entries were lost in batch 1.
+    install_command: list[str] = field(default_factory=list)
+    # Repo-relative directory the project lives in; "" means the repo root.
+    # Preparation must happen here, not at the tree root, for monorepos.
+    work_dir: str = ""
 
     # evidence
     citations: dict[str, Citation] = field(default_factory=dict)
@@ -86,7 +93,7 @@ class Spec:
         if not self.reproducible:
             return []
         gaps = []
-        for name in ("test_files", "test_command", "image", "toolchain"):
+        for name in ("test_files", "test_command", "image", "toolchain", "install_command"):
             if not getattr(self, name):
                 gaps.append(name)
         return gaps
@@ -99,7 +106,7 @@ class Spec:
             return []
         return [
             name
-            for name in ("test_command", "image", "toolchain")
+            for name in ("test_command", "install_command", "image", "toolchain")
             if getattr(self, name) and name not in self.citations
         ]
 
