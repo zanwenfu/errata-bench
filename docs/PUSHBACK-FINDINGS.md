@@ -96,3 +96,32 @@ elsewhere.
 4. Long sessions (to ~1,750 turns) need chunking before the buried-problem case
    -- agent hits an issue, decides it is unimportant, never reports it -- can be
    detected. Nothing here tests that yet.
+
+---
+
+## Correction: the deferral→pushback ordering is not evidence
+
+An earlier commit (2db60a9) described 1,071 sessions containing a deferral
+followed by later user pushback as "the falsifiability pool". Measured against
+the base rate, that claim does not hold:
+
+| | |
+|---|---:|
+| sessions with >=20 conversational turns | 1,310 |
+| ...containing any pushback | 1,286 (98%) |
+| ...containing a deferral | 739 (56%) |
+| **P(pushback \| deferral)** | **99%** |
+| **P(pushback \| no deferral)** | **97%** |
+
+Pushback is near-universal in long sessions, so a deferral followed by a
+complaint is overwhelmingly coincidence: a user objecting to something
+unrelated, often hundreds of turns later. Selecting on that ordering confers
+almost no prior.
+
+This does not sink the approach, but it moves the whole burden onto the reader:
+a burial claim is only worth anything if the consequence is shown to trace to
+that specific deferral. Sampling cannot establish it; only reading can.
+
+A second consequence: the control group is tiny. Only 8 sessions defer without
+any pushback, so "deferred and never complained about" is not a population we
+can sample against.
