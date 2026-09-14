@@ -212,6 +212,8 @@ class Verifier:
     ) -> RunResult:
         work = "/w" if not workdir else f"/w/{workdir.strip('/')}"
         argv = ["docker", "run", "--rm", "-v", f"{tree}:/w", "-w", work]
+        # Same reason as in prepare(): no .git in an archived tree.
+        argv += ["-e", "SETUPTOOLS_SCM_PRETEND_VERSION=0.0.0"]
         if cache_dir and cache_host:
             cache_host.mkdir(parents=True, exist_ok=True)
             argv += ["-v", f"{cache_host}:{cache_dir}"]
@@ -269,6 +271,11 @@ class Verifier:
         script = " && ".join(shlex.join(c) for c in commands)
 
         argv = ["docker", "run", "-w", work, "-v", f"{tree}:/w"]
+        # Trees are `git archive` exports and carry no .git directory, so any
+        # build backend that derives a version from git history fails outright:
+        # setuptools-scm aborts an editable install with "unable to detect
+        # version". Supplying a fallback version costs nothing when unused.
+        argv += ["-e", "SETUPTOOLS_SCM_PRETEND_VERSION=0.0.0"]
         if cache_dir:
             cache_host.mkdir(parents=True, exist_ok=True)
             argv += ["-v", f"{cache_host}:{cache_dir}"]
