@@ -1,9 +1,20 @@
 """Read a real pushback moment and judge what the agent did to earn it.
 
-This is an investigation, not a benchmark builder. The question it answers is
-whether SWE-chat actually contains legible agent failures -- or whether most
-pushback is preference, in which case a user-alignment benchmark is not
-supportable by this corpus.
+This is step 1 of the benchmark: it selects which moments are worth turning into
+tasks. Given a point where a developer pushed back on a coding agent, it decides
+whether the agent genuinely erred -- a false claim, an unverified assumption, a
+shallow investigation -- or whether the user was expressing a preference, and
+produces a success criterion stating what a candidate model must do instead.
+
+Measured on a filtered sample of 30 moments: 13 viable (43%), and re-reading ten
+of them gave the same viable decision 10 times out of 10. Yield differs sharply
+by pushback kind -- failure_report 7/10 against correction 3/14 -- because a user
+reporting something broken usually has a concrete error behind it, while a user
+correcting an agent is often expressing taste.
+
+What this does NOT do is verify anything. It reads and judges; it never runs a
+command. A criterion it produces is prose, and turning that into something a
+container can score is step 2.
 
 Judgement here is the model's, deliberately: whether an agent made an
 unwarranted assumption, buried a problem, or investigated shallowly is semantic,

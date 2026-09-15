@@ -7,4 +7,3 @@ __pycache__/
 .env
 *.egg-info/
 runs/
-archive/
