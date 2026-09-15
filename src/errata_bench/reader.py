@@ -243,6 +243,48 @@ async def read_pushback(
     return result.final_output
 
 
+def _fit_result_budget(turns: list[dict], pushback_turn: int, max_chars: int) -> int:
+    """How many characters each tool result may keep, given the space available.
+
+    Early moments are where this matters. A flat 400-character cap showed only
+    8-29% of tool result bodies -- 93k characters cut to 8.5k in one case -- and
+    the reader said so directly: "the edit payloads and relevant code bodies are
+    absent or truncated". Meanwhile the prompts themselves were tiny, 21 of 40
+    under a fifth of the budget. The cap was starving the reader while most of
+    the room went unused.
+
+    So the budget is fitted rather than fixed: measure what the conversation
+    costs, then spend what is left on tool output. A short session gets generous
+    results, a long one falls back to the tight cap that keeps it in bounds.
+    """
+    fixed = 0
+    results = []
+    for t in turns:
+        n = t.get("turn_number")
+        if n is None or n > pushback_turn:
+            continue
+        kind = t.get("turn_type") or ""
+        content = (t.get("content") or "").strip()
+        if kind in ("user_prompt", "assistant_response"):
+            fixed += min(len(content), 4000) + 40
+        elif kind == "assistant_thinking":
+            fixed += min(len(content), 1500) + 40
+        elif kind == "tool_use":
+            detail = t.get("command") or t.get("file_path") or content[:150]
+            fixed += min(len(str(detail)), 220) + 40
+        elif kind == "tool_result" and content:
+            results.append(len(content))
+
+    if not results:
+        return 400
+    remaining = max_chars - fixed - 40 * len(results)
+    if remaining <= 0:
+        return 400
+    # Spread what is left evenly, then clamp: never below the old cap, and not
+    # so high that one enormous result swamps the rest.
+    return max(400, min(4000, remaining // len(results)))
+
+
 def build_excerpt(turns: list[dict], pushback_turn: int, *, max_chars: int = 60_000) -> str:
     """Render the turns leading up to a pushback into something readable.
 
@@ -251,6 +293,7 @@ def build_excerpt(turns: list[dict], pushback_turn: int, *, max_chars: int = 60_
     agent that checked and one that asserted -- so they are kept in compressed
     form, while progress and file-snapshot noise is dropped.
     """
+    result_budget = _fit_result_budget(turns, pushback_turn, max_chars)
     lines: list[str] = []
     for t in turns:
         n = t.get("turn_number")
@@ -275,7 +318,7 @@ def build_excerpt(turns: list[dict], pushback_turn: int, *, max_chars: int = 60_
             detail = t.get("command") or t.get("file_path") or content[:200]
             lines.append(f"[turn {n}] AGENT calls {tool}: {str(detail)[:220]}")
         elif kind == "tool_result":
-            lines.append(f"[turn {n}] -> result: {content[:400]}")
+            lines.append(f"[turn {n}] -> result: {content[:result_budget]}")
 
     text = "\n".join(lines)
     if len(text) <= max_chars:
