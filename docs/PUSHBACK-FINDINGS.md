@@ -422,3 +422,65 @@ rejections. Examples:
 
 Operationally: median read 57s, max 135s, against the 240s ceiling introduced
 after the earlier wedge. No read timed out.
+
+---
+
+## Clean moments: 22%, and more context does not move it
+
+Selecting first-pushback moments with no prior agent concession gives 36 of 40
+clean under the priming screen, against 1 of 13 for the earlier sample. Reading
+those 40:
+
+| | |
+|---|---:|
+| **viable** | **9/40 = 22%** |
+| unclear | 24 |
+| real_error | 9 |
+| unwanted_but_defensible | 6 |
+| preference | 1 |
+| reproducibility (same prompt, 10 re-read) | **10/10** on both measures |
+
+Excluding the four frustration-primed cases changes nothing: 8/36 = 22% against
+1/4 = 25%. Priming is not what suppresses the rate.
+
+### The context hypothesis was wrong
+
+18 of the 24 unclear readings reported `context_sufficient: False`, with notes
+such as "the edit payloads and relevant code bodies are absent or truncated".
+Measurement showed tool *results* were being shown at 8-29% while prompts used a
+median of 11,861 characters against a 60,000 budget, so the budget was fitted to
+the space available -- median prompt rose to 23,458, a median gain of +7,968
+characters per case.
+
+Re-reading the same 40 with that extra context:
+
+    viable              9/40 -> 9/40
+    context_sufficient 19/40 -> 19/40
+
+Two cases swapped viability in opposite directions, which is churn rather than
+effect. Nearly eight thousand characters of additional tool output moved the
+aggregate by zero.
+
+So `context_sufficient: False` was never about truncation. Re-read in that
+light, the notes describe work that happened *before* the window or was never in
+the transcript -- code written in an earlier session, edits recorded only as
+diffs. More characters of the same window cannot supply it. Early-session
+moments are harder to judge because less of the causal history exists, and 22%
+may be near the real ceiling rather than an artifact.
+
+### Pool
+
+| | |
+|---|---:|
+| first-pushback moments with >=4 prior turns | 756 |
+| surviving the priming screen | 654 (87%) |
+| corrections / failure_reports / rejections / takeovers | 535 / 97 / 11 / 11 |
+| usable at the measured 22% | **~143** |
+
+### A known limit, not worth fixing
+
+The squeeze path breaks out of its loop when an excerpt fits but returns the
+last attempt regardless, so a session that cannot be squeezed under the cap is
+returned over it -- `marin-community/marin` comes back at 73,706 against a
+60,000 cap. The alternative, eliding the middle, was measured earlier and
+destroys findings. This costs tokens, not correctness.
