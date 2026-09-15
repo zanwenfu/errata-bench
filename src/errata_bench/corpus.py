@@ -1,181 +1,96 @@
-"""Read candidate entries out of the SWE-chat corpus.
+"""Locate things in the SWE-chat corpus.
 
-The corpus stores diffs only -- no repository file contents. Everything here is
-local parquet reading; seeing a repo means cloning it (see workspace.py).
+The corpus is six parquet tables and 5,850 raw transcripts. It stores diffs, not
+repository file contents, so seeing a repository at a commit means cloning it --
+see :mod:`workspace`.
+
+This module is deliberately small: it says where the corpus is and resolves the
+identifiers other modules join on. Selection of candidate moments lives in
+:mod:`reader`, and time and repository joins live in :mod:`timeline`, because
+both of those carry traps worth documenting where they are used.
 """
 
 from __future__ import annotations
 
 import json
-import re
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass
 from pathlib import Path
 
 import pyarrow.parquet as pq
 
 CORPUS = Path(__file__).resolve().parents[2] / "data" / "swe-chat"
 
-# Paths that look like tests. Deliberately broad: this only decides what the
-# builder agent looks at, never whether an entry is usable. The gfetch run
-# showed the real question ("do these assertions exercise the change?") is only
-# answerable by running the tests, so nothing here is treated as a verdict.
-TEST_PATH = re.compile(
-    r"(^|/)(tests?|spec|specs|__tests__)/"
-    r"|_test\.(go|py|rb|ex|exs)$"
-    r"|\.(test|spec)\.(ts|tsx|js|jsx|mjs|cjs)$"
-    r"|(^|/)test_[^/]*\.py$"
-    r"|Test\.(java|kt|cs)$"
-    r"|_spec\.rb$"
-    r"|(^|/)conftest\.py$",
-    re.I,
-)
-
 
 @dataclass
-class Entry:
-    """One commit from the corpus, before anyone has looked at the repo."""
+class Repo:
+    """A repository as the corpus records it."""
 
-    commit_sha: str
-    repo_id: str
-    repo_url: str
-    language: str | None
+    repo_id: str  # "owner/name"
+    url: str
     license_type: str | None
-    commit_message: str
-    files_changed: list[tuple[str, str]]  # (git status letter, path)
-    patch: str
+    language: str | None
 
     @property
-    def test_files(self) -> list[tuple[str, str]]:
-        return [(s, p) for s, p in self.files_changed if TEST_PATH.search(p)]
-
-    @property
-    def source_files(self) -> list[tuple[str, str]]:
-        return [(s, p) for s, p in self.files_changed if not TEST_PATH.search(p)]
-
-    def to_json(self) -> dict:
-        d = asdict(self)
-        d["patch"] = self.patch[:200_000]  # keep prompts bounded
-        return d
+    def is_permissive(self) -> bool:
+        """Copyleft licences need a decision before their code ships in an image."""
+        return self.license_type not in {
+            "AGPL-3.0",
+            "GPL-3.0",
+            "GPL-3.0-or-later",
+            None,
+        }
 
 
-def _parse_files_changed(raw: str | None) -> list[tuple[str, str]]:
-    if not raw:
-        return []
-    out = []
-    for line in raw.split("\n"):
-        if "\t" not in line:
-            continue
-        parts = line.split("\t")
-        out.append((parts[0].strip(), parts[-1].strip()))
-    return out
-
-
-def load_entries(
-    *,
-    require_test_change: bool = True,
-    require_source_change: bool = False,
-    max_files: int | None = None,
-    languages: set[str] | None = None,
-    limit: int | None = None,
-    per_repo_cap: int | None = None,
-) -> list[Entry]:
-    """Load candidate commits.
-
-    Only ``status == 'ok'`` rows carry a patch -- 5,205 of 14,459 rows are
-    ``commit_not_found`` with empty patches and nothing to clone.
-
-    ``per_repo_cap`` matters because the corpus is lopsided: five repos supply
-    41% of usable commits, so an uncapped sample would mostly measure one Go CLI.
-    """
-    repos = pq.read_table(
+def load_repos() -> dict[str, Repo]:
+    """Every repository in the corpus, keyed by ``owner/name``."""
+    table = pq.read_table(
         CORPUS / "repositories.parquet",
         columns=["repo_id", "url", "license_type", "repo_github_metadata"],
     )
-    meta: dict[str, tuple[str, str | None, str | None]] = {}
-    for i in range(repos.num_rows):
-        rid = repos.column("repo_id")[i].as_py()
-        gh = repos.column("repo_github_metadata")[i].as_py()
-        lang = None
-        if gh:
+    out: dict[str, Repo] = {}
+    for rid, url, lic, meta in zip(
+        table.column("repo_id").to_pylist(),
+        table.column("url").to_pylist(),
+        table.column("license_type").to_pylist(),
+        table.column("repo_github_metadata").to_pylist(),
+    ):
+        language = None
+        if meta:
             try:
-                lang = json.loads(gh).get("language")
+                language = json.loads(meta).get("language")
             except (ValueError, TypeError):
                 pass
-        meta[rid] = (
-            repos.column("url")[i].as_py(),
-            repos.column("license_type")[i].as_py(),
-            lang,
-        )
+        out[rid] = Repo(repo_id=rid, url=url, license_type=lic, language=language)
+    return out
 
-    commits = pq.read_table(
-        CORPUS / "commits.parquet",
-        columns=[
-            "commit_sha",
-            "repo_id",
-            "status",
-            "commit_message",
-            "files_changed",
-            "patch",
-        ],
+
+def session_commits() -> dict[str, list[str]]:
+    """Commit shas produced by each session.
+
+    A session reaches its commits through checkpoints, and both sides of that
+    link are JSON arrays rather than foreign keys, so it has to be unpacked
+    rather than joined.
+    """
+    table = pq.read_table(
+        CORPUS / "checkpoints.parquet", columns=["session_pks", "commit_shas"]
     )
-
-    entries: list[Entry] = []
-    seen_per_repo: dict[str, int] = {}
-    seen_sha: set[str] = set()
-
-    for i in range(commits.num_rows):
-        if commits.column("status")[i].as_py() != "ok":
+    out: dict[str, list[str]] = {}
+    for sessions_raw, commits_raw in zip(
+        table.column("session_pks").to_pylist(),
+        table.column("commit_shas").to_pylist(),
+    ):
+        if not sessions_raw or not commits_raw:
             continue
-        sha = commits.column("commit_sha")[i].as_py()
-        rid = commits.column("repo_id")[i].as_py()
-        if not sha or not rid or rid not in meta:
-            continue  # some commit_sha values are null
-
-        # One commit can appear on several rows: a session spans checkpoint
-        # boundaries, and commits.parquet carries a row per (commit, checkpoint).
-        # Without this, the same commit is triaged repeatedly and any per-repo
-        # cap counts one commit as several.
-        if sha in seen_sha:
+        try:
+            sessions = json.loads(sessions_raw)
+            commits = json.loads(commits_raw)
+        except (ValueError, TypeError):
             continue
-        seen_sha.add(sha)
+        for sid in sessions:
+            out.setdefault(sid, []).extend(commits)
+    return out
 
-        files = _parse_files_changed(commits.column("files_changed")[i].as_py())
-        if not files:
-            continue
-        if max_files is not None and len(files) > max_files:
-            continue
 
-        url, lic, lang = meta[rid]
-        if languages and lang not in languages:
-            continue
-
-        entry = Entry(
-            commit_sha=sha,
-            repo_id=rid,
-            repo_url=url,
-            language=lang,
-            license_type=lic,
-            commit_message=commits.column("commit_message")[i].as_py() or "",
-            files_changed=files,
-            patch=commits.column("patch")[i].as_py() or "",
-        )
-
-        if require_test_change and not entry.test_files:
-            continue
-        # A commit that touches only tests has no source change for an agent to
-        # make. Its new assertions usually pass at the parent too, which the
-        # verifier reports as no-signal -- two of batch 1's three no-signal
-        # cases were exactly this, and each cost a model call to discover.
-        if require_source_change and not entry.source_files:
-            continue
-        if per_repo_cap is not None:
-            n = seen_per_repo.get(rid, 0)
-            if n >= per_repo_cap:
-                continue
-            seen_per_repo[rid] = n + 1
-
-        entries.append(entry)
-        if limit is not None and len(entries) >= limit:
-            break
-
-    return entries
+def commit_shas_in_session(session_id: str) -> list[str]:
+    """Commits attributable to one session, oldest position first."""
+    return session_commits().get(session_id, [])
