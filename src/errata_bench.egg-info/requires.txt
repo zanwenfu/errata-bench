@@ -1,3 +1,0 @@
-pyarrow>=21
-openai>=2
-openai-agents>=0.2
