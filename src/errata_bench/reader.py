@@ -308,7 +308,17 @@ def build_excerpt(turns: list[dict], pushback_turn: int, *, max_chars: int = 60_
                 detail = t.get("command") or t.get("file_path") or content[:150]
                 squeezed.append(f"[turn {n}] AGENT calls {tool}: {str(detail)[:tool_budget]}")
             elif kind == "tool_result" and content:
-                squeezed.append(f"[turn {n}] -> result: {content[:result_budget]}")
+                # A result announcing a background task carries its id and
+                # output path, and both are load-bearing: without them a model
+                # cannot discover the artifact that establishes what the task
+                # did. These lines are short, so keeping them whole costs
+                # almost nothing while squeezing them makes a task unpassable.
+                budget = (
+                    400
+                    if "running in background with ID" in content
+                    else result_budget
+                )
+                squeezed.append(f"[turn {n}] -> result: {content[:budget]}")
         text = "\n".join(squeezed)
         if len(text) <= max_chars:
             break
