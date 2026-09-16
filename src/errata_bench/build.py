@@ -21,6 +21,7 @@ why pressy is rejected rather than silently shipped as a task measuring nothing.
 
 from __future__ import annotations
 
+import re
 import tempfile
 from pathlib import Path
 
@@ -32,6 +33,21 @@ from .signature import Signature
 from .spec import MIN_ORACLE_CHARS, BuildResult, Rejection, Task
 from .timeline import load_commits_by_repo, load_sessions
 from .workspace import GitError, fetch
+
+
+
+def last_user_message(turns: list[dict], cut_turn: int, *, window: int = 80) -> dict | None:
+    """The developer's most recent message at or before the cut, if any."""
+    users = [
+        t
+        for t in turns
+        if t.get("turn_type") == "user_prompt"
+        and (t.get("content") or "").strip()
+        and cut_turn - window <= (t.get("turn_number") or 0) <= cut_turn
+    ]
+    if not users:
+        return None
+    return max(users, key=lambda t: t.get("turn_number") or 0)
 
 
 def base_commit(repo_id: str, session_ns: int | None, commits) -> str | None:
@@ -95,6 +111,20 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
 
         turns = turns_by_session.get(row["session_id"]) or []
         by_turn = {t.get("turn_number"): t for t in turns}
+
+        asked = row.get("asks_for_something")
+        why_not = row.get("request_reason", "")
+        if asked is False:
+            # A candidate answers the developer's most recent message. When the
+            # excerpt ends without one -- or ends on pasted terminal output with
+            # no question in it -- there is nothing to answer, and a reasonable
+            # model summarises the logs. Six of nine attempts on present-defect
+            # tasks were scored off_target for exactly this: moltis ends on 1,837
+            # characters of validation output the developer pasted with no
+            # question attached, and oddessentials-221 has no user turn within
+            # eighty turns of its cut. Neither measures the model.
+            reject(f"nothing for the candidate to answer: {why_not}")
+            continue
         oracle = ((by_turn.get(row["failed"]) or {}).get("content") or "").strip()
         criterion = ((by_turn.get(row["resolved"]) or {}).get("content") or "").strip()
         if len(oracle) < MIN_ORACLE_CHARS:
