@@ -1,87 +1,83 @@
 # errata-bench
 
-Turning real developer↔coding-agent sessions into a runnable benchmark.
+A benchmark built from real developer–agent sessions, measuring whether an agent
+**checks before it concludes** rather than whether it can fix a bug.
 
-Empty by design. The previous system — live capture, a review UI, and twelve
-detectors — is archived and not carried forward; see **Prior work** below.
+The source corpus is [SWE-chat](https://huggingface.co/datasets/SALT-NLP/SWE-chat):
+transcripts where a developer pushed back on a coding agent. Each pushback marks
+a moment where the agent claimed something it had not established, dismissed a
+failure, or handed work back unfinished — and the same transcript usually shows
+where it later got things right. That pair is what makes the moment scoreable.
 
-## The goal
+## The pipeline
 
-Take a real moment where a coding agent got something wrong, and turn it into a
-task another agent can attempt and be scored on:
+    reader      finds pushback moments that represent genuine agent error
+    trajectory  locates four turns: request, failure, complaint, resolution
+    signature   derives what the defect looks like in a repository
+    build       assembles a runnable task and verifies its setup
+    attempt     runs a candidate with read, run and write access
+    judge       decides whether the answer has the defect
+    structure   reads the trace and the tree, independently of the answer
 
-```
-parent commit's source  +  the commit's test  →  test FAILS
-     agent's fix applied  +  the commit's test  →  test PASSES
-```
+## Where the candidate is cut
 
-That construction is proven on real SWE-chat data. See
-[docs/SWE-CHAT-FINDINGS.md](docs/SWE-CHAT-FINDINGS.md) for the working example,
-the container timings, and the candidate counts.
+Given `user1 → model1 → user2 → model2 → user3 → model3`, where `user3`
+complains about `model2`, the candidate sees everything up to the turn **before**
+`model2` and must produce its own.
 
-## The data
+Cutting at the complaint leaks the answer — every candidate opened "You're right,
+my earlier fix was insufficient." Cutting at the user's original request
+overcorrects: in one case the request is turn 5 and the failure turn 54, so that
+cut yields 515 characters of bare ask and discards the agent's own investigation.
+Cutting just before the failure yields 7,528 characters there, and the candidate
+inherits the same work in progress.
 
-`data/swe-chat` is a **symlink** to a 12 GB corpus that lives outside this repo:
+## Scoring
 
-```
-data/swe-chat -> ../errata/data/corpora/swe-chat
-```
+Two readings, deliberately not combined into one number.
 
-It holds 5,850 Claude Code transcripts (9.7 GB) and six parquet tables:
-`sessions`, `conversations`, `commits`, `checkpoints`, `repositories`,
-`session_logs`.
+**The judge** compares the answer against two reference answers from the same
+conversation — the one that drew a complaint and the one that ended it — shown
+**unlabelled**. An earlier version named them, scored 14/14, and then called the
+genuinely-wrong answer *resolves* all 14 times when the labels were swapped. It
+had been matching headings. Calibration now asks each question twice with the
+references exchanged, and a task whose verdicts move is excluded.
 
-To fetch it fresh:
+Every verdict must quote the candidate's own words. A quote that is not in the
+answer discards the verdict.
 
-```bash
-huggingface-cli download SALT-NLP/SWE-chat --repo-type dataset \
-  --local-dir data/swe-chat
-```
+**The structural check** reads tool calls, file changes, and whether the defect's
+token survived. Nothing parses prose: scoring a hand-built task by matching text
+produced four bugs in a row, each mistaking a discussion of a claim for the claim.
 
-**The exact revision is not recorded.** An earlier README claimed `f66cca9`, but
-nothing on disk confirms it — there is no HuggingFace cache ref and the corpus
-README is only the dataset card. The dataset is described upstream as "living"
-and row counts drift, so **pin a revision on the next download** and record it
-here.
+The disagreements are the point. *Resolved without checking* is a guess that
+landed. *Declined to conclude, having checked* is a candidate that looked and
+reported honestly.
 
-Source: [SALT-NLP/SWE-chat](https://huggingface.co/datasets/SALT-NLP/SWE-chat),
-licence `odc-by`. Collected via opt-in Entire.io CLI from public repositories.
+## Setup validation
 
-## What came with us
+A task is only included if its defect is demonstrably in the tree the candidate
+receives — and tasks where the agent *creates* the defect are distinguished from
+ones where it fails to notice an existing defect, since a clean starting tree is
+correct for the first and wrong for the second.
 
-| | |
-|---|---|
-| `gold/labels.jsonl` | 270 labelled cases (LLM-produced, cost $17.87) |
-| `gold/GUIDELINE.md` | the labelling rubric they were produced under |
-| `docs/SWE-CHAT-FINDINGS.md` | what was measured about benchmark feasibility |
+Each task records how strongly this was established: `token` (the defect's own
+string found), `file` (only the file it lives in), or `declared` (correct by the
+task's shape). Most real defects are behaviours — "the polling loop never exited",
+"formatting violations remained" — with no literal string to search for, so
+requiring a token would discard most sound tasks.
 
-**No human has validated those 270 labels.** They were written by
-`gpt-6-astra`. Treat them as one model's opinion, not ground truth. About twenty
-human labels would establish whether that opinion holds — the cheapest useful
-thing available.
+Two traps worth knowing, both found the hard way:
 
-## Prior work
+- The last commit a session produced is the state **after** the work. One task's
+  session sha message is literally the fix the candidate is meant to arrive at.
+- The defect may be in no commit at all. In one case the broken value appears in
+  the agent's own file reads and nowhere in the repository — it lived in the
+  developer's uncommitted working tree. Such tasks are rejected.
 
-The capture system is preserved in full and reachable:
+## Running
 
-```
-github.com/zanwenfu/errata
-  tag    v0.1-capture-foundation
-  branch archive/capture-foundation
-```
+    python -m venv .venv && .venv/bin/pip install -e .
+    echo 'OPENAI_API_KEY=...' > .env
 
-28k lines of source, 15k of tests, 532 passing. Worth borrowing from rather than
-rewriting blind: the transcript adapter (proven on 4,918 sessions), the twelve
-detectors, the evaluation harness, and the git/environment reader.
-
-Also there: `docs/DESIGN.md` (how the capture system worked),
-`docs/RESULTS.md` (detector measurements), `docs/ISSUES.md` (fifteen bugs found
-and what each cost).
-
-## Next
-
-1. Run the fail-to-pass oracle over ~50 modified-test commits spanning Go,
-   TypeScript and Python. That converts "one case works" into a yield rate,
-   which is the number that decides whether this is worth building.
-2. Automate toolchain selection from lockfile and `engines`.
-3. Get twenty human labels.
+Corpus path is set in `corpus.py`.
