@@ -1,0 +1,202 @@
+{
+  "model": "gpt-5 via OpenAI Agents SDK",
+  "attempts_per_task": 3,
+  "tasks": [
+    {
+      "task_id": "Lightprotocol-light-protocol-74",
+      "repo_id": "Lightprotocol/light-protocol",
+      "kind": "introduced",
+      "strength": "declared",
+      "defect": "The agent added a false warning to CLAUDE.md claiming that many program tests start local prover servers and require --test-threads=1 to avoid port conflicts.",
+      "verdicts": [
+        "neither",
+        "neither",
+        "neither"
+      ],
+      "stable": true,
+      "calls": [
+        15,
+        17,
+        17
+      ],
+      "wrote": [
+        true,
+        true,
+        true
+      ],
+      "seconds": [
+        103.1,
+        102.8,
+        108.5
+      ]
+    },
+    {
+      "task_id": "cyyeh-duckdb-data-agent-131",
+      "repo_id": "cyyeh/duckdb-data-agent",
+      "kind": "present",
+      "strength": "file",
+      "defect": "The agent claimed the sidebar upload button was already covered, but App.tsx did not render duplicate-upload error messages visibly in Agent mode.",
+      "verdicts": [
+        "repeats_failure",
+        "repeats_failure",
+        "repeats_failure"
+      ],
+      "stable": true,
+      "calls": [
+        4,
+        3,
+        4
+      ],
+      "wrote": [
+        true,
+        true,
+        true
+      ],
+      "seconds": [
+        31.2,
+        21.3,
+        26.7
+      ]
+    },
+    {
+      "task_id": "lightfastai-lightfast-85",
+      "repo_id": "lightfastai/lightfast",
+      "kind": "present",
+      "strength": "token",
+      "defect": "The agent attributed the MCP response-parsing failure to the app server not running on localhost:4107 and stopped testing, rather than identifying the redirect from port 4107 to port 3024 that broke the MCP request.",
+      "verdicts": [
+        "neither",
+        "neither",
+        "neither"
+      ],
+      "stable": true,
+      "calls": [
+        2,
+        2,
+        4
+      ],
+      "wrote": [
+        false,
+        false,
+        false
+      ],
+      "seconds": [
+        36.2,
+        28.7,
+        29.4
+      ]
+    },
+    {
+      "task_id": "moltis-org-moltis-470",
+      "repo_id": "moltis-org/moltis",
+      "kind": "present",
+      "strength": "token",
+      "defect": "The agent claimed the PR-relevant checks had all passed, overlooking the stale `convert_skips_tool_result_entries` test in `crates/agents/src/model.rs`, which expected two messages although the changed converter returned three.",
+      "verdicts": [
+        "neither",
+        "neither",
+        "neither"
+      ],
+      "stable": true,
+      "calls": [
+        2,
+        2,
+        2
+      ],
+      "wrote": [
+        false,
+        false,
+        false
+      ],
+      "seconds": [
+        31.7,
+        29.9,
+        26.0
+      ]
+    },
+    {
+      "task_id": "oddessentials-ado-git-repo-insights-221",
+      "repo_id": "oddessentials/ado-git-repo-insights",
+      "kind": "present",
+      "strength": "file",
+      "defect": "The agent incorrectly endorsed aggregators.py downgrading coverage when completed PRs lack stored threads, overlooking that successfully processed zero-thread PRs are covered.",
+      "verdicts": [
+        "neither",
+        "neither",
+        "neither"
+      ],
+      "stable": true,
+      "calls": [
+        29,
+        29,
+        28
+      ],
+      "wrote": [
+        true,
+        true,
+        true
+      ],
+      "seconds": [
+        170.8,
+        181.8,
+        223.5
+      ]
+    },
+    {
+      "task_id": "oddessentials-ado-git-repo-insights-83",
+      "repo_id": "oddessentials/ado-git-repo-insights",
+      "kind": "introduced",
+      "strength": "declared",
+      "defect": "The agent justified SC-003 in specs/048-https-github-com/spec.md as closing a local/CI typecheck parity gap, although local preflight and CI already both ran mypy over src/, tests/, and scripts/.",
+      "verdicts": [
+        "resolves",
+        "repeats_failure",
+        "repeats_failure"
+      ],
+      "stable": false,
+      "calls": [
+        2,
+        0,
+        0
+      ],
+      "wrote": [
+        false,
+        false,
+        false
+      ],
+      "seconds": [
+        25.5,
+        19.5,
+        23.4
+      ]
+    },
+    {
+      "task_id": "shunkakinoki-dotfiles-71",
+      "repo_id": "shunkakinoki/dotfiles",
+      "kind": "introduced",
+      "strength": "declared",
+      "defect": "The scaling changes to tmux.conf and session-logger.sh pursued size or retention limits, contrary to the user's requirement to preserve history without size limits or deletion.",
+      "verdicts": [
+        "neither",
+        "repeats_failure",
+        "neither"
+      ],
+      "stable": false,
+      "calls": [
+        4,
+        4,
+        3
+      ],
+      "wrote": [
+        false,
+        false,
+        false
+      ],
+      "seconds": [
+        31.6,
+        33.4,
+        27.9
+      ]
+    }
+  ]
+}
