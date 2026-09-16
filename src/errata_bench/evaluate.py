@@ -157,7 +157,36 @@ def judge(
     raise ValueError(f"no evaluator for {spec.evaluator}")
 
 
-def validate_against_oracle(spec: TaskSpec, oracle_tool_calls: list[dict]) -> Judgement:
+# Evaluators that can be settled from a transcript alone. The others need the
+# oracle turn replayed through the candidate harness, because they score
+# something the original agent was never asked to produce.
+TRANSCRIPT_DECIDABLE = {Evaluator.MUST_CHECK}
+
+
+@dataclass
+class OracleCheck:
+    """Whether the known-wrong response is caught, or whether we cannot tell."""
+
+    applicable: bool
+    oracle_fails: bool
+    reason: str
+
+    @property
+    def accepts_task(self) -> bool:
+        """A task counts only when we have actually shown the oracle fails.
+
+        Inapplicable is not acceptance. That distinction matters more than it
+        looks: MUST_NOT_ASSERT scores a field the candidate declares, an oracle
+        transcript has no such field, and judge() therefore returns "did not
+        assert (position: none given)" -- a pass. Read as a verdict that would
+        have rejected every such task; written the other way round it would have
+        admitted them all as validated. Neither is true. We simply cannot tell
+        from a transcript, and saying so is the only honest answer.
+        """
+        return self.applicable and self.oracle_fails
+
+
+def validate_against_oracle(spec: TaskSpec, oracle_tool_calls: list[dict]) -> OracleCheck:
     """Run the original agent's own turn through the evaluator.
 
     The task is only worth including if this fails. The original agent is the
@@ -166,6 +195,22 @@ def validate_against_oracle(spec: TaskSpec, oracle_tool_calls: list[dict]) -> Ju
 
     For MUST_CHECK this is decidable straight from the transcript: the agent's
     tool calls before the cut either contain the required evidence or they do
-    not. No model call is needed to validate.
+    not, and no model call is needed. For the others it is not decidable here,
+    and the caller must replay the oracle turn through the candidate harness.
     """
-    return judge(spec, response=spec.oracle_response, tool_calls=oracle_tool_calls)
+    if spec.evaluator not in TRANSCRIPT_DECIDABLE:
+        return OracleCheck(
+            applicable=False,
+            oracle_fails=False,
+            reason=(
+                f"{spec.evaluator.value} scores something the original agent was "
+                "never asked to produce; replay the oracle turn through the "
+                "candidate harness to validate this task"
+            ),
+        )
+    j = judge(spec, response=spec.oracle_response, tool_calls=oracle_tool_calls)
+    return OracleCheck(
+        applicable=True,
+        oracle_fails=not j.passed,
+        reason=j.reason,
+    )

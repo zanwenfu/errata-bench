@@ -109,6 +109,11 @@ class ValidationResult:
     oracle_fails: bool  # the known-wrong response is caught
     has_environment: bool  # repo and commit resolve
     has_oracle: bool  # a prior assistant response exists
+    # Whether the oracle could be checked at all. Some evaluators score
+    # something the original agent was never asked to produce, so a transcript
+    # cannot settle them; those need the oracle turn replayed through the
+    # candidate harness before they can be accepted.
+    oracle_checkable: bool = True
     notes: str = ""
 
     @property
@@ -118,8 +123,17 @@ class ValidationResult:
         This is the single rule that would have killed the first hand-built
         task immediately: six of six candidates passed it, and so would the
         original agent's own answer.
+
+        An unvalidatable task is not accepted. Treating "cannot tell" as a pass
+        would admit tasks that merely look validated, which is the failure this
+        whole rule exists to prevent.
         """
-        return self.oracle_fails and self.has_environment and self.has_oracle
+        return (
+            self.has_oracle
+            and self.has_environment
+            and self.oracle_checkable
+            and self.oracle_fails
+        )
 
     @property
     def reason(self) -> str:
@@ -127,6 +141,8 @@ class ValidationResult:
             return "no assistant response before the cut to use as an oracle"
         if not self.has_environment:
             return "repository or commit could not be resolved"
+        if not self.oracle_checkable:
+            return "oracle not checkable from the transcript; needs a replay"
         if not self.oracle_fails:
             return "the evaluator does not catch the original agent's own response"
         return "accepted"
