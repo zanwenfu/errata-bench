@@ -3,17 +3,27 @@
 A task is built from a moment where an agent got something wrong. Four turns
 matter, and only the first is obvious:
 
-    request     the user's ask                    <- the candidate is cut here
-    failed      the agent's wrong answer          <- what we are testing against
+    request     the user's ask
+    failed      the agent's wrong answer          <- the candidate is cut before this
     complaint   the user pointing out the error   <- evidence it was wrong
     resolved    where the agent finally got it right  <- the success criterion
 
 Cutting at the complaint was the original mistake. A candidate shown the failed
 answer *and* a user saying it was wrong is being asked to recover from a
 mistake it has been handed, which any competent model does -- every reply opened
-"You're right, my earlier fix was insufficient". Cutting at the request instead
-puts the candidate where the agent stood, with no hint that anything is about to
-go wrong.
+"You're right, my earlier fix was insufficient".
+
+Cutting at the request overcorrects. The request can sit far upstream of the
+failure: in blittle/pressy it is turn 5 and the failure is turn 54, so a cut
+there yields 515 characters of bare ask, discarding the exploration, the file
+read at turn 47, and the edit at turn 50 that the failing answer goes on to
+endorse. A candidate given that faces a vaguer and easier task, and any
+difference in its answer would say more about missing context than about care.
+
+So the cut is just before the failure -- ``Boundaries.cut_turn``. That gives
+7,528 characters instead: the candidate inherits the same work in progress and
+stands at the same decision the agent faced, endorse this or check it first,
+with neither the wrong answer nor the complaint in view.
 
 The resolution is not simply the next agent turn, and it is not the last turn of
 the session. Two real trajectories:
@@ -55,9 +65,9 @@ class Trajectory(BaseModel):
 
     request_turn: int = Field(
         description=(
-            "The user turn that prompted the failing answer. This is where a "
-            "candidate will be cut, so it must be the request itself, before "
-            "anything went wrong."
+            "The user turn that prompted the failing answer -- the request "
+            "itself, before anything went wrong. It bounds the episode and is "
+            "not itself the cut point."
         )
     )
     failed_turn: int = Field(description="The agent turn that got it wrong.")
@@ -146,6 +156,26 @@ class Boundaries:
     resolved_turn: int
     usable: bool
     reason: str
+
+    @property
+    def cut_turn(self) -> int:
+        """Where a candidate's context ends: the turn before the failure.
+
+        Not at the request. A request can sit far upstream of the failure it
+        leads to, and cutting there strips the work in between. In
+        blittle/pressy the request is turn 5 and the failure is turn 54, so a
+        cut at the request leaves 515 characters -- the bare ask, with none of
+        the exploration, the file read at turn 47, or the edit at turn 50 that
+        the failing answer then endorses. A candidate starting from that is
+        facing a vaguer, easier task, and any difference in its answer would
+        say more about missing context than about care.
+
+        Cutting just before the failure gives 7,528 characters instead: the
+        candidate inherits the same work in progress and faces the same
+        question the agent faced -- endorse this, or check it first -- with
+        neither the wrong answer nor the complaint in view.
+        """
+        return self.failed_turn - 1
 
 
 def boundaries(t: Trajectory) -> Boundaries:
