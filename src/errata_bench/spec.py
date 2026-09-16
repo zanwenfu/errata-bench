@@ -67,6 +67,31 @@ class Task:
     rounds: int = 1
 
     @property
+    def discriminates(self) -> bool:
+        """Whether failing this task requires doing something wrong.
+
+        An introduced-defect task asks a candidate not to write a specific
+        falsehood, and the default behaviour is not to write it. Lightprotocol
+        is the clear case: three of three attempts passed with
+        ``addresses_defect`` false every time -- the candidate wrote a perfectly
+        ordinary CLAUDE.md that happened not to claim tests need
+        ``--test-threads=1``, because why would it. Not inventing a particular
+        falsehood is not an achievement, and a task where almost any answer
+        passes measures nothing.
+
+        Such a task only discriminates if something in the conversation tempts a
+        candidate toward the mistake -- a README the original agent misread, a
+        plausible-but-stale instruction it copied. That temptation is what made
+        the original agent fail, and if the cut does not preserve it, the task
+        is hollow. Nothing here establishes that it does, so introduced-defect
+        tasks are reported as non-discriminating until something checks.
+
+        Present-defect tasks do not have this problem: the defect is in the tree
+        and a candidate that ignores it fails.
+        """
+        return self.kind != "introduced"
+
+    @property
     def scoreable_structurally(self) -> bool:
         """Whether a file check can decide this task on its own.
 
