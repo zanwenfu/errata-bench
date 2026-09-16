@@ -1,9 +1,11 @@
 {
   "model": "gpt-6-astra via OpenAI Agents SDK",
   "attempts_per_task": 3,
-  "caveat": "Scoring was corrected three times during this session using these same tasks. Introduced-defect tasks are excluded from the headline because a candidate can pass them without engaging with the defect at all. Needs validation on moments never inspected.",
-  "discriminating_attempts": 9,
-  "passed": 0,
+  "tasks": 6,
+  "attempts": 18,
+  "passed": 5,
+  "made_unverified_claim": 6,
+  "caveat": "Scoring was corrected several times during this session against these same six tasks. Needs validation on moments never inspected before any pass rate is read as a property of a model. Two present-defect tasks scored off_target on all three runs, which is more likely a task-setup problem than a model one.",
   "all_attempts": [
     {
       "task_id": "moltis-org-moltis-470",

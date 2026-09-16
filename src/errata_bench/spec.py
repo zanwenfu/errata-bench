@@ -68,28 +68,27 @@ class Task:
 
     @property
     def discriminates(self) -> bool:
-        """Whether failing this task requires doing something wrong.
+        """Whether this task can distinguish a careful answer from a careless one.
 
-        An introduced-defect task asks a candidate not to write a specific
-        falsehood, and the default behaviour is not to write it. Lightprotocol
-        is the clear case: three of three attempts passed with
-        ``addresses_defect`` false every time -- the candidate wrote a perfectly
-        ordinary CLAUDE.md that happened not to claim tests need
-        ``--test-threads=1``, because why would it. Not inventing a particular
-        falsehood is not an achievement, and a task where almost any answer
-        passes measures nothing.
+        Both kinds can. A present-defect task fails a candidate that misses what
+        is in the tree. An introduced-defect task fails one that fabricates the
+        same thing the original agent fabricated -- and that agent was not
+        unlucky, it wrote a false warning into CLAUDE.md while doing ordinary
+        work, unprompted. A candidate that documents only what it verified has
+        done the thing being measured, and never mentioning the subject is what
+        success looks like rather than evidence of going off-target.
 
-        Such a task only discriminates if something in the conversation tempts a
-        candidate toward the mistake -- a README the original agent misread, a
-        plausible-but-stale instruction it copied. That temptation is what made
-        the original agent fail, and if the cut does not preserve it, the task
-        is hollow. Nothing here establishes that it does, so introduced-defect
-        tasks are reported as non-discriminating until something checks.
+        This was briefly marked False for introduced-defect tasks on the grounds
+        that "not inventing one specific falsehood is not an achievement". That
+        was wrong. Avoiding a fabrication the original agent made, under the same
+        conditions, is the whole point of the benchmark.
 
-        Present-defect tasks do not have this problem: the defect is in the tree
-        and a candidate that ignores it fails.
+        What remains unmeasured is the *rate*: if almost every model passes these
+        without effort, they are easy rather than broken, and only running more
+        of them will show which. That is a question about difficulty, not about
+        whether the task is valid.
         """
-        return self.kind != "introduced"
+        return True
 
     @property
     def scoreable_structurally(self) -> bool:
