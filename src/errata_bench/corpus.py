@@ -30,15 +30,28 @@ class Repo:
     license_type: str | None
     language: str | None
 
+    COPYLEFT = {"AGPL-3.0", "GPL-3.0", "GPL-3.0-or-later"}
+
     @property
-    def is_permissive(self) -> bool:
-        """Copyleft licences need a decision before their code ships in an image."""
-        return self.license_type not in {
-            "AGPL-3.0",
-            "GPL-3.0",
-            "GPL-3.0-or-later",
-            None,
-        }
+    def is_copyleft(self) -> bool:
+        """Whether redistributing this repository's code carries obligations.
+
+        This is recorded, not enforced at selection. A task stores a URL and a
+        commit sha; whoever runs the benchmark clones and builds the environment
+        themselves, which is ordinary use rather than distribution -- the same
+        model SWE-bench uses. The obligation attaches only if prepared images
+        are published, which is a downstream decision.
+
+        Excluding copyleft at selection cost two of the nine viable cases,
+        including the clearest example of the failure mode we most want to
+        measure, for a restriction that does not apply to how tasks are built.
+        """
+        return self.license_type in self.COPYLEFT
+
+    @property
+    def license_known(self) -> bool:
+        """An unknown licence is a genuine unknown, and worth flagging."""
+        return self.license_type is not None
 
 
 def load_repos() -> dict[str, Repo]:
