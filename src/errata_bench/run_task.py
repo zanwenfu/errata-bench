@@ -167,6 +167,17 @@ def list_dir(ctx: RunContextWrapper, path: str = ".") -> str:
 # build` -- and it cannot alter file contents.
 _TOUCH_OK = re.compile(r"^\s*touch\s+[\w./-]+\s*$")
 
+# Leading `NAME=value` assignments are ordinary shell syntax and set nothing
+# outside the command they prefix. The allowlist anchors at the start of a
+# segment, so `PYTHONDONTWRITEBYTECODE=1 PYTHONPATH=src pytest --collect-only`
+# was read as having `PYTHONDONTWRITEBYTECODE=1` for a command name and refused
+# -- blocking a candidate from the collection check its task measures.
+_ENV_PREFIX = re.compile(r"^\s*(?:[A-Za-z_][A-Za-z0-9_]*=(?:\"[^\"]*\"|'[^']*'|\S*)\s+)+")
+
+
+def _strip_env_prefix(segment: str) -> str:
+    return _ENV_PREFIX.sub("", segment)
+
 
 def _read_only_ok(command: str) -> tuple[bool, str]:
     """Check every segment, not just the last one.
@@ -188,7 +199,7 @@ def _read_only_ok(command: str) -> tuple[bool, str]:
         return False, "installer invoked through an interpreter"
     segments = [s.strip() for s in re.split(r"&&|\|\||;", command) if s.strip()]
     for segment in segments:
-        head = segment.split("|")[0].strip()
+        head = _strip_env_prefix(segment.split("|")[0].strip())
         if READ_ONLY.match(head) or _TOUCH_OK.match(head):
             continue
         return False, head[:60]
