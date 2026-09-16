@@ -1,5 +1,5 @@
 {
-  "model": "gpt-5 via OpenAI Agents SDK",
+  "model": "gpt-6-astra via OpenAI Agents SDK (no container; commands run on the host)",
   "attempts_per_task": 3,
   "tasks": [
     {
