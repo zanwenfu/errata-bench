@@ -25,6 +25,8 @@ line. A cited claim can be checked against the transcript; a score cannot.
 
 from __future__ import annotations
 
+from pathlib import Path
+
 from pydantic import BaseModel, Field
 
 MODEL = "gpt-6-astra"
@@ -40,6 +42,34 @@ MAX_RETRIES = 1
 _client_configured = False
 
 
+def _load_dotenv() -> None:
+    """Read .env into the environment, without overriding what is already set.
+
+    The credential was reachable from an interactive shell and absent from a
+    backgrounded one, so a batch of eleven trajectory readings failed with
+    "Missing credentials" and recorded eleven unusable trajectories. Nothing was
+    wrong with the data: the key simply depended on how the process happened to
+    be launched. Reading the file here makes that path the same either way.
+
+    An exported variable wins over the file, so a caller can still override it,
+    and python-dotenv is not worth a dependency for a KEY=value file.
+    """
+    import os
+
+    root = Path(__file__).resolve().parents[2]
+    env = root / ".env"
+    if not env.is_file():
+        return
+    for line in env.read_text().splitlines():
+        line = line.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, _, value = line.partition("=")
+        key, value = key.strip(), value.strip().strip("'\"")
+        if key and key not in os.environ:
+            os.environ[key] = value
+
+
 def configure_client() -> None:
     """Install an API client that fails fast instead of hanging."""
     global _client_configured
@@ -50,12 +80,15 @@ def configure_client() -> None:
     from agents import set_default_openai_client
     from openai import AsyncOpenAI
 
-    set_default_openai_client(
-        AsyncOpenAI(
-            api_key=os.environ.get("OPENAI_API_KEY"),
-            timeout=REQUEST_TIMEOUT_S,
-            max_retries=MAX_RETRIES,
+    _load_dotenv()
+    key = os.environ.get("OPENAI_API_KEY")
+    if not key:
+        raise RuntimeError(
+            "OPENAI_API_KEY is not set and no .env supplies it. Refusing to run: "
+            "a missing credential otherwise reads as a batch of unusable data."
         )
+    set_default_openai_client(
+        AsyncOpenAI(api_key=key, timeout=REQUEST_TIMEOUT_S, max_retries=MAX_RETRIES)
     )
     _client_configured = True
 
@@ -228,7 +261,7 @@ async def read_pushback(
     from agents import Agent, Runner
 
     configure_client()
-    excerpt = build_excerpt(turns, pushback_turn)
+    excerpt = build_excerpt(turns, pushback_turn, mark_pushback=True)
     agent = Agent(
         name="pushback-reader",
         instructions=INSTRUCTIONS,
@@ -243,7 +276,7 @@ async def read_pushback(
     return result.final_output
 
 
-def _fit_result_budget(turns: list[dict], pushback_turn: int, max_chars: int) -> int:
+def _fit_result_budget(turns: list[dict], cut_turn: int, max_chars: int) -> int:
     """How many characters each tool result may keep, given the space available.
 
     Early moments are where this matters. A flat 400-character cap showed only
@@ -261,7 +294,7 @@ def _fit_result_budget(turns: list[dict], pushback_turn: int, max_chars: int) ->
     results = []
     for t in turns:
         n = t.get("turn_number")
-        if n is None or n > pushback_turn:
+        if n is None or n > cut_turn:
             continue
         kind = t.get("turn_type") or ""
         content = (t.get("content") or "").strip()
@@ -285,7 +318,13 @@ def _fit_result_budget(turns: list[dict], pushback_turn: int, max_chars: int) ->
     return max(400, min(4000, remaining // len(results)))
 
 
-def build_excerpt(turns: list[dict], pushback_turn: int, *, max_chars: int = 60_000) -> str:
+def build_excerpt(
+    turns: list[dict],
+    cut_turn: int,
+    *,
+    max_chars: int = 60_000,
+    mark_pushback: bool = False,
+) -> str:
     """Render the turns leading up to a pushback into something readable.
 
     Sessions run to ~1,750 turns but only ~40 are conversational; the rest is
@@ -293,11 +332,11 @@ def build_excerpt(turns: list[dict], pushback_turn: int, *, max_chars: int = 60_
     agent that checked and one that asserted -- so they are kept in compressed
     form, while progress and file-snapshot noise is dropped.
     """
-    result_budget = _fit_result_budget(turns, pushback_turn, max_chars)
+    result_budget = _fit_result_budget(turns, cut_turn, max_chars)
     lines: list[str] = []
     for t in turns:
         n = t.get("turn_number")
-        if n is None or n > pushback_turn:
+        if n is None or n > cut_turn:
             continue
         kind = t.get("turn_type") or ""
         if kind in ("progress", "file_snapshot", "system_event", "queue_operation"):
@@ -307,7 +346,7 @@ def build_excerpt(turns: list[dict], pushback_turn: int, *, max_chars: int = 60_
             continue
 
         if kind == "user_prompt":
-            marker = " <-- THE PUSHBACK" if n == pushback_turn else ""
+            marker = " <-- THE PUSHBACK" if (mark_pushback and n == cut_turn) else ""
             lines.append(f"\n[turn {n}] USER{marker}:\n{content[:4000]}")
         elif kind == "assistant_response":
             lines.append(f"\n[turn {n}] AGENT:\n{content[:4000]}")
@@ -333,14 +372,14 @@ def build_excerpt(turns: list[dict], pushback_turn: int, *, max_chars: int = 60_
         squeezed: list[str] = []
         for t in turns:
             n = t.get("turn_number")
-            if n is None or n > pushback_turn:
+            if n is None or n > cut_turn:
                 continue
             kind = t.get("turn_type") or ""
             if kind in ("progress", "file_snapshot", "system_event", "queue_operation"):
                 continue
             content = (t.get("content") or "").strip()
             if kind == "user_prompt":
-                marker = " <-- THE PUSHBACK" if n == pushback_turn else ""
+                marker = " <-- THE PUSHBACK" if (mark_pushback and n == cut_turn) else ""
                 squeezed.append(f"\n[turn {n}] USER{marker}:\n{content[:4000]}")
             elif kind == "assistant_response":
                 squeezed.append(f"\n[turn {n}] AGENT:\n{content[:4000]}")
