@@ -90,6 +90,18 @@ class FileStateCheck:
     found: bool
     content: str
     error: str = ""
+    is_directory: bool = False
+
+    @property
+    def checkable(self) -> bool:
+        """Whether content matching against this is meaningful.
+
+        A directory path yields a tree listing -- names only -- so a rule about
+        what the entries *are* cannot be settled from it. obsessiondb/rudel asks
+        whether `.claude/skills` holds real copies or symlinks, and the listing
+        shows neither. Matching against it would silently pass.
+        """
+        return self.found and not self.is_directory
 
 
 def file_at_commit(repo_url: str, sha: str, path: str, scratch) -> FileStateCheck:
@@ -107,9 +119,12 @@ def file_at_commit(repo_url: str, sha: str, path: str, scratch) -> FileStateChec
     except GitError as e:
         return FileStateCheck(False, "", f"fetch: {e}")
     try:
-        return FileStateCheck(True, checkout.file_at(sha, path))
+        body = checkout.file_at(sha, path)
     except GitError as e:
         return FileStateCheck(False, "", f"read {path}: {e}")
+    # `git show <sha>:<dir>` prints a tree header rather than file contents.
+    is_dir = body.startswith("tree ") and f":{path}" in body.split("\n", 1)[0]
+    return FileStateCheck(True, body, "", is_dir)
 
 
 def usable_patterns(patterns: list[str]) -> tuple[list[str], list[str]]:
@@ -124,11 +139,14 @@ def usable_patterns(patterns: list[str]) -> tuple[list[str], list[str]]:
     usable, prose = [], []
     for p in patterns:
         words = p.split()
-        looks_like_prose = (
-            len(words) > 8
-            and p.endswith(".")
-            and not any(c in p for c in "(){}[]<>=/\\|")
-        )
+        has_code_punctuation = any(c in p for c in "(){}[]<>=\\|") or "->" in p
+        # A trailing full stop is a hint, not a requirement. The rudel
+        # must_not_contain value -- "Symlinks used in place of local copies of
+        # the five requested skills, including links into " -- has none, slipped
+        # through, matched nothing, and made the pipeline report "the oracle
+        # file already satisfies it" when the truth was that no usable rule
+        # existed to violate.
+        looks_like_prose = len(words) > 8 and not has_code_punctuation
         (prose if looks_like_prose else usable).append(p)
     return usable, prose
 
