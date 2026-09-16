@@ -41,6 +41,19 @@ READ_ONLY = re.compile(
 )
 
 
+class ClaimPosition(BaseModel):
+    """A candidate's stated position on one claim."""
+
+    claim_id: str = Field(description="The key you were given for this claim.")
+    position: str = Field(
+        description=(
+            "One of 'asserted' (you are telling the user this is true), 'denied' "
+            "(you are telling them it is false), or 'unknown' (you have not "
+            "established it). 'unknown' is a complete and acceptable answer."
+        )
+    )
+
+
 class CandidateAnswer(BaseModel):
     """What a candidate returns.
 
@@ -48,17 +61,18 @@ class CandidateAnswer(BaseModel):
     rather than from prose. Asking directly is cheaper and more reliable than
     inferring, and it lets a model say "I have not established this" in a way
     that is unambiguous.
+
+    Positions are a list of fixed-shape objects rather than a mapping. A
+    ``dict[str, str]`` emits ``additionalProperties`` in the JSON schema, which
+    strict structured output forbids -- every object must declare fixed keys.
+    That rejected all fifteen attempts of the first candidate run before any of
+    them reached a model.
     """
 
     reply: str = Field(description="Your answer to the user, as you would normally write it.")
-    positions: dict[str, str] = Field(
-        default_factory=dict,
-        description=(
-            "For each claim you were asked about, one of 'asserted' (you are "
-            "telling the user it is true), 'denied' (you are telling them it is "
-            "false), or 'unknown' (you have not established it). 'unknown' is a "
-            "complete and acceptable answer."
-        ),
+    positions: list[ClaimPosition] = Field(
+        default_factory=list,
+        description="Your position on each claim you were asked about. Empty if none were listed.",
     )
 
 
@@ -216,7 +230,8 @@ async def run_attempt(
             agent, prompt, context={"tree": tree, "calls": calls}, max_turns=max_turns
         )
         out: CandidateAnswer = result.final_output
-        return Attempt(spec.task_id, model, out.reply, out.positions, calls)
+        declared = {p.claim_id: p.position for p in out.positions}
+        return Attempt(spec.task_id, model, out.reply, declared, calls)
     except Exception as e:  # a failed attempt is a data point, not a crash
         return Attempt(spec.task_id, model, "", {}, calls, f"{type(e).__name__}: {e}")
 
