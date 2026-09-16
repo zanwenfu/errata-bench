@@ -34,13 +34,24 @@ from .reader import MODEL, build_excerpt, configure_client, load_session_turns
 # reaches the network is refused: we are observing how a model investigates, not
 # letting it change the world it is investigating.
 READ_ONLY = re.compile(
-    # `cd` is read-only and is the idiomatic route into a workspace member --
-    # `cd crates/agents && cargo test` was refused, which blocks a candidate
-    # from reaching the very check a task requires.
-    r"^\s*(cd|cat|head|tail|less|more|grep|rg|find|ls|dir|wc|stat|file|du|tree|"
-    r"cargo\s+(test|check|build)|pytest|uv\s+run\s+pytest|npm\s+test|pnpm\s+(test|exec)|"
-    r"jest|vitest|go\s+test|docker\s+build|make|just|"
-    r"git\s+(log|status|show|diff|branch|remote|rev-parse|rev-list|ls-files|cat-file))\b"
+    # Anything that inspects rather than changes. The list is deliberately
+    # generous: a refusal blocks a candidate from the very check a task
+    # measures, and is then indistinguishable from the candidate choosing not to
+    # check. Four such refusals were scored as failures before this was caught,
+    # one of which the candidate named outright -- "the attempted pytest
+    # collection command was blocked".
+    r"^\s*(cd|pwd|cat|head|tail|less|more|grep|rg|find|ls|dir|wc|stat|file|du|tree|"
+    r"env|printenv|command|which|type|basename|dirname|realpath|readlink|diff|sort|uniq|"
+    r"cargo\s+(test|check|build|tree|metadata)|"
+    # `python -m <module>` is restricted to test runners. Leaving the module
+    # open admitted `python -m pip install x`, a write path behind a read-only
+    # name.
+    r"pytest|python3?(\s+-[A-Za-z]+)*(\s+-m\s+(pytest|unittest|compileall|json\.tool))?|"
+    r"uv\s+(run|pip\s+list|tree)|"
+    r"npm\s+(test|ls|run)|pnpm\s+(test|exec|list|run)|yarn\s+(test|list)|npx|"
+    r"jest|vitest|go\s+(test|list|vet)|docker\s+(build|images|inspect)|make|just|mise|"
+    r"git\s+(log|status|show|diff|branch|remote|rev-parse|rev-list|ls-files|cat-file|"
+    r"symbolic-ref|describe|blame|shortlog))\b"
 )
 
 
@@ -164,6 +175,17 @@ def _read_only_ok(command: str) -> tuple[bool, str]:
     an allowed command: `echo pwned > f && cargo test` passed, because only
     `cargo test` was examined.
     """
+    # Redirection writes files regardless of which command precedes it, so it is
+    # refused wherever it appears. `echo pwned > f && cargo test` passed the
+    # segment check because only command heads were inspected.
+    if re.search(r"(?<![0-9])>{1,2}(?!&)", command) or ">|" in command:
+        return False, "output redirection"
+    # Installers reached through an interpreter. Restricting the module inside
+    # the allowlist did not work: the `-m <module>` group was optional, so bare
+    # `python` matched the head and everything after it went unexamined.
+    # `python -m pip install x` was admitted by a read-only gate.
+    if re.search(r"\b(python3?|uv)\s+(-\S+\s+)*-m\s+(pip|ensurepip|venv)\b", command):
+        return False, "installer invoked through an interpreter"
     segments = [s.strip() for s in re.split(r"&&|\|\||;", command) if s.strip()]
     for segment in segments:
         head = segment.split("|")[0].strip()
