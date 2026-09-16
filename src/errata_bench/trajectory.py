@@ -174,6 +174,13 @@ class Boundaries:
         candidate inherits the same work in progress and faces the same
         question the agent faced -- endorse this, or check it first -- with
         neither the wrong answer nor the complaint in view.
+
+        This sometimes lands on the request itself, when the failure is the very
+        next turn. That is not the thin case above: the investigation then sits
+        *before* the request rather than after it, so the prefix still carries
+        it. moltis cuts at its request turn and yields 38,190 characters,
+        obsessiondb/rudel 26,899. Only the distance between request and failure
+        differs, not the amount of work in view.
         """
         return self.failed_turn - 1
 
@@ -185,11 +192,40 @@ def boundaries(t: Trajectory) -> Boundaries:
             t.request_turn, t.failed_turn, t.complaint_turn, -1, False,
             "the defect was never resolved, so there is no success criterion",
         )
-    if not (t.request_turn < t.failed_turn < t.complaint_turn < t.resolved_turn):
+    # A turn the reader could not find comes back as -1, which sorts below every
+    # real turn -- so an ordering test alone reports a coherent episode for an
+    # episode with a hole in it.
+    #
+    # Only three turns are load-bearing. failed_turn sets the cut and supplies
+    # the oracle, complaint_turn is the evidence the answer was wrong, and
+    # resolved_turn is the success criterion. request_turn feeds none of those:
+    # it records where the episode began. Demanding it too rejected
+    # Lightprotocol/light-protocol and desplega-ai/agent-swarm, both of which
+    # have a located failure, complaint and resolution, and yield 32,547 and
+    # 14,789 characters of context -- usable tasks thrown away over missing
+    # provenance.
+    required = {
+        "failed": t.failed_turn,
+        "complaint": t.complaint_turn,
+        "resolved": t.resolved_turn,
+    }
+    missing = [name for name, turn in required.items() if turn < 0]
+    if missing:
         return Boundaries(
             t.request_turn, t.failed_turn, t.complaint_turn, t.resolved_turn, False,
-            f"turns are out of order: request {t.request_turn}, failed "
-            f"{t.failed_turn}, complaint {t.complaint_turn}, resolved {t.resolved_turn}",
+            f"these turns were never located: {', '.join(missing)}",
+        )
+    if not (t.failed_turn < t.complaint_turn < t.resolved_turn):
+        return Boundaries(
+            t.request_turn, t.failed_turn, t.complaint_turn, t.resolved_turn, False,
+            f"turns are out of order: failed {t.failed_turn}, complaint "
+            f"{t.complaint_turn}, resolved {t.resolved_turn}",
+        )
+    # Checked only when located, for the same reason.
+    if t.request_turn >= 0 and t.request_turn >= t.failed_turn:
+        return Boundaries(
+            t.request_turn, t.failed_turn, t.complaint_turn, t.resolved_turn, False,
+            f"the request ({t.request_turn}) does not precede the failure ({t.failed_turn})",
         )
     return Boundaries(
         t.request_turn, t.failed_turn, t.complaint_turn, t.resolved_turn, True, "usable"
