@@ -34,7 +34,10 @@ from .reader import MODEL, build_excerpt, configure_client, load_session_turns
 # reaches the network is refused: we are observing how a model investigates, not
 # letting it change the world it is investigating.
 READ_ONLY = re.compile(
-    r"^\s*(cat|head|tail|less|more|grep|rg|find|ls|dir|wc|stat|file|du|tree|"
+    # `cd` is read-only and is the idiomatic route into a workspace member --
+    # `cd crates/agents && cargo test` was refused, which blocks a candidate
+    # from reaching the very check a task requires.
+    r"^\s*(cd|cat|head|tail|less|more|grep|rg|find|ls|dir|wc|stat|file|du|tree|"
     r"cargo\s+(test|check|build)|pytest|uv\s+run\s+pytest|npm\s+test|pnpm\s+(test|exec)|"
     r"jest|vitest|go\s+test|docker\s+build|make|just|"
     r"git\s+(log|status|show|diff|branch|remote|rev-parse|rev-list|ls-files|cat-file))\b"

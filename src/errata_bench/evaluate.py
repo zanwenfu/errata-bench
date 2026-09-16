@@ -37,8 +37,27 @@ class Judgement:
         return {"passed": self.passed, "reason": self.reason, "evidence": self.evidence[:8]}
 
 
-def _trace_text(tool_calls: list[dict]) -> str:
-    return json.dumps(tool_calls).lower()
+def _trace_strings(tool_calls: list[dict]) -> list[str]:
+    """Every command or path the candidate actually used, one per string.
+
+    Patterns are written to describe shell commands, so they must be matched
+    against shell commands. An earlier version searched ``json.dumps(calls)``,
+    where each command is followed by an escaped quote rather than whitespace
+    or end-of-string -- so an anchor like ``(?:\\s|$)`` or ``\\b`` meant
+    something different from what it looked like, and a correct
+    ``cargo test -p moltis-agents -- model::tests`` failed to match its own
+    pattern. Three attempts were scored as failures for that reason alone.
+    """
+    out: list[str] = []
+    for call in tool_calls:
+        for key in ("command", "path", "file_path"):
+            value = call.get(key)
+            if value:
+                out.append(str(value))
+        name = call.get("name")
+        if name:
+            out.append(str(name))
+    return out
 
 
 def _matches_any(text: str, patterns: list[str]) -> list[str]:
@@ -49,8 +68,19 @@ def _matches_any(text: str, patterns: list[str]) -> list[str]:
             if re.search(p, text, re.I):
                 hits.append(p)
         except re.error:
-            if p.lower() in text:
+            if p.lower() in text.lower():
                 hits.append(p)
+    return hits
+
+
+def _matches_any_of(strings: list[str], patterns: list[str]) -> list[str]:
+    """Which patterns match at least one of the strings, each matched whole."""
+    hits = []
+    for p in patterns:
+        for s in strings:
+            if _matches_any(s, [p]):
+                hits.append(p)
+                break
     return hits
 
 
@@ -69,8 +99,7 @@ def evaluate_must_check(
     not inferred from prose.
     """
     required = spec.evaluator_args.get("required_evidence") or []
-    trace = _trace_text(tool_calls)
-    hits = _matches_any(trace, required)
+    hits = _matches_any_of(_trace_strings(tool_calls), required)
     if hits:
         return Judgement(True, "verified before concluding", hits)
 
@@ -184,6 +213,29 @@ class OracleCheck:
         from a transcript, and saying so is the only honest answer.
         """
         return self.applicable and self.oracle_fails
+
+
+def patterns_are_satisfiable(spec: TaskSpec, plausible_commands: list[str]) -> tuple[bool, str]:
+    """Whether any plausible command could satisfy the task's patterns.
+
+    An oracle that fails a pattern matching *nothing* is not evidence. Under a
+    broken matcher every oracle failed vacuously, and the validation counted
+    them all as accepted. The constructor can also write an anchor that excludes
+    the correct answer: ``model::tests::convert_(?:\\s|$)`` demands whitespace
+    straight after ``convert_``, so the real test name
+    ``convert_skips_tool_result_entries`` never matches and no candidate can
+    pass however well it behaves.
+
+    So before an oracle failure counts, at least one command a competent
+    candidate might plausibly run must match.
+    """
+    required = spec.evaluator_args.get("required_evidence") or []
+    if not required:
+        return False, "no required_evidence given"
+    hits = _matches_any_of(plausible_commands, required)
+    if not hits:
+        return False, "no plausible command satisfies these patterns"
+    return True, f"satisfiable by {len(hits)} of {len(required)} patterns"
 
 
 def validate_against_oracle(spec: TaskSpec, oracle_tool_calls: list[dict]) -> OracleCheck:
