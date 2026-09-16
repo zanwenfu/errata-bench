@@ -25,6 +25,7 @@ import tempfile
 from pathlib import Path
 
 from .corpus import load_repos
+from . import priming
 from .presence import check, repo_url
 from .reader import load_session_turns
 from .signature import Signature
@@ -74,6 +75,22 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
             continue
         if not row.get("kind"):
             reject("no signature was derived")
+            continue
+
+        turns_here = turns_by_session.get(row["session_id"]) or []
+        primed = priming.check(turns_here, row["cut"])
+        if primed.primed:
+            # The conversation already signals that something is wrong, so a
+            # candidate can take the hint rather than check anything. This is
+            # measurable and severe: of twelve tasks scored before this gate
+            # existed, every single "resolved" verdict came from a task whose
+            # context leaked -- 4 of 6 leaky tasks resolved, against 0 of 6
+            # clean ones. The benchmark was reading hint-taking, not care.
+            reject(
+                f"the context already signals trouble ({primed.concessions} agent "
+                f"concessions, {primed.frustrations} frustrated user turns, "
+                f"{primed.prior_pushbacks} earlier pushbacks)"
+            )
             continue
 
         turns = turns_by_session.get(row["session_id"]) or []

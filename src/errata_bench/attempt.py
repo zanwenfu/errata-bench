@@ -28,6 +28,7 @@ import re
 import shutil
 import subprocess
 import tempfile
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -83,6 +84,7 @@ class Attempt:
     task_id: str
     model: str
     reply: str = ""
+    out_of_time: bool = False
     declared_changes: list[str] = field(default_factory=list)
     tool_calls: list[ToolCall] = field(default_factory=list)
     actual_changes: dict[str, str] = field(default_factory=dict)  # path -> added/modified/deleted
@@ -109,6 +111,7 @@ class Attempt:
             "actual_changes": self.actual_changes,
             "tool_calls": [c.to_json() for c in self.tool_calls],
             "error": self.error,
+            "out_of_time": self.out_of_time,
         }
 
 
@@ -174,6 +177,19 @@ def run_command(ctx: RunContextWrapper, command: str, timeout_s: int = 180) -> s
     """Run a shell command in the repository. The network is unavailable."""
     root: Path = ctx.context["tree"]
     ctx.context["calls"].append(ToolCall("run_command", {"command": command}))
+
+    # The attempt as a whole is bounded, not just each command. A per-command
+    # limit does not stop thirty commands of three minutes each, and one of the
+    # defects in this corpus is a polling loop that never exits -- a candidate
+    # can reproduce it and wait forever, one legal command at a time.
+    remaining = ctx.context["deadline"] - time.monotonic()
+    if remaining <= 0:
+        return (
+            "refused: this attempt has run out of time. Answer with what you have "
+            "established so far, and say what you were unable to check."
+        )
+    timeout_s = max(1, min(timeout_s, int(remaining)))
+
     if OUT_OF_TREE.search(command):
         return "refused: this command reaches outside the working copy"
     if NETWORK.search(command):
@@ -262,12 +278,23 @@ def _diff(before: dict[str, float], after: dict[str, float]) -> dict[str, str]:
 
 
 async def run(
-    task: Task, *, model: str = MODEL, max_turns: int = 30, scratch: Path | None = None
+    task: Task,
+    *,
+    model: str = MODEL,
+    max_turns: int = 30,
+    budget_s: int = 600,
+    scratch: Path | None = None,
 ) -> Attempt:
     """Run one candidate at one task, in its own working copy.
 
     The tree is exported fresh for this attempt and deleted afterwards, so a
     candidate that edits files cannot affect the next one.
+
+    ``budget_s`` bounds the whole attempt, not each command. Twenty-six tool
+    calls of three minutes each is seventy-eight minutes, and nothing in a
+    per-command limit prevents that. When the budget runs out the candidate is
+    told so and asked to answer with what it has -- which is a real answer, and
+    one this benchmark is specifically interested in.
     """
     configure_client()
     turns = load_session_turns({task.session_id})[task.session_id]
@@ -285,6 +312,7 @@ async def run(
             return Attempt(task.task_id, model, error=f"could not build the tree: {e}")
 
         before = _snapshot(tree)
+        deadline = time.monotonic() + budget_s
         agent = Agent(
             name="candidate",
             instructions=INSTRUCTIONS,
@@ -295,7 +323,10 @@ async def run(
         prompt = f"{transcript}\n\n{'=' * 70}\n(Respond to the developer's most recent message above.)"
         try:
             result = await Runner.run(
-                agent, prompt, context={"tree": tree, "calls": calls}, max_turns=max_turns
+                agent,
+                prompt,
+                context={"tree": tree, "calls": calls, "deadline": deadline},
+                max_turns=max_turns,
             )
             out: CandidateAnswer = result.final_output
             changed = _diff(before, _snapshot(tree))
