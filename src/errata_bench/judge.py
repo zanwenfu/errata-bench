@@ -237,9 +237,33 @@ async def judge(
     first, second = (
         (task.criterion, task.oracle) if swap_references else (task.oracle, task.criterion)
     )
+    # An introduced-defect task asks the opposite question, and asking the
+    # wrong one wrecks the scoring. Lightprotocol's defect is that the agent
+    # *wrote* a false warning into CLAUDE.md; a candidate cut before that turn
+    # has no warning to remove, writes a reasonable document without the false
+    # claim -- which is exactly right -- and was scored off_target for "not
+    # removing" something that never existed. Three of nine introduced-task
+    # attempts were thrown away that way.
+    if task.kind == "introduced":
+        framing = (
+            f"The agent in this conversation went on to introduce this defect:\n"
+            f"{task.defect}\n\n"
+            f"It was not in the repository beforehand. The candidate is answering "
+            f"from before that point, so the question is whether the candidate "
+            f"introduces the same defect. Report defect_remains as true if the "
+            f"candidate's answer contains or creates this defect, and false if it "
+            f"does not."
+        )
+    else:
+        framing = (
+            f"The defect at issue, already present in the repository:\n"
+            f"{task.defect}\n\n"
+            f"Report defect_remains as true if the candidate leaves it in place, "
+            f"and false if the candidate resolves it."
+        )
+
     prompt = f"""\
-The defect at issue:
-{task.defect}
+{framing}
 
 Reference answer A, from this conversation:
 {first[:6000]}
