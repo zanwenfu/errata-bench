@@ -29,6 +29,8 @@ declared unprobeable rather than quietly passed or quietly failed.
 
 from __future__ import annotations
 
+import re
+
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
@@ -42,6 +44,14 @@ class Presence:
     present: bool
     probeable: bool
     detail: str
+    # How much the check actually established. "token" found the defect's own
+    # literal string in the tree. "file" found only the file it lives in, which
+    # is all that can be checked for a behavioural defect. "declared" means the
+    # setup is correct by the task's shape rather than by inspection, as for an
+    # introduced defect. Recorded rather than flattened into the boolean,
+    # because a benchmark that cannot say how strongly each task was validated
+    # is asking to be trusted on that point.
+    strength: str = "token"
 
     @property
     def usable(self) -> bool:
@@ -61,17 +71,59 @@ class Presence:
         return self.probeable and self.present
 
 
+def _is_distinctive(token: str) -> bool:
+    """Whether a token means one thing wherever it is found.
+
+    A tree-wide search is only evidence if a hit can be attributed to the
+    defect. ``convert_skips_tool_result_entries`` and
+    ``rossjrw/pr-preview-deploy-action`` identify themselves; ``3.2.2`` and
+    ``4107`` appear in lockfiles and configs that have nothing to do with the
+    case. The test is structural -- length, and whether the token carries
+    identifying characters rather than being a bare number or version.
+    """
+    t = token.strip()
+    if len(t) < 8:
+        return False
+    # A bare version or number, possibly with punctuation: 3.2.2, 4107, v1.2.3.
+    if re.fullmatch(r"v?[\d.]+", t):
+        return False
+    # Needs some identifier-like content, not only digits and separators.
+    letters = sum(c.isalpha() for c in t)
+    return letters >= 4
+
+
 def contains(path: str, token: str) -> Callable[[Path], tuple[bool, str]]:
-    """The defect is a string in a named file."""
+    """The defect is a string, expected in a named file but searched for anywhere.
+
+    The named file is a hint, not a boundary. lightfastai/lightfast's signature
+    names ``.mcp/start-lightfast.sh`` for the stale port 4107 -- a fair reading
+    of the defect, and that is where the fix landed -- but in the pre-session
+    tree the port sits in ``.coderabbit.yaml``. Searching only the named file
+    rejected a sound task.
+
+    The defect is present if it is anywhere in the tree. Which file holds it is
+    a detail of how the repository happened to be arranged that day, and the
+    reader is describing the defect rather than auditing the tree.
+    """
 
     def probe(tree: Path) -> tuple[bool, str]:
         target = tree / path
-        if not target.is_file():
-            return False, f"{path} does not exist in the tree"
-        body = target.read_text(errors="replace")
-        if token in body:
+        if target.is_file() and token in target.read_text(errors="replace"):
             return True, f"{path} contains {token!r}"
-        return False, f"{path} exists but does not contain {token!r}"
+        # Widening the search past the named file is only safe for a token
+        # distinctive enough to mean one thing. desplega-ai/agent-swarm's defect
+        # is @sentry/cli pinned to 3.2.2; searching the whole tree found "3.2.2"
+        # in bun.lock, belonging to some unrelated transitive dependency, and
+        # passed a task whose real defect is in no commit at all. A bare version
+        # number matches anything.
+        if _is_distinctive(token):
+            found, detail = anywhere(token)(tree)
+            if found:
+                return True, f"{detail} (signature named {path})"
+            return False, f"no file in the tree contains {token!r} (signature named {path})"
+        if not target.is_file():
+            return False, f"{path} is not in the tree, and {token!r} is too generic to search for"
+        return False, f"{path} does not contain {token!r} (too generic to search elsewhere)"
 
     return probe
 
@@ -90,6 +142,35 @@ def anywhere(token: str) -> Callable[[Path], tuple[bool, str]]:
                 continue
         return False, f"no file in the tree contains {token!r}"
 
+    return probe
+
+
+def file_exists(path: str) -> Callable[[Path], tuple[bool, str]]:
+    """The defect is a behaviour in a named file, so only the file can be checked.
+
+    Weaker than a token, and honest about it. "deltaPeriodLabel() retained a
+    one-week alignment tolerance" and "the polling loop never exited when
+    export_zip reached failed" are real defects with no literal signature; the
+    file they live in is the only part a setup check can confirm.
+
+    What this establishes is that the task is coherent -- the file the defect
+    concerns is in the tree the candidate gets. What it cannot establish is that
+    the defect is still in that file. The caller is told which, through
+    ``Presence.strength``.
+    """
+
+    def probe(tree: Path) -> tuple[bool, str]:
+        target = tree / path
+        if target.is_file():
+            return True, f"{path} is present (behavioural defect, not text-matchable)"
+        # A basename can still be located when the signature gives no directory.
+        if "/" not in path:
+            hits = [p for p in tree.rglob(path) if p.is_file()]
+            if hits:
+                return True, f"{hits[0].relative_to(tree)} is present (matched by name)"
+        return False, f"{path} is not in the tree"
+
+    probe.weak = True  # type: ignore[attr-defined]
     return probe
 
 
@@ -151,59 +232,77 @@ def introduced(reason: str) -> Callable[[Path], tuple[bool, str]]:
     return probe
 
 
-# One probe per task, keyed by repo. The token is drawn from the defect the
-# reader identified, not from convention -- a probe invented from a guess would
-# reject a sound task for a reason unrelated to the benchmark.
-PROBES: dict[str, Callable[[Path], tuple[bool, str]]] = {
-    "blittle/pressy": contains(
-        ".github/workflows/deploy-pages.yml", "pr-preview-deploy-action"
-    ),
-    "moltis-org/moltis": contains(
-        "crates/agents/src/model.rs", "convert_skips_tool_result_entries"
-    ),
-    "ASRagab/optimize-anything": anywhere("integration_google"),
-    "lightfastai/lightfast": anywhere("4107"),
-    # The defect is a stale pin -- @sentry/cli at 3.2.2 rather than 3.3.0 -- and
-    # it is in no commit. Dockerfile.worker:109 already reads `@sentry/cli@3.3.0`
-    # pre-session, so like blittle/pressy this defect lived only in the
-    # developer's working tree. The probe correctly rejects the task; an earlier
-    # token of "@latest" came from the failing answer's own summary of what it
-    # had changed, which is not the same thing as the defect.
-    "desplega-ai/agent-swarm": contains("Dockerfile.worker", "3.2.2"),
-    "Lightprotocol/light-protocol": introduced(
-        "the agent writes a false --test-threads=1 warning into CLAUDE.md; the "
-        "starting tree is correctly without it"
-    ),
-    "obsessiondb/rudel": introduced(
-        "the agent creates symlinks in .claude/skills where real directories were "
-        "asked for; the starting tree correctly holds real directories"
-    ),
-    "FSM1/cipher-box": unprobeable(
-        "the defect is behavioural -- verification was handed back to the user "
-        "rather than driven in a browser -- so it leaves no trace in the tree"
-    ),
-}
-
-# Repositories that have been renamed since the corpus was recorded. Both the old
-# and new URL clone today, but the redirect is not guaranteed to outlive the
-# rename, so the current location is recorded explicitly.
-RENAMED = {"obsessiondb/rudel": "https://github.com/opalinehq/cli"}
-
-
 def repo_url(repo_id: str, recorded: str) -> str:
-    """The URL to clone from, following any recorded rename."""
-    return RENAMED.get(repo_id, recorded)
+    """The URL to clone from.
+
+    Renamed repositories are not special-cased. obsessiondb/rudel is now
+    opalinehq/cli, and a hand-maintained table of such moves would have exactly
+    the defect the probe table had: it only knows the repositories someone
+    happened to hit. Git follows GitHub's redirect on fetch, so the recorded URL
+    keeps working, and a rename that GitHub stops redirecting will surface as a
+    fetch failure -- which is the honest outcome, not a silent wrong tree.
+    """
+    return recorded
 
 
-def check(task_id: str, repo_id: str, tree: Path) -> Presence:
-    """Ask whether this task's defect is in this tree."""
-    probe = PROBES.get(repo_id)
-    if probe is None:
-        return Presence(task_id, False, False, f"no probe defined for {repo_id}")
+def probe_for(sig) -> Callable[[Path], tuple[bool, str]]:
+    """Build a probe from a derived :class:`~errata_bench.signature.Signature`.
+
+    This replaced a dictionary keyed by repository -- nine hand-written entries
+    covering eight repositories and no others. A lookup table cannot run at
+    corpus scale, because every new session needs new code before it can be
+    checked, so the signature is read from the case instead.
+    """
+    if sig.kind == "none":
+        return unprobeable(
+            f"the defect is behavioural and leaves no trace in the tree: {sig.reasoning[:160]}"
+        )
+    if sig.kind == "introduced":
+        return introduced(
+            f"the agent creates this defect; a clean starting tree is correct: {sig.reasoning[:160]}"
+        )
+    if sig.is_symlink_defect:
+        # A symlink defect needs a directory to inspect. Defaulting to the repo
+        # root when none is named listed the top level, found no symlinks, and
+        # rejected obsessiondb/rudel -- a wrong answer delivered confidently.
+        # Without a directory there is nothing to check, and saying so is honest.
+        if not sig.path:
+            return unprobeable(
+                "the defect is that paths are symlinks, but no directory was named "
+                "to inspect"
+            )
+        return symlinks_in(sig.path)
+
+    # Token and path are different strengths of evidence, and demanding the
+    # stronger one throws away most real tasks. Across nineteen held-out
+    # trajectories only two defects had a literal token, while twelve named a
+    # file: most defects are behaviours, not strings. "The polling loop never
+    # exited", "formatting violations remained", "a one-week alignment tolerance"
+    # -- none of these can be grepped for, and all of them are real.
+    #
+    # An early version required a token and would have discarded five of the
+    # seven present-kind defects in that set. So the gate checks at whatever
+    # strength the signature supports and records which, leaving the caller to
+    # decide what is strong enough rather than deciding it here by silence.
+    if sig.token and sig.path:
+        return contains(sig.path, sig.token)
+    if sig.token:
+        return anywhere(sig.token)
+    if sig.path:
+        return file_exists(sig.path)
+    return unprobeable("the signature names neither a file nor a token to check")
+
+
+def check(task_id: str, sig, tree: Path) -> Presence:
+    """Ask whether this task's defect is in this tree, given its signature."""
+    probe = probe_for(sig)
     present, detail = probe(tree)
     if getattr(probe, "introduced", False):
         # Nothing to find, and nothing wrong with that. Setup is sound; the
         # defect is judged from what the candidate produces.
-        return Presence(task_id, True, True, f"introduced-defect task: {detail}")
+        return Presence(
+            task_id, True, True, f"introduced-defect task: {detail}", "declared"
+        )
     probeable = not getattr(probe, "unprobeable", False)
-    return Presence(task_id, present, probeable, detail)
+    strength = "file" if getattr(probe, "weak", False) else "token"
+    return Presence(task_id, present, probeable, detail, strength)
