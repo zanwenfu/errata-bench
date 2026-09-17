@@ -39,6 +39,7 @@ from pydantic import BaseModel, Field
 
 from .reader import MODEL, build_excerpt, configure_client, load_session_turns
 from .container import Container
+from .redact import apply as apply_redaction
 from .spec import Task
 from .workspace import GitError, fetch
 
@@ -336,6 +337,11 @@ async def run(
     """
     configure_client()
     turns = load_session_turns({task.session_id})[task.session_id]
+    if task.redacted_turns:
+        # Rendered without the turns that revealed the agent had been failing.
+        # The candidate must face the same question the agent faced, not a
+        # transcript telling it to be careful.
+        turns = apply_redaction(turns, task.redacted_turns)
     transcript = build_excerpt(turns, task.cut_turn)
 
     base = scratch or Path(tempfile.gettempdir()) / "errata-bench-attempts"

@@ -26,7 +26,6 @@ import tempfile
 from pathlib import Path
 
 from .corpus import load_repos
-from . import priming
 from .presence import check, repo_url
 from .reader import load_session_turns
 from .signature import Signature
@@ -93,20 +92,25 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
             reject("no signature was derived")
             continue
 
-        turns_here = turns_by_session.get(row["session_id"]) or []
-        primed = priming.check(turns_here, row["cut"])
-        if primed.primed:
+        # A conversation that leaks is repaired before it is rejected. Removing
+        # the turns that carry the hint recovers nine of fourteen leaking tasks
+        # while keeping 78-100% of the text, so the candidate still has the work
+        # the original agent had. Only a leak that survives redaction -- or one
+        # diffuse enough to have no turns to remove -- ends the task.
+        if row.get("signals_trouble") and not row.get("redaction_worked"):
             # The conversation already signals that something is wrong, so a
-            # candidate can take the hint rather than check anything. This is
-            # measurable and severe: of twelve tasks scored before this gate
-            # existed, every single "resolved" verdict came from a task whose
-            # context leaked -- 4 of 6 leaky tasks resolved, against 0 of 6
-            # clean ones. The benchmark was reading hint-taking, not care.
-            reject(
-                f"the context already signals trouble ({primed.concessions} agent "
-                f"concessions, {primed.frustrations} frustrated user turns, "
-                f"{primed.prior_pushbacks} earlier pushbacks)"
-            )
+            # candidate can take the hint rather than check anything. Measured,
+            # not assumed: of twelve tasks scored before any such gate, every
+            # passing verdict came from a task whose context leaked -- four of
+            # six leaky tasks passed, against none of six clean ones.
+            #
+            # Read by a model rather than by pattern. A regex version scored
+            # oddessentials-83 clean because nobody apologised, while the
+            # conversation contains "SC-003 scope is incorrect. Fix: Change from
+            # 'modified files' to 'entire repo typecheck surface' to prevent
+            # local pass / CI fail divergence" -- it hands over the very
+            # rationale the task asks the candidate to avoid inventing.
+            reject(f"the context already signals trouble: {row.get('leak_reason','')}")
             continue
 
         turns = turns_by_session.get(row["session_id"]) or []
@@ -178,6 +182,7 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
                 sha=sha,
                 session_id=row["session_id"],
                 cut_turn=row["cut"],
+                redacted_turns=row.get("redacted_turns") or [],
                 failed_turn=row["failed"],
                 complaint_turn=complaint,
                 resolved_turn=row["resolved"],

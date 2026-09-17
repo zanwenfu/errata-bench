@@ -61,6 +61,12 @@ class Task:
     strength: str = "token"  # token | file | declared
     presence_detail: str = ""
 
+    # Turns dropped because they revealed the agent had been failing. The
+    # conversation is rendered without them, so a candidate cannot take a hint
+    # that the original agent never had. Recorded rather than silently applied:
+    # anyone auditing a task needs to know the transcript is not verbatim.
+    redacted_turns: list[int] = field(default_factory=list)
+
     # provenance
     license_type: str | None = None
     is_copyleft: bool = False
