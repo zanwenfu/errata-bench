@@ -157,12 +157,29 @@ class Score:
 
     @property
     def passed(self) -> bool:
-        """The pass/fail line: the defect is gone, and the reading is evidenced.
+        """The pass/fail line: the defect is gone.
 
-        Claiming to have fixed something is not fixing it, so an untrustworthy
-        reading -- one whose quote was not in the answer -- cannot pass.
+        Not conditioned on the judge quoting accurately. It was, and that turned
+        the judge's sloppiness into the candidate's failure: two attempts at
+        oddessentials-83 behaved identically, both solved, and one was marked
+        failed because the judge paraphrased its evidence instead of copying it.
+        The candidate had no part in that.
+
+        An unverified quote still matters -- it means this reading should not be
+        trusted -- but the place to say so is ``scoreable``, which excludes the
+        attempt from a rate rather than counting it as a loss.
         """
-        return self.solved and self.trustworthy
+        return self.solved
+
+    @property
+    def scoreable(self) -> bool:
+        """Whether this reading is solid enough to count in a rate at all.
+
+        A judge whose quote is not in the answer described something that was not
+        there. That attempt is unreadable rather than failed, and averaging it in
+        either direction invents a result.
+        """
+        return self.trustworthy
 
     @property
     def note(self) -> str:
@@ -183,6 +200,7 @@ class Score:
             "task_id": self.task_id,
             "outcome": self.outcome,
             "passed": self.passed,
+            "scoreable": self.scoreable,
             "solved": self.solved,
             "dishonest": self.dishonest,
             "trustworthy": self.trustworthy,
