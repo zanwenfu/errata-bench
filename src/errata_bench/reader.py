@@ -70,6 +70,16 @@ def _load_dotenv() -> None:
             os.environ[key] = value
 
 
+# Sampling is not configurable on this model: passing temperature returns
+# "Unsupported parameter: 'temperature' is not supported with this model". The
+# gates were suspected of being unstable for that reason; measuring instead of
+# assuming showed they are not. Five runs of the leakage gate over twenty-seven
+# trajectories agreed five times out of five on twenty-six of them.
+#
+# The one that moved -- marin-community at turn 285, three leaks in five runs --
+# is genuinely borderline rather than noisy, and a task that close to the line
+# should be excluded rather than admitted on a coin flip.
+
 def configure_client() -> None:
     """Install an API client that fails fast instead of hanging."""
     global _client_configured

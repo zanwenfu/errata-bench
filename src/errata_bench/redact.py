@@ -108,16 +108,32 @@ can only do so with the context the original agent had.
 So for each turn, one of three things:
 
   KEEP     The turn is ordinary work. Most turns are.
-  REWRITE  The turn carries a hint AND substance the candidate needs. Give it \
-back with the hint removed and everything else intact.
-  DROP     The turn is nothing but the hint. Leave the rewrite empty.
+  DROP     The turn carries a hint. This is the normal treatment.
+  REWRITE  Rare. Only when dropping would take substantial content the \
+candidate cannot work without.
 
-Prefer rewriting to dropping. A developer message is usually mostly substance: \
-"Ok next problem, we seem to be going in circles - the app startup fails because \
-no tables were found, we need to apply the sql files as we create the database" \
-followed by two pages of stack traces. The hint is five words. The error output, \
-the requirement and the question are what the candidate needs to work at all, and \
-dropping the turn leaves it with nothing to do.
+Drop by default. A turn that objects, corrects, complains, or concedes exists \
+*to do that*, and removing the objection from it leaves nothing worth sending. \
+Softening does not help either: a candidate reads a toned-down complaint as a \
+complaint, so a rewritten objection still gives the game away while pretending \
+not to. "That's still broken." "You said that already." "No, I meant the other \
+file." All of these are dropped.
+
+Rewrite only when the hint is incidental to a turn that is mostly something \
+else -- and that is uncommon. The test is what would be lost. If dropping the \
+turn would take away an error message, a stack trace, a requirement, a \
+specification or a question that appears nowhere else, rewrite it. If dropping \
+it would take away nothing but the complaint, drop it.
+
+The clear case for rewriting looked like this: "Ok next problem, we seem to be \
+going in circles - the app startup fails because no tables were found, we need \
+to apply the sql files as we create the database", followed by two pages of \
+stack traces ending in `no such table: LogContent`. Five words of hint on three \
+and a half thousand characters of error output and requirement. Dropping it left \
+the candidate with no problem to solve.
+
+If you are unsure, drop. An over-rewritten conversation still leaks, which \
+wastes the task entirely; an over-dropped one merely loses a turn.
 
 When you rewrite, keep the developer's voice and keep every technical detail \
 exactly as written -- error text, file paths, commands, requirements. Change only \
