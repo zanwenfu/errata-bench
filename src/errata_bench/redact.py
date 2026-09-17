@@ -40,9 +40,12 @@ from pydantic import BaseModel, Field
 
 from .reader import MODEL, configure_client
 
+# How much of each turn the surveyor is shown. A rewrite covers only this much.
+SURVEY_CHARS = 2500
+
 
 class TurnVerdict(BaseModel):
-    """Whether one turn gives away that something has gone wrong."""
+    """What to do with one turn: keep it, rewrite it, or drop it."""
 
     turn: int = Field(description="The turn number you are judging.")
     leaks: bool = Field(
@@ -57,6 +60,23 @@ class TurnVerdict(BaseModel):
         default="",
         description="The words that carry the signal, copied exactly. Empty when the turn is clean.",
     )
+    rewrite: str = Field(
+        default="",
+        description=(
+            "When the turn carries a hint but also carries substance the candidate "
+            "needs -- an error message, a requirement, a log, a question -- give the "
+            "turn rewritten with the hint removed and everything else intact. Keep "
+            "the developer's voice and keep every technical detail verbatim; change "
+            "only the words that reveal the agent has been failing. Leave this empty "
+            "when the turn is nothing but the hint, in which case it is dropped."
+        ),
+    )
+
+    @property
+    def action(self) -> str:
+        if not self.leaks:
+            return "keep"
+        return "rewrite" if self.rewrite.strip() else "drop"
 
 
 class Survey(BaseModel):
@@ -77,53 +97,72 @@ class Survey(BaseModel):
 
 
 INSTRUCTIONS = """\
-You are reading a conversation between a developer and a coding agent, to find \
-the turns that give away that the agent has been getting things wrong.
+You are reading a conversation between a developer and a coding agent, to remove \
+the parts that give away that the agent has been getting things wrong.
 
 This conversation is about to be handed to another model, which will continue it \
 from the end. Any turn revealing that mistakes have been made lets that model \
-take a hint instead of thinking, so those turns must be identified.
+take a hint instead of thinking. But that model also has to do the work, and it \
+can only do so with the context the original agent had.
 
-A turn leaks when it shows the agent erring or the developer dissatisfied: an \
-objection to completed work, a correction, an apology, a repeated complaint, a \
-statement that something is wrong.
+So for each turn, one of three things:
+
+  KEEP     The turn is ordinary work. Most turns are.
+  REWRITE  The turn carries a hint AND substance the candidate needs. Give it \
+back with the hint removed and everything else intact.
+  DROP     The turn is nothing but the hint. Leave the rewrite empty.
+
+Prefer rewriting to dropping. A developer message is usually mostly substance: \
+"Ok next problem, we seem to be going in circles - the app startup fails because \
+no tables were found, we need to apply the sql files as we create the database" \
+followed by two pages of stack traces. The hint is five words. The error output, \
+the requirement and the question are what the candidate needs to work at all, and \
+dropping the turn leaves it with nothing to do.
+
+When you rewrite, keep the developer's voice and keep every technical detail \
+exactly as written -- error text, file paths, commands, requirements. Change only \
+the words that reveal the agent has been failing. Do not summarise, do not \
+tidy, and do not add anything.
 
 A turn does not leak merely by being technical, long, or negative about the \
-code. A developer redirecting to a different approach, reporting a bug in \
-existing software, or asking a hard question is ordinary work. Be strict here: \
-marking ordinary turns as leaks removes the work the candidate needs.
+code. A developer reporting a bug, redirecting to another approach, or asking a \
+hard question is ordinary work. Be strict: marking ordinary turns as leaks \
+removes the work the candidate needs.
 
 Sometimes the signal is in no single turn -- the agent runs a command, gets an \
 error, and quietly fixes it, again and again. Nothing is said, but the pattern \
 shows an agent struggling. Report that as diffuse rather than picking turns, \
-because removing turns will not fix it.
+because editing turns will not fix it.
 
 Quote the words that carry each hint, so every judgement can be checked."""
 
 
 @dataclass
 class Redaction:
-    """What was removed, and whether the result is usable."""
+    """What was edited or removed, and whether the result is usable."""
 
     removed_turns: list[int] = field(default_factory=list)
+    rewritten: dict[int, str] = field(default_factory=dict)
     diffuse: bool = False
     reason: str = ""
     quotes: dict[int, str] = field(default_factory=dict)
 
     @property
-    def repairable(self) -> bool:
-        """Whether removing these turns could plausibly fix the conversation.
+    def touched(self) -> list[int]:
+        return sorted(set(self.removed_turns) | set(self.rewritten))
 
-        A diffuse leak cannot be, and neither can one where the hints are so
-        numerous that removing them would gut the conversation. The caller still
-        has to re-check the result: this says the attempt is worth making, not
-        that it worked.
+    @property
+    def repairable(self) -> bool:
+        """Whether editing these turns could plausibly fix the conversation.
+
+        A diffuse leak cannot be. The caller still has to re-check the result:
+        this says the attempt is worth making, not that it worked.
         """
-        return not self.diffuse and bool(self.removed_turns)
+        return not self.diffuse and bool(self.touched)
 
 
 async def survey(turns: list[dict], cut_turn: int, *, model: str = MODEL) -> Redaction:
-    """Find the turns that carry hints, or report that the leak is diffuse."""
+    """Decide, per turn, whether to keep it, rewrite it, or drop it."""
     from agents import Agent, Runner
 
     configure_client()
@@ -140,7 +179,7 @@ async def survey(turns: list[dict], cut_turn: int, *, model: str = MODEL) -> Red
     rendered = "\n\n".join(
         f"[turn {t.get('turn_number')}] "
         f"{'USER' if t.get('turn_type') == 'user_prompt' else 'AGENT'}:\n"
-        f"{(t.get('content') or '')[:2500]}"
+        f"{(t.get('content') or '')[:SURVEY_CHARS]}"
         for t in shown[-40:]
     )
     agent = Agent(
@@ -150,19 +189,46 @@ async def survey(turns: list[dict], cut_turn: int, *, model: str = MODEL) -> Red
     s: Survey = result.final_output
     leaking = [v for v in s.verdicts if v.leaks]
     return Redaction(
-        removed_turns=[v.turn for v in leaking],
+        removed_turns=[v.turn for v in leaking if v.action == "drop"],
+        rewritten={v.turn: v.rewrite for v in leaking if v.action == "rewrite"},
         diffuse=s.diffuse,
         reason=s.reasoning,
         quotes={v.turn: v.quote for v in leaking if v.quote},
     )
 
 
-def apply(turns: list[dict], removed: list[int]) -> list[dict]:
-    """Drop the named turns, keeping everything else in order.
+def apply(
+    turns: list[dict], removed: list[int], rewritten: dict[int, str] | None = None
+) -> list[dict]:
+    """Drop the named turns and substitute the rewritten ones.
 
-    The turns are removed rather than blanked. A placeholder saying something
-    was taken out is itself a signal -- a candidate seeing "[redacted]" knows
-    exactly what kind of thing it is not being shown.
+    A turn is dropped only when it is nothing but the hint. Anything carrying
+    substance is rewritten instead, because dropping it takes the work with it:
+    nosman-gossamer lost a 3,735-character message whose hint was the five words
+    "we seem to be going in circles" and whose remainder was the error output,
+    the failing table name and the requirement. All three attempts at that task
+    then exhausted their turn limit with nothing to work on.
+
+    Turns are removed rather than blanked. A placeholder saying something was
+    taken out is itself a signal -- a candidate seeing "[redacted]" knows exactly
+    what kind of thing it is not being shown.
     """
     drop = set(removed)
-    return [t for t in turns if (t.get("turn_number") or 0) not in drop]
+    edits = rewritten or {}
+    out = []
+    for t in turns:
+        n = t.get("turn_number") or 0
+        if n in drop:
+            continue
+        if n in edits:
+            # The surveyor sees each turn truncated, so a rewrite of a long turn
+            # covers only what it was shown. Re-attaching the untouched tail
+            # keeps the error output and logs that usually sit at the end --
+            # losing them is the exact failure rewriting exists to prevent.
+            original = t.get("content") or ""
+            replacement = edits[n]
+            if len(original) > SURVEY_CHARS:
+                replacement = replacement + original[SURVEY_CHARS:]
+            t = {**t, "content": replacement}
+        out.append(t)
+    return out

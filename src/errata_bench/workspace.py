@@ -24,13 +24,26 @@ class GitError(RuntimeError):
 
 
 def _git(*args: str, cwd: Path, timeout: int = 300) -> str:
-    proc = subprocess.run(
-        ["git", *args],
-        cwd=cwd,
-        capture_output=True,
-        text=True,
-        timeout=timeout,
-    )
+    """Run one git command, turning every failure into a GitError.
+
+    A timeout used to escape as TimeoutExpired, which callers do not catch
+    because they are handling GitError. One slow fetch -- five minutes on a
+    single commit -- killed a whole rebuild partway through, losing the model
+    calls already spent on every task before it. A repository that will not
+    fetch is an ordinary rejection, not a reason to abandon the run.
+    """
+    try:
+        proc = subprocess.run(
+            ["git", *args],
+            cwd=cwd,
+            capture_output=True,
+            text=True,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired:
+        raise GitError(f"git {' '.join(args[:2])}: timed out after {timeout}s") from None
+    except OSError as e:
+        raise GitError(f"git {' '.join(args[:2])}: {e}") from None
     if proc.returncode != 0:
         raise GitError(f"git {' '.join(args)}: {proc.stderr.strip()[:400]}")
     return proc.stdout

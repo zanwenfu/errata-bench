@@ -183,6 +183,7 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
                 session_id=row["session_id"],
                 cut_turn=row["cut"],
                 redacted_turns=row.get("redacted_turns") or [],
+                rewritten_turns=row.get("rewritten_turns") or {},
                 failed_turn=row["failed"],
                 complaint_turn=complaint,
                 resolved_turn=row["resolved"],

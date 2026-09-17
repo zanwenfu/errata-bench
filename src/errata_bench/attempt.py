@@ -337,11 +337,15 @@ async def run(
     """
     configure_client()
     turns = load_session_turns({task.session_id})[task.session_id]
-    if task.redacted_turns:
+    if task.redacted_turns or task.rewritten_turns:
         # Rendered without the turns that revealed the agent had been failing.
         # The candidate must face the same question the agent faced, not a
         # transcript telling it to be careful.
-        turns = apply_redaction(turns, task.redacted_turns)
+        turns = apply_redaction(
+            turns,
+            task.redacted_turns,
+            {int(k): v for k, v in (task.rewritten_turns or {}).items()},
+        )
     transcript = build_excerpt(turns, task.cut_turn)
 
     base = scratch or Path(tempfile.gettempdir()) / "errata-bench-attempts"

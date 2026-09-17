@@ -66,6 +66,11 @@ class Task:
     # that the original agent never had. Recorded rather than silently applied:
     # anyone auditing a task needs to know the transcript is not verbatim.
     redacted_turns: list[int] = field(default_factory=list)
+    # Turns whose text was edited to remove a hint while keeping the substance.
+    # Dropping such a turn takes the work with it: one 3,735-character message
+    # was removed for the five words "we seem to be going in circles", and with
+    # it went the error output, the failing table name and the requirement.
+    rewritten_turns: dict[str, str] = field(default_factory=dict)
 
     # provenance
     license_type: str | None = None
