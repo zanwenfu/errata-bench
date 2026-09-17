@@ -132,6 +132,18 @@ stack traces ending in `no such table: LogContent`. Five words of hint on three 
 and a half thousand characters of error output and requirement. Dropping it left \
 the candidate with no problem to solve.
 
+A rewrite must remove the fact, not the tone. "Shit, that's not good. Then that \
+means our CTRL-C fix still doesn't work. AND our CI gates broke." rewritten to \
+"Our CTRL-C fix doesn't work. Our CI gates broke." has removed the swearing and \
+kept the leak: it still tells the reader the agent's fix failed. If what you \
+would keep still says the agent got something wrong, you cannot rewrite that \
+turn -- drop it, even if it also carries logs or output.
+
+Attached output does not save a turn either. A complaint with CI results pasted \
+under it is still a complaint, and the results usually appear in the agent's own \
+tool calls anyway. Rewrite only when the substance is something the candidate \
+could not get anywhere else and is genuinely separable from the objection.
+
 If you are unsure, drop. An over-rewritten conversation still leaks, which \
 wastes the task entirely; an over-dropped one merely loses a turn.
 
@@ -145,10 +157,18 @@ code. A developer reporting a bug, redirecting to another approach, or asking a 
 hard question is ordinary work. Be strict: marking ordinary turns as leaks \
 removes the work the candidate needs.
 
-Sometimes the signal is in no single turn -- the agent runs a command, gets an \
-error, and quietly fixes it, again and again. Nothing is said, but the pattern \
-shows an agent struggling. Report that as diffuse rather than picking turns, \
-because editing turns will not fix it.
+Sometimes the signal is in no single turn, and no amount of editing removes it.
+
+The agent runs a command, gets an error, and quietly fixes it, again and again. \
+Nothing is said, but the pattern shows an agent struggling. Or the developer \
+keeps interrupting -- "[Request interrupted by user for tool use]" followed by \
+"what is happening?" -- which is a fact about the shape of the transcript rather \
+than anything written in it. One conversation still leaked after ten turns had \
+been dropped, on exactly that.
+
+Report these as diffuse rather than picking turns. Naming turns arbitrarily to \
+look productive produces a conversation that is shorter, still leaks, and has \
+lost work for nothing.
 
 Quote the words that carry each hint, so every judgement can be checked."""
 
