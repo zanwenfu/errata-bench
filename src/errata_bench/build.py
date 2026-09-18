@@ -30,7 +30,8 @@ from .presence import check, repo_url
 from .reader import load_session_turns
 from .signature import Signature
 from .spec import MIN_ORACLE_CHARS, BuildResult, Rejection, Task
-from .timeline import load_commits_by_repo, load_sessions
+from .session_time import session_starts
+from .timeline import load_commits_by_repo
 from .workspace import GitError, fetch
 
 
@@ -102,7 +103,14 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
     defect, resolution) and the derived signature fields (kind, token, path).
     """
     result = BuildResult()
-    sessions = load_sessions()
+    # The session start comes from its turns, not from sessions.created_at,
+    # which is a completion timestamp: across the eighteen sessions that produced
+    # tasks it lands after the last turn in twelve and mid-session in six, never
+    # before the first. Using it selected the last commit before the session
+    # ENDED, so a candidate could be handed a tree containing commits the agent
+    # made during the session -- in one case its own resolution, which it then
+    # "passed" three times out of three.
+    starts = session_starts({r["session_id"] for r in located})
     commits = load_commits_by_repo()
     repos = load_repos()
     turns_by_session = load_session_turns({r["session_id"] for r in located})
@@ -162,8 +170,27 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
             # eighty turns of its cut. Neither measures the model.
             reject(f"nothing for the candidate to answer: {why_not}")
             continue
-        oracle = ((by_turn.get(row["failed"]) or {}).get("content") or "").strip()
-        criterion = ((by_turn.get(row["resolved"]) or {}).get("content") or "").strip()
+        # Both must be answers the agent wrote, not tool calls. A located turn
+        # can land on a tool_use row, whose content is the serialised call --
+        # heath0xFF-hChat took raw JSON as both its oracle and its criterion, and
+        # calibration certified it "sound", because a judge comparing two blobs
+        # of JSON will happily report that they differ.
+        failed_turn = by_turn.get(row["failed"]) or {}
+        resolved_turn = by_turn.get(row["resolved"]) or {}
+        if failed_turn.get("turn_type") != "assistant_response":
+            reject(
+                f"the failing turn is a {failed_turn.get('turn_type') or 'missing turn'}, "
+                "not an answer the agent wrote"
+            )
+            continue
+        if resolved_turn.get("turn_type") != "assistant_response":
+            reject(
+                f"the resolving turn is a {resolved_turn.get('turn_type') or 'missing turn'}, "
+                "not an answer the agent wrote"
+            )
+            continue
+        oracle = (failed_turn.get("content") or "").strip()
+        criterion = (resolved_turn.get("content") or "").strip()
         if len(oracle) < MIN_ORACLE_CHARS:
             reject(f"the failed answer is {len(oracle)} characters: too short to test against")
             continue
@@ -175,9 +202,11 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
         if repo is None:
             reject("repository not in the corpus")
             continue
-        sha = base_commit(
-            repo_id, getattr(sessions.get(row["session_id"]), "created_ns", None), commits
-        )
+        started_ns = starts.get(row["session_id"])
+        if started_ns is None:
+            reject("no turn in this session carries a timestamp, so its start is unknown")
+            continue
+        sha = base_commit(repo_id, started_ns, commits)
         if sha is None:
             reject("no commit exists before the session started")
             continue

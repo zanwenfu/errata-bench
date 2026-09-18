@@ -213,7 +213,14 @@ class Score:
 
 
 def combine(judgement, structure: Structure) -> Score:
-    """Put the two readings side by side without averaging them."""
+    """Put the two readings side by side without averaging them.
+
+    The trace is fed back into the judgement first. Whether a candidate did any
+    work is a fact about what it ran, not a claim in its answer, and an
+    introduced-defect task cannot be passed without it -- otherwise a candidate
+    that does nothing passes by construction.
+    """
+    judgement.did_the_work = structure.checked or structure.wrote
     return Score(
         task_id=structure.task_id,
         outcome=judgement.outcome,

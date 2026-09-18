@@ -18,6 +18,7 @@ changes without redoing the ones before it.
     screen       answerable, leaking, repairable     -> screened.jsonl
     build        environment + defect verification   -> tasks.jsonl
     calibrate    can the judge read this task's pair -> calibration.jsonl
+    control      does a do-nothing answer fail        -> controls.jsonl
     attempt      run candidates                      -> attempts.jsonl
     report       the numbers                         -> report.json
 
@@ -43,6 +44,7 @@ STAGES = (
     "screen",
     "build",
     "calibrate",
+    "control",
     "attempt",
     "report",
 )
@@ -389,7 +391,20 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int) -> Progress:
 
 
 def stage_build(paths: Paths, limit: int) -> Progress:
-    """Reconstruct each environment and verify the defect is really in it."""
+    """Reconstruct each environment and verify the defect is really in it.
+
+    This stage rewrites tasks.jsonl from scratch rather than appending, because
+    a task's environment depends on code that changes -- the base commit, the
+    presence probe, the oracle checks. Resuming would preserve tasks built under
+    rules that no longer hold.
+
+    Rewriting has a consequence the later stages have to respect: a task that
+    disappears here leaves its calibration and control verdicts behind, and
+    those stages resume on task_id alone. So their outputs are pruned to what
+    still exists. Without that, a rebuild that drops seven of thirteen tasks --
+    which is exactly what fixing the session-start bug did -- leaves seven stale
+    "sound" verdicts pointing at tasks that are gone.
+    """
     from .build import build
     from .spec import write
 
@@ -398,6 +413,16 @@ def stage_build(paths: Paths, limit: int) -> Progress:
     rows = [r for r in load(paths.screened) if not r.get("error")]
     result = build(rows)
     write(result.tasks, paths.tasks)
+
+    surviving = {t.task_id for t in result.tasks}
+    for downstream in (paths.calibration, paths.controls, paths.attempts):
+        if not downstream.exists():
+            continue
+        kept = [r for r in load(downstream) if r.get("task_id") in surviving]
+        dropped = len(load(downstream)) - len(kept)
+        if dropped:
+            downstream.write_text("".join(json.dumps(r) + "\n" for r in kept))
+            p.notes.append(f"dropped {dropped} stale rows from {downstream.name}")
     p.produced = len(result.tasks)
     p.failed = len(result.rejected)
     p.notes = [f"{r.repo_id} t={r.complaint_turn}: {r.reason[:70]}" for r in result.rejected]
@@ -446,6 +471,54 @@ async def stage_calibrate(paths: Paths, limit: int, concurrency: int) -> Progres
     return p
 
 
+async def stage_control(paths: Paths, limit: int, concurrency: int) -> Progress:
+    """Score answers whose correct result is known, before running candidates.
+
+    A benchmark that cannot fail a candidate which does nothing is measuring
+    noise, and this one could not: every introduced-defect task passed on the
+    absence of the defect alone, so declining to work was a pass. Three
+    attempts at one task read "Onboarding is blocked in this environment ... I
+    made no changes" and all three were scored as successes.
+
+    Running here, before `attempt`, means a broken task is caught for the price
+    of two judge calls rather than after a container has run against it.
+    """
+    from .control import CONTROLS, check
+    from .spec import read
+
+    p = Progress("control")
+    t0 = time.monotonic()
+    sound = {r["task_id"] for r in load(paths.calibration) if r.get("sound")}
+    tasks = [t for t in read(paths.tasks) if t.task_id in sound]
+    done = {(r["task_id"], r["control"]) for r in load(paths.controls)}
+    jobs = [(t, c) for t in tasks for c in CONTROLS if (t.task_id, c.name) not in done]
+    p.skipped = len(tasks) * len(CONTROLS) - len(jobs)
+    if not jobs:
+        p.took_s = time.monotonic() - t0
+        return p
+
+    async def one(task, control):
+        try:
+            result = await check(task, control)
+            append(paths.controls, result.to_json())
+            return result.ok
+        except Exception as e:
+            append(
+                paths.controls,
+                {"task_id": task.task_id, "control": control.name, "ok": False,
+                 "detail": f"{type(e).__name__}: {e}"},
+            )
+            return False
+
+    results = await _gather([one(t, c) for t, c in jobs], concurrency)
+    p.produced = sum(1 for r in results if r)
+    p.failed = sum(1 for r in results if not r)
+    if p.failed:
+        p.notes = [f"{p.failed} control checks behaved wrongly -- those tasks are unsound"]
+    p.took_s = time.monotonic() - t0
+    return p
+
+
 async def stage_attempt(
     paths: Paths, limit: int, concurrency: int, repeats: int = 3
 ) -> Progress:
@@ -461,7 +534,10 @@ async def stage_attempt(
     t0 = time.monotonic()
     sweep()
     sound = {r["task_id"] for r in load(paths.calibration) if r.get("sound")}
-    tasks = [t for t in read(paths.tasks) if t.task_id in sound]
+    # A task a control passed is satisfiable without doing the work, so running
+    # candidates against it measures nothing.
+    broken = {r["task_id"] for r in load(paths.controls) if not r.get("ok")}
+    tasks = [t for t in read(paths.tasks) if t.task_id in sound and t.task_id not in broken]
     done = {(r["task_id"], r["run"]) for r in load(paths.attempts)}
     repos = load_repos()
     images = {
@@ -590,6 +666,8 @@ async def run_stages(
             out.append(stage_build(paths, limit))
         elif name == "calibrate":
             out.append(await stage_calibrate(paths, limit, concurrency))
+        elif name == "control":
+            out.append(await stage_control(paths, limit, concurrency))
         elif name == "attempt":
             out.append(await stage_attempt(paths, limit, concurrency, repeats))
         elif name == "report":
