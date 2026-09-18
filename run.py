@@ -29,14 +29,44 @@ sys.path.insert(0, str(Path(__file__).parent / "src"))
 from errata_bench.pipeline import STAGES, Paths, append, load, run_stages  # noqa: E402
 
 
-def find_moments(limit: int, out: Path, *, skip_seen: Path | None = None) -> int:
-    """Collect pushback moments from the corpus, first-in-session only.
+# The values prompt_pushback actually takes. It is a string, not a boolean, and
+# 58% of user prompts carry the literal "non_pushback" -- which is truthy in
+# Python. Testing `if not row["prompt_pushback"]` therefore kept exactly the
+# turns the corpus had labelled as not being pushbacks, and a four-hundred-moment
+# sample came back with a median turn number of 2: session openings such as
+# "Implement the following plan:" and "can you check if Gemma 4 is present in the
+# JSON files". Nothing had happened yet for anyone to object to.
+PUSHBACK_KINDS = ("failure_report", "rejection", "correction", "takeover")
 
-    Only the first pushback in a session is taken. A later one sits in a
+# Measured viability, over the ninety-five moments read so far. The spread is
+# real and worth ordering by, but none of these are so weak that they should be
+# excluded outright.
+KIND_YIELD = {
+    "rejection": 0.58,
+    "failure_report": 0.39,
+    "correction": 0.18,
+    "takeover": 0.14,
+}
+
+
+def find_moments(
+    limit: int,
+    out: Path,
+    *,
+    skip_seen: Path | None = None,
+    kinds: tuple[str, ...] = PUSHBACK_KINDS,
+    min_agent_turns: int = 3,
+) -> int:
+    """Collect pushback moments from the corpus.
+
+    Takes the first genuine pushback in each session. A later one sits in a
     conversation already full of friction, and a candidate reading that does not
-    have to be careful -- it only has to take the hint. Of the filtered pushback
-    moments in this corpus, 8,643 have six or more complaints before them and
-    756 are the first in their session.
+    have to be careful -- it only has to take the hint. The leakage gate rejects
+    such conversations, so collecting them wastes the reading.
+
+    Moments are ordered by the measured viability of their kind and spread across
+    repositories, so a sample of any size covers as many projects as it can and
+    reads the most promising moments first.
     """
     import pyarrow.parquet as pq
 
@@ -44,19 +74,17 @@ def find_moments(limit: int, out: Path, *, skip_seen: Path | None = None) -> int
 
     seen = set()
     if skip_seen and skip_seen.exists():
-        seen = {
-            (r.get("session_id"), r.get("turn_number"))
-            for r in load(skip_seen)
-        }
+        seen = {(r.get("session_id"), r.get("turn_number")) for r in load(skip_seen)}
 
     repo_of = {}
     table = pq.read_table(CORPUS / "sessions.parquet", columns=["session_id", "repo_id"])
-    for s, r in zip(
+    for session, repo in zip(
         table.column("session_id").to_pylist(), table.column("repo_id").to_pylist()
     ):
-        repo_of[s] = r
+        repo_of[session] = repo
 
-    first_in_session: dict[str, dict] = {}
+    wanted = set(kinds)
+    first: dict[str, dict] = {}
     conv = pq.ParquetFile(CORPUS / "conversations.parquet")
     for batch in conv.iter_batches(
         batch_size=200_000,
@@ -64,37 +92,62 @@ def find_moments(limit: int, out: Path, *, skip_seen: Path | None = None) -> int
     ):
         cols = {n: batch.column(n).to_pylist() for n in batch.schema.names}
         for i in range(len(cols["session_id"])):
-            if not cols["prompt_pushback"][i]:
+            kind = cols["prompt_pushback"][i]
+            if kind not in wanted:
                 continue
             if cols["turn_type"][i] != "user_prompt":
                 continue
-            sid = cols["session_id"][i]
+            session = cols["session_id"][i]
             turn = cols["turn_number"][i]
-            if sid in first_in_session and first_in_session[sid]["turn_number"] <= turn:
+            if session in first and first[session]["turn_number"] <= turn:
                 continue
-            first_in_session[sid] = {
-                "session_id": sid,
+            first[session] = {
+                "session_id": session,
                 "turn_number": turn,
-                "repo_id": repo_of.get(sid),
+                "repo_id": repo_of.get(session),
+                "kind": kind,
             }
+
+    # Count the agent turns preceding each candidate moment. A complaint with
+    # nothing before it is about work from a session we cannot see: AI-Stats
+    # opens at turn 0 with "The tiering doesn't seem to work for model providers
+    # now?", which is a real bug report and an impossible task, because there is
+    # no failing answer in this transcript to cut before. Triage catches these
+    # for the price of a model call; counting rows costs nothing.
+    need = {m["session_id"]: m["turn_number"] for m in first.values()}
+    acted: dict[str, int] = {s: 0 for s in need}
+    for batch in conv.iter_batches(
+        batch_size=200_000, columns=["session_id", "turn_number", "turn_type"]
+    ):
+        cols = {n: batch.column(n).to_pylist() for n in batch.schema.names}
+        for i in range(len(cols["session_id"])):
+            session = cols["session_id"][i]
+            cutoff = need.get(session)
+            if cutoff is None or cols["turn_number"][i] >= cutoff:
+                continue
+            if cols["turn_type"][i] in ("assistant_response", "tool_use"):
+                acted[session] += 1
+    for session, m in first.items():
+        m["agent_turns_before"] = acted.get(session, 0)
 
     fresh = [
         m
-        for m in first_in_session.values()
-        if (m["session_id"], m["turn_number"]) not in seen and m["repo_id"]
+        for m in first.values()
+        if (m["session_id"], m["turn_number"]) not in seen
+        and m["repo_id"]
+        and m["agent_turns_before"] >= min_agent_turns
     ]
 
-    # Spread across repositories rather than taking the first N of a sorted
-    # list. Sorting by repo_id and slicing gave fifty moments from a single
-    # repository, which measures that project rather than anything general: one
-    # codebase's conventions, one developer's habits, one language's toolchain.
-    # Round-robin instead, so a fifty-moment probe covers as many projects as it
-    # can before taking a second from any of them.
+    # Spread across repositories rather than taking the first N of a sorted list.
+    # Sorting by repo_id and slicing gave fifty moments from a single repository,
+    # which measures that project rather than anything general. Within each
+    # repository the most promising kind comes first, so a short run does not
+    # spend its budget on corrections when rejections are available.
     by_repo: dict[str, list[dict]] = {}
     for m in fresh:
         by_repo.setdefault(m["repo_id"], []).append(m)
     for moments in by_repo.values():
-        moments.sort(key=lambda m: m["session_id"])
+        moments.sort(key=lambda m: (-KIND_YIELD.get(m["kind"], 0), m["session_id"]))
 
     spread: list[dict] = []
     while len(spread) < limit and by_repo:
@@ -146,6 +199,11 @@ def main() -> None:
         help="collect moments not present in an earlier run's moments file",
     )
     ap.add_argument("--exclude", help="a moments file whose rows to skip")
+    ap.add_argument(
+        "--kinds",
+        default=",".join(PUSHBACK_KINDS),
+        help="comma-separated pushback kinds to collect",
+    )
     args = ap.parse_args()
 
     root = Path(args.run)
@@ -157,7 +215,8 @@ def main() -> None:
 
     if args.command == "moments":
         skip = Path(args.exclude) if args.exclude else None
-        n = find_moments(args.limit, paths.moments, skip_seen=skip)
+        kinds = tuple(k.strip() for k in args.kinds.split(",") if k.strip())
+        n = find_moments(args.limit, paths.moments, skip_seen=skip, kinds=kinds)
         print(f"  collected {n} moments -> {paths.moments}")
         return
 

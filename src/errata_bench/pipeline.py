@@ -11,6 +11,7 @@ resumes instead of restarting, and a stage can be re-run alone after its code
 changes without redoing the ones before it.
 
     moments      pushback moments worth reading      -> moments.jsonl
+    triage       does the agent have work to object to-> triaged.jsonl
     read         which are genuine agent error       -> readings.jsonl
     locate       the four turns that define a task   -> trajectories.jsonl
     signature    what the defect looks like in a tree-> signatures.jsonl
@@ -35,6 +36,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 STAGES = (
+    "triage",
     "read",
     "locate",
     "signature",
@@ -126,13 +128,68 @@ async def _gather(coros, limit: int):
     return await asyncio.gather(*(run(c) for c in coros))
 
 
+async def stage_triage(paths: Paths, limit: int, concurrency: int) -> Progress:
+    """Discard moments where the agent has not done anything to object to.
+
+    One call each, against roughly eight for a full read. Fifty first-in-session
+    moments were read at full price and every one came back unclear, because
+    they were opening instructions rather than objections.
+    """
+    from .reader import build_excerpt, load_session_turns
+    from .triage import triage
+
+    p = Progress("triage")
+    t0 = time.monotonic()
+    moments = load(paths.moments)[:limit]
+    done = already_done(paths.triaged)
+    todo = [m for m in moments if key_of(m) not in done]
+    p.skipped = len(moments) - len(todo)
+    if not todo:
+        p.took_s = time.monotonic() - t0
+        return p
+
+    turns = load_session_turns({m["session_id"] for m in todo})
+
+    async def one(m):
+        try:
+            excerpt = build_excerpt(turns[m["session_id"]], m["turn_number"])
+            verdict = await triage(excerpt)
+            append(
+                paths.triaged,
+                {
+                    **m,
+                    "worth_reading": verdict.worth_reading,
+                    "agent_has_acted": verdict.agent_has_acted,
+                    "objects_to_that_work": verdict.objects_to_that_work,
+                    "triage_reason": verdict.reason,
+                },
+            )
+            return verdict.worth_reading
+        except Exception as e:
+            # A moment that cannot be triaged goes to the reader rather than
+            # being dropped: the reader is the authority, and this stage exists
+            # only to save money.
+            append(paths.triaged, {**m, "worth_reading": True, "triage_reason": f"error: {e}"})
+            return True
+
+    results = await _gather([one(m) for m in todo], concurrency)
+    p.produced = sum(1 for r in results if r)
+    p.notes = [f"{len(todo) - p.produced} discarded before reading"]
+    p.took_s = time.monotonic() - t0
+    return p
+
+
 async def stage_read(paths: Paths, limit: int, concurrency: int) -> Progress:
     """Decide which pushback moments represent a genuine agent error."""
     from .reader import load_session_turns, read_pushback
 
     p = Progress("read")
     t0 = time.monotonic()
-    moments = load(paths.moments)[:limit]
+    triaged = load(paths.triaged)
+    if triaged:
+        moments = [m for m in triaged if m.get("worth_reading")][:limit]
+    else:
+        moments = load(paths.moments)[:limit]
     done = already_done(paths.readings)
     todo = [m for m in moments if key_of(m) not in done]
     p.skipped = len(moments) - len(todo)
@@ -505,7 +562,9 @@ async def run_stages(
     paths = Paths(root)
     out = []
     for name in stages:
-        if name == "read":
+        if name == "triage":
+            out.append(await stage_triage(paths, limit, concurrency))
+        elif name == "read":
             out.append(await stage_read(paths, limit, concurrency))
         elif name == "locate":
             out.append(await stage_locate(paths, limit, concurrency))
