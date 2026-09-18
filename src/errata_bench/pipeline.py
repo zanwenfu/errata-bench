@@ -1,0 +1,527 @@
+"""Run the benchmark end to end, one resumable stage at a time.
+
+Until now this existed only as a chain of scripts in a scratch directory, run by
+hand in an order held in someone's head. That is not a pipeline: a full run over
+the corpus could not be reproduced, and a crash halfway through lost every model
+call already paid for.
+
+Each stage reads the previous stage's file and writes its own. A stage that
+finds its output already present skips the rows it has, so an interrupted run
+resumes instead of restarting, and a stage can be re-run alone after its code
+changes without redoing the ones before it.
+
+    moments      pushback moments worth reading      -> moments.jsonl
+    read         which are genuine agent error       -> readings.jsonl
+    locate       the four turns that define a task   -> trajectories.jsonl
+    signature    what the defect looks like in a tree-> signatures.jsonl
+    screen       answerable, leaking, repairable     -> screened.jsonl
+    build        environment + defect verification   -> tasks.jsonl
+    calibrate    can the judge read this task's pair -> calibration.jsonl
+    attempt      run candidates                      -> attempts.jsonl
+    report       the numbers                         -> report.json
+
+The stages before `attempt` cost roughly eight model calls per moment and no
+containers. `attempt` costs one container and one judge call per run, several
+runs per task. Splitting them means a cheap pass can establish the yield before
+anything expensive starts.
+"""
+
+from __future__ import annotations
+
+import asyncio
+import json
+import time
+from dataclasses import dataclass, field
+from pathlib import Path
+
+STAGES = (
+    "read",
+    "locate",
+    "signature",
+    "screen",
+    "build",
+    "calibrate",
+    "attempt",
+    "report",
+)
+
+
+@dataclass
+class Paths:
+    """Where each stage's output lives."""
+
+    root: Path
+
+    def __post_init__(self) -> None:
+        self.root.mkdir(parents=True, exist_ok=True)
+
+    def __getattr__(self, name: str) -> Path:
+        return self.root / f"{name}.jsonl"
+
+    @property
+    def report(self) -> Path:
+        return self.root / "report.json"
+
+
+def load(path: Path) -> list[dict]:
+    if not path.exists():
+        return []
+    return [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
+
+
+def append(path: Path, row: dict) -> None:
+    """Write one row immediately.
+
+    Rows are flushed as they are produced rather than at the end, so an
+    interrupted stage keeps what it has done. A five-minute git fetch once
+    killed a rebuild and lost every model call before it.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with path.open("a") as fh:
+        fh.write(json.dumps(row) + "\n")
+
+
+def key_of(row: dict) -> tuple:
+    """What makes a row unique: one pushback moment in one session."""
+    return (row.get("session_id"), row.get("turn_number") or row.get("complaint"))
+
+
+def already_done(path: Path) -> set[tuple]:
+    return {key_of(r) for r in load(path)}
+
+
+@dataclass
+class Progress:
+    """What a stage did, for the run log."""
+
+    stage: str
+    took_s: float = 0.0
+    produced: int = 0
+    skipped: int = 0
+    failed: int = 0
+    notes: list[str] = field(default_factory=list)
+
+    def line(self) -> str:
+        bits = [f"{self.produced} produced"]
+        if self.skipped:
+            bits.append(f"{self.skipped} already done")
+        if self.failed:
+            bits.append(f"{self.failed} failed")
+        return f"  {self.stage:10s} {self.took_s:6.0f}s  {', '.join(bits)}"
+
+
+async def _gather(coros, limit: int):
+    """Run with a ceiling on concurrency.
+
+    The ceiling matters on a laptop: unbounded fan-out over hundreds of moments
+    opens hundreds of connections and, at the attempt stage, would start a
+    container per task.
+    """
+    sem = asyncio.Semaphore(limit)
+
+    async def run(c):
+        async with sem:
+            return await c
+
+    return await asyncio.gather(*(run(c) for c in coros))
+
+
+async def stage_read(paths: Paths, limit: int, concurrency: int) -> Progress:
+    """Decide which pushback moments represent a genuine agent error."""
+    from .reader import load_session_turns, read_pushback
+
+    p = Progress("read")
+    t0 = time.monotonic()
+    moments = load(paths.moments)[:limit]
+    done = already_done(paths.readings)
+    todo = [m for m in moments if key_of(m) not in done]
+    p.skipped = len(moments) - len(todo)
+    if not todo:
+        p.took_s = time.monotonic() - t0
+        return p
+
+    turns = load_session_turns({m["session_id"] for m in todo})
+
+    async def one(m):
+        try:
+            reading = await read_pushback(turns[m["session_id"]], m["turn_number"])
+            append(paths.readings, {**m, "reading": reading.model_dump()})
+            return True
+        except Exception as e:
+            append(paths.readings, {**m, "error": f"{type(e).__name__}: {e}"})
+            return False
+
+    results = await _gather([one(m) for m in todo], concurrency)
+    p.produced = sum(1 for r in results if r)
+    p.failed = sum(1 for r in results if not r)
+    p.took_s = time.monotonic() - t0
+    return p
+
+
+async def stage_locate(paths: Paths, limit: int, concurrency: int) -> Progress:
+    """Find the four turns that define each task."""
+    from .reader import load_session_turns
+    from .trajectory import boundaries, locate
+
+    p = Progress("locate")
+    t0 = time.monotonic()
+    viable = [
+        r
+        for r in load(paths.readings)
+        if (r.get("reading") or {}).get("benchmark_viable")
+    ]
+    done = already_done(paths.trajectories)
+    todo = [r for r in viable if key_of(r) not in done]
+    p.skipped = len(viable) - len(todo)
+    if not todo:
+        p.took_s = time.monotonic() - t0
+        return p
+
+    turns = load_session_turns({r["session_id"] for r in todo})
+
+    async def one(r):
+        try:
+            t = await locate(turns[r["session_id"]], r["turn_number"])
+            b = boundaries(t)
+            append(
+                paths.trajectories,
+                {
+                    "session_id": r["session_id"],
+                    "repo_id": r.get("repo_id"),
+                    "complaint": r["turn_number"],
+                    "failed": t.failed_turn,
+                    "resolved": t.resolved_turn,
+                    "request": t.request_turn,
+                    "cut": b.cut_turn,
+                    "usable": b.usable,
+                    "reason": b.reason,
+                    "defect": t.defect,
+                    "resolution": t.resolution,
+                    "rounds": t.rounds,
+                },
+            )
+            return True
+        except Exception as e:
+            append(
+                paths.trajectories,
+                {
+                    "session_id": r["session_id"],
+                    "repo_id": r.get("repo_id"),
+                    "complaint": r["turn_number"],
+                    "usable": False,
+                    "reason": f"error: {type(e).__name__}: {e}",
+                },
+            )
+            return False
+
+    results = await _gather([one(r) for r in todo], concurrency)
+    p.produced = sum(1 for r in results if r)
+    p.failed = sum(1 for r in results if not r)
+    p.took_s = time.monotonic() - t0
+    return p
+
+
+async def stage_signature(paths: Paths, limit: int, concurrency: int) -> Progress:
+    """Work out what each defect looks like in a repository."""
+    from .signature import derive
+
+    p = Progress("signature")
+    t0 = time.monotonic()
+    usable = [r for r in load(paths.trajectories) if r.get("usable")]
+    done = already_done(paths.signatures)
+    todo = [r for r in usable if key_of(r) not in done]
+    p.skipped = len(usable) - len(todo)
+
+    async def one(r):
+        try:
+            s = await derive(
+                r.get("defect", ""), r.get("resolution", ""), repo_id=r.get("repo_id", "")
+            )
+            append(paths.signatures, {**r, **s.model_dump()})
+            return True
+        except Exception as e:
+            append(paths.signatures, {**r, "error": f"{type(e).__name__}: {e}"})
+            return False
+
+    if todo:
+        results = await _gather([one(r) for r in todo], concurrency)
+        p.produced = sum(1 for r in results if r)
+        p.failed = sum(1 for r in results if not r)
+    p.took_s = time.monotonic() - t0
+    return p
+
+
+async def stage_screen(paths: Paths, limit: int, concurrency: int) -> Progress:
+    """Check each conversation is answerable, and repair it if it leaks."""
+    from .answerable import asks_for_something
+    from .build import last_user_message
+    from .leakage import signals_trouble
+    from .reader import build_excerpt, load_session_turns
+    from .redact import apply, survey
+
+    p = Progress("screen")
+    t0 = time.monotonic()
+    rows = [r for r in load(paths.signatures) if r.get("kind")]
+    done = already_done(paths.screened)
+    todo = [r for r in rows if key_of(r) not in done]
+    p.skipped = len(rows) - len(todo)
+    if not todo:
+        p.took_s = time.monotonic() - t0
+        return p
+
+    turns = load_session_turns({r["session_id"] for r in todo})
+
+    async def one(r):
+        out = dict(r)
+        try:
+            ts = turns[r["session_id"]]
+            message = last_user_message(ts, r["cut"])
+            if message is None:
+                out["asks_for_something"] = False
+                out["request_reason"] = "no user message within 80 turns of the cut"
+            else:
+                a = await asks_for_something(message.get("content") or "")
+                out["asks_for_something"] = a.asks_for_something
+                out["request_reason"] = a.request or a.reasoning
+
+            leak = await signals_trouble(build_excerpt(ts, r["cut"]))
+            out["signals_trouble"] = leak.signals_trouble
+            out["leak_reason"] = leak.reasoning
+            out["redacted_turns"] = []
+            out["rewritten_turns"] = {}
+            out["redaction_worked"] = False
+
+            if leak.signals_trouble:
+                red = await survey(ts, r["cut"])
+                out["diffuse"] = red.diffuse
+                if red.repairable:
+                    kept = apply(ts, red.removed_turns, red.rewritten)
+                    again = await signals_trouble(build_excerpt(kept, r["cut"]))
+                    if not again.signals_trouble:
+                        out["redacted_turns"] = red.removed_turns
+                        out["rewritten_turns"] = {
+                            str(k): v for k, v in red.rewritten.items()
+                        }
+                        out["redaction_worked"] = True
+            append(paths.screened, out)
+            return True
+        except Exception as e:
+            out["error"] = f"{type(e).__name__}: {e}"
+            append(paths.screened, out)
+            return False
+
+    results = await _gather([one(r) for r in todo], concurrency)
+    p.produced = sum(1 for r in results if r)
+    p.failed = sum(1 for r in results if not r)
+    p.took_s = time.monotonic() - t0
+    return p
+
+
+def stage_build(paths: Paths, limit: int) -> Progress:
+    """Reconstruct each environment and verify the defect is really in it."""
+    from .build import build
+    from .spec import write
+
+    p = Progress("build")
+    t0 = time.monotonic()
+    rows = [r for r in load(paths.screened) if not r.get("error")]
+    result = build(rows)
+    write(result.tasks, paths.tasks)
+    p.produced = len(result.tasks)
+    p.failed = len(result.rejected)
+    p.notes = [f"{r.repo_id} t={r.complaint_turn}: {r.reason[:70]}" for r in result.rejected]
+    p.took_s = time.monotonic() - t0
+    return p
+
+
+async def stage_calibrate(paths: Paths, limit: int, concurrency: int) -> Progress:
+    """Check the judge can read each task's known-wrong and known-right answers."""
+    from .judge import calibrate
+    from .spec import read
+
+    p = Progress("calibrate")
+    t0 = time.monotonic()
+    tasks = read(paths.tasks)
+    done = {r["task_id"] for r in load(paths.calibration)}
+    todo = [t for t in tasks if t.task_id not in done]
+    p.skipped = len(tasks) - len(todo)
+
+    async def one(t):
+        try:
+            c = await calibrate(t)
+            append(
+                paths.calibration,
+                {
+                    "task_id": t.task_id,
+                    "sound": c.sound,
+                    "separates": c.separates,
+                    "order_invariant": c.order_invariant,
+                    "detail": c.detail,
+                },
+            )
+            return c.sound
+        except Exception as e:
+            append(
+                paths.calibration,
+                {"task_id": t.task_id, "sound": False, "detail": f"{type(e).__name__}: {e}"},
+            )
+            return False
+
+    if todo:
+        results = await _gather([one(t) for t in todo], concurrency)
+        p.produced = sum(1 for r in results if r)
+        p.failed = sum(1 for r in results if not r)
+    p.took_s = time.monotonic() - t0
+    return p
+
+
+async def stage_attempt(
+    paths: Paths, limit: int, concurrency: int, repeats: int = 3
+) -> Progress:
+    """Run candidates against every task the judge can read."""
+    from .attempt import run
+    from .container import MAX_CONTAINERS, image_for, sweep
+    from .corpus import load_repos
+    from .judge import judge
+    from .spec import read
+    from .structure import analyse, combine
+
+    p = Progress("attempt")
+    t0 = time.monotonic()
+    sweep()
+    sound = {r["task_id"] for r in load(paths.calibration) if r.get("sound")}
+    tasks = [t for t in read(paths.tasks) if t.task_id in sound]
+    done = {(r["task_id"], r["run"]) for r in load(paths.attempts)}
+    repos = load_repos()
+    images = {
+        t.task_id: image_for(getattr(repos.get(t.repo_id), "language", None))
+        for t in tasks
+    }
+    jobs = [(t, i) for t in tasks for i in range(repeats) if (t.task_id, i) not in done]
+    p.skipped = len(tasks) * repeats - len(jobs)
+    if not jobs:
+        p.took_s = time.monotonic() - t0
+        return p
+
+    # Containerised work is what strains a laptop, so it gets the tighter bound.
+    box = asyncio.Semaphore(MAX_CONTAINERS)
+    host = asyncio.Semaphore(max(1, concurrency // 2))
+
+    async def one(task, i):
+        image = images.get(task.task_id)
+        async with (box if image else host):
+            started = time.monotonic()
+            attempt = await run(task, image=image)
+            if attempt.error:
+                append(
+                    paths.attempts,
+                    {"task_id": task.task_id, "run": i, "error": attempt.error},
+                )
+                return False
+            verdict = await judge(task, attempt.reply)
+            structure = analyse(task, attempt, attempt.final_state)
+            score = combine(verdict, structure)
+            append(
+                paths.attempts,
+                {
+                    "task_id": task.task_id,
+                    "run": i,
+                    "kind": task.kind,
+                    "environment": attempt.environment,
+                    "calls": structure.tool_calls,
+                    "seconds": round(time.monotonic() - started, 1),
+                    "reply": attempt.reply[:4000],
+                    "judgement": verdict.to_json(),
+                    **score.to_json(),
+                },
+            )
+            return True
+
+    results = await _gather([one(t, i) for t, i in jobs], concurrency)
+    p.produced = sum(1 for r in results if r)
+    p.failed = sum(1 for r in results if not r)
+    sweep()
+    p.took_s = time.monotonic() - t0
+    return p
+
+
+def stage_report(paths: Paths) -> Progress:
+    """Count what happened, and how much of it is trustworthy."""
+    from collections import Counter
+
+    p = Progress("report")
+    t0 = time.monotonic()
+    attempts = [a for a in load(paths.attempts) if not a.get("error")]
+    scoreable = [a for a in attempts if a.get("scoreable")]
+    moments = len(load(paths.moments))
+    readings = load(paths.readings)
+    viable = [r for r in readings if (r.get("reading") or {}).get("benchmark_viable")]
+    tasks = load(paths.tasks)
+    sound = [c for c in load(paths.calibration) if c.get("sound")]
+
+    report = {
+        "funnel": {
+            "moments": moments,
+            "read": len(readings),
+            "viable": len(viable),
+            "trajectories_usable": sum(
+                1 for t in load(paths.trajectories) if t.get("usable")
+            ),
+            "tasks_built": len(tasks),
+            "tasks_calibrated": len(sound),
+        },
+        "attempts": len(attempts),
+        "scoreable": len(scoreable),
+        "passed": sum(1 for a in scoreable if a.get("passed")),
+        "made_unverified_claim": sum(1 for a in scoreable if a.get("dishonest")),
+        "checked_first": sum(1 for a in scoreable if a.get("checked")),
+        "outcomes": dict(Counter(a.get("outcome") for a in scoreable)),
+        "by_kind": {
+            k: {
+                "attempts": sum(1 for a in scoreable if a.get("kind") == k),
+                "passed": sum(
+                    1 for a in scoreable if a.get("kind") == k and a.get("passed")
+                ),
+            }
+            for k in ("present", "introduced")
+        },
+    }
+    paths.report.write_text(json.dumps(report, indent=2))
+    p.produced = len(scoreable)
+    p.took_s = time.monotonic() - t0
+    p.notes = [json.dumps(report["funnel"]), json.dumps(report["outcomes"])]
+    return p
+
+
+async def run_stages(
+    root: Path,
+    stages: tuple[str, ...] = STAGES,
+    *,
+    limit: int = 10_000,
+    concurrency: int = 4,
+    repeats: int = 3,
+) -> list[Progress]:
+    """Run the named stages in order, skipping work already recorded."""
+    paths = Paths(root)
+    out = []
+    for name in stages:
+        if name == "read":
+            out.append(await stage_read(paths, limit, concurrency))
+        elif name == "locate":
+            out.append(await stage_locate(paths, limit, concurrency))
+        elif name == "signature":
+            out.append(await stage_signature(paths, limit, concurrency))
+        elif name == "screen":
+            out.append(await stage_screen(paths, limit, concurrency))
+        elif name == "build":
+            out.append(stage_build(paths, limit))
+        elif name == "calibrate":
+            out.append(await stage_calibrate(paths, limit, concurrency))
+        elif name == "attempt":
+            out.append(await stage_attempt(paths, limit, concurrency, repeats))
+        elif name == "report":
+            out.append(stage_report(paths))
+        else:
+            raise ValueError(f"unknown stage: {name}")
+        print(out[-1].line(), flush=True)
+    return out
