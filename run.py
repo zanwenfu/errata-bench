@@ -83,10 +83,32 @@ def find_moments(limit: int, out: Path, *, skip_seen: Path | None = None) -> int
         for m in first_in_session.values()
         if (m["session_id"], m["turn_number"]) not in seen and m["repo_id"]
     ]
-    fresh.sort(key=lambda m: (m["repo_id"], m["session_id"]))
-    for m in fresh[:limit]:
+
+    # Spread across repositories rather than taking the first N of a sorted
+    # list. Sorting by repo_id and slicing gave fifty moments from a single
+    # repository, which measures that project rather than anything general: one
+    # codebase's conventions, one developer's habits, one language's toolchain.
+    # Round-robin instead, so a fifty-moment probe covers as many projects as it
+    # can before taking a second from any of them.
+    by_repo: dict[str, list[dict]] = {}
+    for m in fresh:
+        by_repo.setdefault(m["repo_id"], []).append(m)
+    for moments in by_repo.values():
+        moments.sort(key=lambda m: m["session_id"])
+
+    spread: list[dict] = []
+    while len(spread) < limit and by_repo:
+        for repo in sorted(by_repo):
+            if not by_repo[repo]:
+                continue
+            spread.append(by_repo[repo].pop(0))
+            if len(spread) >= limit:
+                break
+        by_repo = {r: ms for r, ms in by_repo.items() if ms}
+
+    for m in spread:
         append(out, m)
-    return min(len(fresh), limit)
+    return len(spread)
 
 
 def show_status(paths: Paths) -> None:
