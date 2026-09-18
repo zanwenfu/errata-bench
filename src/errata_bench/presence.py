@@ -245,6 +245,32 @@ def repo_url(repo_id: str, recorded: str) -> str:
     return recorded
 
 
+def _introduced_but_verified(sig) -> Callable[[Path], tuple[bool, str]]:
+    """An introduced defect whose absence from the starting tree can be checked.
+
+    The task's own premise is that the defect is not there yet. Where the
+    signature gives a distinctive token, that premise is testable, and a task
+    failing it is rejected rather than shipped: its classification and its
+    signature disagree, so one of them is wrong.
+    """
+
+    def probe(tree: Path) -> tuple[bool, str]:
+        found, detail = anywhere(sig.token)(tree)
+        if found:
+            return False, (
+                f"classified as introduced, meaning the starting tree should not "
+                f"contain the defect, but {detail}"
+            )
+        return True, (
+            f"introduced-defect task: {sig.token!r} is correctly absent from the "
+            f"starting tree"
+        )
+
+    probe.introduced = True  # type: ignore[attr-defined]
+    probe.verified = True  # type: ignore[attr-defined]
+    return probe
+
+
 def probe_for(sig) -> Callable[[Path], tuple[bool, str]]:
     """Build a probe from a derived :class:`~errata_bench.signature.Signature`.
 
@@ -258,6 +284,15 @@ def probe_for(sig) -> Callable[[Path], tuple[bool, str]]:
             f"the defect is behavioural and leaves no trace in the tree: {sig.reasoning[:160]}"
         )
     if sig.kind == "introduced":
+        # An introduced-defect task asserts the tree is clean, and the presence
+        # probe is skipped on that assertion. When the signature also names a
+        # distinctive token, the claim is checkable and worth checking: two
+        # tasks reached candidates as "introduced" while their token sat in the
+        # starting tree -- basher83-lunar-claude's `pre-commit-run` in
+        # mise.toml, maoxiaoke-nazha's `translate-x`. Either the classification
+        # is wrong or the token is, and both make the task unsound.
+        if sig.token and _is_distinctive(sig.token):
+            return _introduced_but_verified(sig)
         return introduced(
             f"the agent creates this defect; a clean starting tree is correct: {sig.reasoning[:160]}"
         )
@@ -298,11 +333,20 @@ def check(task_id: str, sig, tree: Path) -> Presence:
     probe = probe_for(sig)
     present, detail = probe(tree)
     if getattr(probe, "introduced", False):
-        # Nothing to find, and nothing wrong with that. Setup is sound; the
-        # defect is judged from what the candidate produces.
-        return Presence(
-            task_id, True, True, f"introduced-defect task: {detail}", "declared"
-        )
+        # An introduced defect is absent by definition, so `present` cannot mean
+        # what it means elsewhere. Two cases:
+        #
+        #   declared  no token to check. The task's premise is taken on trust,
+        #             as it always was, and the setup counts as sound.
+        #   verified  a distinctive token was available and the premise held,
+        #             or it did not -- in which case the task contradicts
+        #             itself and must be rejected.
+        #
+        # Conflating them rejected four sound tasks whose only fault was having
+        # no token to check.
+        if getattr(probe, "verified", False):
+            return Presence(task_id, present, True, detail, "verified")
+        return Presence(task_id, True, True, f"introduced-defect task: {detail}", "declared")
     probeable = not getattr(probe, "unprobeable", False)
     strength = "file" if getattr(probe, "weak", False) else "token"
     return Presence(task_id, present, probeable, detail, strength)
