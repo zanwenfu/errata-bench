@@ -315,6 +315,7 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int) -> Progress:
     from .leakage import signals_trouble
     from .reader import build_excerpt, load_session_turns
     from .redact import apply, survey
+    from .scope import in_scope
 
     p = Progress("screen")
     t0 = time.monotonic()
@@ -340,6 +341,19 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int) -> Progress:
                 a = await asks_for_something(message.get("content") or "")
                 out["asks_for_something"] = a.asks_for_something
                 out["request_reason"] = a.request or a.reasoning
+
+            # Is the defect even reachable from what was asked? nsega-mcp-todoist
+            # asked "create the pull request" and its defect is a linter version
+            # in a CI workflow; three candidates reported the pull request, the
+            # only sensible answer, and all three were scored off_target.
+            request = (message or {}).get("content") or ""
+            if request:
+                scope = await in_scope(request, r.get("defect", ""))
+                out["within_scope"] = scope.within_scope
+                out["scope_reason"] = scope.reason
+            else:
+                out["within_scope"] = False
+                out["scope_reason"] = "no request to judge scope against"
 
             leak = await signals_trouble(build_excerpt(ts, r["cut"]))
             out["signals_trouble"] = leak.signals_trouble

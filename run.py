@@ -188,7 +188,18 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("command", choices=["moments", "stages", "status"])
     ap.add_argument("--run", default="runs/current", help="directory for this run's files")
-    ap.add_argument("--limit", type=int, default=50, help="how many moments to collect")
+    ap.add_argument(
+        "--limit",
+        type=int,
+        default=50,
+        help="how many moments to collect (the `moments` command only)",
+    )
+    ap.add_argument(
+        "--max-rows",
+        type=int,
+        default=0,
+        help="cap how many rows each stage processes; 0 means all of them",
+    )
     ap.add_argument("--through", choices=STAGES, help="stop after this stage")
     ap.add_argument("--only", choices=STAGES, help="run just this stage")
     ap.add_argument("--concurrency", type=int, default=4)
@@ -232,7 +243,7 @@ def main() -> None:
         run_stages(
             root,
             stages,
-            limit=args.limit,
+            limit=args.max_rows or 10**9,
             concurrency=args.concurrency,
             repeats=args.repeats,
         )

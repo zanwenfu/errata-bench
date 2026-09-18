@@ -35,7 +35,13 @@ from .workspace import GitError, fetch
 
 
 
-def last_user_message(turns: list[dict], cut_turn: int, *, window: int = 80) -> dict | None:
+# How far back a request may sit and still be what the candidate is answering.
+# Beyond this the excerpt ends in the middle of the agent's own work, and the
+# candidate is continuing a task rather than replying to anyone.
+REQUEST_REACH = 80
+
+
+def last_user_message(turns: list[dict], cut_turn: int, *, window: int = REQUEST_REACH) -> dict | None:
     """The developer's most recent message at or before the cut, if any."""
     users = [
         t
@@ -47,6 +53,29 @@ def last_user_message(turns: list[dict], cut_turn: int, *, window: int = 80) -> 
     if not users:
         return None
     return max(users, key=lambda t: t.get("turn_number") or 0)
+
+
+def turns_since_request(turns: list[dict], cut_turn: int) -> int | None:
+    """How many turns separate the cut from the developer's last message.
+
+    None when there is no such message anywhere in the session before the cut.
+    Sixteen of twenty tasks ended on a tool result rather than a question, and
+    two -- Sagit-chu-flvx and heath0xFF-hChat -- had no developer message within
+    two hundred turns, yet both passed a gate that searched only eighty. The
+    candidate was continuing the agent's work, not answering anybody.
+
+    nsega-mcp-todoist shows what that produces. Its excerpt ends on the tool
+    result `https://github.com/nsega/mcp-todoist/pull/5`, so the model reported
+    the pull request it had just watched being created -- the only sensible
+    reply -- and was scored off_target three times for it.
+    """
+    for n in range(cut_turn, -1, -1):
+        for t in turns:
+            if (t.get("turn_number") or 0) != n:
+                continue
+            if t.get("turn_type") == "user_prompt" and (t.get("content") or "").strip():
+                return cut_turn - n
+    return None
 
 
 def base_commit(repo_id: str, session_ns: int | None, commits) -> str | None:
@@ -115,6 +144,10 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
 
         turns = turns_by_session.get(row["session_id"]) or []
         by_turn = {t.get("turn_number"): t for t in turns}
+
+        if row.get("within_scope") is False:
+            reject(f"the defect is outside the requested work: {row.get('scope_reason','')}")
+            continue
 
         asked = row.get("asks_for_something")
         why_not = row.get("request_reason", "")

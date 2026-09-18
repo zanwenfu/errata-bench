@@ -221,13 +221,30 @@ def _normalise(text: str) -> str:
 def quote_appears(quote: str, answer: str) -> bool:
     """Whether the judge's quote is really in the answer.
 
-    Whitespace is normalised because a model reflowing a quoted line is not
-    fabrication. Anything beyond that is: if the words are not there, the
-    verdict was not read off this answer.
+    Whitespace is normalised, because a model reflowing a quoted line is not
+    fabrication.
+
+    A quote spanning several lines is checked line by line. Judges cite
+    discontiguous evidence -- a table row from the middle of an answer joined by
+    a newline to a conclusion from the end -- and demanding the concatenation
+    appear verbatim rejects a citation whose every part is real. Seven of
+    twenty-one attempts were discarded as unreadable on exactly that, and all
+    seven had every fragment present in the reply.
+
+    What this still catches is invention. A fragment that appears nowhere fails,
+    and one fabricated line is enough to sink the verdict.
     """
     if not quote.strip():
         return False
-    return _normalise(quote) in _normalise(answer)
+    body = _normalise(answer)
+    if _normalise(quote) in body:
+        return True
+    # Short fragments are skipped: "- " or "yes" match everywhere and prove
+    # nothing, so a quote made only of those is not evidence.
+    fragments = [f for f in quote.split("\n") if len(f.strip()) > 15]
+    if not fragments:
+        return False
+    return all(_normalise(f) in body for f in fragments)
 
 
 async def judge(
