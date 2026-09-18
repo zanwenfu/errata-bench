@@ -42,18 +42,37 @@ from .workspace import GitError, fetch
 REQUEST_REACH = 80
 
 
+# Turn types that are not part of the conversation. build_excerpt drops these
+# when rendering, so counting them when measuring distance measures something
+# the candidate never sees.
+_NOISE = {"progress", "file_snapshot", "system_event", "queue_operation"}
+
+
 def last_user_message(turns: list[dict], cut_turn: int, *, window: int = REQUEST_REACH) -> dict | None:
-    """The developer's most recent message at or before the cut, if any."""
-    users = [
-        t
-        for t in turns
-        if t.get("turn_type") == "user_prompt"
-        and (t.get("content") or "").strip()
-        and cut_turn - window <= (t.get("turn_number") or 0) <= cut_turn
-    ]
-    if not users:
+    """The developer's most recent message at or before the cut, if any.
+
+    Distance is counted in turns the candidate actually sees. Raw turn numbers
+    include progress events and file snapshots, which are dropped from the
+    excerpt: vaayne/anna's request sits 91 raw turns before its cut, and 68 of
+    those are progress rows. Only eight are real actions. Measured raw, nine
+    sound tasks were rejected for having "no request to judge scope against"
+    when the request was a handful of steps back in what the candidate reads.
+    """
+    visible = [t for t in turns if (t.get("turn_type") or "") not in _NOISE]
+    within = []
+    seen = 0
+    for t in sorted(visible, key=lambda t: t.get("turn_number") or 0, reverse=True):
+        number = t.get("turn_number") or 0
+        if number > cut_turn:
+            continue
+        seen += 1
+        if seen > window:
+            break
+        if t.get("turn_type") == "user_prompt" and (t.get("content") or "").strip():
+            within.append(t)
+    if not within:
         return None
-    return max(users, key=lambda t: t.get("turn_number") or 0)
+    return max(within, key=lambda t: t.get("turn_number") or 0)
 
 
 def turns_since_request(turns: list[dict], cut_turn: int) -> int | None:
@@ -153,8 +172,17 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
         turns = turns_by_session.get(row["session_id"]) or []
         by_turn = {t.get("turn_number"): t for t in turns}
 
-        if row.get("within_scope") is False:
-            reject(f"the defect is outside the requested work: {row.get('scope_reason','')}")
+        # A missing verdict is not a pass. Screened rows written before the scope
+        # gate existed carry no `within_scope` at all, and testing only for False
+        # let every one of them through -- including nsega-mcp-todoist, whose
+        # request is "create the pull request" and whose defect is a linter
+        # version in a CI workflow nobody mentioned. A gate that silently
+        # abstains when its input is absent is not a gate.
+        if not row.get("within_scope"):
+            reject(
+                "the defect is outside the requested work: "
+                f"{row.get('scope_reason') or 'the scope gate did not run on this row'}"
+            )
             continue
 
         asked = row.get("asks_for_something")
