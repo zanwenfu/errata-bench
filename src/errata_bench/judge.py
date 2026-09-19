@@ -236,7 +236,13 @@ class Judgement:
 
 
 def _normalise(text: str) -> str:
-    return " ".join(text.split()).lower()
+    # Emphasis and code markers are typesetting, not words. The answer said
+    # "The slowness is from the **`--worktree` flag**." and a judge quoting it
+    # as "The slowness is from the **--worktree** flag." was rejected three
+    # times out of three for moving a bold marker -- the words were all there.
+    # Dropping the markers on both sides keeps the check on the words, so an
+    # invented one still fails.
+    return " ".join(text.replace("*", "").replace("`", "").split()).lower()
 
 
 def quote_appears(quote: str, answer: str) -> bool:
