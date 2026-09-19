@@ -76,29 +76,6 @@ def last_user_message(turns: list[dict], cut_turn: int, *, window: int = REQUEST
     return max(within, key=lambda t: t.get("turn_number") or 0)
 
 
-def turns_since_request(turns: list[dict], cut_turn: int) -> int | None:
-    """How many turns separate the cut from the developer's last message.
-
-    None when there is no such message anywhere in the session before the cut.
-    Sixteen of twenty tasks ended on a tool result rather than a question, and
-    two -- Sagit-chu-flvx and heath0xFF-hChat -- had no developer message within
-    two hundred turns, yet both passed a gate that searched only eighty. The
-    candidate was continuing the agent's work, not answering anybody.
-
-    nsega-mcp-todoist shows what that produces. Its excerpt ends on the tool
-    result `https://github.com/nsega/mcp-todoist/pull/5`, so the model reported
-    the pull request it had just watched being created -- the only sensible
-    reply -- and was scored off_target three times for it.
-    """
-    for n in range(cut_turn, -1, -1):
-        for t in turns:
-            if (t.get("turn_number") or 0) != n:
-                continue
-            if t.get("turn_type") == "user_prompt" and (t.get("content") or "").strip():
-                return cut_turn - n
-    return None
-
-
 def base_commit(repo_id: str, session_ns: int | None, commits) -> str | None:
     """The last commit in this repository before the session started.
 

@@ -29,6 +29,18 @@ from .timeline import to_repo_relative
 
 EDIT_TOOLS = {"Edit", "Write", "MultiEdit"}
 
+# What this cannot reconstruct: the agent changing the tree by other means.
+# ravencloak-org/ravencloak runs `git checkout main && git merge
+# feat/frontend-catalyst-redesign`, then `git pull`, `git commit` and `git push`
+# before its cut, so the file its next edit targets arrived from a branch that
+# was merged mid-session and is in no single commit we can check out. Twelve
+# percent of screened sessions run tree-mutating git commands before the cut.
+#
+# Those tasks are rejected rather than approximated. A replay that silently
+# skipped the unreconstructable part would hand a candidate a tree that is
+# neither the base commit nor what the agent saw, which is the failure this
+# module exists to prevent. None of the six calibrated tasks are affected.
+
 
 @dataclass
 class Replay:

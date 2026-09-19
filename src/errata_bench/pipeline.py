@@ -86,8 +86,17 @@ def append(path: Path, row: dict) -> None:
 
 
 def key_of(row: dict) -> tuple:
-    """What makes a row unique: one pushback moment in one session."""
-    return (row.get("session_id"), row.get("turn_number") or row.get("complaint"))
+    """What makes a row unique: one pushback moment in one session.
+
+    Turn zero is a real turn. Written as ``turn_number or complaint`` it is
+    falsy, so a moment at turn 0 silently keys on its complaint turn instead --
+    a different number, so the row looks new on every resume and is processed
+    again, or collides with another row that genuinely has that complaint.
+    """
+    turn = row.get("turn_number")
+    if turn is None:
+        turn = row.get("complaint")
+    return (row.get("session_id"), turn)
 
 
 def already_done(path: Path) -> set[tuple]:
