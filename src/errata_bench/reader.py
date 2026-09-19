@@ -25,11 +25,12 @@ line. A cited claim can be checked against the transcript; a score cannot.
 
 from __future__ import annotations
 
+import os
+
 from pathlib import Path
 
 from pydantic import BaseModel, Field
 
-MODEL = "gpt-6-astra"
 
 # The SDK's defaults are Timeout(connect=5, read=600, write=600, pool=600) with
 # max_retries=2, so one stalled read can block for 600s and up to 1,800s across
@@ -40,6 +41,9 @@ MODEL = "gpt-6-astra"
 REQUEST_TIMEOUT_S = 120.0
 MAX_RETRIES = 1
 _client_configured = False
+
+
+_DEFAULT_MODEL = "gpt-6-astra"
 
 
 def _load_dotenv() -> None:
@@ -80,8 +84,36 @@ def _load_dotenv() -> None:
 # is genuinely borderline rather than noisy, and a task that close to the line
 # should be excluded rather than admitted on a coin flip.
 
+_load_dotenv()
+
+# Resolved at import because twelve call sites bind it as a default argument.
+# On Azure this must be a *deployment* name: Azure routes by deployment, not by
+# model, and a request naming a model with no matching deployment fails with
+# DeploymentNotFound however valid the model is.
+MODEL = os.environ.get("ERRATA_MODEL") or _DEFAULT_MODEL
+
+
+def model_name() -> str:
+    """The model to call, which on Azure is a deployment name.
+
+    Azure routes by deployment, not by model: a request naming `gpt-5` fails
+    with DeploymentNotFound unless a deployment is literally called that. So the
+    name is configurable, and the default only applies to the direct API.
+    """
+    import os
+
+    _load_dotenv()
+    return os.environ.get("ERRATA_MODEL") or MODEL
+
+
 def configure_client() -> None:
-    """Install an API client that fails fast instead of hanging."""
+    """Install an API client that fails fast instead of hanging.
+
+    Azure is used when AZURE_OPENAI_BASE_URL is set, and the direct OpenAI API
+    otherwise. Azure's v1 surface accepts `Authorization: Bearer`, verified
+    against the live endpoint, so the ordinary client works with a base_url --
+    no AsyncAzureOpenAI, no api-version juggling.
+    """
     global _client_configured
     if _client_configured:
         return
@@ -91,15 +123,31 @@ def configure_client() -> None:
     from openai import AsyncOpenAI
 
     _load_dotenv()
-    key = os.environ.get("OPENAI_API_KEY")
-    if not key:
-        raise RuntimeError(
-            "OPENAI_API_KEY is not set and no .env supplies it. Refusing to run: "
-            "a missing credential otherwise reads as a batch of unusable data."
+    azure_base = os.environ.get("AZURE_OPENAI_BASE_URL")
+    if azure_base:
+        key = os.environ.get("AZURE_OPENAI_API_KEY")
+        if not key:
+            raise RuntimeError(
+                "AZURE_OPENAI_BASE_URL is set but AZURE_OPENAI_API_KEY is not."
+            )
+        client = AsyncOpenAI(
+            api_key=key,
+            base_url=azure_base.rstrip("/"),
+            timeout=REQUEST_TIMEOUT_S,
+            max_retries=MAX_RETRIES,
         )
-    set_default_openai_client(
-        AsyncOpenAI(api_key=key, timeout=REQUEST_TIMEOUT_S, max_retries=MAX_RETRIES)
-    )
+    else:
+        key = os.environ.get("OPENAI_API_KEY")
+        if not key:
+            raise RuntimeError(
+                "No credential: set AZURE_OPENAI_BASE_URL with AZURE_OPENAI_API_KEY, "
+                "or OPENAI_API_KEY. Refusing to run -- a missing credential "
+                "otherwise reads as a batch of unusable data."
+            )
+        client = AsyncOpenAI(
+            api_key=key, timeout=REQUEST_TIMEOUT_S, max_retries=MAX_RETRIES
+        )
+    set_default_openai_client(client)
     _client_configured = True
 
 
