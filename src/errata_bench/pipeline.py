@@ -601,7 +601,8 @@ async def stage_attempt(
     paths: Paths, limit: int, concurrency: int, repeats: int = 3
 ) -> Progress:
     """Run candidates against every task the judge can read."""
-    from .attempt import INSTRUCTIONS as CANDIDATE_RULES, run, transcript_for
+    from .attempt import INSTRUCTIONS as CANDIDATE_RULES
+    from .attempt import environment_note, run, transcript_for
     from .container import MAX_CONTAINERS, image_for, sweep
     from .corpus import load_repos
     from .judge import judge
@@ -677,7 +678,7 @@ async def stage_attempt(
                 # What the candidate was told it had. Otherwise "the network is
                 # unavailable here" reads as an unsupported claim, when it is
                 # the harness's own sentence.
-                given=f"{CANDIDATE_RULES}\n\nIts commands ran in: {attempt.environment}.",
+                given=f"{CANDIDATE_RULES}\n\n{environment_note(attempt.environment)}",
             )
             score = combine(verdict, structure, trace_check)
             append(

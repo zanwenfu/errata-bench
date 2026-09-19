@@ -72,6 +72,29 @@ class CandidateAnswer(BaseModel):
     )
 
 
+def environment_note(environment: str = "host") -> str:
+    """What the candidate was given, for a reader checking its claims.
+
+    A candidate writing "graph-memory tools aren't available here", "electron-vite
+    is not installed" or "this working copy has no Git metadata" is describing
+    the harness, not claiming work -- and every one of those is true. The trace
+    check called eight such statements unsupported in one regrade, because
+    nothing told it what the harness provides. It is a short, fixed description
+    and it costs nothing to supply.
+    """
+    return (
+        "The agent had exactly five tools: read_file, list_dir, write_file, "
+        "edit_file and run_command. It had no others of any kind -- no memory, "
+        "issue-tracker, browser or network tools.\n"
+        f"Its commands ran in: {environment}.\n"
+        "The network was refused: any command reaching it returned a refusal.\n"
+        "Its working copy is an export of one commit with no .git directory, so "
+        "git history and git commands were unavailable.\n"
+        "Only the project's own toolchain was present, and often not that: a "
+        "command for a tool that is not installed simply fails."
+    )
+
+
 def transcript_for(task: Task, turns: list[dict]) -> str:
     """The conversation the candidate is shown: redacted, then cut and rendered.
 

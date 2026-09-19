@@ -148,10 +148,10 @@ async def calibrate_all(src: Paths, out: Paths, model: str, concurrency: int) ->
 
 async def controls_all(src: Paths, out: Paths, model: str, concurrency: int) -> Progress:
     """Fixed answers whose grades are known, through both of this judge's readings."""
-    from .attempt import INSTRUCTIONS as CANDIDATE_RULES
+    from .attempt import INSTRUCTIONS as CANDIDATE_RULES, environment_note
     from .control import CONTROLS, check
     from .spec import read
-    from .trace import check as check_trace
+    from .trace import check as check_trace, verify as probe_trace
 
     p = Progress("control")
     t0 = time.monotonic()
@@ -178,7 +178,7 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int) -> 
                 [],
                 model=model,
                 context=context.get(task.task_id, ""),
-                given=f"{CANDIDATE_RULES}\n\nIt ran no commands.",
+                given=f"{CANDIDATE_RULES}\n\n{environment_note('an environment it never used: it ran no commands')}",
             )
         except Exception as e:
             append(out.controls, {
@@ -205,6 +205,26 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int) -> 
         results = await _gather([one(t, c) for t, c in jobs], concurrency)
         p.produced = sum(1 for r in results if r)
         p.failed = sum(1 for r in results if not r)
+
+    # Six known answers for the trace check itself, run once per judge. The
+    # controls above test it through a task; these test it directly, and they
+    # exist because every prompt change to it was verified against the same
+    # eighteen attempts it was derived from.
+    if tasks and not any(r.get("control", "").startswith("probe:") for r in load(out.controls)):
+        rules = f"{CANDIDATE_RULES}\n\n{environment_note('host')}"
+        sample = context.get(tasks[0].task_id, "") if context else ""
+        try:
+            for r in await probe_trace(model=model, context=sample, given=rules):
+                append(out.controls, {
+                    "task_id": "(trace probe)", "control": f"probe:{r['probe']}",
+                    "judge_model": model, "ok": r["ok"], "trace_ok": r["ok"],
+                    "must_flag": r["must_flag"], "flagged": r["flagged"],
+                    "detail": "as expected" if r["ok"] else
+                              ("missed what it must flag" if r["must_flag"] else "flagged what is fine"),
+                })
+        except Exception as e:
+            append(out.controls, {"task_id": "(trace probe)", "control": "probe", "ok": False,
+                                  "judge_model": model, "error": f"{type(e).__name__}: {e}"})
     p.took_s = time.monotonic() - t0
     return p
 
@@ -239,7 +259,7 @@ async def regrade_all(
     often. Agreement between two judges only means something next to how often
     each agrees with itself.
     """
-    from .attempt import INSTRUCTIONS as CANDIDATE_RULES
+    from .attempt import INSTRUCTIONS as CANDIDATE_RULES, environment_note
     from .judge import judge
     from .spec import read
     from .structure import combine
@@ -274,7 +294,7 @@ async def regrade_all(
                 a["tool_calls"],
                 model=model,
                 context=context.get(task.task_id, ""),
-                given=f"{CANDIDATE_RULES}\n\nIts commands ran in: {a.get('environment', 'host')}.",
+                given=f"{CANDIDATE_RULES}\n\n{environment_note(a.get('environment', 'host'))}",
             )
         except Exception as e:
             append(out.attempts, {
@@ -363,6 +383,8 @@ def summarise(src: Paths, out: Paths, model: str) -> dict:
                  for r in graded if (r["task_id"], r["run"]) in repeat]
         return _rate(sum(1 for a, b in pairs if a == b), len(pairs))
 
+    probes = [r for r in ctl if str(r.get("control", "")).startswith("probe:")]
+    ctl = [r for r in ctl if not str(r.get("control", "")).startswith("probe:")]
     trace_ctl = [r for r in ctl if "trace_ok" in r]
     return {
         "judge": model,
@@ -378,6 +400,8 @@ def summarise(src: Paths, out: Paths, model: str) -> dict:
         "controls": {
             "judge_behaved": _rate(sum(1 for r in ctl if r.get("ok")), len(ctl)),
             "trace_check_behaved": _rate(sum(1 for r in trace_ctl if r["trace_ok"]), len(trace_ctl)),
+            "trace_check_probes": _rate(sum(1 for r in probes if r.get("ok")), len(probes)),
+            "probes_wrong": [r["control"][6:] for r in probes if not r.get("ok")],
             "tasks_failed": sorted(broken),
         },
         "regraded": len(graded),
