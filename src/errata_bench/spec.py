@@ -131,18 +131,28 @@ class Task:
 
 
 def write(tasks: list[Task], path: Path) -> None:
+    """Write the task file atomically.
+
+    build() rewrites this wholesale on every run, so writing in place would mean
+    a kill partway through leaves a truncated task list and loses the rest.
+    """
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("w") as fh:
-        for t in tasks:
-            fh.write(json.dumps(t.to_json()) + "\n")
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text("".join(json.dumps(t.to_json()) + "\n" for t in tasks))
+    tmp.replace(path)
 
 
 def read(path: Path) -> list[Task]:
-    return [
-        Task.from_json(json.loads(line))
-        for line in path.read_text().splitlines()
-        if line.strip()
-    ]
+    """Every complete task in the file, skipping any line left truncated."""
+    out = []
+    for line in path.read_text().splitlines():
+        if not line.strip():
+            continue
+        try:
+            out.append(Task.from_json(json.loads(line)))
+        except (ValueError, TypeError):
+            continue
+    return out
 
 
 @dataclass

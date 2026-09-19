@@ -38,15 +38,13 @@ from errata_bench.pipeline import STAGES, Paths, append, load, run_stages  # noq
 # JSON files". Nothing had happened yet for anyone to object to.
 PUSHBACK_KINDS = ("failure_report", "rejection", "correction", "takeover")
 
-# Measured viability, over the ninety-five moments read so far. The spread is
-# real and worth ordering by, but none of these are so weak that they should be
-# excluded outright.
-KIND_YIELD = {
-    "rejection": 0.58,
-    "failure_report": 0.39,
-    "correction": 0.18,
-    "takeover": 0.14,
-}
+# Moments are NOT ordered by pushback kind. Three measurements of viability by
+# kind disagreed with each other: corrections came out worst at 18%, then best
+# at 52%, then middling at 33%, while failure reports moved the other way. All
+# three kinds sit near 35-40% once the noise is allowed for, and takeover is too
+# rare to rank at all. Sorting by a number that reorders itself every time is
+# fitting noise, and it makes a sample harder to reason about rather than
+# easier -- a run's composition then depends on which measurement was current.
 
 
 def find_moments(
@@ -141,14 +139,14 @@ def find_moments(
 
     # Spread across repositories rather than taking the first N of a sorted list.
     # Sorting by repo_id and slicing gave fifty moments from a single repository,
-    # which measures that project rather than anything general. Within each
-    # repository the most promising kind comes first, so a short run does not
-    # spend its budget on corrections when rejections are available.
+    # which measures that project rather than anything general. Within a
+    # repository the order is by session id: stable, arbitrary, and not a
+    # judgement about which moments are worth more.
     by_repo: dict[str, list[dict]] = {}
     for m in fresh:
         by_repo.setdefault(m["repo_id"], []).append(m)
     for moments in by_repo.values():
-        moments.sort(key=lambda m: (-KIND_YIELD.get(m["kind"], 0), m["session_id"]))
+        moments.sort(key=lambda m: m["session_id"])
 
     # A per-repository cap, because round-robin alone stops being diverse once
     # the small repositories are exhausted. Asking for 1,600 moments from the

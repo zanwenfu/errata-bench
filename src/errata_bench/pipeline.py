@@ -68,9 +68,39 @@ class Paths:
 
 
 def load(path: Path) -> list[dict]:
+    """Every complete row in a stage's file.
+
+    A line that will not parse is skipped rather than raised. Killing a run
+    mid-write leaves its last line truncated, and a loader that crashes on that
+    makes the entire run unreadable -- every finished row lost to one interrupted
+    append. Skipping costs at most the row that was being written when the
+    process died, which by definition never completed.
+    """
     if not path.exists():
         return []
-    return [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
+    rows, broken = [], 0
+    for line in path.read_text().splitlines():
+        if not line.strip():
+            continue
+        try:
+            rows.append(json.loads(line))
+        except ValueError:
+            broken += 1
+    if broken:
+        print(f"  note: skipped {broken} incomplete row(s) in {path.name}", flush=True)
+    return rows
+
+
+def replace(path: Path, rows: list[dict]) -> None:
+    """Rewrite a stage's file atomically.
+
+    Writing in place means a kill partway through leaves a half-written file and
+    destroys every row that was already there. Writing a sibling and renaming
+    makes the swap atomic: the reader sees either the old file or the new one.
+    """
+    tmp = path.with_suffix(path.suffix + ".tmp")
+    tmp.write_text("".join(json.dumps(r) + "\n" for r in rows))
+    tmp.replace(path)
 
 
 def append(path: Path, row: dict) -> None:
@@ -114,7 +144,7 @@ def completed(path: Path) -> list[dict]:
     rows = load(path)
     kept = [r for r in rows if not r.get("error") and "error:" not in str(r.get("reason", ""))]
     if len(kept) != len(rows):
-        path.write_text("".join(json.dumps(r) + "\n" for r in kept))
+        replace(path, kept)
     return kept
 
 
@@ -449,7 +479,7 @@ def stage_build(paths: Paths, limit: int) -> Progress:
         kept = [r for r in load(downstream) if r.get("task_id") in surviving]
         dropped = len(load(downstream)) - len(kept)
         if dropped:
-            downstream.write_text("".join(json.dumps(r) + "\n" for r in kept))
+            replace(downstream, kept)
             p.notes.append(f"dropped {dropped} stale rows from {downstream.name}")
     p.produced = len(result.tasks)
     p.failed = len(result.rejected)
