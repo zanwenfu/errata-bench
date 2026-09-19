@@ -126,12 +126,20 @@ def configure_client() -> None:
     from openai import AsyncOpenAI
 
     _load_dotenv()
+    # Both overridable, neither changed. grok-4.6 spends about 4,900 tokens
+    # reasoning before a one-paragraph judgement -- 96 seconds on a short task --
+    # so a long one crosses the 120-second limit and is retried from scratch.
+    # Kimi-K2.7-Code is fast but capped at 50,000 tokens a minute, about six
+    # judge calls, so it needs more retries rather than more time.
+    timeout = float(os.environ.get("ERRATA_TIMEOUT") or REQUEST_TIMEOUT_S)
+    retries = int(os.environ.get("ERRATA_MAX_RETRIES") or MAX_RETRIES)
     # The direct API is the default and is unchanged. Azure is opt-in through
     # ERRATA_PROVIDER=azure, never inferred from the presence of a variable:
     # inferring it from AZURE_OPENAI_BASE_URL silently rerouted every call in
     # the pipeline to a resource with no deployments, and the working path
     # became unreachable while its credential was still sitting there.
-    if os.environ.get("ERRATA_PROVIDER", "").lower() == "azure":
+    azure = os.environ.get("ERRATA_PROVIDER", "").lower() == "azure"
+    if azure:
         base = os.environ.get("AZURE_OPENAI_BASE_URL")
         key = os.environ.get("AZURE_OPENAI_API_KEY")
         if not base or not key:
@@ -142,9 +150,16 @@ def configure_client() -> None:
         client = AsyncOpenAI(
             api_key=key,
             base_url=base.rstrip("/"),
-            timeout=REQUEST_TIMEOUT_S,
-            max_retries=MAX_RETRIES,
+            timeout=timeout,
+            max_retries=retries,
         )
+        # The SDK uploads a trace of every run to OpenAI's dashboard by
+        # default, whichever provider answered. On Azure that sends the
+        # prompts -- transcripts from other people's repositories -- to a
+        # second company nobody chose, and it was failing with 401 anyway.
+        from agents import set_tracing_disabled
+
+        set_tracing_disabled(True)
     else:
         key = os.environ.get("OPENAI_API_KEY")
         if not key:
@@ -152,9 +167,7 @@ def configure_client() -> None:
                 "OPENAI_API_KEY is not set and no .env supplies it. Refusing to run: "
                 "a missing credential otherwise reads as a batch of unusable data."
             )
-        client = AsyncOpenAI(
-            api_key=key, timeout=REQUEST_TIMEOUT_S, max_retries=MAX_RETRIES
-        )
+        client = AsyncOpenAI(api_key=key, timeout=timeout, max_retries=retries)
     set_default_openai_client(client)
 
     # Which API surface the SDK uses. The default is unchanged -- the Responses
