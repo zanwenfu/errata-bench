@@ -99,8 +99,27 @@ def key_of(row: dict) -> tuple:
     return (row.get("session_id"), turn)
 
 
+def completed(path: Path) -> list[dict]:
+    """Rows a stage actually finished, dropping any that errored.
+
+    A row that failed is not a row that is done. Written without this, resume
+    keys on identity alone and an errored row looks finished forever: a run that
+    exhausted its API credits partway recorded 253 read failures, and resuming
+    after a top-up would have skipped every one of them permanently, leaving a
+    funnel that silently lost two thirds of its input.
+
+    Dropping them from the file is what makes the retry happen -- the stage
+    recomputes `done` from what is left, so the failed rows come back as work.
+    """
+    rows = load(path)
+    kept = [r for r in rows if not r.get("error") and "error:" not in str(r.get("reason", ""))]
+    if len(kept) != len(rows):
+        path.write_text("".join(json.dumps(r) + "\n" for r in kept))
+    return kept
+
+
 def already_done(path: Path) -> set[tuple]:
-    return {key_of(r) for r in load(path)}
+    return {key_of(r) for r in completed(path)}
 
 
 @dataclass
@@ -447,7 +466,7 @@ async def stage_calibrate(paths: Paths, limit: int, concurrency: int) -> Progres
     p = Progress("calibrate")
     t0 = time.monotonic()
     tasks = read(paths.tasks)
-    done = {r["task_id"] for r in load(paths.calibration)}
+    done = {r["task_id"] for r in completed(paths.calibration)}
     todo = [t for t in tasks if t.task_id not in done]
     p.skipped = len(tasks) - len(todo)
 
@@ -504,11 +523,7 @@ async def stage_control(paths: Paths, limit: int, concurrency: int) -> Progress:
     # stage -- so one transient API error would retire a sound task permanently,
     # because resume keys on (task, control) regardless of why the row exists.
     # Errored rows are dropped and retried, exactly as errored attempts are.
-    previous = load(paths.controls)
-    kept = [r for r in previous if not r.get("error")]
-    if len(kept) != len(previous):
-        paths.controls.write_text("".join(json.dumps(r) + "\n" for r in kept))
-    done = {(r["task_id"], r["control"]) for r in kept}
+    done = {(r["task_id"], r["control"]) for r in completed(paths.controls)}
     jobs = [(t, c) for t in tasks for c in CONTROLS if (t.task_id, c.name) not in done]
     p.skipped = len(tasks) * len(CONTROLS) - len(jobs)
     if not jobs:
@@ -562,11 +577,7 @@ async def stage_attempt(
     # died on API rate limits and were then counted as done, so a re-run would
     # have skipped exactly the work that needed redoing. Errored rows are
     # dropped here and their (task, run) pairs retried.
-    previous = load(paths.attempts)
-    kept = [r for r in previous if not r.get("error")]
-    if len(kept) != len(previous):
-        paths.attempts.write_text("".join(json.dumps(r) + "\n" for r in kept))
-    done = {(r["task_id"], r["run"]) for r in kept}
+    done = {(r["task_id"], r["run"]) for r in completed(paths.attempts)}
     repos = load_repos()
     images = {
         t.task_id: image_for(getattr(repos.get(t.repo_id), "language", None))
