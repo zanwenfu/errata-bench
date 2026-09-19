@@ -605,6 +605,7 @@ async def stage_attempt(
     from .container import MAX_CONTAINERS, image_for, sweep
     from .corpus import load_repos
     from .judge import judge
+    from .reader import MODEL as JUDGE_MODEL
     from .spec import read
     from .structure import analyse, combine
     from .trace import check as check_trace
@@ -673,8 +674,16 @@ async def stage_attempt(
                     # the candidate ran what it claimed to have run.
                     "tool_calls": [c.to_json() for c in attempt.tool_calls],
                     "model": model,
+                    # Which model graded this, since it need not be the one
+                    # that answered. Earlier rows omit it; they were graded by
+                    # the candidate model itself.
+                    "judge_model": JUDGE_MODEL,
                     "seconds": round(time.monotonic() - started, 1),
-                    "reply": attempt.reply[:4000],
+                    # Whole, not cut. The judge reads up to 12,000 characters
+                    # and the trace check 8,000; storing 4,000 meant three
+                    # answers could not be regraded on the text the original
+                    # judge had actually read.
+                    "reply": attempt.reply,
                     "judgement": verdict.to_json(),
                     **score.to_json(),
                 },
