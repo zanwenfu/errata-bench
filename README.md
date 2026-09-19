@@ -134,3 +134,25 @@ Two traps worth knowing, both found the hard way:
     echo 'OPENAI_API_KEY=...' > .env
 
 Corpus path is set in `corpus.py`.
+
+Another provider is opt-in and leaves the default path untouched:
+
+    ERRATA_PROVIDER=azure ERRATA_MODEL=<deployment> python run.py stages ...
+
+To grade answers a run already holds with a different judge, running no
+candidate — each judge must first pass the same known-answer tests, and
+`--passes 2` measures its own noise:
+
+    ERRATA_PROVIDER=azure python run.py rejudge --run runs/scale400c \
+        --judge <deployment> --passes 2
+    python run.py judges --run runs/scale400c      every judge, side by side
+
+## Documents
+
+- [`docs/research-log.md`](docs/research-log.md) — the running record: every
+  bug, decision, assumption, result and open gap, with its evidence. Update it
+  in the same commit as the change.
+- [`docs/SWE-CHAT-FINDINGS.md`](docs/SWE-CHAT-FINDINGS.md) — can this corpus
+  become a runnable benchmark at all (measured 09-13).
+- [`docs/PUSHBACK-FINDINGS.md`](docs/PUSHBACK-FINDINGS.md) — do developer
+  pushbacks identify real agent errors (measured 09-14).
