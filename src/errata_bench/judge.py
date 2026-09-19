@@ -31,7 +31,7 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, Field
 
-from .reader import MODEL, configure_client
+from .reader import MODEL, configure_client, with_field_guide
 from .spec import Task
 
 class Verdict(BaseModel):
@@ -287,7 +287,7 @@ async def judge(
     configure_client()
     agent = Agent(
         name="answer-judge",
-        instructions=INSTRUCTIONS,
+        instructions=with_field_guide(INSTRUCTIONS, Verdict),
         model=model,
         output_type=Verdict,
     )

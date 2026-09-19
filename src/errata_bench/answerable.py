@@ -27,7 +27,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from .reader import MODEL, configure_client
+from .reader import MODEL, configure_client, with_field_guide
 
 
 class Answerable(BaseModel):
@@ -75,7 +75,7 @@ async def asks_for_something(message: str, *, model: str = MODEL) -> Answerable:
     configure_client()
     agent = Agent(
         name="request-reader",
-        instructions=INSTRUCTIONS,
+        instructions=with_field_guide(INSTRUCTIONS, Answerable),
         model=model,
         output_type=Answerable,
     )

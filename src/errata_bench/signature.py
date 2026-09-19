@@ -34,7 +34,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from .reader import MODEL, configure_client
+from .reader import MODEL, configure_client, with_field_guide
 
 
 class Signature(BaseModel):
@@ -116,7 +116,7 @@ async def derive(defect: str, resolution: str, *, repo_id: str = "") -> Signatur
     configure_client()
     agent = Agent(
         name="signature-reader",
-        instructions=INSTRUCTIONS,
+        instructions=with_field_guide(INSTRUCTIONS, Signature),
         model=MODEL,
         output_type=Signature,
     )

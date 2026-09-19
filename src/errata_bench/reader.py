@@ -188,6 +188,63 @@ def configure_client() -> None:
     _client_configured = True
 
 
+def _describe(schema: dict, defs: dict, indent: str = "") -> list[str]:
+    """One line per field of a JSON schema: its name, its type, what it means."""
+    lines = []
+    for name, prop in (schema.get("properties") or {}).items():
+        # Optional fields arrive as anyOf [X, null]; describe the X.
+        options = [p for p in prop.get("anyOf", [prop]) if p.get("type") != "null"]
+        target = options[0] if options else prop
+        nested = None
+        ref = target.get("$ref") or (target.get("items") or {}).get("$ref")
+        if ref:
+            nested = defs.get(ref.rsplit("/", 1)[-1])
+        kind = {
+            "boolean": "true/false", "integer": "whole number", "number": "number",
+            "string": "text", "array": "list", "object": "object",
+        }.get(target.get("type", ""), "object" if nested else "value")
+        described = prop.get("description") or target.get("description") or ""
+        lines.append(f"{indent}- {name} ({kind}): {' '.join(described.split())}".rstrip(": "))
+        if nested:
+            lines.append(f"{indent}  Each entry in {name} has:")
+            lines.extend(_describe(nested, defs, indent + "  "))
+    return lines
+
+
+def with_field_guide(instructions: str, output_type) -> str:
+    """The instructions, plus what each output field means where it would be lost.
+
+    Most of what the output fields mean is written in their descriptions:
+    the reader's allowed values for objection_kind exist nowhere else, and the
+    judge's "quote the candidate, not the reference answers" is there. OpenAI
+    models receive those descriptions with the schema. DeepSeek-V4-Pro and
+    Kimi-K2.7-Code on Azure do not -- asked for a field described as "always
+    the number 42", both answer 4 with a random colour, while grok-4.6 answers
+    42 and "purple" -- so they fill in named fields with no idea what the
+    names are meant to mean. Graded that way, DeepSeek read one known pair in
+    eleven correctly.
+
+    So on Azure the descriptions are also written into the instructions, for
+    every model there alike, so judges being compared see identical text. On
+    the direct API this returns the instructions untouched. ERRATA_FIELD_GUIDE
+    set to 1 or 0 forces it either way.
+    """
+    forced = os.environ.get("ERRATA_FIELD_GUIDE")
+    wanted = (
+        forced == "1"
+        if forced in ("0", "1")
+        else os.environ.get("ERRATA_PROVIDER", "").lower() == "azure"
+    )
+    if not wanted:
+        return instructions
+    schema = output_type.model_json_schema()
+    guide = "\n".join(_describe(schema, schema.get("$defs", {})))
+    return (
+        f"{instructions}\n\n"
+        f"Your reply is a JSON object with the fields below. What each one means:\n\n{guide}"
+    )
+
+
 class Evidence(BaseModel):
     """A specific thing the agent said or did, locatable in the transcript."""
 
@@ -359,7 +416,7 @@ async def read_pushback(
     excerpt = build_excerpt(turns, pushback_turn, mark_pushback=True)
     agent = Agent(
         name="pushback-reader",
-        instructions=INSTRUCTIONS,
+        instructions=with_field_guide(INSTRUCTIONS, Reading),
         model=MODEL,
         output_type=Reading,
     )

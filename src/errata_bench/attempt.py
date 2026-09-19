@@ -37,7 +37,7 @@ from agents import Agent, Runner, function_tool
 from agents.run_context import RunContextWrapper
 from pydantic import BaseModel, Field
 
-from .reader import MODEL, build_excerpt, configure_client, load_session_turns
+from .reader import MODEL, build_excerpt, configure_client, load_session_turns, with_field_guide
 from .container import Container
 from .edits import edits_before, replay
 from .redact import apply as apply_redaction
@@ -384,7 +384,7 @@ async def run(
                 box = None
         agent = Agent(
             name="candidate",
-            instructions=INSTRUCTIONS,
+            instructions=with_field_guide(INSTRUCTIONS, CandidateAnswer),
             model=model,
             tools=[read_file, list_dir, write_file, edit_file, run_command],
             output_type=CandidateAnswer,

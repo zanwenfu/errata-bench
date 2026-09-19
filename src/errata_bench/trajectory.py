@@ -50,7 +50,7 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, Field
 
-from .reader import MODEL, configure_client
+from .reader import MODEL, configure_client, with_field_guide
 
 
 class Quote(BaseModel):
@@ -269,7 +269,7 @@ async def locate(
     configure_client()
     agent = Agent(
         name="trajectory-reader",
-        instructions=INSTRUCTIONS,
+        instructions=with_field_guide(INSTRUCTIONS, Trajectory),
         model=MODEL,
         output_type=Trajectory,
     )

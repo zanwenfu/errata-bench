@@ -38,7 +38,7 @@ from dataclasses import dataclass, field
 
 from pydantic import BaseModel, Field
 
-from .reader import MODEL, configure_client
+from .reader import MODEL, configure_client, with_field_guide
 
 # How much of each turn the surveyor is shown. A rewrite covers only this much.
 SURVEY_CHARS = 2500
@@ -219,7 +219,7 @@ async def survey(turns: list[dict], cut_turn: int, *, model: str = MODEL) -> Red
         for t in shown[-40:]
     )
     agent = Agent(
-        name="hint-surveyor", instructions=INSTRUCTIONS, model=model, output_type=Survey
+        name="hint-surveyor", instructions=with_field_guide(INSTRUCTIONS, Survey), model=model, output_type=Survey
     )
     result = await Runner.run(agent, f"The conversation:\n\n{rendered}", max_turns=3)
     s: Survey = result.final_output

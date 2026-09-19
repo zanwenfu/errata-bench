@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from .reader import MODEL, configure_client
+from .reader import MODEL, configure_client, with_field_guide
 
 
 class Leakage(BaseModel):
@@ -76,7 +76,7 @@ async def signals_trouble(excerpt: str, *, model: str = MODEL) -> Leakage:
     configure_client()
     agent = Agent(
         name="leakage-reader",
-        instructions=INSTRUCTIONS,
+        instructions=with_field_guide(INSTRUCTIONS, Leakage),
         model=model,
         output_type=Leakage,
     )
