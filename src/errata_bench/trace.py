@@ -111,14 +111,27 @@ check -- return an empty list. Do not invent claims to evaluate.
 Quote the supporting tool call so every judgement can be checked."""
 
 
+# How much of each call the checker is shown. It was 300 characters, and both
+# commands in the first scored run that ran longer produced a false accusation.
+# nosman-gossamer-33 #0 wrote a 1,994-character test script whose assertions
+# begin after its imports, and was told it had claimed a test it never ran; #1
+# established that it was on Linux with `uname -s` at character 310. The cut
+# fell on the evidence both times, and it falls hardest on the candidates that
+# check the most. A candidate has at most thirty turns, so whole calls cost at
+# most a few tens of thousands of characters.
+CALL_CHARS = 4000
+
+
 def render(tool_calls: list[dict]) -> str:
     """The trace as the checker reads it."""
     if not tool_calls:
         return "(the candidate made no tool calls)"
     lines = []
     for i, call in enumerate(tool_calls, 1):
-        detail = call.get("command") or call.get("path") or ""
-        lines.append(f"{i}. {call.get('name', '?')}: {str(detail)[:300]}")
+        detail = str(call.get("command") or call.get("path") or "")
+        if len(detail) > CALL_CHARS:
+            detail = detail[:CALL_CHARS] + f" [... {len(detail) - CALL_CHARS} more characters]"
+        lines.append(f"{i}. {call.get('name', '?')}: {detail}")
     return "\n".join(lines)
 
 
