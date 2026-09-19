@@ -91,6 +91,9 @@ _load_dotenv()
 # model, and a request naming a model with no matching deployment fails with
 # DeploymentNotFound however valid the model is.
 MODEL = os.environ.get("ERRATA_MODEL") or _DEFAULT_MODEL
+# ERRATA_MODEL exists because Azure routes by *deployment* name, not model name:
+# a request naming a real model fails with DeploymentNotFound unless a
+# deployment carries that name. Unset, the default is unchanged.
 
 
 def model_name() -> str:
@@ -123,16 +126,22 @@ def configure_client() -> None:
     from openai import AsyncOpenAI
 
     _load_dotenv()
-    azure_base = os.environ.get("AZURE_OPENAI_BASE_URL")
-    if azure_base:
+    # The direct API is the default and is unchanged. Azure is opt-in through
+    # ERRATA_PROVIDER=azure, never inferred from the presence of a variable:
+    # inferring it from AZURE_OPENAI_BASE_URL silently rerouted every call in
+    # the pipeline to a resource with no deployments, and the working path
+    # became unreachable while its credential was still sitting there.
+    if os.environ.get("ERRATA_PROVIDER", "").lower() == "azure":
+        base = os.environ.get("AZURE_OPENAI_BASE_URL")
         key = os.environ.get("AZURE_OPENAI_API_KEY")
-        if not key:
+        if not base or not key:
             raise RuntimeError(
-                "AZURE_OPENAI_BASE_URL is set but AZURE_OPENAI_API_KEY is not."
+                "ERRATA_PROVIDER=azure needs AZURE_OPENAI_BASE_URL and "
+                "AZURE_OPENAI_API_KEY."
             )
         client = AsyncOpenAI(
             api_key=key,
-            base_url=azure_base.rstrip("/"),
+            base_url=base.rstrip("/"),
             timeout=REQUEST_TIMEOUT_S,
             max_retries=MAX_RETRIES,
         )
@@ -140,9 +149,8 @@ def configure_client() -> None:
         key = os.environ.get("OPENAI_API_KEY")
         if not key:
             raise RuntimeError(
-                "No credential: set AZURE_OPENAI_BASE_URL with AZURE_OPENAI_API_KEY, "
-                "or OPENAI_API_KEY. Refusing to run -- a missing credential "
-                "otherwise reads as a batch of unusable data."
+                "OPENAI_API_KEY is not set and no .env supplies it. Refusing to run: "
+                "a missing credential otherwise reads as a batch of unusable data."
             )
         client = AsyncOpenAI(
             api_key=key, timeout=REQUEST_TIMEOUT_S, max_retries=MAX_RETRIES
