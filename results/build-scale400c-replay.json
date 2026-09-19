@@ -1,0 +1,127 @@
+{
+  "run": "scale400c",
+  "stage": "build",
+  "status": "blocked: OpenAI account has no credits; calibration, controls and attempts cannot run",
+  "tasks_built": 11,
+  "kinds": {
+    "none": 8,
+    "present": 1,
+    "introduced": 2
+  },
+  "edits_replayed": {
+    "bids-standard-bids-utils-24": 0,
+    "basher83-tailnet-microservices-83": 0,
+    "lightfastai-lightfast-122": 1,
+    "nuttycc-LuminTime-68": 4,
+    "nosman-gossamer-33": 0,
+    "shunkakinoki-dotfiles-26": 0,
+    "vaayne-anna-103": 0,
+    "ClusterCockpit-cc-backend-35": 3,
+    "galexy-edgar-diff-27": 0,
+    "pc035860-agent-tail-68": 0,
+    "nuttycc-LuminTime-96": 3
+  },
+  "rejected_edits_do_not_apply": 9,
+  "correction": "Twelve 429 errors in the previous attempt run were attributed to concurrency; they carried the same 'no credits remaining' message and were the account running out.",
+  "tasks": [
+    {
+      "task_id": "bids-standard-bids-utils-24",
+      "repo_id": "bids-standard/bids-utils",
+      "kind": "none",
+      "strength": "token",
+      "sha": "65b19f80ca9669ee880bdf8884bbb10c99e28a1d",
+      "cut_turn": 19,
+      "edits_replayed": 0
+    },
+    {
+      "task_id": "basher83-tailnet-microservices-83",
+      "repo_id": "basher83/tailnet-microservices",
+      "kind": "none",
+      "strength": "token",
+      "sha": "36af6058b92535575f0e2ffd0719068acd6365cd",
+      "cut_turn": 75,
+      "edits_replayed": 0
+    },
+    {
+      "task_id": "lightfastai-lightfast-122",
+      "repo_id": "lightfastai/lightfast",
+      "kind": "none",
+      "strength": "token",
+      "sha": "1aeee65b6ba902cf005a5c92f5e4ce835da6c1ae",
+      "cut_turn": 115,
+      "edits_replayed": 1
+    },
+    {
+      "task_id": "nuttycc-LuminTime-68",
+      "repo_id": "nuttycc/LuminTime",
+      "kind": "none",
+      "strength": "token",
+      "sha": "b2f9d5720c233082b159e9351c8f9074a4663a65",
+      "cut_turn": 62,
+      "edits_replayed": 4
+    },
+    {
+      "task_id": "nosman-gossamer-33",
+      "repo_id": "nosman/gossamer",
+      "kind": "present",
+      "strength": "token",
+      "sha": "e22e9f9b5bbda006c15e71cb1ddd3ec917d2bd50",
+      "cut_turn": 27,
+      "edits_replayed": 0
+    },
+    {
+      "task_id": "shunkakinoki-dotfiles-26",
+      "repo_id": "shunkakinoki/dotfiles",
+      "kind": "none",
+      "strength": "token",
+      "sha": "6b5efbb0ff4f4a2f14f2317bc75312b8906e4cf0",
+      "cut_turn": 15,
+      "edits_replayed": 0
+    },
+    {
+      "task_id": "vaayne-anna-103",
+      "repo_id": "vaayne/anna",
+      "kind": "none",
+      "strength": "token",
+      "sha": "e6537814a2edc1bd133579a9a86c6079d4bd4abb",
+      "cut_turn": 97,
+      "edits_replayed": 0
+    },
+    {
+      "task_id": "ClusterCockpit-cc-backend-35",
+      "repo_id": "ClusterCockpit/cc-backend",
+      "kind": "introduced",
+      "strength": "declared",
+      "sha": "bf48389aeb5b038b3446fd08fc271777c7c60239",
+      "cut_turn": 29,
+      "edits_replayed": 3
+    },
+    {
+      "task_id": "galexy-edgar-diff-27",
+      "repo_id": "galexy/edgar-diff",
+      "kind": "none",
+      "strength": "token",
+      "sha": "265363bf9411cd29eb32251101bf203f1035d90d",
+      "cut_turn": 22,
+      "edits_replayed": 0
+    },
+    {
+      "task_id": "pc035860-agent-tail-68",
+      "repo_id": "pc035860/agent-tail",
+      "kind": "none",
+      "strength": "token",
+      "sha": "1f343cb4068f5af73bc205d1a8044e2c7e5c4680",
+      "cut_turn": 58,
+      "edits_replayed": 0
+    },
+    {
+      "task_id": "nuttycc-LuminTime-96",
+      "repo_id": "nuttycc/LuminTime",
+      "kind": "introduced",
+      "strength": "declared",
+      "sha": "b2f9d5720c233082b159e9351c8f9074a4663a65",
+      "cut_turn": 91,
+      "edits_replayed": 3
+    }
+  ]
+}
