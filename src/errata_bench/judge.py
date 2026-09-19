@@ -473,7 +473,11 @@ async def calibrate(task: Task, *, model: str = MODEL) -> Calibration:
     answer was guaranteed.
     """
     # Each known answer is shown with the work behind it, as a candidate's is.
-    wrong, right = task.oracle_calls or [], task.criterion_calls or []
+    # Passed through rather than defaulted: None leaves the trace out of the
+    # prompt entirely, because a task built before these were recorded knows
+    # nothing about what the agent ran, and "(no tool calls were made)" would
+    # assert something false about it.
+    wrong, right = task.oracle_calls, task.criterion_calls
     f = await judge(task, task.oracle, model=model, tool_calls=wrong)
     r = await judge(task, task.criterion, model=model, tool_calls=right)
     fs = await judge(task, task.oracle, model=model, swap_references=True, tool_calls=wrong)

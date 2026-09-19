@@ -65,10 +65,14 @@ class Task:
     # whether a claim was established, so calibration has to show it the same
     # thing for the two known answers -- otherwise the pair it is calibrated
     # on is judged under a different rule from the candidates it then grades.
-    # Empty for tasks built before this existed, and for answers the agent
-    # wrote without running anything, which is itself the common case.
-    oracle_calls: list[dict] = field(default_factory=list)
-    criterion_calls: list[dict] = field(default_factory=list)
+    #
+    # None and [] are different and must stay so. None means a task built
+    # before this existed, where nobody knows what the agent ran; [] means it
+    # ran nothing, which is the common case and is itself the finding. Telling
+    # a judge "no tool calls were made" about an answer whose trace was never
+    # recovered is a false statement about the known-right answer.
+    oracle_calls: list[dict] | None = None
+    criterion_calls: list[dict] | None = None
 
     # Turns dropped because they revealed the agent had been failing. The
     # conversation is rendered without them, so a candidate cannot take a hint

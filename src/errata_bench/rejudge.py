@@ -212,9 +212,10 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int) -> 
     # eighteen attempts it was derived from.
     if tasks and not any(r.get("control", "").startswith("probe:") for r in load(out.controls)):
         rules = f"{CANDIDATE_RULES}\n\n{environment_note('host')}"
-        sample = context.get(tasks[0].task_id, "") if context else ""
         try:
-            for r in await probe_trace(model=model, context=sample, given=rules):
+            # No run's transcript: the probes carry their own, so they mean the
+            # same thing for every judge and every run.
+            for r in await probe_trace(model=model, given=rules):
                 append(out.controls, {
                     "task_id": "(trace probe)", "control": f"probe:{r['probe']}",
                     "judge_model": model, "ok": r["ok"], "trace_ok": r["ok"],
@@ -334,7 +335,12 @@ def _rate(n: int, d: int) -> str:
 def summarise(src: Paths, out: Paths, model: str) -> dict:
     """What this judge made of the known answers, and of the candidate's."""
     cal = [r for r in load(out.calibration) if not r.get("error")]
-    ctl = [r for r in load(out.controls) if not r.get("error")]
+    rows = [r for r in load(out.controls) if not r.get("error")]
+    # Probe rows are about the checker, not about any task, so they are counted
+    # separately and never reach `broken` -- a failed probe would otherwise
+    # register "(trace probe)" as a broken task.
+    probes = [r for r in rows if str(r.get("control", "")).startswith("probe:")]
+    ctl = [r for r in rows if not str(r.get("control", "")).startswith("probe:")]
     every = [r for r in load(out.attempts) if not r.get("error")]
     graded = [r for r in every if r.get("pass", 0) == 0]
     repeat = {(r["task_id"], r["run"]): r for r in every if r.get("pass", 0) == 1}
@@ -383,8 +389,6 @@ def summarise(src: Paths, out: Paths, model: str) -> dict:
                  for r in graded if (r["task_id"], r["run"]) in repeat]
         return _rate(sum(1 for a, b in pairs if a == b), len(pairs))
 
-    probes = [r for r in ctl if str(r.get("control", "")).startswith("probe:")]
-    ctl = [r for r in ctl if not str(r.get("control", "")).startswith("probe:")]
     trace_ctl = [r for r in ctl if "trace_ok" in r]
     return {
         "judge": model,

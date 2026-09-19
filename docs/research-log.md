@@ -275,6 +275,13 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   `dfd90b1`, P-14.
 - **D-20 · Copyleft repositories are recorded, not excluded.** A task stores a
   URL and a sha; building locally is use, not distribution. `0c5928e`.
+- **D-21 · Nothing expensive runs until the cheap checks pass.** In order,
+  before any full run: assertions on prompt assembly that need no model calls;
+  the trace check's six probes; a one-task pass through every path the run will
+  take (calibrate, controls, regrade two answers); and every issue found in
+  reading the diff fixed first, not one per run. Adopted after B-116; the
+  review that followed it found five more defects (B-111 to B-115) that would
+  each have cost another run.
 
 ---
 
@@ -610,6 +617,56 @@ order found.
   models.
 
 ---
+- **B-107 · The trace check flagged true statements about the environment**
+  (fixed · 09-19 · `ccb9d21`). Eight of eighteen answers in a full regrade were
+  accused over "gh is not installed", "electron-vite is unavailable", "there
+  are no graph-memory tools here", "this copy has no git metadata" — every one
+  true, none of them checkable from a trace. Cause: nothing told the checker
+  what the harness provides. Fix: `environment_note()` states the five tools,
+  the image, the refused network and the export without `.git`. All eight came
+  back clean.
+- **B-108 · Fixing that taught it to ignore invented citations** (fixed ·
+  09-19 · `ccb9d21`). The wording that stopped B-107 — "list actions only" —
+  also excused "the API response you pasted confirms ... id 99887766" when no
+  such response existed, which is the failure this benchmark most exists to
+  catch. Caught by the new probes, not by a run. Fix: name the two listable
+  kinds explicitly (actions, and facts attributed to the conversation) and
+  exclude environment statements by name.
+- **B-109 · The conversation was shown as a labelled fragment** (fixed · 09-19
+  · `ccb9d21`). Sent as "the end of the conversation" and cut to 20,000
+  characters, it let every invented citation through: the checker assumed the
+  quoted line sat in the part it had not been shown.
+- **B-110 · Appended last, the conversation crowded out the trace** (fixed ·
+  09-19 · `f24b2a1`). Kimi stopped seeing `kubectl config current-context` in
+  an eight-call trace and called the claim it establishes invented. Background
+  now comes first and the thing being checked last.
+- **B-111 · A truncated conversation was still labelled complete** (fixed ·
+  09-19 · review). The same mistake as B-109 with the sign flipped: a citation
+  from the cut-off part would be called invented. Found by reading the code,
+  not by a run. The label now follows the content, and `build_prompt` is
+  separated so five assertions check it with no model calls.
+- **B-112 · The instructions asserted a conversation was shown when none was**
+  (fixed · 09-19 · review). Any task whose transcript failed to load would have
+  had every citation read as invented.
+- **B-113 · The reference traces could not tell "unknown" from "nothing ran"**
+  (fixed · 09-19 · review). Both were the empty list, so a task built before
+  they were recorded would tell the judge "(no tool calls were made)" about the
+  answer the developer accepted — a false statement in calibration, the one
+  place the benchmark cannot afford one. None now means unknown and is left out
+  of the prompt; `[]` means the agent genuinely ran nothing, which is the
+  common case (one of eleven tasks has an accepted answer with no work behind
+  it at all).
+- **B-114 · The probes borrowed a real transcript as their conversation**
+  (fixed · 09-19 · review), so a fixed known-answer test would have meant
+  different things in different runs.
+- **B-115 · Probe rows counted as tasks in the summary** (fixed · 09-19 ·
+  review), which would have registered "(trace probe)" as a broken task.
+- **B-116 · Three full regrades were spent on prompt changes verified against
+  three hand-picked answers** (process · 09-19). Each pass looked right on its
+  sample and then exposed a systematic problem the next fix had to undo: flags
+  moved 2 → 8 → 0 on the same eighteen answers, about two hours of runs. The
+  fault was the order of work, not any single fix. D-21 states what replaces
+  it.
 
 ### 7.11 Phase 0: the capture plugin (archived, kept for the lessons)
 
@@ -942,3 +999,6 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
 - **09-19** — B-68 and B-70 fixed (`f24b2a1`): both honesty readings now see the
   evidence they are asked to weigh. G-01 and G-02 closed, G-26 opened. Phase-0
   findings merged from a full re-reading of the conversation.
+- **09-19** — B-107 to B-116 recorded: what three regrades of the trace check
+  cost, and the five further defects a careful reading found before a fourth.
+  D-21 adopted.
