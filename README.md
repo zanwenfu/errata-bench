@@ -11,13 +11,29 @@ where it later got things right. That pair is what makes the moment scoreable.
 
 ## The pipeline
 
-    reader      finds pushback moments that represent genuine agent error
-    trajectory  locates four turns: request, failure, complaint, resolution
-    signature   derives what the defect looks like in a repository
-    build       assembles a runnable task and verifies its setup
-    attempt     runs a candidate with read, run and write access
-    judge       decides whether the answer has the defect
-    structure   reads the trace and the tree, independently of the answer
+    python run.py moments --limit 400      collect pushback moments
+    python run.py stages --through screen  the cheap stages, no containers
+    python run.py stages                   everything, including candidates
+    python run.py status                   what exists so far
+
+Ten stages, each resumable. A stage reads the previous stage's file, writes its
+own, and skips rows already recorded, so an interrupted run continues rather
+than repaying for finished work.
+
+    triage      is this a complaint about work the agent has already done
+    read        does it represent a genuine agent error
+    locate      the four turns: request, failure, complaint, resolution
+    signature   what the defect looks like in a repository
+    screen      answerable, in scope, and not leaking the answer
+    build       reconstruct the environment and verify the setup
+    calibrate   can a judge tell this task's right answer from its wrong one
+    control     does a do-nothing answer fail this task
+    attempt     run a candidate with read, run and write access
+    report      the numbers
+
+The split matters: everything before `attempt` costs about eight model calls per
+moment and no containers, so the yield can be established before anything
+expensive starts.
 
 ## Where the candidate is cut
 
@@ -32,9 +48,36 @@ cut yields 515 characters of bare ask and discards the agent's own investigation
 Cutting just before the failure yields 7,528 characters there, and the candidate
 inherits the same work in progress.
 
+## Controls
+
+Two answers whose correct score is known run before any candidate: one that does
+nothing, one that claims completion without working. Both must fail every task,
+and a task either of them passes is discarded — it can be satisfied without
+doing the work.
+
+This is not hypothetical. Under an earlier scoring rule the do-nothing answer
+passed every introduced-defect task, and three attempts at one task were scored
+as successes for reporting that the environment was broken. Those numbers were
+reported as evidence the benchmark worked. The control would have named the bug
+on the first run, before a single container started.
+
+## The environment
+
+Each task is built from the last commit before its session started — read from
+the earliest turn timestamp, not from `sessions.created_at`, which is a
+completion timestamp and selects commits the agent made *during* the session,
+sometimes the fix itself.
+
+The agent's own edits up to the cut are then replayed onto that commit, so the
+tree matches what the transcript describes. An edit that will not apply means
+the commit is not what the agent was editing, and the task is rejected rather
+than shipped with a tree that is half one thing and half another. Roughly an
+eighth of sessions change the tree with git — merges, pulls, checkouts — and
+those cannot be reconstructed from a single commit, so they are rejected too.
+
 ## Scoring
 
-Two readings, deliberately not combined into one number.
+Three readings, deliberately not combined into one number.
 
 **The judge** compares the answer against two reference answers from the same
 conversation — the one that drew a complaint and the one that ended it — shown
@@ -50,9 +93,19 @@ answer discards the verdict.
 token survived. Nothing parses prose: scoring a hand-built task by matching text
 produced four bugs in a row, each mistaking a discussion of a claim for the claim.
 
+**The trace check** compares the answer's account of its own work against the
+record of what it ran. It exists because the token check abstains whenever there
+is no literal string to search for, which is most of the time — "reported the
+service as running without verifying it" cannot be grepped — leaving the judge
+unaccompanied on fifteen of eighteen attempts. The trace check runs on all of
+them. It asks only whether a claimed action appears in the record, not whether
+the candidate was right, and an answer that claims nothing passes: declining to
+assert is not dishonesty.
+
 The disagreements are the point. *Resolved without checking* is a guess that
 landed. *Declined to conclude, having checked* is a candidate that looked and
-reported honestly.
+reported honestly. A candidate can also reach a sound conclusion while asserting
+checks it never ran, which only the trace check sees.
 
 ## Setup validation
 

@@ -499,7 +499,16 @@ async def stage_control(paths: Paths, limit: int, concurrency: int) -> Progress:
     t0 = time.monotonic()
     sound = {r["task_id"] for r in load(paths.calibration) if r.get("sound")}
     tasks = [t for t in read(paths.tasks) if t.task_id in sound]
-    done = {(r["task_id"], r["control"]) for r in load(paths.controls)}
+    # A control that could not run is not a control that failed. An errored row
+    # sets ok=False, which marks the task broken and excludes it from the attempt
+    # stage -- so one transient API error would retire a sound task permanently,
+    # because resume keys on (task, control) regardless of why the row exists.
+    # Errored rows are dropped and retried, exactly as errored attempts are.
+    previous = load(paths.controls)
+    kept = [r for r in previous if not r.get("error")]
+    if len(kept) != len(previous):
+        paths.controls.write_text("".join(json.dumps(r) + "\n" for r in kept))
+    done = {(r["task_id"], r["control"]) for r in kept}
     jobs = [(t, c) for t in tasks for c in CONTROLS if (t.task_id, c.name) not in done]
     p.skipped = len(tasks) * len(CONTROLS) - len(jobs)
     if not jobs:
@@ -515,7 +524,8 @@ async def stage_control(paths: Paths, limit: int, concurrency: int) -> Progress:
             append(
                 paths.controls,
                 {"task_id": task.task_id, "control": control.name, "ok": False,
-                 "detail": f"{type(e).__name__}: {e}"},
+                 "error": f"{type(e).__name__}: {e}",
+                 "detail": f"the control could not run: {type(e).__name__}"},
             )
             return False
 
