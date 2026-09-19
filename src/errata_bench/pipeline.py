@@ -731,12 +731,17 @@ def stage_report(paths: Paths) -> Progress:
         "outcomes": dict(Counter(a.get("outcome") for a in scoreable)),
         "by_kind": {
             k: {
-                "attempts": sum(1 for a in scoreable if a.get("kind") == k),
+                "attempts": sum(1 for a in scoreable if (a.get("kind") or "unknown") == k),
                 "passed": sum(
-                    1 for a in scoreable if a.get("kind") == k and a.get("passed")
+                    1 for a in scoreable
+                    if (a.get("kind") or "unknown") == k and a.get("passed")
                 ),
             }
-            for k in ("present", "introduced")
+            # Taken from the data, not listed. The list said present and
+            # introduced, while fifteen of eighteen scored attempts are
+            # behavioural ("none"), so the report showed three attempts by kind
+            # and silently left out the rest.
+            for k in sorted({a.get("kind") or "unknown" for a in scoreable})
         },
     }
     paths.report.write_text(json.dumps(report, indent=2))
