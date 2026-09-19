@@ -56,6 +56,7 @@ def find_moments(
     skip_seen: Path | None = None,
     kinds: tuple[str, ...] = PUSHBACK_KINDS,
     min_agent_turns: int = 3,
+    max_per_repo: int = 0,
 ) -> int:
     """Collect pushback moments from the corpus.
 
@@ -149,6 +150,15 @@ def find_moments(
     for moments in by_repo.values():
         moments.sort(key=lambda m: (-KIND_YIELD.get(m["kind"], 0), m["session_id"]))
 
+    # A per-repository cap, because round-robin alone stops being diverse once
+    # the small repositories are exhausted. Asking for 1,600 moments from the
+    # unprocessed pool returned 61% of them from ten repositories, with 202 from
+    # one -- a benchmark built on that measures a handful of codebases and their
+    # conventions. Capping at twenty drops the top-ten share to 19% and keeps all
+    # 109 repositories represented, at the cost of a smaller pool.
+    if max_per_repo:
+        by_repo = {r: ms[:max_per_repo] for r, ms in by_repo.items()}
+
     spread: list[dict] = []
     while len(spread) < limit and by_repo:
         for repo in sorted(by_repo):
@@ -211,6 +221,12 @@ def main() -> None:
     )
     ap.add_argument("--exclude", help="a moments file whose rows to skip")
     ap.add_argument(
+        "--max-per-repo",
+        type=int,
+        default=0,
+        help="cap moments taken from any one repository; 0 means no cap",
+    )
+    ap.add_argument(
         "--kinds",
         default=",".join(PUSHBACK_KINDS),
         help="comma-separated pushback kinds to collect",
@@ -227,7 +243,8 @@ def main() -> None:
     if args.command == "moments":
         skip = Path(args.exclude) if args.exclude else None
         kinds = tuple(k.strip() for k in args.kinds.split(",") if k.strip())
-        n = find_moments(args.limit, paths.moments, skip_seen=skip, kinds=kinds)
+        n = find_moments(args.limit, paths.moments, skip_seen=skip, kinds=kinds,
+                         max_per_repo=args.max_per_repo)
         print(f"  collected {n} moments -> {paths.moments}")
         return
 
