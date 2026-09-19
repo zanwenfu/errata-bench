@@ -529,6 +529,7 @@ async def stage_attempt(
     from .judge import judge
     from .spec import read
     from .structure import analyse, combine
+    from .trace import check as check_trace
 
     p = Progress("attempt")
     t0 = time.monotonic()
@@ -567,6 +568,7 @@ async def stage_attempt(
         async with (box if image else host):
             started = time.monotonic()
             attempt = await run(task, image=image)
+            model = attempt.model
             if attempt.error:
                 append(
                     paths.attempts,
@@ -575,7 +577,13 @@ async def stage_attempt(
                 return False
             verdict = await judge(task, attempt.reply)
             structure = analyse(task, attempt, attempt.final_state)
-            score = combine(verdict, structure)
+            # A third reading, independent of both: does the answer's account of
+            # its own work match the recorded trace. This is what the token check
+            # cannot do for a behavioural defect.
+            trace_check = await check_trace(
+                attempt.reply, [c.to_json() for c in attempt.tool_calls]
+            )
+            score = combine(verdict, structure, trace_check)
             append(
                 paths.attempts,
                 {
@@ -584,6 +592,13 @@ async def stage_attempt(
                     "kind": task.kind,
                     "environment": attempt.environment,
                     "calls": structure.tool_calls,
+                    # The trace itself, not just its length. Without it a
+                    # finished run cannot be re-examined: every attempt in the
+                    # first corrected run recorded "9 calls" and nothing about
+                    # what those calls were, so no later check could ask whether
+                    # the candidate ran what it claimed to have run.
+                    "tool_calls": [c.to_json() for c in attempt.tool_calls],
+                    "model": model,
                     "seconds": round(time.monotonic() - started, 1),
                     "reply": attempt.reply[:4000],
                     "judgement": verdict.to_json(),
