@@ -175,12 +175,14 @@ def find_moments(
 def show_status(paths: Paths) -> None:
     rows = [
         ("moments", paths.moments),
+        ("triaged", paths.triaged),
         ("readings", paths.readings),
         ("trajectories", paths.trajectories),
         ("signatures", paths.signatures),
         ("screened", paths.screened),
         ("tasks", paths.tasks),
         ("calibration", paths.calibration),
+        ("controls", paths.controls),
         ("attempts", paths.attempts),
     ]
     print(f"  {'file':16s} {'rows':>7s}")
