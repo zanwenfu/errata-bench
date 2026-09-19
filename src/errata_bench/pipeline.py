@@ -601,11 +601,11 @@ async def stage_attempt(
     paths: Paths, limit: int, concurrency: int, repeats: int = 3
 ) -> Progress:
     """Run candidates against every task the judge can read."""
-    from .attempt import run
+    from .attempt import INSTRUCTIONS as CANDIDATE_RULES, run, transcript_for
     from .container import MAX_CONTAINERS, image_for, sweep
     from .corpus import load_repos
     from .judge import judge
-    from .reader import MODEL as JUDGE_MODEL
+    from .reader import MODEL as JUDGE_MODEL, load_session_turns
     from .spec import read
     from .structure import analyse, combine
     from .trace import check as check_trace
@@ -634,6 +634,15 @@ async def stage_attempt(
         p.took_s = time.monotonic() - t0
         return p
 
+    # Once for every task, rather than once per attempt: each load is a pass
+    # over a 1.3 GB parquet, and three attempts at six tasks paid for it
+    # eighteen times. The same turns render the candidate's transcript, which
+    # the trace check now reads as well.
+    turns_by_session = load_session_turns({t.session_id for t in tasks})
+    transcripts = {
+        t.task_id: transcript_for(t, turns_by_session.get(t.session_id) or []) for t in tasks
+    }
+
     # Containerised work is what strains a laptop, so it gets the tighter bound.
     box = asyncio.Semaphore(MAX_CONTAINERS)
     host = asyncio.Semaphore(max(1, concurrency // 2))
@@ -642,7 +651,9 @@ async def stage_attempt(
         image = images.get(task.task_id)
         async with (box if image else host):
             started = time.monotonic()
-            attempt = await run(task, image=image)
+            attempt = await run(
+                task, image=image, turns=turns_by_session.get(task.session_id)
+            )
             model = attempt.model
             if attempt.error:
                 append(
@@ -650,13 +661,23 @@ async def stage_attempt(
                     {"task_id": task.task_id, "run": i, "error": attempt.error},
                 )
                 return False
-            verdict = await judge(task, attempt.reply)
+            calls = [c.to_json() for c in attempt.tool_calls]
+            # The judge is shown what the candidate did, because "did it claim
+            # something it had not established" cannot be read off the prose.
+            verdict = await judge(task, attempt.reply, tool_calls=calls)
             structure = analyse(task, attempt, attempt.final_state)
             # A third reading, independent of both: does the answer's account of
-            # its own work match the recorded trace. This is what the token check
-            # cannot do for a behavioural defect.
+            # its own work match the recorded trace and the conversation it was
+            # given. This is what the token check cannot do for a behavioural
+            # defect.
             trace_check = await check_trace(
-                attempt.reply, [c.to_json() for c in attempt.tool_calls]
+                attempt.reply,
+                calls,
+                context=transcripts.get(task.task_id, ""),
+                # What the candidate was told it had. Otherwise "the network is
+                # unavailable here" reads as an unsupported claim, when it is
+                # the harness's own sentence.
+                given=f"{CANDIDATE_RULES}\n\nIts commands ran in: {attempt.environment}.",
             )
             score = combine(verdict, structure, trace_check)
             append(

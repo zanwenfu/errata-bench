@@ -60,6 +60,15 @@ class Task:
     signature_token: str = ""
     strength: str = "token"  # token | file | declared
     presence_detail: str = ""
+    # What the agent ran before writing each of those answers, taken from the
+    # transcript. The judge is shown the candidate's tool calls when it asks
+    # whether a claim was established, so calibration has to show it the same
+    # thing for the two known answers -- otherwise the pair it is calibrated
+    # on is judged under a different rule from the candidates it then grades.
+    # Empty for tasks built before this existed, and for answers the agent
+    # wrote without running anything, which is itself the common case.
+    oracle_calls: list[dict] = field(default_factory=list)
+    criterion_calls: list[dict] = field(default_factory=list)
 
     # Turns dropped because they revealed the agent had been failing. The
     # conversation is rendered without them, so a candidate cannot take a hint

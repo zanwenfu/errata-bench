@@ -84,6 +84,20 @@ def judge_paths(run: Path, model: str) -> Paths:
     return Paths(run / "rejudge" / re.sub(r"[^A-Za-z0-9._-]+", "_", model))
 
 
+def transcripts_for(tasks) -> dict[str, str]:
+    """The conversation each task's candidate was shown, keyed by task.
+
+    The trace check reads it, so a regrade has to rebuild it: an answer citing
+    the conversation was otherwise accused of inventing what it was given. One
+    pass over the corpus for every task in the run.
+    """
+    from .attempt import transcript_for
+    from .reader import load_session_turns
+
+    turns = load_session_turns({t.session_id for t in tasks})
+    return {t.task_id: transcript_for(t, turns.get(t.session_id) or []) for t in tasks}
+
+
 async def calibrate_all(src: Paths, out: Paths, model: str, concurrency: int) -> Progress:
     """The known pair, for every built task -- not only those the original read.
 
@@ -134,6 +148,7 @@ async def calibrate_all(src: Paths, out: Paths, model: str, concurrency: int) ->
 
 async def controls_all(src: Paths, out: Paths, model: str, concurrency: int) -> Progress:
     """Fixed answers whose grades are known, through both of this judge's readings."""
+    from .attempt import INSTRUCTIONS as CANDIDATE_RULES
     from .control import CONTROLS, check
     from .spec import read
     from .trace import check as check_trace
@@ -151,11 +166,20 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int) -> 
     done = {(r["task_id"], r["control"]) for r in completed(out.controls)}
     jobs = [(t, c) for t in tasks for c in CONTROLS if (t.task_id, c.name) not in done]
     p.skipped = len(tasks) * len(CONTROLS) - len(jobs)
+    # A control has to run under exactly the conditions a candidate does, or it
+    # is not a control: same judge, same empty trace, same conversation.
+    context = transcripts_for(tasks) if jobs else {}
 
     async def one(task, control):
         try:
             result = await check(task, control, model=model)
-            trace = await check_trace(control.reply, [], model=model)
+            trace = await check_trace(
+                control.reply,
+                [],
+                model=model,
+                context=context.get(task.task_id, ""),
+                given=f"{CANDIDATE_RULES}\n\nIt ran no commands.",
+            )
         except Exception as e:
             append(out.controls, {
                 "task_id": task.task_id, "control": control.name, "judge_model": model,
@@ -215,6 +239,7 @@ async def regrade_all(
     often. Agreement between two judges only means something next to how often
     each agrees with itself.
     """
+    from .attempt import INSTRUCTIONS as CANDIDATE_RULES
     from .judge import judge
     from .spec import read
     from .structure import combine
@@ -237,13 +262,20 @@ async def regrade_all(
         if (a["task_id"], a["run"], n) not in done
     ]
     p.skipped = len(stored) * passes - len(todo)
+    context = transcripts_for([tasks[a["task_id"]] for a, _ in todo]) if todo else {}
 
     async def one(a, n):
         task = tasks[a["task_id"]]
         reply = a.get("reply") or ""
         try:
-            verdict = await judge(task, reply, model=model)
-            trace = await check_trace(reply, a["tool_calls"], model=model)
+            verdict = await judge(task, reply, model=model, tool_calls=a["tool_calls"])
+            trace = await check_trace(
+                reply,
+                a["tool_calls"],
+                model=model,
+                context=context.get(task.task_id, ""),
+                given=f"{CANDIDATE_RULES}\n\nIts commands ran in: {a.get('environment', 'host')}.",
+            )
         except Exception as e:
             append(out.attempts, {
                 "task_id": a["task_id"], "run": a["run"], "pass": n, "judge_model": model,

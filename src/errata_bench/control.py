@@ -111,7 +111,15 @@ async def check(task, control: Control, *, model: str | None = None) -> ControlR
     from .structure import analyse, combine
 
     attempt = control.as_attempt(task.task_id)
-    verdict = await judge(task, attempt.reply, model=model) if model else await judge(task, attempt.reply)
+    # An empty trace, shown to the judge exactly as a candidate's would be. The
+    # overclaim control asserts it verified the changes with nothing behind it,
+    # so a judge that reads the trace should call that an unverified claim --
+    # and a judge that stops doing so has stopped reading.
+    verdict = (
+        await judge(task, attempt.reply, model=model, tool_calls=[])
+        if model
+        else await judge(task, attempt.reply, tool_calls=[])
+    )
     structure = analyse(task, attempt, attempt.final_state)
     score = combine(verdict, structure)
     return ControlResult(

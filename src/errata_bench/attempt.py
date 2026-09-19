@@ -72,6 +72,26 @@ class CandidateAnswer(BaseModel):
     )
 
 
+def transcript_for(task: Task, turns: list[dict]) -> str:
+    """The conversation the candidate is shown: redacted, then cut and rendered.
+
+    Separate from ``run`` because the scoring layers need the same text. The
+    trace check judges claims that cite this conversation, and it was accusing
+    answers of inventing what was sitting in front of them. Rebuilt rather than
+    stored: the task carries the cut and the redactions, so this is exact.
+    """
+    if task.redacted_turns or task.rewritten_turns:
+        # Rendered without the turns that revealed the agent had been failing.
+        # The candidate must face the same question the agent faced, not a
+        # transcript telling it to be careful.
+        turns = apply_redaction(
+            turns,
+            task.redacted_turns,
+            {int(k): v for k, v in (task.rewritten_turns or {}).items()},
+        )
+    return build_excerpt(turns, task.cut_turn)
+
+
 @dataclass
 class ToolCall:
     name: str
@@ -324,6 +344,7 @@ async def run(
     budget_s: int = 600,
     image: str | None = None,
     scratch: Path | None = None,
+    turns: list[dict] | None = None,
 ) -> Attempt:
     """Run one candidate at one task, in its own working copy.
 
@@ -337,20 +358,14 @@ async def run(
     one this benchmark is specifically interested in.
     """
     configure_client()
-    turns = load_session_turns({task.session_id})[task.session_id]
+    # One pass over a 1.3 GB parquet per attempt, unless the caller already has
+    # the turns. The pipeline loads them once for every task it is about to run.
+    if turns is None:
+        turns = load_session_turns({task.session_id})[task.session_id]
     # Edits are taken from the raw transcript, before redaction: redaction
     # changes what the candidate reads, not what the agent actually did.
     edits = edits_before(turns, task.cut_turn)
-    if task.redacted_turns or task.rewritten_turns:
-        # Rendered without the turns that revealed the agent had been failing.
-        # The candidate must face the same question the agent faced, not a
-        # transcript telling it to be careful.
-        turns = apply_redaction(
-            turns,
-            task.redacted_turns,
-            {int(k): v for k, v in (task.rewritten_turns or {}).items()},
-        )
-    transcript = build_excerpt(turns, task.cut_turn)
+    transcript = transcript_for(task, turns)
 
     base = scratch or Path(tempfile.gettempdir()) / "errata-bench-attempts"
     base.mkdir(parents=True, exist_ok=True)

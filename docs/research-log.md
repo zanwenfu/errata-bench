@@ -830,6 +830,13 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   761 vs 1,055 moments at one cap, 11 vs 13 recovered behavioural tasks, 435 vs
   423 in a catalogue listing. This log is now the single place where a number
   and its source live together.
+- **G-26 · The trace records which commands ran, not what they printed.** So
+  the trace check can only ask whether a call could have established a claim,
+  never whether its output did — "the tests pass" is supported by any `npm
+  test`, even one that failed. Recording tool results would make this the
+  strongest reading in the benchmark; it needs new attempt runs, since existing
+  rows have no outputs. Found while fixing G-02: judges kept flagging
+  "the gh CLI is unavailable" although `command -v gh` was in the trace.
 
 ---
 

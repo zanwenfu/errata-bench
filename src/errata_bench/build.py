@@ -76,6 +76,37 @@ def last_user_message(turns: list[dict], cut_turn: int, *, window: int = REQUEST
     return max(within, key=lambda t: t.get("turn_number") or 0)
 
 
+def calls_behind(turns: list[dict], answer_turn: int, *, keep: int = 60) -> list[dict]:
+    """What the agent ran before one of its answers, since the developer's last message.
+
+    The candidate's analogue of this is its own trace: it starts at the cut,
+    answers the developer's most recent message, and everything it runs is work
+    on that message. So the agent's comparable work is what it ran between that
+    same message and the answer being judged -- not its whole session, which
+    includes work on other questions entirely.
+
+    Often it is empty, and that is the finding rather than a gap: in three of
+    five early cases the agent answered without running anything since the
+    developer last spoke.
+    """
+    ordered = sorted(turns, key=lambda t: t.get("turn_number") or 0)
+    spoke = 0
+    for t in ordered:
+        number = t.get("turn_number") or 0
+        if number >= answer_turn:
+            break
+        if t.get("turn_type") == "user_prompt" and (t.get("content") or "").strip():
+            spoke = number
+    calls = []
+    for t in ordered:
+        number = t.get("turn_number") or 0
+        if number <= spoke or number >= answer_turn or t.get("turn_type") != "tool_use":
+            continue
+        detail = t.get("command") or t.get("file_path") or (t.get("content") or "")
+        calls.append({"name": t.get("tool_name") or "?", "command": str(detail)[:4000]})
+    return calls[-keep:]
+
+
 def base_commit(repo_id: str, session_ns: int | None, commits) -> str | None:
     """The last commit in this repository before the session started.
 
@@ -280,6 +311,8 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
                 resolved_turn=row["resolved"],
                 oracle=oracle,
                 criterion=criterion,
+                oracle_calls=calls_behind(turns, row["failed"]),
+                criterion_calls=calls_behind(turns, row["resolved"]),
                 defect=row.get("defect", ""),
                 kind=row["kind"],
                 signature_path=sig.path,
