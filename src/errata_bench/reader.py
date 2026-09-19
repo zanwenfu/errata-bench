@@ -156,6 +156,22 @@ def configure_client() -> None:
             api_key=key, timeout=REQUEST_TIMEOUT_S, max_retries=MAX_RETRIES
         )
     set_default_openai_client(client)
+
+    # Which API surface the SDK uses. The default is unchanged -- the Responses
+    # API, as before -- and chat completions are selected only when asked for,
+    # or on Azure, where the Responses path demonstrably does not work for
+    # non-OpenAI deployments: Kimi-K2.7-Code and DeepSeek-V4-Pro both fail with
+    # "Invalid JSON when parsing model output" through it, while emitting
+    # perfectly valid JSON for the same schema through chat completions. Both
+    # surfaces answer, so this is about how structured output is requested, not
+    # about reachability.
+    api = os.environ.get("ERRATA_API") or (
+        "chat_completions" if os.environ.get("ERRATA_PROVIDER", "").lower() == "azure" else ""
+    )
+    if api:
+        from agents import set_default_openai_api
+
+        set_default_openai_api(api)
     _client_configured = True
 
 
