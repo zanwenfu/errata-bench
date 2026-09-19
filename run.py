@@ -196,7 +196,7 @@ def show_status(paths: Paths) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["moments", "stages", "status"])
+    ap.add_argument("command", choices=["moments", "stages", "status", "rejudge", "judges"])
     ap.add_argument("--run", default="runs/current", help="directory for this run's files")
     ap.add_argument(
         "--limit",
@@ -231,6 +231,16 @@ def main() -> None:
         default=",".join(PUSHBACK_KINDS),
         help="comma-separated pushback kinds to collect",
     )
+    ap.add_argument(
+        "--passes",
+        type=int,
+        default=1,
+        help="how many times to grade each answer (the `rejudge` command only); 2 measures a judge's own noise",
+    )
+    ap.add_argument(
+        "--judge",
+        help="the model (on Azure, the deployment) to grade with (the `rejudge` command only)",
+    )
     args = ap.parse_args()
 
     root = Path(args.run)
@@ -238,6 +248,27 @@ def main() -> None:
 
     if args.command == "status":
         show_status(paths)
+        return
+
+    if args.command == "rejudge":
+        # Grades what the run already holds with another model; runs no
+        # candidate and writes only under <run>/rejudge/<judge>/.
+        if not args.judge:
+            ap.error("rejudge needs --judge <model or deployment name>")
+        from errata_bench.rejudge import rejudge
+
+        summary = asyncio.run(
+            rejudge(root, args.judge, concurrency=args.concurrency, passes=args.passes)
+        )
+        shown = {k: v for k, v in summary.items() if k != "disagreements"}
+        print("\n   ", json.dumps(shown, indent=2).replace("\n", "\n    "))
+        print(f"\n  {len(summary['disagreements'])} attempts graded differently from the original")
+        return
+
+    if args.command == "judges":
+        from errata_bench.rejudge import compare
+
+        print(compare(root))
         return
 
     if args.command == "moments":
