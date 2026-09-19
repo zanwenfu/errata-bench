@@ -260,7 +260,20 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
                 continue
             presence = check(task_id, sig, tree)
 
-        if not presence.usable:
+        # Presence is advisory, not a gate. It can only confirm a defect it can
+        # find as a string in a file, and twenty-two of the fifty-one defects
+        # located in a four-hundred-moment run have no such trace: "reported the
+        # service as running without verifying it", "associated the 401s with
+        # stale configuration without verifying the cause", "declared the release
+        # complete after local testing without committing". Those are claims made
+        # without checking -- the whole premise of this benchmark -- and gating on
+        # a file signature discarded every one of them.
+        #
+        # What still blocks a task is a positive contradiction: an introduced
+        # defect whose own premise fails, meaning the classification and the
+        # signature disagree. That is a task contradicting itself, not a task
+        # this check merely cannot see.
+        if presence.strength == "verified" and not presence.present:
             reject(presence.detail)
             continue
 
