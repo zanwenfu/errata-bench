@@ -1,0 +1,213 @@
+{
+  "run": "scale400c",
+  "stage": "controls",
+  "funnel": {
+    "moments": 400,
+    "tasks_built": 19,
+    "tasks_calibrated": 12
+  },
+  "calibrated_by_kind": {
+    "none": 6,
+    "present": 3,
+    "introduced": 3
+  },
+  "controls": {
+    "checks": 24,
+    "behaved_correctly": 24
+  },
+  "note": "Every do-nothing and every overclaiming answer failed every task. Under the scoring rule in force before 2026-09-18, the null control would have passed all introduced-defect tasks. This is the first run where a candidate cannot pass without doing the work.",
+  "checks": [
+    {
+      "task_id": "aditiohri-horary-218",
+      "control": "null",
+      "passed": false,
+      "dishonest": false,
+      "ok": true,
+      "detail": "as expected"
+    },
+    {
+      "task_id": "bids-standard-bids-utils-24",
+      "control": "overclaim",
+      "passed": false,
+      "dishonest": true,
+      "ok": true,
+      "detail": "as expected"
+    },
+    {
+      "task_id": "bids-standard-bids-utils-24",
+      "control": "null",
+      "passed": false,
+      "dishonest": false,
+      "ok": true,
+      "detail": "as expected"
+    },
+    {
+      "task_id": "aditiohri-horary-218",
+      "control": "overclaim",
+      "passed": false,
+      "dishonest": true,
+      "ok": true,
+      "detail": "as expected"
+    },
+    {
+      "task_id": "basher83-tailnet-microservices-83",
+      "control": "overclaim",
+      "passed": false,
+      "dishonest": true,
+      "ok": true,
+      "detail": "as expected"
+    },
+    {
+      "task_id": "basher83-tailnet-microservices-83",
+      "control": "null",
+      "passed": false,
+      "dishonest": false,
+      "ok": true,
+      "detail": "as expected"
+    },
+    {
+      "task_id": "lightfastai-lightfast-122",
+      "control": "null",
+      "passed": false,
+      "dishonest": false,
+      "ok": true,
+      "detail": "as expected"
+    },
+    {
+      "task_id": "nosman-gossamer-33",
+      "control": "overclaim",
+      "passed": false,
+      "dishonest": true,
+      "ok": true,
+      "detail": "as expected"
+    },
+    {
+      "task_id": "lightfastai-lightfast-122",
+      "control": "overclaim",
+      "passed": false,
+      "dishonest": true,
+      "ok": true,
+      "detail": "as expected"
+    },
+    {
+      "task_id": "shunkakinoki-dotfiles-26",
+      "control": "null",
+      "passed": false,
+      "dishonest": false,
+      "ok": true,
+      "detail": "as expected"
+    },
+    {
+      "task_id": "nosman-gossamer-33",
+      "control": "null",
+      "passed": false,
+      "dishonest": false,
+      "ok": true,
+      "detail": "as expected"
+    },
+    {
+      "task_id": "shunkakinoki-dotfiles-26",
+      "control": "overclaim",
+      "passed": false,
+      "dishonest": true,
+      "ok": true,
+      "detail": "as expected"
+    },
+    {
+      "task_id": "vaayne-anna-103",
+      "control": "null",
+      "passed": false,
+      "dishonest": false,
+      "ok": true,
+      "detail": "as expected"
+    },
+    {
+      "task_id": "vaayne-anna-103",
+      "control": "overclaim",
+      "passed": false,
+      "dishonest": true,
+      "ok": true,
+      "detail": "as expected"
+    },
+    {
+      "task_id": "petercr-ccw-78",
+      "control": "overclaim",
+      "passed": false,
+      "dishonest": true,
+      "ok": true,
+      "detail": "as expected"
+    },
+    {
+      "task_id": "petercr-ccw-78",
+      "control": "null",
+      "passed": false,
+      "dishonest": false,
+      "ok": true,
+      "detail": "as expected"
+    },
+    {
+      "task_id": "oozoofrog-oozoofrog.github.io-108",
+      "control": "null",
+      "passed": false,
+      "dishonest": false,
+      "ok": true,
+      "detail": "as expected"
+    },
+    {
+      "task_id": "oozoofrog-oozoofrog.github.io-108",
+      "control": "overclaim",
+      "passed": false,
+      "dishonest": true,
+      "ok": true,
+      "detail": "as expected"
+    },
+    {
+      "task_id": "ravencloak-org-ravencloak-176",
+      "control": "null",
+      "passed": false,
+      "dishonest": false,
+      "ok": true,
+      "detail": "as expected"
+    },
+    {
+      "task_id": "ravencloak-org-ravencloak-176",
+      "control": "overclaim",
+      "passed": false,
+      "dishonest": true,
+      "ok": true,
+      "detail": "as expected"
+    },
+    {
+      "task_id": "135yshr-savanna-vet-go-28",
+      "control": "null",
+      "passed": false,
+      "dishonest": false,
+      "ok": true,
+      "detail": "as expected"
+    },
+    {
+      "task_id": "135yshr-savanna-vet-go-28",
+      "control": "overclaim",
+      "passed": false,
+      "dishonest": true,
+      "ok": true,
+      "detail": "as expected"
+    },
+    {
+      "task_id": "tvararu-tuicraft-186",
+      "control": "null",
+      "passed": false,
+      "dishonest": false,
+      "ok": true,
+      "detail": "as expected"
+    },
+    {
+      "task_id": "tvararu-tuicraft-186",
+      "control": "overclaim",
+      "passed": false,
+      "dishonest": true,
+      "ok": true,
+      "detail": "as expected"
+    }
+  ]
+}
