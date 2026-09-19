@@ -126,6 +126,12 @@ that support it.
 8. **When a measurement says something is impossible, suspect the
    instrument.** Six measurement errors in the feasibility study all pointed
    pessimistic (B-39); a uniformly-zero result was twice a bug (B-02, B-03).
+9. **Announcing a conclusion before checking it was the most expensive habit.**
+   Three wrong conclusions were stated to the developer before verification in a
+   single day of the first phase, and five reached in total; the coverage gate
+   was explained twice with mechanisms that probes then refuted (B-99, B-104).
+   The rule that came out of it is P-16, and it is the same discipline the
+   benchmark measures in others.
 
 ---
 
@@ -289,11 +295,11 @@ Each: what was chosen, what it replaced or was chosen over, and why.
 | A-11 | Most defects leave a literal token in the tree | **invalidated** | 2 of 19 held-out defects produced one; 22/51 have no textual trace. `ef2f7cd`, `562f562` |
 | A-12 | One judge — the candidate model itself — grades without bias | **partly validated** | an independent judge matched every pass/fail (18/18) but disagreed on honesty (13/18). R-16 |
 | A-13 | Models on other providers see structured-output field descriptions | **invalidated** | DeepSeek and Kimi on Azure do not; grok does. `2f4c397` |
-| A-14 | A judge can decide "stated something it had not checked" from the answer alone | **invalidated** | the trace backs the claim in 3 of 6 disputed answers. B-68 |
-| A-15 | A trace check can decide claims without the conversation | **invalidated** | two flags were claims quoting the conversation. B-70 |
+| A-14 | A judge can decide "stated something it had not checked" from the answer alone | **invalidated, fixed** | the trace backs the claim in 3 of 6 disputed answers. B-68 |
+| A-15 | A trace check can decide claims without the conversation | **invalidated, fixed** | two flags were claims quoting the conversation. B-70 |
 | A-16 | All four observations must survive swapping references for a task to be readable | **open** | most failures are the side reading moving. B-72, G-03 |
 | A-17 | The dataset revision is f66cca9 | **validated** | the download cache records the tree as `f66cca95b14caaa4177f7ed5eaa424608dadcffa`; the first commit said nothing on disk confirmed it (09-19 check) |
-| A-18 | The 270 gold labels are correct | **unverified** | one model's opinion; no human checked. `5a644e6` |
+| A-18 | The 270 labels are ground truth | **invalidated as ground truth** | every label is gpt-6-astra's; precision and recall are agreement with one model over a deliberately weighted sample (60/40/60/80/30 across five strata). A document calling them "hand-labelled" was corrected to "agreement"; no human has checked any of them |
 | A-19 | A behavioural task can only be passed by doing some work | **untested** | every scored attempt did work; a correct clarifying question with no tool call would fail. G-11 |
 
 ---
@@ -502,19 +508,28 @@ order found.
   `c46cbb5`).
 - **B-67 · The candidate model graded itself** (partly resolved · 09-19 ·
   `c683453`). See R-16.
-- **B-68 · The judge weighs "unchecked claims" without seeing the checks**
-  (open · 09-19). It never sees the tool calls. Kimi flags 8/18, the original
+- **B-68 · The judge weighed "unchecked claims" without seeing the checks**
+  (fixed · 09-19 · `f24b2a1`). It never sees the tool calls. Kimi flags 8/18, the original
   3/18; on the six disputed answers the trace backs the claim in three
   (pc035860 #0 read `parser.ts`; #0 and #2 grepped `handleAgentProgress`;
   lightfastai #0 read both workflow files) and three are borderline (library
-  knowledge about Click). G-01.
+  knowledge about Click). Fixed: the judge is shown the candidate's tool calls
+  and the field is defined against them, and calibration shows it the work
+  behind each known answer, so the pair is judged under the candidate's rule.
+  Verified on the case that started it — Kimi flags pc035860 #0 blind and does
+  not with the trace.
 - **B-69 · The trace check saw 300 characters per call** (fixed · 09-19 ·
   `dd704f2`). nosman #0's 1,994-character test script and #1's `uname -s` at
   character 310 were both reported as unsupported.
-- **B-70 · The trace check cannot see the conversation** (open · 09-19).
-  lightfastai #1 and #2 were flagged for citing an API response that is in the
-  conversation (turn 115). With B-69, three of the original judge's four
-  "claimed work its trace lacks" flags are false. G-02.
+- **B-70 · The trace check could not see the conversation** (fixed · 09-19 ·
+  `f24b2a1`). lightfastai #1 and #2 were flagged for citing an API response
+  that is in the conversation (turn 115). With B-69, three of the original
+  judge's four "claimed work its trace lacks" flags are false. Fixed: it is
+  shown the conversation, what the harness told the candidate about its
+  environment, and a statement that outputs are not visible, so the test is
+  whether a call could establish the claim. Two of three previously flagged
+  answers came back clean; the third flags one claim in ten. Ordering mattered
+  as much as evidence — appended last, the conversation crowded out the trace.
 - **B-71 · Markdown-only quote differences were rejected** (fixed · 09-19 ·
   `fa02003`).
 - **B-72 · Calibration fails a judge for side-reading wobble** (open, decision ·
@@ -631,6 +646,31 @@ this benchmark.
   (`core.fsmonitor`, `diff.external`); the first fix set `diff.external` empty,
   which made git emit 0 bytes instead of the 152-byte diff. Replaced by
   `--no-ext-diff` plus a hostile-repository test that pins both properties.
+- **B-102 · The capture plugin recorded projects nobody had opted into, and
+  said it had recorded nothing** (archived · 09-13). Its default scope was
+  every project on the machine, and it had taken about 9,900 events, 726 file
+  edits and 140 MB of file contents from two unrelated repositories while being
+  described twice as having captured nothing real. "Capture is stopped" was
+  also wrong three times: stopping the supervisor does not stop the hooks, and
+  1,266 events were spooled after uninstall. Anything rebuilt for P-21 starts
+  from an allowlist and a status line that reports what is actually running.
+- **B-103 · The product told users it had failed while it was succeeding**
+  (fixed · 09-12). `/errata:flag` reported "could not save" on flags that were
+  saved 7 of 10 and 8 of 10 times, because a non-blocking lock let the
+  background worker drain first. The project's own subject matter, in its own
+  user interface.
+- **B-104 · A detector appeared to drive the whole accuracy gain and
+  contributed nothing** (fixed · 09-12). A secret-detection rule fired on 14%
+  of sessions at 77% precision against a 47% base rate, and the headline moved
+  from 70.3% to 72.9% recall when it shipped. Ablation put it back: "without
+  it" and "without it and its neighbour" are identical to three decimal places.
+  It was cut. Any gain a benchmark reports needs the ablation that shows it is
+  not the base rate.
+- **B-105 · Most captured edits could not be reconstructed** (partly fixed ·
+  09-13). 55% arrived as diffs with no before-state, so the file they described
+  could not be rebuilt; chaining per path with an explicit provenance marker
+  took reconstruction from 16.4% to 34.1%. The same shape as B-31: what the
+  transcript says happened is not automatically recoverable.
 
 ## 8. Results over time
 
@@ -666,9 +706,13 @@ viable → 51 located → 11 built → 6 calibrated.
 - **X-01 · Live capture plugin** (phase 0). A different programme from building
   a benchmark; archived at `v0.1-capture-foundation`. Returns as the
   "self-improving" source of new tasks (P-21).
-- **X-02 · Fail-to-pass tasks** (phase 1). Proven feasible, but a test turning
-  green is not the question here — every viable pushback case would score
-  perfectly on it. Archived `c4132b6`.
+- **X-02 · Fail-to-pass tasks** (phase 1). Proven end to end — parent source
+  plus the child's test fails with `undefined: detectGoModuleConfig`, the
+  child's tree passes, in 18.3 s for Go and 0.7 s for TypeScript — and measured
+  at 5 reproducible tasks from 30 entries, about half of those that reached any
+  verdict, from a pool of 1,245. Dropped anyway, because a test turning green is
+  not the question here: every viable pushback case would score perfectly on it.
+  Archived `c4132b6`.
 - **X-03 · Buried-problem reader** (phase 2). One burial in twelve sessions, and
   it came from the control group; cross-session evidence works (the quoted
   commit matched 1 of 110) but the phenomenon is rare. Parked `c4132b6`.
@@ -758,12 +802,11 @@ own noise is unmeasured because it cannot currently be re-run (G-08).
 The working queue, roughly in the order they will be taken. Each fix updates
 the matching `B`/`A` entry and moves here to *closed* with its commit.
 
-- **G-01 · Show the judge the candidate's tool calls** so an unchecked claim is
-  judged against what was actually done (B-68, A-14). Needs recalibration and a
-  regrade.
-- **G-02 · Let the trace check account for the conversation** — claims that
-  cite what the candidate was given are not claims about its own actions
-  (B-70, A-15).
+- **G-01 · Show the judge the candidate's tool calls** — closed 09-19 by
+  `f24b2a1` (B-68, A-14). Every judge is being regraded under the new rule.
+- **G-02 · Let the trace check account for the conversation** — closed 09-19 by
+  `f24b2a1` (B-70, A-15). It now sees the conversation, the environment it was
+  given, and knows outputs are not visible.
 - **G-03 · Decide the calibration rule** — strict four-way invariance, or the
   pass/fail line with the honesty reading gated separately (B-72, A-16).
   *Needs the developer's decision.*
@@ -896,3 +939,6 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
 - **09-19** — log created from the full commit history, both existing findings
   documents, every developer message since 09-08, a full re-reading of the
   conversation, and the day's judge independence study.
+- **09-19** — B-68 and B-70 fixed (`f24b2a1`): both honesty readings now see the
+  evidence they are asked to weigh. G-01 and G-02 closed, G-26 opened. Phase-0
+  findings merged from a full re-reading of the conversation.
