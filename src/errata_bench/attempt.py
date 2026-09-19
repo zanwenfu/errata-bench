@@ -39,6 +39,7 @@ from pydantic import BaseModel, Field
 
 from .reader import MODEL, build_excerpt, configure_client, load_session_turns
 from .container import Container
+from .edits import edits_before, replay
 from .redact import apply as apply_redaction
 from .spec import Task
 from .workspace import GitError, fetch
@@ -337,6 +338,9 @@ async def run(
     """
     configure_client()
     turns = load_session_turns({task.session_id})[task.session_id]
+    # Edits are taken from the raw transcript, before redaction: redaction
+    # changes what the candidate reads, not what the agent actually did.
+    edits = edits_before(turns, task.cut_turn)
     if task.redacted_turns or task.rewritten_turns:
         # Rendered without the turns that revealed the agent had been failing.
         # The candidate must face the same question the agent faced, not a
@@ -358,6 +362,10 @@ async def run(
             tree = checkout.export_tree(task.sha, work / "tree")
         except GitError as e:
             return Attempt(task.task_id, model, error=f"could not build the tree: {e}")
+
+        rep = replay(tree, edits, task.repo_id)
+        if not rep.ok:
+            return Attempt(task.task_id, model, error=f"in-session edits do not apply: {rep.reason}")
 
         before = _snapshot(tree)
         deadline = time.monotonic() + budget_s

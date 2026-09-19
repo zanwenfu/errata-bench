@@ -71,6 +71,9 @@ class Task:
     # was removed for the five words "we seem to be going in circles", and with
     # it went the error output, the failing table name and the requirement.
     rewritten_turns: dict[str, str] = field(default_factory=dict)
+    # How many of the agent's own edits were replayed onto the base commit so
+    # the tree matches what the transcript describes at the cut.
+    edits_replayed: int = 0
 
     # provenance
     license_type: str | None = None

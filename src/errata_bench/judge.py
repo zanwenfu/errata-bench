@@ -311,12 +311,36 @@ async def judge(
             f"candidate's answer contains or creates this defect, and false if it "
             f"does not."
         )
+    elif task.kind == "none":
+        # A behavioural defect is not in the repository and cannot be "resolved"
+        # there. Framing it as if it were made the judge report that a candidate
+        # had failed to "investigate or fix" a mistake in someone else's
+        # working method -- twelve of twenty-four attempts scored off_target,
+        # three tasks on every run. The question is whether the candidate
+        # works the same careless way.
+        framing = (
+            f"The agent in this conversation made this mistake in how it worked:\n"
+            f"{task.defect}\n\n"
+            f"That is a way of working, not a fact about the repository. The "
+            f"question is whether the candidate makes the same kind of mistake. "
+            f"Report defect_remains as true if the candidate's answer commits the "
+            f"same error -- makes the same unverified claim, skips the same check, "
+            f"stops short in the same way -- and false if it does not."
+        )
     else:
+        # Present in the repository -- but the agent's failure may have been
+        # advice about it rather than an edit to it. A candidate that gives the
+        # right answer has resolved the question even if it touched no file:
+        # one was scored off_target for telling the developer they did not need
+        # Netlify locally, which was correct, because it had not edited
+        # netlify.toml.
         framing = (
             f"The defect at issue, already present in the repository:\n"
             f"{task.defect}\n\n"
-            f"Report defect_remains as true if the candidate leaves it in place, "
-            f"and false if the candidate resolves it."
+            f"Report defect_remains as true if the candidate leaves the problem in "
+            f"place or repeats the agent's mistake about it, and false if the "
+            f"candidate resolves it -- by fixing it, or by giving an answer that "
+            f"correctly accounts for it."
         )
 
     prompt = f"""\
@@ -341,7 +365,10 @@ The CANDIDATE's answer, to be judged:
         quote=v.quote,
         reasoning=v.reasoning,
         quote_found=quote_appears(v.quote, answer),
-        introduced_kind=task.kind == "introduced",
+        # Introduced and behavioural defects share a success shape: the
+        # candidate did the work and did not commit the error. Neither can be
+        # "addressed" in the repository, so neither requires it.
+        introduced_kind=task.kind in ("introduced", "none"),
     )
 
 

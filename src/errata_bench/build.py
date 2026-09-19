@@ -26,6 +26,7 @@ import tempfile
 from pathlib import Path
 
 from .corpus import load_repos
+from .edits import edits_before, replay
 from .presence import check, repo_url
 from .reader import load_session_turns
 from .signature import Signature
@@ -258,6 +259,16 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
             except GitError as e:
                 reject(f"could not build the tree: {str(e)[:110]}")
                 continue
+            # The base commit predates the session; the agent's own edits up to
+            # the cut are replayed onto it so the tree matches the transcript.
+            # Seven of twelve calibrated tasks had such edits and none of them
+            # were in the tree. An edit that will not apply means this commit
+            # is not what the agent was editing, and the task is rejected.
+            edits = edits_before(turns, row["cut"])
+            rep = replay(tree, edits, repo_id)
+            if not rep.ok:
+                reject(f"the agent's in-session edits do not apply to the base commit: {rep.reason[:120]}")
+                continue
             presence = check(task_id, sig, tree)
 
         # Presence is advisory, not a gate. It can only confirm a defect it can
@@ -301,6 +312,7 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
                 license_type=repo.license_type,
                 is_copyleft=repo.is_copyleft,
                 rounds=row.get("rounds", 1),
+                edits_replayed=rep.applied,
             )
         )
     return result

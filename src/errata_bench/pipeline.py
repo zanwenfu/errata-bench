@@ -538,7 +538,15 @@ async def stage_attempt(
     # candidates against it measures nothing.
     broken = {r["task_id"] for r in load(paths.controls) if not r.get("ok")}
     tasks = [t for t in read(paths.tasks) if t.task_id in sound and t.task_id not in broken]
-    done = {(r["task_id"], r["run"]) for r in load(paths.attempts)}
+    # An errored attempt is not a finished one. Twelve of thirty-six attempts
+    # died on API rate limits and were then counted as done, so a re-run would
+    # have skipped exactly the work that needed redoing. Errored rows are
+    # dropped here and their (task, run) pairs retried.
+    previous = load(paths.attempts)
+    kept = [r for r in previous if not r.get("error")]
+    if len(kept) != len(previous):
+        paths.attempts.write_text("".join(json.dumps(r) + "\n" for r in kept))
+    done = {(r["task_id"], r["run"]) for r in kept}
     repos = load_repos()
     images = {
         t.task_id: image_for(getattr(repos.get(t.repo_id), "language", None))
