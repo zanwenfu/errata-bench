@@ -510,14 +510,28 @@ async def stage_calibrate(paths: Paths, limit: int, concurrency: int) -> Progres
                     "sound": c.sound,
                     "separates": c.separates,
                     "order_invariant": c.order_invariant,
+                    # The four readings themselves, not only the verdict on
+                    # them. With just `detail`, a task marked order-dependent
+                    # could not be told apart as a pass/fail flip or a wobble
+                    # in a side observation -- and two of the three were the
+                    # latter.
+                    "failed_outcome": c.failed_outcome,
+                    "resolution_outcome": c.resolution_outcome,
+                    "failed_outcome_swapped": c.failed_outcome_swapped,
+                    "resolution_outcome_swapped": c.resolution_outcome_swapped,
                     "detail": c.detail,
                 },
             )
             return c.sound
         except Exception as e:
+            # Marked as an error so the next run retries it. Without the key,
+            # completed() cannot tell a call that failed from a judge that
+            # misread the pair, and one dropped connection retires a sound
+            # task for good -- the same trap the other stages were fixed for.
             append(
                 paths.calibration,
-                {"task_id": t.task_id, "sound": False, "detail": f"{type(e).__name__}: {e}"},
+                {"task_id": t.task_id, "sound": False, "error": f"{type(e).__name__}: {e}",
+                 "detail": f"{type(e).__name__}: {e}"},
             )
             return False
 
