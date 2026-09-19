@@ -608,13 +608,19 @@ order found.
   grok-4.6 96–177 s per judgement; Kimi 50k tokens per minute.
 - **B-95 · The SDK uploaded traces to OpenAI from the Azure path** (fixed ·
   09-19 · `4e2f044`).
-- **B-96 · grok-4.6 intermittently returns an empty reply under load**
-  (transient, handled · 09-19). "ChatCompletion response has no choices" on 17
-  of 36 gradings at concurrency 6–10, concentrated on two tasks, while the same
-  two requests succeed when sent alone (139 s and 98 s). Three retry rounds
-  cleared every one: 36 of 36 graded, no errors. Not a content or schema
-  problem; treat it as load and retry, or lower concurrency for slow-reasoning
-  models.
+- **B-96 · A throttled Azure deployment answers 200 with no choices, and the
+  run recorded it as a permanent failure** (fixed · 09-19 · `—`). First seen as
+  17 of 36 gradings lost at concurrency 6–10; then all 36 lost **in seven
+  seconds**, which is what identified it. Ruled out by measurement, in this
+  order: prompt size (grok answers at 90,000 characters, 26,587 tokens),
+  structured output (answers with the strict schema at every size),
+  concurrency (4 at once answered 4/4 while another judge was running), and the
+  specific request (the exact failing call answered alone in 180 s). What is
+  left is throttling, and Azure signals it with HTTP 200 and an empty
+  `choices` array rather than 429, so the SDK raises ModelBehaviorError and the
+  row is written as an error. Fixed: `reader.resilient` retries that one
+  message up to four times with a growing pause, raises anything else
+  immediately, and is asserted offline on all three behaviours.
 
 ---
 - **B-107 · The trace check flagged true statements about the environment**
@@ -871,9 +877,8 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   with two passes, so judges are compared on identical rules (B-90).
 - **G-05 · Record the code version with every graded row**, so a mid-run change
   is visible in the data rather than reconstructed from file times (B-90).
-- **G-06 · grok-4.6's empty replies** — closed 09-19: transient under load and
-  cleared by retry rounds (B-96). Keep concurrency modest for slow-reasoning
-  models.
+- **G-06 · grok-4.6's empty replies** — closed 09-19: throttling answered as
+  an empty 200, now retried in the call rather than a run later (B-96).
 - **G-07 · Only one candidate model has been evaluated.** Nothing yet shows the
   benchmark separates models. The Azure models can be candidates once
   tool-using runs are verified on chat completions.
@@ -1002,3 +1007,6 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
 - **09-19** — B-107 to B-116 recorded: what three regrades of the trace check
   cost, and the five further defects a careful reading found before a fourth.
   D-21 adopted.
+- **09-19** — B-96 re-diagnosed properly and fixed in the call path. Four
+  hypotheses were tested and rejected before the right one; the giveaway was
+  36 failures in 7 seconds.

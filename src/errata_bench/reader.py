@@ -245,6 +245,36 @@ def with_field_guide(instructions: str, output_type) -> str:
     )
 
 
+
+async def resilient(make_call, *, attempts: int = 4, pause: float = 60.0):
+    """Run a model call, retrying the empty answer a throttled endpoint gives.
+
+    Azure replies to a throttled deployment with HTTP 200 and an empty
+    ``choices`` array rather than a 429, and the SDK raises
+    ModelBehaviorError("ChatCompletion response has no choices"). Recorded, that
+    becomes a permanent error on a row that was never really attempted: one
+    regrade lost all thirty-six of its grading calls in seven seconds, while
+    the same call answered in 180 seconds when made alone a few minutes later,
+    and four at once answered 4/4.
+
+    So it is retried here rather than a run later. Other failures are raised
+    untouched -- a real error should stop being mistaken for a transient one.
+    """
+    import asyncio
+
+    last = None
+    for attempt in range(attempts):
+        try:
+            return await make_call()
+        except Exception as e:  # noqa: BLE001 - re-raised below unless transient
+            if "no choices" not in str(e):
+                raise
+            last = e
+            if attempt + 1 < attempts:
+                await asyncio.sleep(pause * (attempt + 1))
+    raise last
+
+
 class Evidence(BaseModel):
     """A specific thing the agent said or did, locatable in the transcript."""
 

@@ -31,7 +31,7 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, Field
 
-from .reader import MODEL, configure_client, with_field_guide
+from .reader import MODEL, configure_client, resilient, with_field_guide
 from .spec import Task
 
 class Verdict(BaseModel):
@@ -391,7 +391,7 @@ Reference answer B, from this conversation:
 The CANDIDATE's answer, to be judged:
 {answer[:12000]}
 {trace}"""
-    result = await Runner.run(agent, prompt, max_turns=3)
+    result = await resilient(lambda: Runner.run(agent, prompt, max_turns=3))
     v: Verdict = result.final_output
     return Judgement(
         addresses_defect=v.addresses_defect,
