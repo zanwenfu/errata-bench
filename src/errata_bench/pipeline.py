@@ -118,12 +118,17 @@ def load(path: Path) -> list[dict]:
     if not path.exists():
         return []
     rows, broken = [], 0
-    for line in path.read_text().splitlines():
-        if not line.strip():
+    # Read as bytes and decode per line. `read_text()` decodes the whole file
+    # at once, so a row cut off in the middle of a character -- an em dash in a
+    # model's reply, which is common -- raised UnicodeDecodeError and made the
+    # entire file unreadable, losing every finished row in it. B-126 repaired
+    # the newline and left this half of the same accident in place.
+    for raw in path.read_bytes().split(b"\n"):
+        if not raw.strip():
             continue
         try:
-            rows.append(json.loads(line))
-        except ValueError:
+            rows.append(json.loads(raw.decode()))
+        except (ValueError, UnicodeDecodeError):
             broken += 1
     if broken:
         print(f"  note: skipped {broken} incomplete row(s) in {path.name}", flush=True)
@@ -161,7 +166,11 @@ def replace(path: Path, rows: list[dict]) -> None:
     destroys every row that was already there. Writing a sibling and renaming
     makes the swap atomic: the reader sees either the old file or the new one.
     """
-    tmp = path.with_suffix(path.suffix + ".tmp")
+    # Named for this process. With one fixed `.tmp` per stage file, two writers
+    # raced on the same name: half the calls in a ten-way test raised
+    # FileNotFoundError out of the middle of a stage, and the process that
+    # reported success had written bytes that were not in the file.
+    tmp = path.with_suffix(f"{path.suffix}.{os.getpid()}.tmp")
     tmp.write_text("".join(json.dumps(r) + "\n" for r in rows))
     tmp.replace(path)
 
@@ -332,7 +341,19 @@ async def _gather(coros, limit: int):
 
     async def run(c):
         async with sem:
-            return await c
+            try:
+                return await c
+            except Exception as e:  # noqa: BLE001 - one job, not the stage
+                # `asyncio.gather` cancels its siblings when one raises, so a
+                # single unhandled error threw away every job in flight: four
+                # containers started, nothing written, no Progress returned --
+                # which means the stage line never prints, the run exits on a
+                # traceback rather than a count, and the closing sweep that
+                # removes leftover containers never runs. A job that dies is
+                # one failure; the rest of the stage carries on and the row is
+                # retried next time.
+                print(f"  ! {type(e).__name__}: {e}", flush=True)
+                return False
 
     return await asyncio.gather(*(run(c) for c in coros))
 
@@ -656,11 +677,16 @@ def stage_build(paths: Paths, limit: int) -> Progress:
     for downstream in (paths.calibration, paths.controls, paths.answers, paths.attempts):
         if not downstream.exists():
             continue
-        rows = load(downstream)
-        kept = [r for r in rows if still_describes(r)]
-        if len(kept) != len(rows):
-            replace(downstream, kept)
-            p.notes.append(f"dropped {len(rows) - len(kept)} stale rows from {downstream.name}")
+        # Under the lock, re-read: this loop rewrites four files a candidate or
+        # grading run may be appending to, and a snapshot written back over one
+        # of them silently destroyed whatever arrived in between -- measured at
+        # 21 of 40 answer rows lost to a peer appending during the window.
+        with held(downstream):
+            rows = load(downstream)
+            kept = [r for r in rows if still_describes(r)]
+            if len(kept) != len(rows):
+                replace(downstream, kept)
+                p.notes.append(f"dropped {len(rows) - len(kept)} stale rows from {downstream.name}")
     # Kept on disk, not only printed. Forty of fifty-one located defects are
     # rejected here, and which gate each one died at is the question anyone
     # asking "where do more tasks come from?" needs answered -- but the reasons
@@ -668,10 +694,11 @@ def stage_build(paths: Paths, limit: int) -> Progress:
     # so answering it meant replaying every gate by hand against the screened
     # rows. The file is rewritten with the tasks, since both describe the same
     # build.
-    replace(paths.rejections, [
-        {"repo_id": r.repo_id, "complaint": r.complaint_turn, "reason": r.reason}
-        for r in result.rejected
-    ])
+    with held(paths.rejections):
+        replace(paths.rejections, [
+            {"repo_id": r.repo_id, "complaint": r.complaint_turn, "reason": r.reason}
+            for r in result.rejected
+        ])
     p.produced = len(result.tasks)
     p.failed = len(result.rejected)
     # extend, not assign: the loop above records what it deleted, and assigning
@@ -693,7 +720,7 @@ async def stage_calibrate(paths: Paths, limit: int, concurrency: int) -> Progres
     t0 = time.monotonic()
     tasks = read(paths.tasks)
     done = {r["task_id"] for r in completed(paths.calibration)}
-    todo = [t for t in tasks if t.task_id not in done]
+    todo = [t for t in tasks if t.task_id not in done][:limit]
     p.skipped = len(tasks) - len(todo)
     grader = judge_model()
 
@@ -794,7 +821,7 @@ async def stage_control(paths: Paths, limit: int, concurrency: int) -> Progress:
     # because resume keys on (task, control) regardless of why the row exists.
     # Errored rows are dropped and retried, exactly as errored attempts are.
     done = {(r["task_id"], r["control"]) for r in completed(paths.controls)}
-    jobs = [(t, c) for t in tasks for c in CONTROLS if (t.task_id, c.name) not in done]
+    jobs = [(t, c) for t in tasks for c in CONTROLS if (t.task_id, c.name) not in done][:limit]
     p.skipped = len(tasks) * len(CONTROLS) - len(jobs)
     if not jobs:
         p.took_s = time.monotonic() - t0
@@ -836,6 +863,7 @@ async def stage_control(paths: Paths, limit: int, concurrency: int) -> Progress:
 # not. The named file goes in first because it is the one the token check
 # reads, then the smallest of the rest, so a row holds as many useful files as
 # it can rather than one enormous one.
+MAX_ATTEMPT_FAILURES = 3
 KEPT_FILE_CHARS = 40_000
 KEPT_STATE_CHARS = 2_000_000
 
@@ -910,6 +938,12 @@ async def stage_attempt(
     # expensive thing here, destroyed because a judge changed its mind about
     # the task; and the note said one row had gone when two had.
     prints = {t.task_id: fingerprint(t) for t in every}
+    # How often each pair has already died, read before `completed` drops the
+    # errored rows that carry the count.
+    failures = {
+        (r.get("task_id"), r.get("run")): r.get("failures", 0)
+        for r in load(paths.answers) if r.get("error")
+    }
     fresh, orphaned, stale = sort_answers(completed(paths.answers), prints)
     if stale:
         # Superseded rows are removed, because left in place they would be
@@ -948,6 +982,11 @@ async def stage_attempt(
         for t in tasks
     }
     jobs = [(t, i) for t in tasks for i in range(repeats) if (t.task_id, i) not in done]
+    # `--max-rows` is documented as capping how many rows each stage processes
+    # and was read by two of eleven stages. It is how anyone would smoke-test a
+    # four-hundred-task directory, and on the one stage that starts containers
+    # it did nothing: `--max-rows 1` ran twelve hundred of them.
+    jobs = jobs[:limit]
     p.skipped = len(tasks) * repeats - len(jobs)
     if not jobs:
         p.took_s = time.monotonic() - t0
@@ -993,9 +1032,35 @@ async def stage_attempt(
                 task, image=image, turns=turns_by_session.get(task.session_id)
             )
         if attempt.error:
+            # How many times this pair has already died. An errored row is
+            # dropped and retried, which is right for a rate limit and wrong
+            # for a repository that will not clone: five resumes paid for
+            # fifteen clone attempts on one dead repository, and the run's exit
+            # code stayed at 1 for ever. After three, it is recorded as a
+            # scored failure and stops costing anything.
+            before = failures.get((task.task_id, i), 0) + 1
+            if before >= MAX_ATTEMPT_FAILURES:
+                append(paths.answers, {
+                    "task_id": task.task_id, "run": i, "kind": task.kind,
+                    "model": attempt.model, "environment": attempt.environment,
+                    "seconds": round(time.monotonic() - started, 1),
+                    "reply": "", "out_of_time": False, "tool_calls": [],
+                    "actual_changes": {}, "declared_changes": [],
+                    "structure": analyse(task, attempt, None).to_json(),
+                    "final_state": {}, "final_state_files": 0,
+                    "transcript": transcripts.get(task.task_id, ""),
+                    "rules": f"{CANDIDATE_RULES}\n\n{environment_note(attempt.environment)}",
+                    "task_fingerprint": fingerprint(task),
+                    "gave_up_after": before, "last_error": attempt.error,
+                })
+                p.notes.append(
+                    f"{task.task_id} #{i} failed {before} times and was given up on: {attempt.error[:80]}"
+                )
+                return False
             append(
                 paths.answers,
-                {"task_id": task.task_id, "run": i, "error": attempt.error},
+                {"task_id": task.task_id, "run": i, "error": attempt.error,
+                 "failures": before},
             )
             return False
         # Taken now, not at grading time. The token check reads the files the
@@ -1069,7 +1134,7 @@ async def stage_grade(paths: Paths, limit: int, concurrency: int) -> Progress:
     """
     from .attempt import INSTRUCTIONS as CANDIDATE_RULES
     from .attempt import environment_note, transcripts_for
-    from .judge import judge
+    from .judge import can_be_scored, judge
     from .reader import judge_model, model_name
     from .spec import fingerprint, read
     from .structure import Structure, combine
@@ -1084,6 +1149,45 @@ async def stage_grade(paths: Paths, limit: int, concurrency: int) -> Progress:
     # would rewrite it from a stale snapshot while the attempt stage may be
     # appending to it.
     answers, orphaned, stale = sort_answers(finished(paths.answers), prints)
+    # The same admission the candidate stage applies. Before the split the
+    # judge call sat inside the loop over admitted tasks, so an unsound or
+    # broken task could not be graded; afterwards this stage read only
+    # answers.jsonl and tasks.jsonl and graded whatever it found. A task whose
+    # gate failed after its answers were collected -- a control that now passes
+    # on a do-nothing answer, a calibration lost to a transient error -- then
+    # contributed to the pass rate, while the candidate stage correctly refused
+    # to run it. Reproduced at two tasks: half the published rate came from a
+    # task the pipeline had already decided could measure nothing.
+    sound = {r["task_id"] for r in load(paths.calibration) if can_be_scored(r)}
+    broken = {r["task_id"] for r in load(paths.controls) if not r.get("ok")}
+    admitted = [a for a in answers if a["task_id"] in sound and a["task_id"] not in broken]
+    if len(admitted) != len(answers):
+        p.notes.append(
+            f"{len(answers) - len(admitted)} answers belong to tasks that no longer "
+            f"pass their known-answer pair or their controls, and were not graded"
+        )
+    answers = admitted
+    # Before anything is rewritten. The refusal below exists to keep this run
+    # out of a file another judge owns, and it used to fire after `completed`
+    # had already dropped that judge's error rows -- destroying the very rows
+    # it had to retry, in a run that then reported doing nothing.
+    others = {r.get("judge_model") for r in load(paths.attempts)} - {grader, None}
+    if others:
+        p.notes.append(
+            f"REFUSED: {len(load(paths.attempts))} answers here were graded by "
+            f"{', '.join(sorted(others))}, and this run's judge is {grader}. "
+            f"Mixing two judges in one file makes its counts meaningless. "
+            f"Use `run.py rejudge --run <dir> --judge {grader}`, which keeps the "
+            f"second opinion separate and puts that judge through the known "
+            f"answers first."
+        )
+        # At least one, even when there was nothing left to grade: the usual
+        # reason to point a second judge at a directory is that every answer is
+        # already graded, and a refusal that exits zero is a refusal the shell
+        # loop driving these runs cannot see.
+        p.failed = 1
+        p.took_s = time.monotonic() - t0
+        return p
     # Errored grades are dropped by `completed` and come back as work, exactly
     # as errored attempts do. This stage owns attempts.jsonl, so it tidies it.
     graded = completed(paths.attempts)
@@ -1102,7 +1206,7 @@ async def stage_grade(paths: Paths, limit: int, concurrency: int) -> Progress:
             f"dropped {len(outdated)} scores of an earlier version of their task"
         )
     done = {(r["task_id"], r["run"]) for r in graded}
-    todo = [a for a in answers if (a["task_id"], a["run"]) not in done]
+    todo = [a for a in answers if (a["task_id"], a["run"]) not in done][:limit]
     p.skipped = len(answers) - len(todo)
     p.notes.append(f"graded by {grader}")
     # Naming no grader leaves `judge_model()` falling back to the candidate's
@@ -1127,31 +1231,6 @@ async def stage_grade(paths: Paths, limit: int, concurrency: int) -> Progress:
         p.notes.append(
             f"warning: calibrated with {', '.join(sorted(calibrators))}, grading with {grader}"
         )
-    # Re-grading the same answers with a second judge is what the rejudge tool
-    # is for: it writes under <run>/rejudge/<judge>/ and puts that judge through
-    # the same known-answer tests first. Here, one answer has one grade, so
-    # pointing a different judge at a graded run would otherwise do nothing at
-    # all and report success.
-    others = {r.get("judge_model") for r in graded} - {grader, None}
-    if others:
-        # Refused rather than reported. One answer has one grade here, so this
-        # would have graded nothing and said "0 produced", which reads exactly
-        # like a run with nothing left to do.
-        p.notes.append(
-            f"REFUSED: {len(graded)} answers here were graded by "
-            f"{', '.join(sorted(others))}, and this run's judge is {grader}. "
-            f"Mixing two judges in one file makes its counts meaningless. "
-            f"Use `run.py rejudge --run <dir> --judge {grader}`, which keeps the "
-            f"second opinion separate and puts that judge through the known "
-            f"answers first."
-        )
-        # At least one, even when there was nothing left to grade: the usual
-        # reason to point a second judge at a directory is that every answer is
-        # already graded, and a refusal that exits zero is a refusal the shell
-        # loop driving these runs cannot see.
-        p.failed = max(1, len(todo))
-        p.took_s = time.monotonic() - t0
-        return p
     if not todo:
         p.took_s = time.monotonic() - t0
         return p
@@ -1236,11 +1315,25 @@ async def stage_grade(paths: Paths, limit: int, concurrency: int) -> Progress:
             # Recorded and then graded anyway was the wrong shape: the row said
             # the check had nothing to check claims against, and nothing read
             # that field, so a known-bad reading was counted like any other.
+            #
+            # Terminal, not an error. Nothing about this row can change -- the
+            # session the corpus cannot produce today it will not produce
+            # tomorrow -- so an error row was dropped and retried on every
+            # pass, paying for a 1.3 GB corpus read each time and keeping the
+            # run's exit code at 1 for ever. Recorded once, counted nowhere.
             append(paths.attempts, {
-                "task_id": a["task_id"], "run": a["run"], "judge_model": grader,
-                "error": "no conversation to check the answer's claims against",
+                **row,
+                "outcome": "no_context", "passed": False, "scoreable": False,
+                "solved": False, "dishonest": False, "trustworthy": False,
+                "checked": structure.checked, "wrote": structure.wrote,
+                "fixed": structure.fixed,
+                "told_the_truth_about_edits": structure.declaration_matches,
+                "claims_match_trace": None, "unsupported_claims": [],
+                "overclaimed_work": False,
+                "note": "the conversation this answer was written about could not be rebuilt, "
+                        "so its claims cannot be checked against it",
             })
-            return False
+            return True
         try:
             # The judge is shown what the candidate did, because "did it claim
             # something it had not established" cannot be read off the prose.
@@ -1330,7 +1423,12 @@ def stage_report(paths: Paths) -> Progress:
             # than an unfinished one -- the report counts graded rows, and
             # every ungraded answer is simply invisible to it.
             "answers_collected": len(answers),
-            "answers_not_yet_graded": len(answers) - len(graded_keys & answer_keys),
+            # Unique keys on both sides. Subtracting a set size from a row
+            # count reported ungraded answers that did not exist the moment a
+            # row appeared twice -- which is the case the next line exists to
+            # report.
+            "answers_not_yet_graded": len(answer_keys - graded_keys),
+            "answers_recorded_twice": len(answers) - len(answer_keys),
             # Two processes grading one directory would each append a row for
             # the same attempt, and every count below would include it twice.
             # Stated rather than silently deduplicated: a number that repairs
@@ -1342,7 +1440,7 @@ def stage_report(paths: Paths) -> Progress:
             # name. Naming them costs a line and makes the next one visible.
             "tasks_with_no_scored_attempt": sorted(
                 {t.get("task_id") for t in tasks} - {k[0] for k in graded_keys}
-            ),
+            )[:25],
         },
         "attempts": len(attempts),
         "scoreable": len(scoreable),

@@ -193,6 +193,11 @@ def write(tasks: list[Task], path: Path) -> None:
 
 def read(path: Path) -> list[Task]:
     """Every complete task in the file, skipping any line left truncated."""
+    # A missing file is an empty task list, as it is everywhere else. Without
+    # this, `--only grade` on a directory with no tasks.jsonl ended in a
+    # traceback rather than "nothing to do".
+    if not path.exists():
+        return []
     out = []
     for line in path.read_text().splitlines():
         if not line.strip():

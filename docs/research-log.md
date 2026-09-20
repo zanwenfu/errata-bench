@@ -934,6 +934,86 @@ the same critical defect, which was one of yesterday's own fixes.
   09-20). "Nothing written before the field existed is ever deleted on a rule
   it predates" sat directly above a call that deleted exactly those rows.
 
+A fourth round, from the same request. Two of the five reviewers were pointed
+at the new code and at the checks themselves. The second found that half the
+checks written that morning were worthless, and that one of them was hiding a
+live bug.
+
+- **B-165 · A row cut mid-character made the whole file unreadable** (fixed ·
+  09-20). B-126 repaired the missing newline and left the other half of the
+  same accident: `load` decoded the file in one call, so a row cut off inside a
+  UTF-8 sequence — an em dash in a model's reply, which is common — raised
+  `UnicodeDecodeError` and lost every finished row in the file, not just the
+  torn one. The check that was supposed to cover this used a pure-ASCII
+  fixture, so it could not see it. Rows are now decoded one at a time.
+- **B-166 · Grading applied no gate at all** (fixed · 09-20). Before the split
+  the judge call sat inside the loop over admitted tasks, so a task that failed
+  its calibration or its controls could not be graded. Afterwards `stage_grade`
+  read only `tasks.jsonl` and `answers.jsonl` and graded whatever it found: a
+  task whose gate failed *after* its answers were collected — a control that
+  now passes on a do-nothing answer — contributed to the pass rate while the
+  candidate stage correctly refused to run it. Reproduced at two tasks: half
+  the published rate came from a task the pipeline had decided could measure
+  nothing.
+- **B-167 · One job's crash threw away every job in flight** (fixed · 09-20).
+  `asyncio.gather` cancels its siblings, and the expensive calls in the attempt
+  stage sit outside any handler. An `OSError` fifty milliseconds in left four
+  containers started, nothing written, no `Progress` returned — so the stage
+  line never printed, the run exited on a traceback instead of a count, and the
+  closing sweep that removes leftover containers never ran.
+- **B-168 · The two-judge refusal fired after it had already deleted from the
+  file** (fixed · 09-20). The guard exists to keep a run out of a file another
+  judge owns, and it ran after `completed` had dropped that judge's error rows
+  — destroying the rows it had to retry, in a run that then reported doing
+  nothing.
+- **B-169 · Two writers fought over one temporary file** (fixed · 09-20).
+  `replace` named its temporary `<file>.tmp`, one fixed name per stage file. In
+  a ten-way test, half the calls raised `FileNotFoundError` out of the middle of
+  a stage and the process that reported success had written bytes that were not
+  in the file. The rebuild's prune also rewrote four files without the lock:
+  21 of 40 answer rows were lost to a peer appending during the window.
+- **B-170 · A grading that could never succeed was retried for ever** (fixed ·
+  09-20). An answer whose session the corpus cannot produce got an error row,
+  which is dropped and retried on every pass — paying for a 1.3 GB corpus read
+  each time and holding the run's exit code at 1 permanently. It is now
+  recorded once as an unscoreable result and counted nowhere.
+- **B-171 · A dead repository cost a container on every resume** (fixed ·
+  09-20). Five resumes paid for fifteen clone attempts on one repository that
+  will not clone. A pair that has failed three times is now given up on and
+  recorded.
+- **B-172 · `--max-rows` was read by two stages of eleven** (fixed · 09-20).
+  It is documented as capping how many rows each stage processes, and the one
+  stage that starts containers ignored it: `--max-rows 1` over a four-hundred
+  task directory ran twelve hundred containers. It is how anyone would smoke
+  test at scale.
+- **B-173 · The report subtracted a set size from a row count** (fixed ·
+  09-20). `answers_not_yet_graded` claimed ungraded answers that did not exist
+  the moment a row appeared twice — which is the case the next line of the same
+  report exists to flag.
+- **B-174 · Half the checks passed after the fix they named was reverted**
+  (fixed · 09-20). Thirteen of the twenty-eight assertions written that morning
+  were text searches over source, and twelve survived a mutation that restored
+  the defect: a space added to a variable name, a `raise` at the top of an
+  `except` block, `if False and ...` in front of a guard, a literal left behind
+  in a comment. Two more compared the code against a constant imported from the
+  code, so a cap raised from 2 MB to 2 TB passed and printed "the row holds
+  200,130,028 characters" beside the word ok. Every one has been replaced by
+  something that runs the code: the retry delays are measured, the lock is
+  taken by a second process and the wait timed, the refusal's exit code is read
+  from a real invocation. Each replacement was then checked by breaking the
+  thing it names and confirming it fails.
+- **B-175 · The equivalence check excluded a field that was not new** (fixed ·
+  09-20). `out_of_time` was listed among the fields the split added, so any
+  regression in the no-answer path was hidden. The comparison is now over the
+  keys the old row actually had, and the set of genuinely new fields is derived
+  and asserted rather than written by hand.
+- **B-176 · Six assertions rested on a fingerprint they only ever varied one
+  way** (fixed · 09-20). Every scenario rebuilt its task by changing the defect
+  string, so a fingerprint reduced to the defect alone passed all three check
+  scripts — blind to a changed base commit, a repaired transcript or a swapped
+  reference answer, which are the cases it exists for. There is now one
+  assertion per field.
+
 ### 7.10 Other providers
 
 - **B-91 · Azure was inferred from an environment variable** (fixed · 09-19 ·
@@ -1597,3 +1677,10 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   independently by two reviewers. R-20's headline numbers were recomputed from
   the raw rows afterwards and did not move; three stored reports were
   regenerated. `checks/fixes_are_still_in.py` now holds 43 live assertions.
+- **09-20** — a fourth round, from the same request: twelve more (B-165 to
+  B-176). Two were live and serious — grading applied no admission gate at all
+  after the split, and a row cut mid-character made a whole answers file
+  unreadable. The rest were the checks themselves: twelve of twenty-eight
+  assertions passed after the fix they named was reverted. Every one now runs
+  the code, and each replacement was confirmed to fail when its subject is
+  broken. 44 assertions, all load-bearing.

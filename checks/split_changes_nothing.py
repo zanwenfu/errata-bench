@@ -1,5 +1,10 @@
 # Splitting grading out of the attempt stage must change how fast the work runs
-# and nothing else. This runs both the old combined stage (taken from git) and
+# and nothing else.
+#
+# What this isolates is `pipeline.py` alone: the old module is loaded into the
+# current package, so its relative imports resolve to today's structure.py,
+# judge.py and spec.py. A change confined to those files is invisible here and
+# is covered by the assertions in fixes_are_still_in.py instead. This runs both the old combined stage (taken from git) and
 # the new pair against the same fakes, and compares the rows they produce field
 # by field. Fakes stand in for the model and the container, so it runs in
 # seconds with no network and no Docker.
@@ -80,7 +85,8 @@ async def fake_judge(task, answer, *, model=None, swap_references=False, tool_ca
     if in_attempt_stage["now"]:
         grading_during_attempt["count"] += 1
     seen["graders"].add(model)
-    seen["judge"].append((task.task_id, answer, json.dumps(tool_calls, sort_keys=True)))
+    seen["judge"].append((task.task_id, model, swap_references, answer,
+                          json.dumps(tool_calls, sort_keys=True)))
     note("grade", +1)
     await asyncio.sleep(0.25)
     note("grade", -1)
@@ -101,7 +107,7 @@ async def fake_check(answer, calls, *, model=None, context="", given=""):
     if in_attempt_stage["now"]:
         grading_during_attempt["count"] += 1
     seen["graders"].add(model)
-    seen["trace"].append((answer, json.dumps(calls, sort_keys=True), context, given))
+    seen["trace"].append((answer, model, json.dumps(calls, sort_keys=True), context, given))
     note("grade", +1)
     await asyncio.sleep(0.25)
     note("grade", -1)
@@ -203,7 +209,7 @@ answers = rows(after.answers)
 check(grading_during_attempt["count"] == 0,
       "the attempt stage made no grading call at all")
 check(not seen["graders"], "no grader was contacted while candidates ran")
-check(peak_run <= 2, f"the container bound held: peak {peak_run} candidates at once")
+check(peak_run == 2, f"candidates ran up to the container bound and no further: peak {peak_run}")
 check(not after.attempts.exists() or not rows(after.attempts),
       "the attempt stage wrote nothing to attempts.jsonl")
 check(len(answers) == 8, f"one answer row per (task, run): {len(answers)}")
@@ -226,13 +232,23 @@ print(f"     attempt {attempt_s:.1f}s, grade {grade_s:.1f}s, combined would be ~
 
 print("\n3. the same rows, field for field")
 # `seconds` means the candidate's own time now, not candidate plus grading, and
-# scored rows carry two fields they did not before. Everything else must match.
-ADDED = {"graded_seconds", "out_of_time", "structure", "had_conversation", "task_fingerprint"}
+# scored rows carry four fields they did not before. Everything else must
+# match -- including `out_of_time`, which the old no-answer row already wrote
+# and which was wrongly listed as new, hiding any regression in that path.
+# Derived, not asserted by hand: any field the new row carries that the old one
+# did not must be one of these, so a sixth cannot join the exception list
+# silently. `out_of_time` is in it only because the old code wrote it on the
+# no-answer rows alone -- and on those rows it is compared, below, because the
+# comparison is over the keys the OLD row actually had.
+EXPECTED_NEW = {"graded_seconds", "structure", "had_conversation", "task_fingerprint", "out_of_time"}
 CHANGED = {"seconds"}
 
 
-def comparable(r):
-    return {k: v for k, v in sorted(r.items()) if k not in ADDED | CHANGED}
+def comparable(old_row, new_row):
+    """The old row, and the same keys from the new one."""
+    keys = set(old_row) - CHANGED
+    return ({k: old_row.get(k) for k in sorted(keys)},
+            {k: new_row.get(k) for k in sorted(keys)})
 
 
 # A candidate that never produced an answer is now recorded where the answers
@@ -250,10 +266,16 @@ old_by_key = {(r["task_id"], r["run"]): r for r in old_rows if not r.get("error"
 new_by_key = {(r["task_id"], r["run"]): r for r in new_rows}
 check(set(old_by_key) == set(new_by_key),
       f"the same attempts were scored: {len(old_by_key)} then, {len(new_by_key)} now")
-differing = [k for k in old_by_key if comparable(old_by_key[k]) != comparable(new_by_key.get(k, {}))]
+appeared = set().union(*(set(new_by_key[k]) - set(old_by_key[k]) for k in old_by_key)) \
+    if old_by_key else set()
+check(appeared <= EXPECTED_NEW,
+      f"the only new fields on a scored row are the expected ones: {sorted(appeared)}")
+differing = [k for k in old_by_key
+             if comparable(old_by_key[k], new_by_key.get(k, {}))[0]
+             != comparable(old_by_key[k], new_by_key.get(k, {}))[1]]
 if differing:
     k = differing[0]
-    a, b = comparable(old_by_key[k]), comparable(new_by_key[k])
+    a, b = comparable(old_by_key[k], new_by_key[k])
     print("     first difference:", k)
     for f in sorted(set(a) | set(b)):
         if a.get(f) != b.get(f):
@@ -345,7 +367,7 @@ surviving = [t for t in read_tasks(after.tasks) if t.task_id != "task-0"]
 
 class FakeBuild:
     tasks = surviving
-    rejected = []
+    rejected = [type("R", (), {"repo_id": "r/r", "complaint_turn": 1, "reason": "nothing to answer"})()]
 
 
 build_mod.build = lambda rows_: FakeBuild()
@@ -356,6 +378,8 @@ p_build = stage_build(after, 10**9)
 left = {r["task_id"] for r in rows(after.answers)}
 check("task-0" not in left, "the dropped task's answers went with it")
 check("task-1" in left, "the surviving tasks' answers are still there")
+check(any("dropped" in n for n in p_build.notes) and any("nothing to answer" in n for n in p_build.notes),
+      f"and the deletion note survives beside the rejection list: {p_build.notes}")
 
 print("\n7b. a rebuild refuses to empty a finished run directory")
 # The three candidate directories hold tasks, calibration, controls and results

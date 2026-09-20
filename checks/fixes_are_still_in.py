@@ -62,6 +62,8 @@ src = lambda f: inspect.getsource(f)
 print("\nEach line runs the real code and asserts the old behaviour is gone.\n")
 
 # ---- B-122 -------------------------------------------------------------
+# runs/ is gitignored, so on a fresh clone these files are absent; the checks
+# that read them fall back rather than aborting the run halfway through.
 stored = Path("runs/cand-grok/attempts.jsonl")
 row = (json.loads(stored.read_text().splitlines()[0]) if stored.exists()
        else {"task_id": "t", "tool_calls": [], "told_the_truth_about_edits": None})
@@ -69,8 +71,21 @@ check("B-122", "an answer never asked to declare its edits is not called a liar"
       rejudge.structure_from_row(row).declaration_matches is None)
 
 # ---- B-123 -------------------------------------------------------------
-check("B-123", "a failed grading is caught and recorded, not left to kill the stage",
-      "except Exception as e:" in src(stage_grade) and 'f"{type(e).__name__}: {e}"' in src(stage_grade))
+d = run_dir(("a", "b"))
+asyncio.run(stage_attempt(d, 10**9, concurrency=2, repeats=1))
+_real_judge = J.judge
+async def one_bad(task, *a, **k):
+    if task.task_id == "a":
+        raise RuntimeError("the deployment returned nothing")
+    return await _real_judge(task, *a, **k)
+J.judge = one_bad
+asyncio.run(stage_grade(d, 10**9, concurrency=2))
+J.judge = _real_judge
+graded = {r["task_id"]: r for r in load(d.attempts)}
+check("B-123", "a failed grading is one error row, and the other answers still grade",
+      len(graded) == 2
+      and graded["a"].get("error", "").startswith("RuntimeError:")
+      and graded["b"].get("passed") is not None)
 
 # ---- B-124 -------------------------------------------------------------
 from errata_bench.container import _abandoned
@@ -89,12 +104,14 @@ check("B-125", "a rebuild refuses to empty a directory that holds results",
 
 # ---- B-126 / B-145 -----------------------------------------------------
 d = run_dir()
-d.answers.write_text(json.dumps({"task_id": "a"}) + "\n" + '{"task_id": "b", "ru')
+# cut in the middle of an em dash, which model replies are full of
+d.answers.write_bytes(json.dumps({"task_id": "a"}).encode() + b"\n"
+                      + '{"task_id": "b", "reply": "the tests pass \u2014'.encode()[:-1])
 append(d.answers, {"task_id": "c"})
 check("B-126", "a row cut off by a kill no longer swallows the next one",
       [r["task_id"] for r in load(d.answers)] == ["a", "c"])
-check("B-145", "the repair reads bytes, not a text cursor that assumes ASCII",
-      'open("rb")' in src(append) and "st_size" in src(append))
+check("B-145", "and a row cut mid-character does not make the whole file unreadable",
+      len(load(d.answers)) == 2)
 
 # ---- B-127 -------------------------------------------------------------
 try:
@@ -109,23 +126,53 @@ check("B-128", "the semaphore that could never bind is gone",
       "grading = asyncio.Semaphore" not in src(stage_attempt))
 
 # ---- B-129 -------------------------------------------------------------
-check("B-129", "retries are spread out instead of returning in lockstep",
-      "random.uniform" in src(reader.resilient))
+delays = []
+_sleep = asyncio.sleep
+async def spy(d_, *a, **k): delays.append(d_)
+asyncio.sleep = spy
+async def always_429(): raise RuntimeError("429 rate limit")
+try:
+    asyncio.run(reader.resilient(always_429, attempts=4, pause=10))
+except RuntimeError:
+    pass
+finally:
+    asyncio.sleep = _sleep
+check("B-129", f"retries are spread out, not in lockstep: {[round(x, 1) for x in delays]}",
+      len(delays) == 3 and len(set(delays)) == 3 and all(6 <= x <= 42 for x in delays))
 
 # ---- B-130 / B-143 -----------------------------------------------------
 r = subprocess.run([sys.executable, "run.py", "status", "--concurrency", "0"],
                    capture_output=True, text=True)
-check("B-130", "a concurrency of zero is rejected instead of hanging for ever",
-      r.returncode != 0 and "at least 1" in (r.stderr + r.stdout) or "1..32" in (r.stderr + r.stdout))
-check("B-143", "a failing stage exits non-zero",
-      "sys.exit(1)" in Path("run.py").read_text())
+hi = subprocess.run([sys.executable, "run.py", "status", "--grade-concurrency", "33"],
+                    capture_output=True, text=True)
+check("B-130", "concurrency outside 1..32 is rejected, with a non-zero exit",
+      r.returncode != 0 and "1..32" in (r.stderr + r.stdout)
+      and hi.returncode != 0 and "1..32" in (hi.stderr + hi.stdout))
+# the refusal path needs no model call: a directory graded by another judge
+refuse = run_dir()
+asyncio.run(stage_attempt(refuse, 10**9, concurrency=2, repeats=1))
+asyncio.run(stage_grade(refuse, 10**9, concurrency=2))
+P.replace(refuse.attempts, [dict(x, judge_model="someone-else") for x in load(refuse.attempts)])
+ran = subprocess.run([sys.executable, "run.py", "stages", "--run", str(refuse.root), "--only", "grade"],
+                     capture_output=True, text=True,
+                     env={**os.environ, "ERRATA_JUDGE_MODEL": "the-grader"})
+check("B-143", "a stage that refuses or fails exits non-zero, and says so",
+      ran.returncode == 1 and "REFUSED" in ran.stdout and "rows failed in: grade" in ran.stdout)
 
 # ---- B-131 / B-147 -----------------------------------------------------
-sh = Path("runs/attempt-rounds.sh").read_text()
-check("B-131", "the retry driver counts candidate errors where they now live",
-      'answers.jsonl' in sh and "--only grade" in sh)
-check("B-147", "the regrade log is named after the judge, not a newline",
-      "printf %s" in Path("runs/regrade-all.sh").read_text())
+import re as _re
+sh = Path("runs/attempt-rounds.sh").read_text() if Path("runs/attempt-rounds.sh").exists() else ""
+attempt_half = sh.split("--only grade")[0]
+check("B-131", "the retry driver counts candidate errors in the file that holds them",
+      bool(_re.search(r"--only attempt[\s\S]{0,400}?answers\.jsonl", sh))
+      and "attempts.jsonl" not in attempt_half.split("# ")[-1]
+      and "--only grade" in sh)
+rg = Path("runs/regrade-all.sh").read_text() if Path("runs/regrade-all.sh").exists() else ""
+log_line = next((l.strip() for l in rg.splitlines() if l.strip().startswith("log=")), "")
+named = subprocess.run(["bash", "-c", f'judge=my-judge; {log_line}; printf %s "$log"'],
+                       capture_output=True, text=True).stdout
+check("B-147", f"the regrade log is named after the judge, not a newline: {named!r}",
+      named == "runs/regrade-my-judge.log")
 
 # ---- B-132 -------------------------------------------------------------
 try:
@@ -143,14 +190,18 @@ check("B-133", "the conversation and the rules are stored with the answer, not r
       a.get("transcript") == "conversation" and "five tools" in (a.get("rules") or ""))
 
 # ---- B-134 / B-136 / B-148 --------------------------------------------
+# Grade alone, with no attempt run in between: otherwise the attempt stage
+# removes the stale answers first and the grading guard is never reached.
 d = run_dir()
 asyncio.run(stage_attempt(d, 10**9, concurrency=2, repeats=3))
-asyncio.run(stage_grade(d, 10**9, concurrency=2))
 write([mktask(defect="rebuilt with a different defect")], d.tasks)
+judged["n"] = 0
+pg_only = asyncio.run(stage_grade(d, 10**9, concurrency=2))
+check("B-134", "an answer is never graded against a task that changed under it",
+      judged["n"] == 0 and not load(d.attempts)
+      and any("earlier version" in n for n in pg_only.notes))
 pa = asyncio.run(stage_attempt(d, 10**9, concurrency=2, repeats=3))
 pg = asyncio.run(stage_grade(d, 10**9, concurrency=2))
-check("B-134", "an answer is never graded against a task that changed under it",
-      len({r["task_fingerprint"] for r in load(d.attempts)}) == 1)
 check("B-136", "a rebuilt task is collected and graded again, not retired for ever",
       pa.produced == 3 and pg.produced == 3 and len(load(d.answers)) == 3)
 stale = {"task_id": "t", "run": 9, "reply": "x", "tool_calls": [], "task_fingerprint": "deadbeef"}
@@ -162,19 +213,36 @@ asyncio.run(rejudge.regrade_all(d2, out, "the-judge", 2, 1))
 check("B-148", "the regrade tool refuses a stale answer too", judged["n"] == 0)
 
 # ---- B-135 -------------------------------------------------------------
-check("B-135", "what a stage refuses is printed where it can be seen",
-      "REFUSED" in Progress("grade", notes=["REFUSED: x"]).line())
+import contextlib, io
+buf = io.StringIO()
+with contextlib.redirect_stdout(buf):
+    asyncio.run(P.run_stages(refuse.root, ("grade",), concurrency=2))
+check("B-135", "a refusal reaches the screen, not just the Progress object",
+      "REFUSED" in Progress("grade", notes=["REFUSED: x"]).line()
+      and "REFUSED" in buf.getvalue())
 
 # ---- B-137 -------------------------------------------------------------
-check("B-137", "the scored row carries the task kind that decided the rule",
-      '"kind": task.kind' in src(stage_grade))
+import dataclasses as _dc
+d = run_dir()
+P.replace(d.tasks, [_dc.replace(mktask(), kind="present").to_json()])
+asyncio.run(stage_attempt(d, 10**9, concurrency=2, repeats=1))
+stored_kind = load(d.answers)[0]["kind"]
+# the task is rebuilt as a different kind; the answer keeps the old label
+P.replace(d.tasks, [_dc.replace(mktask(), kind="none").to_json()])
+P.replace(d.answers, [dict(x, task_fingerprint=fingerprint(_dc.replace(mktask(), kind="none")))
+                      for x in load(d.answers)])
+asyncio.run(stage_grade(d, 10**9, concurrency=2))
+check("B-137", f"the scored row carries the kind that decided the rule, not the stored label "
+               f"(stored {stored_kind!r})",
+      stored_kind == "present" and load(d.attempts)[0]["kind"] == "none")
 
 # ---- B-138 -------------------------------------------------------------
 from errata_bench.pipeline import _capped, KEPT_STATE_CHARS
 huge = {f"b/{i}.js": "z" * 50_000 for i in range(5000)}
 kept = _capped(huge, "")
-check("B-138", "a captured tree is bounded per row, not only per file",
-      sum(len(v) for v in kept.values()) <= KEPT_STATE_CHARS)
+check("B-138", f"a captured tree is bounded per row at a fixed size "
+               f"({sum(len(v) for v in kept.values()):,} chars)",
+      sum(len(v) for v in kept.values()) <= 2_100_000 and KEPT_STATE_CHARS <= 2_000_000)
 
 # ---- B-139 -------------------------------------------------------------
 A.transcript_for = lambda t, turns: ""
@@ -198,12 +266,31 @@ check("B-141", "a rebuild keeps the note saying what it deleted",
       "p.notes.extend" in src(stage_build))
 
 # ---- B-142 -------------------------------------------------------------
-check("B-142", "appending and tidying take a lock, so two runs cannot erase each other",
-      "held(path)" in src(append) and "held(path)" in src(P.completed))
+# A subprocess, not multiprocessing: this script has no __main__ guard, and
+# spawn re-executes it from the top in the child.
+import time as _t
+d = run_dir()
+append(d.answers, {"task_id": "seed", "run": 0})
+HOG = ("import sys, time; sys.path.insert(0, 'src');"
+       "from pathlib import Path; from errata_bench.pipeline import held;"
+       f"exec(\"with held(Path({str(d.answers)!r})):\\n    time.sleep(0.6)\")")
+proc = subprocess.Popen([sys.executable, "-c", HOG])
+_t.sleep(0.25)
+t0 = _t.monotonic(); append(d.answers, {"task_id": "waited", "run": 0}); waited = _t.monotonic() - t0
+proc.wait()
+check("B-142", f"an append waits for a lock another process holds ({waited:.2f}s)",
+      waited > 0.15 and d.answers.with_suffix(".jsonl.lock").exists())
 
 # ---- B-144 -------------------------------------------------------------
-check("B-144", "the two copies of a task id on a graded row are checked against each other",
-      "the reading is for" in src(stage_grade))
+d = run_dir()
+asyncio.run(stage_attempt(d, 10**9, concurrency=2, repeats=1))
+P.replace(d.answers, [dict(x, structure={**x["structure"], "task_id": "some-other-task"})
+                      for x in load(d.answers)])
+judged["n"] = 0
+asyncio.run(stage_grade(d, 10**9, concurrency=2))
+row = load(d.attempts)[0]
+check("B-144", "a reading that names another task is an error, and costs no judge call",
+      "the reading is for" in row.get("error", "") and judged["n"] == 0)
 
 # ---- B-146 -------------------------------------------------------------
 d2 = run_dir()
@@ -216,8 +303,16 @@ check("B-146", "an empty answer is not handed to a judge to read",
       judged["n"] == 0 and load(out.attempts)[0]["outcome"] == "no_answer")
 
 # ---- B-149 -------------------------------------------------------------
-check("B-149", "why each row was rejected is written to disk, not just printed",
-      "paths.rejections" in src(stage_build))
+d = run_dir()
+d.screened.write_text(json.dumps({"session_id": "s", "turn_number": 1}) + "\n")
+class _Built:
+    tasks = [mktask()]
+    rejected = [type("R", (), {"repo_id": "r/r", "complaint_turn": 7, "reason": "no commit before the session"})()]
+B.build = lambda rows_: _Built()
+stage_build(d, 10**9)
+rej = load(d.rejections)
+check("B-149", "why each row was rejected is on disk, not only on screen",
+      rej == [{"repo_id": "r/r", "complaint": 7, "reason": "no commit before the session"}])
 
 # ======================================================================
 # Found by a second round of review, after the first twenty-eight were fixed.
@@ -256,12 +351,26 @@ check("B-153", "a second task with the same name is rejected, not silently merge
       "two tasks cannot share a name" in build_src and "seen.add(task_id)" in build_src)
 
 # ---- B-154: the stamp covers the conversation -------------------------
-base = fingerprint(mktask())
 import dataclasses
-check("B-154", "a rebuild onto a different session changes the stamp",
-      fingerprint(dataclasses.replace(mktask(), session_id="other")) != base and
-      fingerprint(dataclasses.replace(mktask(), cut_turn=99)) != base and
-      fingerprint(dataclasses.replace(mktask(), oracle_calls=[{"name": "x"}])) != base)
+base = fingerprint(mktask())
+# Every field a grade depends on, one at a time. Six assertions rest on this
+# function and every scenario varied only `defect`, so a fingerprint reduced to
+# the defect alone passed all three scripts -- blind to a changed base commit, a
+# repaired transcript or a swapped reference answer.
+moved = []
+for field, value in [("sha", "other"), ("cut_turn", 99), ("kind", "present"),
+                     ("defect", "another"), ("oracle", "x" * 30), ("criterion", "y" * 30),
+                     ("signature_path", "a.py"), ("signature_token", "T"),
+                     ("edits_replayed", 3), ("session_id", "other"),
+                     ("redacted_turns", [1]), ("rewritten_turns", {"1": "z"}),
+                     ("oracle_calls", [{"name": "x"}]), ("criterion_calls", [{"name": "y"}])]:
+    if fingerprint(dataclasses.replace(mktask(), **{field: value})) == base:
+        moved.append(field)
+check("B-154", f"the stamp moves when any field a grade depends on changes"
+               + (f" -- BLIND TO: {moved}" if moved else ""),
+      not moved)
+check("B-154b", "and not when a field a grade does not depend on changes",
+      fingerprint(dataclasses.replace(mktask(), repo_url="elsewhere")) == base)
 
 # ---- B-156 / B-157: one gate, everywhere ------------------------------
 from errata_bench.pipeline import stage_report
