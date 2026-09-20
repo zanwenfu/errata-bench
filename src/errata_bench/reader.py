@@ -282,7 +282,12 @@ async def resilient(make_call, *, attempts: int = 4, pause: float = 60.0):
         try:
             return await make_call()
         except Exception as e:  # noqa: BLE001 - re-raised below unless transient
-            if "no choices" not in str(e):
+            message = str(e).lower()
+            # Two transient answers from a busy endpoint: an empty 200, which
+            # is how Azure signals throttling, and a plain 429, which survived
+            # the client's own retries when three processes shared one
+            # deployment's 50,000 tokens a minute.
+            if "no choices" not in message and "429" not in message and "rate limit" not in message:
                 raise
             last = e
             if attempt + 1 < attempts:

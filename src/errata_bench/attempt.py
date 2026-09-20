@@ -34,6 +34,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 from agents import Agent, Runner, function_tool
+from agents.exceptions import MaxTurnsExceeded
 from agents.run_context import RunContextWrapper
 from .reader import MODEL, build_excerpt, configure_client, load_session_turns
 from .container import Container
@@ -468,18 +469,31 @@ async def run(
             tools=[read_file, list_dir, write_file, edit_file, run_command],
         )
         prompt = f"{transcript}\n\n{'=' * 70}\n(Respond to the developer's most recent message above.)"
+        ran_out = False
         try:
-            result = await Runner.run(
-                agent,
-                prompt,
-                context={"tree": tree, "calls": calls, "deadline": deadline, "container": box},
-                max_turns=max_turns,
-            )
+            try:
+                result = await Runner.run(
+                    agent,
+                    prompt,
+                    context={"tree": tree, "calls": calls, "deadline": deadline, "container": box},
+                    max_turns=max_turns,
+                )
+                reply = str(result.final_output or "")
+            except MaxTurnsExceeded:
+                # It worked through every turn and never answered. That is a
+                # result -- an agent that keeps going and reports nothing --
+                # and recording it as an error deleted it from the numbers
+                # instead: two candidates hit it on the same task, and both
+                # rows were dropped and retried to no purpose. The work it did
+                # is still in `calls`, so the row carries its trace and an
+                # empty reply, and nothing invents an answer it never gave.
+                ran_out, reply = True, ""
             changed = _diff(before, _snapshot(tree))
             return Attempt(
                 task_id=task.task_id,
                 model=model,
-                reply=str(result.final_output or ""),
+                out_of_time=ran_out,
+                reply=reply,
                 declared_changes=[],
                 tool_calls=calls,
                 actual_changes=changed,
