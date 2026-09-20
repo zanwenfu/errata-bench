@@ -85,6 +85,28 @@ class Structure:
             "checked": self.checked,
         }
 
+    @classmethod
+    def from_json(cls, row: dict) -> Structure:
+        """The same reading, back from a stored row.
+
+        This exists because the reading has to be taken while the working copy
+        is still there -- the token check reads files that are deleted when the
+        attempt ends -- but the grading that uses it happens later, from the
+        file. Every field `to_json` writes is read back here, so a round trip
+        changes nothing; `checked` is skipped because it is derived.
+        """
+        return cls(
+            task_id=row["task_id"],
+            investigated=bool(row.get("investigated")),
+            executed=bool(row.get("executed")),
+            wrote=bool(row.get("wrote")),
+            tool_calls=int(row.get("tool_calls") or 0),
+            files_changed=dict(row.get("files_changed") or {}),
+            token_removed=row.get("token_removed"),
+            touched_defect_file=row.get("touched_defect_file"),
+            declaration_matches=row.get("declaration_matches"),
+        )
+
 
 READ_TOOLS = {"read_file", "list_dir"}
 

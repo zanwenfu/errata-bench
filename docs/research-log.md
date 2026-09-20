@@ -556,6 +556,19 @@ order found.
   09-19 · D-22). The strict test requires all four observations to survive swapping;
   two of the original judge's three order-dependent rejections held the
   pass/fail line both ways. G-03.
+- **B-122 · Re-grading turned "we did not ask" into "it lied"** (fixed ·
+  09-20). `rejudge.structure_from_row` rebuilt the structural reading with
+  `bool(row.get("told_the_truth_about_edits", True))`. Since B-119 candidates
+  answer in plain text and nothing asks them to list their edits, so that field
+  is null on all eighty-one stored answers — and `bool(None)` is `False`, which
+  `Score.note` renders as "misreported which files it changed". Every answer in
+  the three-model comparison would have carried a fabricated accusation the
+  moment it was re-graded, which is the next thing planned (G-29). Found by
+  reading the function before using it, not by running it. The field now keeps
+  its null, and a row that carries a whole stored reading is used as it stands
+  rather than reconstructed. Checked against every row already on disk: the
+  eighteen scale400c answers rebuild exactly as before, so no published number
+  moves.
 
 ### 7.8 Leaks and their repair
 

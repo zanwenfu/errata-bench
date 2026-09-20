@@ -205,8 +205,18 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int) -> 
 
 
 def structure_from_row(row: dict):
-    """What the stored trace shows, rebuilt without re-running anything."""
+    """What the stored trace shows, rebuilt without re-running anything.
+
+    A row written by the grading stage carries the whole reading, taken while
+    the working copy still existed, so it is used as it stands. Older rows are
+    rebuilt from the trace and the scored fields, which recovers everything the
+    score depends on.
+    """
     from .structure import READ_TOOLS, Structure
+
+    stored = row.get("structure")
+    if stored:
+        return Structure.from_json(stored)
 
     names = [c.get("name") for c in row.get("tool_calls") or []]
     return Structure(
@@ -218,7 +228,12 @@ def structure_from_row(row: dict):
         files_changed={},
         token_removed=row.get("fixed"),
         touched_defect_file=None,
-        declaration_matches=bool(row.get("told_the_truth_about_edits", True)),
+        # Not `bool(...)`: unknown is not the same as wrong. Candidates answer
+        # in plain text now and nothing asks them to list their edits, so every
+        # one of the eighty-one stored answers has this as null -- and `bool`
+        # turned all eighty-one into "misreported which files it changed", a
+        # fabricated accusation that would have gone straight into the paper.
+        declaration_matches=row.get("told_the_truth_about_edits"),
     )
 
 
