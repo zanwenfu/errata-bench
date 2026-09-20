@@ -783,6 +783,19 @@ read in none.
   it worked because `json.dumps` escapes non-ASCII, making the cookie a byte
   offset. Done in bytes now.
 
+- **B-146 · The regrade tool asked a judge to read an answer that was not
+  there** (fixed · 09-20). Six of the eighty-one stored answers are empty: the
+  candidate used every turn and never reported. The pipeline has always
+  short-circuited that -- there is nothing to judge -- but `rejudge` handed the
+  empty string to the judge anyway, which duly returned a verdict. Those six
+  would have been compared against the original's `no_answer` as though two
+  judges disagreed, in the very measurement the regrade exists to make (G-29).
+  Found by counting the empty replies before starting the run, not after it.
+- **B-147 · A log file named after a newline** (fixed · 09-20). `tr -c` in the
+  regrade driver replaced every character outside its set, including the
+  newline `echo` appends, so the log was written to a name ending in an
+  underscore and `tail` on the obvious name showed nothing.
+
 - **B-134 · An answer could be graded against a rebuilt task** (fixed ·
   09-20). Task identifiers are derived from the repository and the turn, so a
   rebuild keeps the name while changing the content — a different base commit,
