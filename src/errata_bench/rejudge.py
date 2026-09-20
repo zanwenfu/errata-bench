@@ -134,9 +134,12 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int) -> 
     # sound one. Running controls only on the strict set left tasks that pass
     # the looser test with no controls at all, so neither reading could count
     # them.
-    readable = {
-        r["task_id"] for r in load(out.calibration) if r.get("sound") or line_holds(r)
-    }
+    # `can_be_scored` alone. The `or r.get("sound")` beside it was a stored
+    # verdict reached under whichever rule was current when the row was
+    # written, and reading it put tasks through the controls on the old, looser
+    # standard after the standard had been raised -- the same shape as the bug
+    # that made `line_holds` read stale booleans.
+    readable = {r["task_id"] for r in load(out.calibration) if can_be_scored(r)}
     tasks = [t for t in read(src.tasks) if t.task_id in readable]
     done = {(r["task_id"], r["control"]) for r in completed(out.controls)}
     jobs = [(t, c) for t in tasks for c in CONTROLS if (t.task_id, c.name) not in done]

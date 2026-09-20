@@ -48,6 +48,21 @@ from dataclasses import dataclass
 from .attempt import Attempt
 
 
+# The original agent's tool names, as the corpus records them, against the
+# three things `analyse` asks about: did it look, did it run, did it write.
+RAN = {"bash", "bashoutput", "run_command", "shell", "terminal"}
+WROTE = {"edit", "write", "multiedit", "notebookedit", "write_file", "edit_file", "applypatch"}
+
+
+def _as_harness_tool(name: str) -> str:
+    low = name.lower()
+    if low in RAN:
+        return "run_command"
+    if low in WROTE:
+        return "write_file"
+    return "read_file"
+
+
 @dataclass
 class Control:
     """A fixed answer whose correct score is known in advance."""
@@ -76,11 +91,24 @@ class Control:
         return list(task.criterion_calls or []) if self.from_task else []
 
     def as_attempt(self, task) -> Attempt:
-        """The control rendered as an attempt, with whatever trace it carries."""
+        """The control rendered as an attempt, with whatever trace it carries.
+
+        A recovered trace names the original agent's own tools -- `Read`,
+        `Glob`, `Bash`, `Edit`, and whatever MCP servers that developer had --
+        while `analyse` knows only the five this harness offers. Left
+        untranslated, every recovered call read as no work at all, so the
+        control failed all thirteen tasks it ran on and the failure was the
+        translation rather than the task. The mapping is deliberately
+        permissive in one direction: any named call the agent made is work it
+        did, so an unrecognised tool counts as having looked at something. An
+        empty trace stays empty, which is the case this control exists to
+        catch.
+        """
         from .attempt import ToolCall
 
         calls = [
-            ToolCall(c.get("name") or "?", {k: v for k, v in c.items() if k != "name"})
+            ToolCall(_as_harness_tool(c.get("name") or ""),
+                     {k: v for k, v in c.items() if k != "name"})
             for c in self.calls_for(task)
         ]
         return Attempt(

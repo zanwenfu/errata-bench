@@ -305,6 +305,14 @@ try:
                       criterion_calls=[{"name": "read_file", "path": "a.py"}])
     without = Task("t", "r/r", "u", "sha", "s", 10, 11, 12, 13, "wrong " * 8,
                    "the accepted answer " * 4, "d", "none", criterion_calls=[])
+    # the trace the corpus records names the original agent's tools, not ours
+    real_names = Task("t", "r/r", "u", "sha", "s", 10, 11, 12, 13, "wrong " * 8,
+                      "the accepted answer " * 4, "d", "none",
+                      criterion_calls=[{"name": "Glob", "pattern": "*.py"},
+                                       {"name": "Bash", "command": "pytest"}])
+    translated = asyncio.run(control_check(real_names, CRITERION))
+    check(translated.ok,
+          "a trace naming the original agent's own tools counts as work it did")
     ok = asyncio.run(control_check(with_trace, CRITERION))
     bad = asyncio.run(control_check(without, CRITERION))
     check(ok.ok and ok.expected_pass,
