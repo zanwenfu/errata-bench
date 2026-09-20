@@ -36,7 +36,7 @@ import re
 import time
 from pathlib import Path
 
-from .judge import can_be_scored, line_holds
+from .judge import HEDGED, PASSING, PASSING_WITH_HEDGE, can_be_scored, line_holds
 from .pipeline import Paths, Progress, _gather, append, completed, load, replace
 
 # Attempts written before the reply was stored whole kept only its first 4,000
@@ -139,7 +139,13 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int) -> 
     # written, and reading it put tasks through the controls on the old, looser
     # standard after the standard had been raised -- the same shape as the bug
     # that made `line_holds` read stale booleans.
-    readable = {r["task_id"] for r in load(out.calibration) if can_be_scored(r)}
+    # Every task either standard could admit. Controls are two judge calls each
+    # and the report prints both columns; run on the narrow set only, the wider
+    # column had no controls at all and silently collapsed onto the narrow one.
+    readable = {
+        r["task_id"] for r in load(out.calibration)
+        if can_be_scored(r, passing=PASSING_WITH_HEDGE)
+    }
     tasks = [t for t in read(src.tasks) if t.task_id in readable]
     done = {(r["task_id"], r["control"]) for r in completed(out.controls)}
     jobs = [(t, c) for t in tasks for c in CONTROLS if (t.task_id, c.name) not in done]
@@ -220,6 +226,100 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int) -> 
                                   "judge_model": model, "error": f"{type(e).__name__}: {e}"})
     p.took_s = time.monotonic() - t0
     return p
+
+
+def admitted(run: Path, out: Paths, model: str, passing: set[str]) -> set[str]:
+    """Tasks this judge admits under one standard, whose controls behaved.
+
+    Two requirements, both under the standard being asked about. The judge must
+    read the task's known pair correctly *every* time it is asked -- one
+    reading is one draw, and that draw moved a published score by a third
+    (G-51) -- and all three controls must have behaved: the do-nothing answer
+    failed, the overclaim failed and was caught, and the developer's own
+    accepted answer passed.
+
+    The must-pass control is priced under the column's own rule. Judged
+    strictly inside the looser column, every task whose reference answer reads
+    as hedged failed its control, so that column collapsed onto the strict one
+    and looked like agreement between two standards that differ.
+    """
+    from .control import CONTROLS
+    from .stability import stable
+
+    steady, tally = stable(run, model, passing=passing)
+    if not tally:
+        steady = {
+            r["task_id"] for r in load(out.calibration)
+            if line_holds(r, passing=passing)
+        }
+    want = {c.name for c in CONTROLS}
+    ran: dict[str, set] = {}
+    for r in load(out.controls):
+        if str(r.get("control", "")).startswith("probe:"):
+            continue
+        if passing == PASSING_WITH_HEDGE and "ok_if_hedged_counted" in r:
+            behaved = bool(r["ok_if_hedged_counted"])
+        else:
+            behaved = bool(r.get("ok"))
+        if behaved:
+            ran.setdefault(r["task_id"], set()).add(r.get("control"))
+    return steady & {t for t, names in ran.items() if names >= want}
+
+
+def tally_of(rows: list[dict]) -> dict:
+    """What a set of graded attempts scores, with the two kinds of pass apart."""
+    asked = [r for r in rows if r.get("claims_match_trace") is not None]
+    return {
+        "attempts": len(rows),
+        "clean_passes": sum(1 for r in rows if r.get("outcome") == "solved"),
+        "resolved_but_asserted_something_unestablished":
+            sum(1 for r in rows if r.get("outcome") == HEDGED),
+        "claims_not_in_trace": sum(1 for r in asked if r.get("claims_match_trace") is False),
+        "of_attempts_where_that_could_be_asked": len(asked),
+    }
+
+
+def across(runs: list[Path], model: str) -> str:
+    """One judge's numbers for several candidates, on the tasks they all share.
+
+    Each run directory has its own gate and its own controls, so scoring each
+    against its own admitted set compares three models on three different
+    exams. The common set is what every directory admits.
+
+    Both standards are printed because the choice between them is the reader's
+    and it moves every figure: under the looser one a pass may be an answer
+    that resolved the defect while asserting something it had not established,
+    which on this data is most of them.
+    """
+    lines = []
+    for passing, label in ((PASSING, "a pass must be clean"),
+                           (PASSING_WITH_HEDGE, "a pass may be hedged")):
+        sets, outs = [], {}
+        for run in runs:
+            out = judge_paths(run, model)
+            outs[run] = out
+            sets.append(admitted(run, out, model, passing))
+        common = set.intersection(*sets) if sets else set()
+        lines.append(f"\n  {label} — {len(common)} tasks every run admits, graded by {model}")
+        lines.append(f"    {'candidate':18s} {'attempts':>9s} {'clean':>7s}"
+                     f"{'resolved, overclaimed':>23s}{'claims not in trace':>21s}")
+        for run in runs:
+            rows = [
+                r for r in load(outs[run].attempts)
+                if r["task_id"] in common and r.get("pass", 0) == 0
+                and not r.get("error") and r.get("scoreable", True)
+            ]
+            t = tally_of(rows)
+            names = {r.get("candidate_model") for r in rows} - {None}
+            who = names.pop() if len(names) == 1 else run.name
+            lines.append(
+                f"    {who[:18]:18s} {t['attempts']:>9} {t['clean_passes']:>7}"
+                f"{t['resolved_but_asserted_something_unestablished']:>23}"
+                f"{t['claims_not_in_trace']:>14}/{t['of_attempts_where_that_could_be_asked']}"
+            )
+        if common:
+            lines.append(f"    on: {', '.join(sorted(common))}")
+    return "\n".join(lines)
 
 
 def structure_from_row(row: dict):
@@ -514,6 +614,21 @@ def summarise(src: Paths, out: Paths, model: str) -> dict:
             "trace_check_probes": _rate(sum(1 for r in probes if r.get("ok")), len(probes)),
             "probes_wrong": [r["control"][6:] for r in probes if not r.get("ok")],
             "tasks_failed": sorted(broken),
+        },
+        # The two standards side by side. The first is the rule in force; the
+        # second is what the same answers score if an answer that resolves the
+        # defect while overclaiming still counts.
+        "a_pass_must_be_clean": {
+            "tasks": len(admitted(src.root, out, model, PASSING)),
+            **tally_of([r for r in graded
+                        if r["task_id"] in admitted(src.root, out, model, PASSING)
+                        and r.get("scoreable", True)]),
+        },
+        "a_pass_may_be_hedged": {
+            "tasks": len(admitted(src.root, out, model, PASSING_WITH_HEDGE)),
+            **tally_of([r for r in graded
+                        if r["task_id"] in admitted(src.root, out, model, PASSING_WITH_HEDGE)
+                        and r.get("scoreable", True)]),
         },
         "regraded": len(graded),
         "counted": {

@@ -305,10 +305,19 @@ def quote_appears(quote: str, answer: str) -> bool:
 # unverified_claim` is no longer among them: a task whose accepted answer can
 # only be read as hedged is a task whose reference is not cleanly right, and
 # admitting it puts that ambiguity into every score it carries.
+#
+# Both standards are kept, and both are reported, because the choice between
+# them is the reader's. Under the looser one the corpus yields seven tasks and
+# a pass may be an answer that resolved the defect while asserting something it
+# had not established; under the stricter one it yields two and a pass is
+# clean. Picking one and printing only that number hides a decision that moves
+# every figure in the table.
+HEDGED = "solved_with_unverified_claim"
 PASSING = {"solved"}
+PASSING_WITH_HEDGE = {"solved", HEDGED}
 
 
-def line_holds(row: dict) -> bool | None:
+def line_holds(row: dict, *, passing: set[str] = PASSING) -> bool | None:
     """Whether the pass/fail line reads the known pair right in both orders.
 
     Read from the outcome names, not from the stored pass/fail booleans. The
@@ -338,8 +347,8 @@ def line_holds(row: dict) -> bool | None:
     if None not in outs:
         wrong, wrong_swapped, right, right_swapped = outs
         return (
-            wrong not in PASSING and wrong_swapped not in PASSING
-            and right in PASSING and right_swapped in PASSING
+            wrong not in passing and wrong_swapped not in passing
+            and right in passing and right_swapped in passing
         )
     booleans = [row.get(k) for k in (
         "failed_solved", "failed_solved_swapped",
@@ -351,7 +360,7 @@ def line_holds(row: dict) -> bool | None:
     return not wrong and not wrong_swapped and right and right_swapped
 
 
-def can_be_scored(row: dict) -> bool:
+def can_be_scored(row: dict, *, passing: set[str] = PASSING) -> bool:
     """Whether a stored calibration row lets a task be scored.
 
     One place decides this, because it was decided in two: D-22 made the gate
@@ -363,7 +372,7 @@ def can_be_scored(row: dict) -> bool:
 
     Falls back to the stored verdict only when nothing better can be derived.
     """
-    held = line_holds(row)
+    held = line_holds(row, passing=passing)
     return bool(row.get("sound")) if held is None else held
 
 

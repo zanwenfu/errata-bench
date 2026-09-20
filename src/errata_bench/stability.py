@@ -38,7 +38,7 @@ from .judge import can_be_scored
 from .pipeline import Paths, Progress, _gather, append, completed, load
 
 
-def observations(run: Path, model: str) -> dict[str, list[bool]]:
+def observations(run: Path, model: str, *, passing=None) -> dict[str, list[bool]]:
     """Every recorded reading of each task's known pair by this judge.
 
     Both the repeated readings from this tool and the single reading each
@@ -55,23 +55,27 @@ def observations(run: Path, model: str) -> dict[str, list[bool]]:
             # answer reading correctly is a rule, and the rule changes; the
             # readings do not. So tightening it costs nothing and cannot
             # silently leave old verdicts in place beside new ones.
-            seen.setdefault(row["task_id"], []).append(can_be_scored(row))
+            seen.setdefault(row["task_id"], []).append(
+                can_be_scored(row, **({"passing": passing} if passing else {}))
+            )
     rejudged = run / "rejudge"
     if rejudged.exists():
         for d in sorted(p for p in rejudged.iterdir() if p.is_dir()):
             for row in load(Paths(d).calibration):
                 if row.get("judge_model") == model and not row.get("error"):
-                    seen.setdefault(row["task_id"], []).append(can_be_scored(row))
+                    seen.setdefault(row["task_id"], []).append(
+                        can_be_scored(row, **({"passing": passing} if passing else {}))
+                    )
     return seen
 
 
-def stable(run: Path, model: str, *, least: int = 2) -> tuple[set[str], dict]:
+def stable(run: Path, model: str, *, least: int = 2, passing=None) -> tuple[set[str], dict]:
     """The tasks this judge admitted every time, and the full tally.
 
     ``least`` is how many readings a task needs before its steadiness means
     anything: one reading that happened to hold is not evidence of holding.
     """
-    seen = observations(run, model)
+    seen = observations(run, model, passing=passing)
     tally = {
         task: {"held": sum(1 for x in xs if x), "asked": len(xs)}
         for task, xs in sorted(seen.items())
