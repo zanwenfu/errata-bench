@@ -27,6 +27,7 @@ honest, and the task records which happened.
 
 from __future__ import annotations
 
+import os
 import subprocess
 from dataclasses import dataclass
 from pathlib import Path
@@ -200,19 +201,57 @@ class Container:
 
 
 def sweep(prefix: str = "errata-") -> int:
-    """Remove containers a crashed run left behind.
+    """Remove containers this run, or a dead one, left behind.
 
     Worth calling at startup. An interrupted run leaves containers holding
     memory on a machine that has little to spare, and the developer should not
     have to find them by hand.
+
+    It removes only containers belonging to this process or to a process that
+    is no longer running. Three candidate models are run at once, one process
+    each, and a sweep that took every `errata-` container would kill a peer's
+    live container in the middle of its attempt -- which the stage would record
+    as that candidate failing. The risk grew when grading moved to its own
+    stage, because the closing sweep now fires as soon as the candidates
+    finish rather than after the last judge call.
     """
     p = subprocess.run(
-        ["docker", "ps", "-aq", "--filter", f"name={prefix}"],
+        ["docker", "ps", "-a", "--filter", f"name={prefix}", "--format", "{{.ID}} {{.Names}}"],
         capture_output=True,
         text=True,
         timeout=30,
     )
-    ids = [i for i in (p.stdout or "").split() if i]
-    for i in ids:
-        subprocess.run(["docker", "rm", "-f", i], capture_output=True, timeout=30)
-    return len(ids)
+    mine = os.getpid()
+    removed = 0
+    for line in (p.stdout or "").splitlines():
+        parts = line.split()
+        if len(parts) < 2:
+            continue
+        container_id, name = parts[0], parts[1]
+        if not _abandoned(name, mine):
+            continue
+        subprocess.run(["docker", "rm", "-f", container_id], capture_output=True, timeout=30)
+        removed += 1
+    return removed
+
+
+def _abandoned(name: str, mine: int) -> bool:
+    """Whether this container is ours, or belongs to a process that has gone.
+
+    Names are `errata-<pid>-<random>`. A name in the older form carries no pid;
+    it can only come from a run that ended before this change, so it is treated
+    as abandoned.
+    """
+    bits = name.split("-")
+    if len(bits) < 3 or not bits[1].isdigit():
+        return True
+    owner = int(bits[1])
+    if owner == mine:
+        return True
+    try:
+        os.kill(owner, 0)
+    except ProcessLookupError:
+        return True
+    except PermissionError:
+        return False  # alive, owned by someone else
+    return False

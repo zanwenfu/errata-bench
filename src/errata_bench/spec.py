@@ -143,6 +143,32 @@ class Task:
         return cls(**{k: v for k, v in d.items() if k in cls.__dataclass_fields__})
 
 
+def fingerprint(task: Task) -> str:
+    """A short hash of everything that decides how an answer is graded.
+
+    Task identifiers are derived from the repository and the turn, so a rebuilt
+    task keeps its name while its content changes -- a different base commit,
+    more of the agent's edits replayed, a repaired transcript, a re-read defect.
+    An answer collected before such a rebuild was written about a different
+    question, and grading it against the new task's reference answers scores it
+    on a problem the candidate was never shown.
+
+    So the answer carries this, and the grading stage checks it. Only the
+    fields a grade actually depends on are included: the tree the candidate
+    started from, the conversation it was cut at, the defect, and the two
+    reference answers it is judged against.
+    """
+    import hashlib
+
+    material = "\x00".join(str(x) for x in (
+        task.task_id, task.sha, task.cut_turn, task.kind, task.defect,
+        task.oracle, task.criterion, task.signature_path, task.signature_token,
+        task.edits_replayed, sorted(task.redacted_turns),
+        sorted((task.rewritten_turns or {}).items()),
+    ))
+    return hashlib.sha1(material.encode()).hexdigest()[:16]
+
+
 def write(tasks: list[Task], path: Path) -> None:
     """Write the task file atomically.
 

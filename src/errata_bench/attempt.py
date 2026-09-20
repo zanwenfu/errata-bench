@@ -24,6 +24,7 @@ assuming.
 from __future__ import annotations
 
 import json
+import os
 import re
 import shutil
 import subprocess
@@ -117,6 +118,20 @@ def transcript_for(task: Task, turns: list[dict]) -> str:
             {int(k): v for k, v in (task.rewritten_turns or {}).items()},
         )
     return build_excerpt(turns, task.cut_turn)
+
+
+def transcripts_for(tasks) -> dict[str, str]:
+    """The same, for a set of tasks, keyed by task.
+
+    One pass over the corpus for all of them rather than one per task: each
+    load reads a 1.3 GB parquet. Lives here beside ``transcript_for`` because
+    both the grading stage and the regrade tool need exactly this text, and a
+    second copy of it is a second thing to get wrong.
+    """
+    from .reader import load_session_turns
+
+    turns = load_session_turns({t.session_id for t in tasks})
+    return {t.task_id: transcript_for(t, turns.get(t.session_id) or []) for t in tasks}
 
 
 @dataclass
@@ -453,7 +468,9 @@ async def run(
         box = None
         environment = "host"
         if image:
-            box = Container(f"errata-{uuid.uuid4().hex[:10]}", image, tree)
+            # The process id is in the name so a sweep can tell its own
+            # containers from a peer run's live ones.
+            box = Container(f"errata-{os.getpid()}-{uuid.uuid4().hex[:10]}", image, tree)
             started, why = box.start()
             if started:
                 environment = image

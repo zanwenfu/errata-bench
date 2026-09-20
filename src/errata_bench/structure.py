@@ -95,13 +95,28 @@ class Structure:
         file. Every field `to_json` writes is read back here, so a round trip
         changes nothing; `checked` is skipped because it is derived.
         """
+        # Every field is required rather than defaulted. A default here is
+        # always False or zero, which reads as "the candidate did nothing" --
+        # and `combine` turns that into did_the_work=False, which fails the
+        # attempt. A row written by an older version, or cut short, would
+        # therefore arrive as a quiet loss rather than as an error, on
+        # twenty-four of every twenty-seven attempts. Better to refuse to read
+        # it: the caller records that and retries.
+        missing = [
+            k for k in ("task_id", "investigated", "executed", "wrote", "tool_calls")
+            if row.get(k) is None
+        ]
+        if missing:
+            raise KeyError(f"the stored reading is missing {', '.join(missing)}")
         return cls(
             task_id=row["task_id"],
-            investigated=bool(row.get("investigated")),
-            executed=bool(row.get("executed")),
-            wrote=bool(row.get("wrote")),
-            tool_calls=int(row.get("tool_calls") or 0),
+            investigated=bool(row["investigated"]),
+            executed=bool(row["executed"]),
+            wrote=bool(row["wrote"]),
+            tool_calls=int(row["tool_calls"]),
             files_changed=dict(row.get("files_changed") or {}),
+            # These three are genuinely three-valued: null means the question
+            # had no answer for this task, which is not the same as "no".
             token_removed=row.get("token_removed"),
             touched_defect_file=row.get("touched_defect_file"),
             declaration_matches=row.get("declaration_matches"),

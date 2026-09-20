@@ -291,7 +291,14 @@ async def resilient(make_call, *, attempts: int = 4, pause: float = 60.0):
                 raise
             last = e
             if attempt + 1 < attempts:
-                await asyncio.sleep(pause * (attempt + 1))
+                # Spread out, not in lockstep. A throttled deployment rejects
+                # every call in flight at once, so an exact delay sends them all
+                # back together and they are throttled together again -- and
+                # with ten grading calls at a time that is ten simultaneous
+                # retries, three times over, before any of them gives up.
+                import random
+
+                await asyncio.sleep(pause * (attempt + 1) * random.uniform(0.6, 1.4))
     raise last
 
 

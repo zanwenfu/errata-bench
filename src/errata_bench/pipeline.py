@@ -19,13 +19,26 @@ changes without redoing the ones before it.
     build        environment + defect verification   -> tasks.jsonl
     calibrate    can the judge read this task's pair -> calibration.jsonl
     control      does a do-nothing answer fail        -> controls.jsonl
-    attempt      run candidates                      -> attempts.jsonl
+    attempt      run candidates                      -> answers.jsonl
+    grade        read each answer three ways         -> attempts.jsonl
     report       the numbers                         -> report.json
 
 The stages before `attempt` cost roughly eight model calls per moment and no
-containers. `attempt` costs one container and one judge call per run, several
-runs per task. Splitting them means a cheap pass can establish the yield before
-anything expensive starts.
+containers. `attempt` costs one container per run, several runs per task.
+Splitting them means a cheap pass can establish the yield before anything
+expensive starts.
+
+`attempt` and `grade` are separate for the same reason. A container is what
+strains a laptop, so candidates run two or three at a time; grading is network
+waiting, so it can run ten at a time. Held together, every grading call
+occupied a slot that no candidate could use: eighty-one answers took two and a
+half hours of wall clock for eleven hours of work, and the slowest single
+attempt took twenty-two minutes while the candidate answered in seconds and a
+slow judge queued behind a three-wide bound. Apart, the expensive resource is
+released the moment the candidate stops using it.
+
+The split also means a grading change costs no candidate runs: the answers are
+already on disk, and re-grading them is one stage.
 """
 
 from __future__ import annotations
@@ -46,7 +59,27 @@ STAGES = (
     "calibrate",
     "control",
     "attempt",
+    "grade",
     "report",
+)
+
+
+# Every file a stage may read or write. Named rather than derived, because
+# `__getattr__` answered any name at all: `paths.attemps` was a valid path to a
+# file nothing writes, so a typo became a stage that found no work, did none,
+# and reported success. A stage that reads the wrong file must fail loudly.
+FILES = (
+    "moments",
+    "triaged",
+    "readings",
+    "trajectories",
+    "signatures",
+    "screened",
+    "tasks",
+    "calibration",
+    "controls",
+    "answers",
+    "attempts",
 )
 
 
@@ -60,6 +93,8 @@ class Paths:
         self.root.mkdir(parents=True, exist_ok=True)
 
     def __getattr__(self, name: str) -> Path:
+        if name not in FILES:
+            raise AttributeError(f"no stage file named {name!r}; expected one of {', '.join(FILES)}")
         return self.root / f"{name}.jsonl"
 
     @property
@@ -111,7 +146,16 @@ def append(path: Path, row: dict) -> None:
     killed a rebuild and lost every model call before it.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a") as fh:
+    with path.open("a+") as fh:
+        # A row cut off by a kill leaves no newline, and the next append lands
+        # on the same line: one truncated row silently eats the next good one
+        # as well, and `load` skips the pair without either being recoverable.
+        # Closing the broken line first costs one seek and loses only the row
+        # that never finished.
+        if fh.tell():
+            fh.seek(fh.tell() - 1)
+            if fh.read(1) != "\n":
+                fh.write("\n")
         fh.write(json.dumps(row) + "\n")
 
 
@@ -129,6 +173,11 @@ def key_of(row: dict) -> tuple:
     return (row.get("session_id"), turn)
 
 
+def _succeeded(row: dict) -> bool:
+    """Whether a row records work that finished. One definition, two readers."""
+    return not row.get("error") and "error:" not in str(row.get("reason", ""))
+
+
 def completed(path: Path) -> list[dict]:
     """Rows a stage actually finished, dropping any that errored.
 
@@ -142,10 +191,23 @@ def completed(path: Path) -> list[dict]:
     recomputes `done` from what is left, so the failed rows come back as work.
     """
     rows = load(path)
-    kept = [r for r in rows if not r.get("error") and "error:" not in str(r.get("reason", ""))]
+    kept = [r for r in rows if _succeeded(r)]
     if len(kept) != len(rows):
         replace(path, kept)
     return kept
+
+
+def finished(path: Path) -> list[dict]:
+    """The same reading as `completed`, for a file this stage does not own.
+
+    `completed` rewrites what it reads, which is right for the stage that
+    produces a file and wrong for every other reader: the rewrite is a
+    read-modify-write with no lock, so a grading stage tidying answers.jsonl
+    while an attempt stage appends to it silently drops whatever was written in
+    between. Now that answers and scores are separate files, two stages read
+    each of them and only one writes it -- so only that one tidies it.
+    """
+    return [r for r in load(path) if _succeeded(r)]
 
 
 def already_done(path: Path) -> set[tuple]:
@@ -469,11 +531,28 @@ def stage_build(paths: Paths, limit: int) -> Progress:
     p = Progress("build")
     t0 = time.monotonic()
     rows = [r for r in load(paths.screened) if not r.get("error")]
+    # Refuse to rebuild nothing over something. The candidate run directories
+    # hold their tasks, calibration, controls and answers but not the screened
+    # rows those were derived from -- they were copied in. Running every stage
+    # against one of them, which `run.py stages --run runs/cand-grok` does by
+    # default, would build zero tasks from zero input, write that empty list
+    # over tasks.jsonl, and then prune every downstream file to match: three
+    # directories of twenty-seven graded attempts each, deleted in a second by
+    # a command that looks like a resume. Rebuilding from a genuinely empty
+    # directory is still fine; it has nothing to lose.
+    if not rows and (load(paths.tasks) or load(paths.attempts) or load(paths.answers)):
+        p.notes = [
+            "refused: no screened rows to build from, but this directory already holds "
+            "tasks and results. Re-run the earlier stages first, or use --only to name "
+            "the stage you meant."
+        ]
+        p.took_s = time.monotonic() - t0
+        return p
     result = build(rows)
     write(result.tasks, paths.tasks)
 
     surviving = {t.task_id for t in result.tasks}
-    for downstream in (paths.calibration, paths.controls, paths.attempts):
+    for downstream in (paths.calibration, paths.controls, paths.answers, paths.attempts):
         if not downstream.exists():
             continue
         kept = [r for r in load(downstream) if r.get("task_id") in surviving]
@@ -500,14 +579,21 @@ async def stage_calibrate(paths: Paths, limit: int, concurrency: int) -> Progres
     done = {r["task_id"] for r in completed(paths.calibration)}
     todo = [t for t in tasks if t.task_id not in done]
     p.skipped = len(tasks) - len(todo)
+    grader = judge_model()
 
     async def one(t):
         try:
-            c = await calibrate(t, model=judge_model())
+            c = await calibrate(t, model=grader)
             append(
                 paths.calibration,
                 {
                     "task_id": t.task_id,
+                    # Which model read the pair. A task is admitted because a
+                    # judge read its known answers correctly, so the verdict
+                    # belongs to that judge and says nothing about another one
+                    # -- and the grading stage can now be pointed at a
+                    # different model than the one calibrated here.
+                    "judge_model": grader,
                     # `sound` gates: the pass/fail line in both orders. `strict`
                     # is the older bar -- all four readings identical -- kept
                     # beside it because it says something about the judge even
@@ -541,7 +627,8 @@ async def stage_calibrate(paths: Paths, limit: int, concurrency: int) -> Progres
             # task for good -- the same trap the other stages were fixed for.
             append(
                 paths.calibration,
-                {"task_id": t.task_id, "sound": False, "error": f"{type(e).__name__}: {e}",
+                {"task_id": t.task_id, "judge_model": grader, "sound": False,
+                 "error": f"{type(e).__name__}: {e}",
                  "detail": f"{type(e).__name__}: {e}"},
             )
             return False
@@ -610,19 +697,42 @@ async def stage_control(paths: Paths, limit: int, concurrency: int) -> Progress:
     return p
 
 
+# How much of a captured file to keep on the answer row. The capture holds
+# every file that still contains the defect's token, and one of those can be a
+# lock file of several megabytes; an answers file that large is slow to read and
+# no more useful. Each file that was cut says so, so nothing later mistakes a
+# truncated file for a file in which the token is absent.
+KEPT_FILE_CHARS = 40_000
+
+
+def _capped(state: dict[str, str]) -> dict[str, str]:
+    out = {}
+    for path, body in (state or {}).items():
+        if len(body) > KEPT_FILE_CHARS:
+            out[path] = body[:KEPT_FILE_CHARS] + "\n... [cut: file continues]"
+        else:
+            out[path] = body
+    return out
+
+
 async def stage_attempt(
     paths: Paths, limit: int, concurrency: int, repeats: int = 3
 ) -> Progress:
-    """Run candidates against every task the judge can read."""
+    """Run candidates against every task the judge can read, and grade nothing.
+
+    What this writes is the answer and the record of how it was produced: the
+    reply, the trace with each call's output, and the structural reading, which
+    has to be taken here because it reads files that are deleted the moment the
+    attempt ends. The three readings of that answer belong to `grade`.
+    """
     from .attempt import INSTRUCTIONS as CANDIDATE_RULES
     from .attempt import environment_note, run, transcript_for
     from .container import image_for, max_containers, sweep
     from .corpus import load_repos
-    from .judge import can_be_scored, judge
-    from .reader import judge_model, load_session_turns
-    from .spec import read
-    from .structure import analyse, combine
-    from .trace import check as check_trace
+    from .judge import can_be_scored
+    from .reader import load_session_turns
+    from .spec import fingerprint, read
+    from .structure import analyse
 
     p = Progress("attempt")
     t0 = time.monotonic()
@@ -636,7 +746,13 @@ async def stage_attempt(
     # died on API rate limits and were then counted as done, so a re-run would
     # have skipped exactly the work that needed redoing. Errored rows are
     # dropped here and their (task, run) pairs retried.
-    done = {(r["task_id"], r["run"]) for r in completed(paths.attempts)}
+    #
+    # A pair already graded counts as done as well. Every run directory made
+    # before grading was split out holds its answers only inside attempts.jsonl,
+    # and without this line the split would silently re-run eighty-one
+    # candidates, at full price, for answers already on disk.
+    done = {(r["task_id"], r["run"]) for r in completed(paths.answers)}
+    done |= {(r["task_id"], r["run"]) for r in finished(paths.attempts)}
     repos = load_repos()
     images = {
         t.task_id: image_for(getattr(repos.get(t.repo_id), "language", None))
@@ -650,22 +766,24 @@ async def stage_attempt(
 
     # Once for every task, rather than once per attempt: each load is a pass
     # over a 1.3 GB parquet, and three attempts at six tasks paid for it
-    # eighteen times. The same turns render the candidate's transcript, which
-    # the trace check now reads as well.
+    # eighteen times.
     turns_by_session = load_session_turns({t.session_id for t in tasks})
+    # The conversation each candidate is shown, built here and stored on the
+    # row rather than rebuilt at grading time. `run` renders exactly this text
+    # for the candidate, and the trace check has to judge claims against the
+    # same words: rebuilt later it can differ -- a re-read corpus, a changed
+    # redaction, a session that no longer loads -- and a transcript that comes
+    # back empty turns the trace check into an accusation machine, because
+    # every claim citing the conversation then has nothing behind it.
     transcripts = {
         t.task_id: transcript_for(t, turns_by_session.get(t.session_id) or []) for t in tasks
     }
 
     # Containerised work is what strains a laptop, so it gets the tighter bound.
-    # Grading is network waiting and strains nothing, so it gets its own: held
-    # inside the container bound, two slots of container capacity sat idle for
-    # the two to six minutes a slow judge takes, and every other attempt queued
-    # behind work that had already finished using a container.
+    # There is no second semaphore here any more: with grading moved out, the
+    # only thing this stage waits on is the container it is holding.
     box = asyncio.Semaphore(max_containers())
     host = asyncio.Semaphore(max(1, concurrency // 2))
-    grading = asyncio.Semaphore(concurrency)
-    grader = judge_model()
 
     async def one(task, i):
         image = images.get(task.task_id)
@@ -674,94 +792,249 @@ async def stage_attempt(
             attempt = await run(
                 task, image=image, turns=turns_by_session.get(task.session_id)
             )
-        model = attempt.model
         if attempt.error:
             append(
-                paths.attempts,
+                paths.answers,
                 {"task_id": task.task_id, "run": i, "error": attempt.error},
             )
             return False
-        if not attempt.reply.strip():
-            # No answer to read, so nothing to judge. Recorded as a failed
-            # attempt rather than an error, because "used every turn and never
-            # reported" is a result this benchmark is interested in, and an
-            # error row would be retried forever and counted nowhere.
-            structure = analyse(task, attempt, attempt.final_state)
-            append(
-                paths.attempts,
-                {
-                    "task_id": task.task_id, "run": i, "kind": task.kind,
-                    "environment": attempt.environment, "calls": structure.tool_calls,
-                    "tool_calls": [c.to_json() for c in attempt.tool_calls],
-                    "model": model, "judge_model": grader,
-                    "seconds": round(time.monotonic() - started, 1),
-                    "reply": "", "out_of_time": attempt.out_of_time,
-                    "outcome": "no_answer", "passed": False, "scoreable": True,
-                    "solved": False, "dishonest": False, "trustworthy": True,
-                    "checked": structure.checked, "wrote": structure.wrote,
-                    "fixed": structure.fixed, "told_the_truth_about_edits": None,
-                    "claims_match_trace": None, "unsupported_claims": [],
-                    "overclaimed_work": False,
-                    "note": "used every turn without answering" if attempt.out_of_time else "answered with nothing",
-                },
-            )
-            return True
-        async with grading:
-            calls = [c.to_json() for c in attempt.tool_calls]
-            # The judge is shown what the candidate did, because "did it claim
-            # something it had not established" cannot be read off the prose.
-            verdict = await judge(task, attempt.reply, tool_calls=calls, model=grader)
-            structure = analyse(task, attempt, attempt.final_state)
-            # A third reading, independent of both: does the answer's account of
-            # its own work match the recorded trace and the conversation it was
-            # given. This is what the token check cannot do for a behavioural
-            # defect.
-            trace_check = await check_trace(
-                attempt.reply,
-                calls,
-                model=grader,
-                context=transcripts.get(task.task_id, ""),
-                # What the candidate was told it had. Otherwise "the network is
-                # unavailable here" reads as an unsupported claim, when it is
-                # the harness's own sentence.
-                given=f"{CANDIDATE_RULES}\n\n{environment_note(attempt.environment)}",
-            )
-            score = combine(verdict, structure, trace_check)
-            append(
-                paths.attempts,
-                {
-                    "task_id": task.task_id,
-                    "run": i,
-                    "kind": task.kind,
-                    "environment": attempt.environment,
-                    "calls": structure.tool_calls,
-                    # The trace itself, not just its length. Without it a
-                    # finished run cannot be re-examined: every attempt in the
-                    # first corrected run recorded "9 calls" and nothing about
-                    # what those calls were, so no later check could ask whether
-                    # the candidate ran what it claimed to have run.
-                    "tool_calls": [c.to_json() for c in attempt.tool_calls],
-                    "model": model,
-                    # Which model graded this, since it need not be the one
-                    # that answered. Earlier rows omit it; they were graded by
-                    # the candidate model itself.
-                    "judge_model": grader,
-                    "seconds": round(time.monotonic() - started, 1),
-                    # Whole, not cut. The judge reads up to 12,000 characters
-                    # and the trace check 8,000; storing 4,000 meant three
-                    # answers could not be regraded on the text the original
-                    # judge had actually read.
-                    "reply": attempt.reply,
-                    "judgement": verdict.to_json(),
-                    **score.to_json(),
-                },
-            )
-            return True
+        # Taken now, not at grading time. The token check reads the files the
+        # working copy held, and `run` deletes that copy before it returns, so
+        # this is the last moment the question can be asked at all.
+        structure = analyse(task, attempt, attempt.final_state)
+        append(
+            paths.answers,
+            {
+                "task_id": task.task_id,
+                "run": i,
+                "kind": task.kind,
+                "model": attempt.model,
+                "environment": attempt.environment,
+                # The candidate's own time, and only that. Before the split
+                # this field carried the grading as well, so a two-minute
+                # answer behind a slow judge was recorded as twenty minutes of
+                # candidate work. `grade` records its own time separately.
+                "seconds": round(time.monotonic() - started, 1),
+                # Whole, not cut. The judge reads up to 12,000 characters and
+                # the trace check 8,000; storing 4,000 meant three answers
+                # could not be regraded on the text the original judge read.
+                "reply": attempt.reply,
+                "out_of_time": attempt.out_of_time,
+                # The trace itself, not just its length. Without it a finished
+                # run cannot be re-examined: every attempt in the first
+                # corrected run recorded "9 calls" and nothing about what those
+                # calls were, so no later check could ask whether the candidate
+                # ran what it claimed to have run.
+                "tool_calls": [c.to_json() for c in attempt.tool_calls],
+                "actual_changes": attempt.actual_changes,
+                "declared_changes": attempt.declared_changes,
+                "structure": structure.to_json(),
+                # The files the token check read, as they stood when the
+                # candidate stopped. Never used for scoring -- the reading
+                # above was taken from the tree itself -- but without them a
+                # change to what counts as fixed can only be applied by running
+                # every candidate again, and those are the expensive calls.
+                "final_state": _capped(attempt.final_state),
+                # What the candidate was shown and what it was told, kept
+                # verbatim. These are inputs to the grading, and an input that
+                # is reconstructed later is an input that can drift.
+                "transcript": transcripts.get(task.task_id, ""),
+                "rules": f"{CANDIDATE_RULES}\n\n{environment_note(attempt.environment)}",
+                # Which version of this task the answer was written about.
+                "task_fingerprint": fingerprint(task),
+            },
+        )
+        return True
 
     results = await _gather([one(t, i) for t, i in jobs], concurrency)
     p.produced = sum(1 for r in results if r)
     p.failed = sum(1 for r in results if not r)
     sweep()
+    p.took_s = time.monotonic() - t0
+    return p
+
+
+async def stage_grade(paths: Paths, limit: int, concurrency: int) -> Progress:
+    """Read every stored answer three ways and write the scored row.
+
+    Nothing is re-run: the answer, its trace and what the tree showed are taken
+    from `answers.jsonl` exactly as the candidate left them. Only the two model
+    readings happen here, so this stage is network waiting and can run far wider
+    than the candidates did.
+
+    What it writes is the row the rest of the project already reads -- the
+    report, the regrade tool and the comparison table were not touched, because
+    `attempts.jsonl` still means the same thing.
+    """
+    from .attempt import INSTRUCTIONS as CANDIDATE_RULES
+    from .attempt import environment_note, transcripts_for
+    from .judge import judge
+    from .reader import judge_model
+    from .spec import fingerprint, read
+    from .structure import Structure, combine
+    from .trace import check as check_trace
+
+    p = Progress("grade")
+    t0 = time.monotonic()
+    grader = judge_model()
+    tasks = {t.task_id: t for t in read(paths.tasks)}
+    prints = {tid: fingerprint(t) for tid, t in tasks.items()}
+    # Read, not tidied: this stage does not own answers.jsonl, and `completed`
+    # would rewrite it from a stale snapshot while the attempt stage may be
+    # appending to it.
+    stored = finished(paths.answers)
+    answers, orphaned, stale = [], 0, 0
+    for a in stored:
+        if a.get("task_id") not in tasks:
+            orphaned += 1
+        elif a.get("task_fingerprint") and a["task_fingerprint"] != prints[a["task_id"]]:
+            # The task kept its name and changed its content. Grading this
+            # answer would score it against reference answers the candidate
+            # never saw, and the row would look exactly like any other.
+            stale += 1
+        else:
+            answers.append(a)
+    # Errored grades are dropped by `completed` and come back as work, exactly
+    # as errored attempts do. This stage owns attempts.jsonl, so it tidies it.
+    graded = completed(paths.attempts)
+    done = {(r["task_id"], r["run"]) for r in graded}
+    todo = [a for a in answers if (a["task_id"], a["run"]) not in done]
+    p.skipped = len(answers) - len(todo)
+    p.notes.append(f"graded by {grader}")
+    if orphaned:
+        p.notes.append(f"{orphaned} answers belong to tasks that no longer exist")
+    if stale:
+        p.notes.append(f"{stale} answers were written about an earlier version of their task")
+    # A judge is trusted on a task because it read that task's known pair
+    # correctly. If the model doing the grading is not the one that was
+    # calibrated, the gate those rows represent says nothing about it.
+    calibrators = {r.get("judge_model") for r in load(paths.calibration) if r.get("judge_model")}
+    if calibrators and grader not in calibrators:
+        p.notes.append(
+            f"warning: calibrated with {', '.join(sorted(calibrators))}, grading with {grader}"
+        )
+    # Re-grading the same answers with a second judge is what the rejudge tool
+    # is for: it writes under <run>/rejudge/<judge>/ and puts that judge through
+    # the same known-answer tests first. Here, one answer has one grade, so
+    # pointing a different judge at a graded run would otherwise do nothing at
+    # all and report success.
+    others = {r.get("judge_model") for r in graded} - {grader, None}
+    if others:
+        p.notes.append(
+            f"{len(graded)} answers already graded by {', '.join(sorted(others))} were left alone; "
+            f"use `run.py rejudge --judge {grader}` to grade them again"
+        )
+    if not todo:
+        p.took_s = time.monotonic() - t0
+        return p
+
+    # Only for answers stored before the conversation was kept on the row.
+    missing = [a for a in todo if a.get("transcript") is None]
+    context = transcripts_for([tasks[a["task_id"]] for a in missing]) if missing else {}
+
+    async def one(a):
+        task = tasks[a["task_id"]]
+        started = time.monotonic()
+        try:
+            structure = Structure.from_json(a["structure"])
+        except (KeyError, TypeError, ValueError) as e:
+            # Unreadable, not empty. Defaulting the missing fields would score
+            # the attempt as having done nothing, which fails it.
+            append(paths.attempts, {
+                "task_id": a["task_id"], "run": a["run"], "judge_model": grader,
+                "error": f"the stored reading could not be read: {e}",
+            })
+            return False
+        row = {
+            "task_id": a["task_id"],
+            "run": a["run"],
+            "kind": a.get("kind"),
+            "environment": a.get("environment"),
+            "calls": structure.tool_calls,
+            "tool_calls": a.get("tool_calls") or [],
+            "model": a.get("model"),
+            # Which model graded this, since it need not be the one that
+            # answered. Earlier rows omit it; they were graded by the candidate
+            # model itself.
+            "judge_model": grader,
+            "seconds": a.get("seconds"),
+            "reply": a.get("reply") or "",
+            "out_of_time": a.get("out_of_time", False),
+            # Carried through so the regrade tool reads the reading that was
+            # taken from the tree rather than reconstructing a thinner one.
+            "structure": a["structure"],
+            # Whether the trace check had the conversation to check claims
+            # against. Without it, an answer citing what it was shown looks
+            # like an answer inventing it, and the row should say which case
+            # this was.
+            "had_conversation": bool(a.get("transcript") or context.get(task.task_id)),
+        }
+        if not row["reply"].strip():
+            # No answer to read, so nothing to judge. Recorded as a failed
+            # attempt rather than an error, because "used every turn and never
+            # reported" is a result this benchmark is interested in, and an
+            # error row would be retried forever and counted nowhere.
+            append(paths.attempts, {
+                **row,
+                "outcome": "no_answer", "passed": False, "scoreable": True,
+                "solved": False, "dishonest": False, "trustworthy": True,
+                "checked": structure.checked, "wrote": structure.wrote,
+                "fixed": structure.fixed,
+                "told_the_truth_about_edits": structure.declaration_matches,
+                "claims_match_trace": None, "unsupported_claims": [],
+                "overclaimed_work": False,
+                "note": "used every turn without answering" if row["out_of_time"]
+                        else "answered with nothing",
+            })
+            return True
+        try:
+            # The judge is shown what the candidate did, because "did it claim
+            # something it had not established" cannot be read off the prose.
+            verdict = await judge(
+                task, row["reply"], tool_calls=row["tool_calls"], model=grader
+            )
+            # A third reading, independent of both: does the answer's account of
+            # its own work match the recorded trace and the conversation it was
+            # given. This is what the token check cannot do for a behavioural
+            # defect.
+            trace_check = await check_trace(
+                row["reply"],
+                row["tool_calls"],
+                model=grader,
+                # The words the candidate actually read, taken from the row.
+                # Rebuilt only for answers stored before they were kept.
+                context=a.get("transcript") or context.get(task.task_id, ""),
+                # What the candidate was told it had. Otherwise "the network is
+                # unavailable here" reads as an unsupported claim, when it is
+                # the harness's own sentence. Also taken from the row: these
+                # rules live in the candidate's own module and change, and a
+                # check told the wrong rules judges an answer against
+                # instructions it was never given.
+                given=a.get("rules")
+                or f"{CANDIDATE_RULES}\n\n{environment_note(a.get('environment') or 'host')}",
+            )
+        except Exception as e:
+            # One failed grading used to abort the whole stage: the judge call
+            # sat outside any handler, while the candidate run beside it caught
+            # everything. An answer that cannot be graded is one row to retry,
+            # not a reason to stop reading the other eighty.
+            append(paths.attempts, {
+                "task_id": a["task_id"], "run": a["run"], "judge_model": grader,
+                "error": f"{type(e).__name__}: {e}",
+            })
+            return False
+        score = combine(verdict, structure, trace_check)
+        append(paths.attempts, {
+            **row,
+            "graded_seconds": round(time.monotonic() - started, 1),
+            "judgement": verdict.to_json(),
+            **score.to_json(),
+        })
+        return True
+
+    results = await _gather([one(a) for a in todo], concurrency)
+    p.produced = sum(1 for r in results if r)
+    p.failed = sum(1 for r in results if not r)
     p.took_s = time.monotonic() - t0
     return p
 
@@ -774,6 +1047,9 @@ def stage_report(paths: Paths) -> Progress:
     t0 = time.monotonic()
     attempts = [a for a in load(paths.attempts) if not a.get("error")]
     scoreable = [a for a in attempts if a.get("scoreable")]
+    answers = [a for a in load(paths.answers) if not a.get("error")]
+    answer_keys = {(a.get("task_id"), a.get("run")) for a in answers}
+    graded_keys = {(a.get("task_id"), a.get("run")) for a in attempts}
     moments = len(load(paths.moments))
     readings = load(paths.readings)
     viable = [r for r in readings if (r.get("reading") or {}).get("benchmark_viable")]
@@ -790,6 +1066,17 @@ def stage_report(paths: Paths) -> Progress:
             ),
             "tasks_built": len(tasks),
             "tasks_calibrated": len(sound),
+            # Answers collected, against answers read. A grading stage that
+            # stopped partway would otherwise look like a smaller run rather
+            # than an unfinished one -- the report counts graded rows, and
+            # every ungraded answer is simply invisible to it.
+            "answers_collected": len(answers),
+            "answers_not_yet_graded": len(answers) - len(graded_keys & answer_keys),
+            # Two processes grading one directory would each append a row for
+            # the same attempt, and every count below would include it twice.
+            # Stated rather than silently deduplicated: a number that repairs
+            # itself hides the fact that something ran twice.
+            "attempts_recorded_twice": len(attempts) - len(graded_keys),
         },
         "attempts": len(attempts),
         "scoreable": len(scoreable),
@@ -826,8 +1113,16 @@ async def run_stages(
     limit: int = 10_000,
     concurrency: int = 4,
     repeats: int = 3,
+    grade_concurrency: int | None = None,
 ) -> list[Progress]:
-    """Run the named stages in order, skipping work already recorded."""
+    """Run the named stages in order, skipping work already recorded.
+
+    ``grade_concurrency`` is separate because grading is the one stage bounded
+    by a provider rather than by this laptop, and the right number depends on
+    which judge it is: one deployment answers in two to six minutes and takes
+    ten at once, another is capped at six calls a minute and errors above four.
+    Left unset it matches ``concurrency``, so a careless run is merely slow.
+    """
     paths = Paths(root)
     out = []
     for name in stages:
@@ -849,6 +1144,10 @@ async def run_stages(
             out.append(await stage_control(paths, limit, concurrency))
         elif name == "attempt":
             out.append(await stage_attempt(paths, limit, concurrency, repeats))
+        elif name == "grade":
+            out.append(
+                await stage_grade(paths, limit, grade_concurrency or concurrency)
+            )
         elif name == "report":
             out.append(stage_report(paths))
         else:

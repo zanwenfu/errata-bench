@@ -56,14 +56,15 @@ def transcripts_for(tasks) -> dict[str, str]:
     """The conversation each task's candidate was shown, keyed by task.
 
     The trace check reads it, so a regrade has to rebuild it: an answer citing
-    the conversation was otherwise accused of inventing what it was given. One
-    pass over the corpus for every task in the run.
-    """
-    from .attempt import transcript_for
-    from .reader import load_session_turns
+    the conversation was otherwise accused of inventing what it was given.
 
-    turns = load_session_turns({t.session_id for t in tasks})
-    return {t.task_id: transcript_for(t, turns.get(t.session_id) or []) for t in tasks}
+    The work moved next to ``transcript_for`` when the grading stage needed the
+    same text; this is kept as the name the regrade tool already calls, and is
+    imported late because pulling in the candidate harness loads the agents SDK.
+    """
+    from .attempt import transcripts_for as build
+
+    return build(tasks)
 
 
 async def calibrate_all(src: Paths, out: Paths, model: str, concurrency: int) -> Progress:

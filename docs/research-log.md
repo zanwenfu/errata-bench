@@ -295,6 +295,17 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   reading the diff fixed first, not one per run. Adopted after B-116; the
   review that followed it found five more defects (B-111 to B-115) that would
   each have cost another run.
+- **D-23 · Collecting an answer and reading it are separate stages.** `attempt`
+  runs candidates and writes `answers.jsonl`; `grade` reads those three ways
+  and writes `attempts.jsonl`, whose shape is unchanged. The reason is that the
+  two are bounded by different things — a container against this laptop's 8 GB,
+  a judge against a provider's tokens a minute — and held together the cheap
+  one waited on the expensive one (G-30). Three consequences are deliberate:
+  an answer stores what it was shown and what it was told, so nothing about a
+  grade is reconstructed later (B-133); `seconds` on a row written after 09-20
+  is the candidate's own time, where earlier rows include the grading; and a
+  run directory holds one grade per answer, so a second judge goes through the
+  regrade tool, which gates it on the same known answers first (G-31).
 
 ---
 
@@ -621,6 +632,87 @@ order found.
 - **B-90 · A parallel session changed scoring code mid-run** (process · 09-19).
   `dd704f2` landed while two regrades were running, so their trace readings
   mix two rules. G-05.
+
+The next nine were all found by reading the code before running it, when
+grading was split out of the attempt stage (D-23). Five reviewers were pointed
+at the plan with a lens each — resume, consumers, data loss, older run
+directories, concurrency — and returned 64 observations between them; these are
+the ones that were real. None of them had fired yet, and B-125 was one command
+away from deleting eighty-one paid-for answers.
+
+- **B-123 · One failed grading call killed the whole stage** (fixed · 09-20).
+  The judge and trace calls sat outside any handler while the candidate run
+  beside them caught everything, and `_gather` uses a plain `asyncio.gather`,
+  so a single content filter or 500 would abandon every call in flight. It had
+  never fired only because `resilient` covers the one error that happens often.
+  Grading now records a failed reading as one error row, which is dropped and
+  retried like any other.
+- **B-124 · A finishing run killed the other runs' containers** (fixed ·
+  09-20). Containers were named `errata-<random>` and swept by that prefix, so
+  with three candidate models running as three processes, the first to finish
+  removed the live containers of the other two — recorded as those candidates
+  failing. Splitting the stages made it likelier, because the closing sweep now
+  fires as soon as the candidates stop rather than after the last judge call.
+  Names carry the process id, and a sweep removes only its own containers and
+  those whose owner is gone.
+- **B-125 · `run.py stages` would have deleted a finished run** (fixed ·
+  09-20). `build` rewrites `tasks.jsonl` from `screened.jsonl` and prunes every
+  downstream file to the tasks that survive. The three candidate directories
+  hold tasks, calibration, controls and attempts but not the screened rows they
+  were derived from — they were copied in. So `run.py stages --run
+  runs/cand-grok`, which is the obvious way to run the remaining stages, would
+  have built zero tasks from zero input and pruned 27 graded attempts to
+  nothing, silently, in about a second. Three directories, 81 answers, several
+  hours of paid model calls. `build` now refuses to write an empty task list
+  over a directory that already holds results.
+- **B-126 · A torn row took the next one with it** (fixed · 09-20). `append`
+  opened the file and wrote; a row cut off by a kill leaves no newline, so the
+  next append landed on the same line and `load` skipped both. It now closes a
+  broken line first, losing only the row that never finished.
+- **B-127 · Any attribute name was a valid stage file** (fixed · 09-20).
+  `Paths.__getattr__` answered every name, so `paths.attemps` was a path to a
+  file nothing writes: a stage reading it found no work, did none, and reported
+  success. The names are now a list, and anything else raises.
+- **B-128 · The grading semaphore never did anything** (corrected · 09-20).
+  B-117 added `grading = asyncio.Semaphore(concurrency)` inside the attempt
+  stage, but `_gather` already caps every coroutine at that same number, so the
+  inner bound could not bind. What actually helped in B-117 was releasing the
+  container slot before grading. The record should say so; the semaphore is
+  gone with the split.
+- **B-129 · Retries went back in lockstep** (fixed · 09-20). A throttled
+  deployment rejects everything in flight at once, and `resilient` slept an
+  exact multiple of 60 s, so ten grading calls retried together, were throttled
+  together, and gave up together. The delay is now spread by ±40%.
+- **B-130 · `--concurrency 0` hangs for ever** (fixed · 09-20). A semaphore of
+  zero that nothing can pass: the run prints its stages and waits, with no
+  work, no output and no error. Rejected at the command line.
+- **B-131 · The retry driver counted errors in the wrong file** (fixed ·
+  09-20). `runs/attempt-rounds.sh` looked for errored rows in `attempts.jsonl`,
+  which after the split holds only scores. It would have read zero every time,
+  stopped after one round, and left the run ungraded with nothing saying so.
+- **B-132 · A stored reading with a field missing scored as "did nothing"**
+  (fixed · 09-20). Rebuilding the structural reading from a row defaulted its
+  booleans to false, and `combine` turns "did no work" into a failed attempt —
+  so a row written by an older version would have arrived as a quiet loss on 24
+  of every 27 attempts rather than as an error. The fields are now required and
+  an unreadable reading is recorded as one, without spending a judge call.
+- **B-133 · Grading rebuilt its own inputs, and they can drift** (fixed ·
+  09-20). The trace check is given the conversation the candidate saw and the
+  rules it was told; both were rebuilt at grading time from the corpus and from
+  the candidate module's current text. Between collecting an answer and reading
+  it, either can change — a re-read corpus, an edited instruction — and a check
+  told the wrong rules judges an answer against instructions it never had. A
+  transcript that comes back empty is worse: every claim citing the
+  conversation becomes unsupported, which is B-109 arriving by a different
+  route. Both are now written on the answer row and read from there, and the
+  row records whether a conversation was available at all.
+- **B-134 · An answer could be graded against a rebuilt task** (fixed ·
+  09-20). Task identifiers are derived from the repository and the turn, so a
+  rebuild keeps the name while changing the content — a different base commit,
+  more edits replayed, a repaired transcript. The old answer would then be
+  scored against reference answers its candidate never saw, and the row would
+  look like any other. Each answer now carries a fingerprint of the fields a
+  grade depends on, and grading skips and counts the ones that no longer match.
 
 ### 7.10 Other providers
 
@@ -1032,12 +1124,39 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   all 81 answers with one judge, which is cheap in money and slow in wall clock
   at grok's pace.
 - **G-30 · Grading runs inline with the candidate, and dominates the clock.**
-  The slowest attempt of the night took 22 minutes on 2 tool calls: the
-  candidate answered in seconds and the rest was a judge and a trace check
-  queued behind a 3-wide bound. Every answer and trace is stored, so grading
-  can be a separate pass at much higher concurrency — the regrade tool already
-  works that way. About 11 hours of work ran in 2.5 hours of wall clock; a
-  split would cut that again.
+  *(closed 09-20, D-23.)* The slowest attempt of the night took 22 minutes on 2
+  tool calls: the candidate answered in seconds and the rest was a judge and a
+  trace check queued behind a 3-wide bound. Every answer and trace is stored,
+  so grading can be a separate pass at much higher concurrency — the regrade
+  tool already works that way. About 11 hours of work ran in 2.5 hours of wall
+  clock. Split into `attempt` and `grade`; the scored rows are unchanged, which
+  was checked by running both the old stage and the new pair over the same
+  fakes and comparing every field.
+- **G-31 · A run directory holds one grade per answer.** Pointing `grade` at a
+  directory already graded does nothing, by design: a second row for the same
+  attempt would be counted twice by the report and would collide in the regrade
+  tool. Grading the same answers with another judge is what `rejudge` is for,
+  and it gates that judge on the known pair and the controls first. The stage
+  now says this rather than reporting success having done nothing.
+- **G-32 · The captured tree is stored, cut at 40,000 characters a file.** The
+  files the token check read are now kept on the answer row, so a change to
+  what counts as fixed can be applied without running candidates again. A file
+  longer than the cut says so in its own text. Nothing scores from them — the
+  reading is taken from the live tree — so a cut file cannot produce a wrong
+  verdict, only an unanswerable one later.
+- **G-33 · Build output counts as a candidate edit.** `actual_changes` is a
+  before-and-after listing of the whole working copy, which is bind-mounted
+  into the container, so anything a test run writes — a cache, a lock file,
+  `node_modules` — is recorded as a file the candidate changed, and `wrote` is
+  part of whether it did any work. Not yet measured; a candidate that ran the
+  tests and edited nothing would look like one that edited something.
+- **G-34 · Two processes grading one directory would double-count.** Rows are
+  appended without a lock, and nothing deduplicates `(task, run)`. The report
+  states how many rows are duplicates rather than quietly dropping them,
+  because a count that repairs itself hides that something ran twice.
+- **G-35 · Lowering `--repeats` leaves the extra answers in place.** They are
+  still graded and still counted, so a run's repeat count is whatever the
+  highest setting ever used was.
 - **G-28 · The eighteen scored answers predate recorded outputs**, so their
   honesty reading stays a judgement call. Settling it means running candidates
   again — which needs a candidate, and the OpenAI account has no credit, so the
@@ -1142,3 +1261,11 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   G-14 closed, G-29 and G-30 opened.
 - **09-20** — B-121 fixed: a bare filename in a defect signature is now found
   wherever it sits in the tree.
+- **09-20** — B-122 fixed: re-grading turned "we never asked" into "it lied" on
+  every plain-text answer. It would have fired the moment the 81 answers were
+  re-graded, which is the next thing planned.
+- **09-20** — D-23: grading split from the attempt stage. Found while reviewing
+  the plan, before writing it: B-123 to B-134, of which B-125 would have
+  deleted three finished run directories and B-133 would have graded answers
+  against rules and conversations rebuilt after the fact. G-30 closed, G-31 to
+  G-35 opened.

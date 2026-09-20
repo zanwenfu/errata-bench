@@ -11,9 +11,10 @@ so an interrupted run continues where it stopped and a stage can be re-run alone
 after its code changes.
 
 The cheap stages cost about eight model calls per moment and touch no
-containers. `attempt` is the expensive one -- a container and a judge call per
-run, several runs per task -- so `--through screen` exists to establish the
-yield before committing to it.
+containers. `attempt` is the expensive one -- a container per run, several runs per task
+-- so `--through screen` exists to establish the yield before committing to it.
+`grade` reads those answers and costs no containers, so it takes its own, wider
+--grade-concurrency.
 """
 
 from __future__ import annotations
@@ -183,6 +184,7 @@ def show_status(paths: Paths) -> None:
         ("tasks", paths.tasks),
         ("calibration", paths.calibration),
         ("controls", paths.controls),
+        ("answers", paths.answers),
         ("attempts", paths.attempts),
     ]
     print(f"  {'file':16s} {'rows':>7s}")
@@ -213,6 +215,14 @@ def main() -> None:
     ap.add_argument("--through", choices=STAGES, help="stop after this stage")
     ap.add_argument("--only", choices=STAGES, help="run just this stage")
     ap.add_argument("--concurrency", type=int, default=4)
+    ap.add_argument(
+        "--grade-concurrency",
+        type=int,
+        default=0,
+        help="how many answers to grade at once; 0 means the same as --concurrency. "
+             "Grading waits on the provider rather than on this laptop, so it can run "
+             "far wider than the candidates -- but only as wide as the judge allows",
+    )
     ap.add_argument("--repeats", type=int, default=3, help="attempts per task")
     ap.add_argument(
         "--fresh",
@@ -242,6 +252,11 @@ def main() -> None:
         help="the model (on Azure, the deployment) to grade with (the `rejudge` command only)",
     )
     args = ap.parse_args()
+
+    # A ceiling of zero is a semaphore nothing can pass: the run starts, prints
+    # its stages and hangs for ever with no output and no work done.
+    if args.concurrency < 1 or args.grade_concurrency < 0:
+        ap.error("--concurrency must be at least 1, and --grade-concurrency at least 0")
 
     root = Path(args.run)
     paths = Paths(root)
@@ -294,6 +309,7 @@ def main() -> None:
             limit=args.max_rows or 10**9,
             concurrency=args.concurrency,
             repeats=args.repeats,
+            grade_concurrency=args.grade_concurrency or None,
         )
     )
 
