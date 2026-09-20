@@ -193,6 +193,12 @@ def show_status(paths: Paths) -> None:
         n = len(load(path)) if path.exists() else 0
         print(f"  {name:16s} {n:>7,}")
     if paths.report.exists():
+        try:
+            json.loads(paths.report.read_text())
+        except ValueError:
+            print("\n  report.json could not be read; it was probably written by a run "
+                  "that was interrupted. Re-run `--only report`.")
+            return
         print("\n  report:")
         print("   ", json.dumps(json.loads(paths.report.read_text()), indent=2).replace("\n", "\n    "))
 

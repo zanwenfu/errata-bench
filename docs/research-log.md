@@ -1111,6 +1111,66 @@ about results already recorded.
   summary now names how many attempts the question could be asked about: 21,
   21 and 24 rather than 24, 24 and 24.
 
+The fifth round also included the first end-to-end sweep: the whole pipeline
+driven as a user drives it, with only the model, container and corpus layers
+faked, across nine scenarios. Most of it held, and that is the more important
+half of the result — see 7.9's closing note. Seven findings.
+
+- **B-192 · Ordinary funnel attrition made every later run exit 1** (fixed ·
+  09-20). `build` rejects four of five located defects by design, and counted
+  them as failures: three successive converged passes exited 1, each printing
+  "1 rows failed in: build" when nothing had failed. They are skipped rows now;
+  their reasons were already printed.
+- **B-193 · Two processes over one run directory did all the work twice**
+  (fixed · 09-20). Every stage reads its output file to decide what is left and
+  appends its results, so two runs do not collide — they each do everything,
+  and the factor doubles at each stage because the next one reads the
+  duplicated file. Measured over four moments: 8 triaged rows, 16 readings, 32
+  trajectories, 64 signatures, 95 screened, and 24 container runs for 12
+  answers. Nothing is lost, everything is paid for twice, and a later solo pass
+  does not clean it up. A run directory now takes an exclusive lock and a
+  second run is refused by name rather than left to block.
+- **B-194 · The expensive stage used a looser gate than the one that scores
+  it** (fixed · 09-20). B-179 moved grading and the report to "every control
+  ran and behaved" and left the attempt stage on "no control failed", so a task
+  with one of its two controls run paid for containers on answers the grading
+  stage then refused.
+- **B-195 · `--max-rows` was still ignored by three stages, and meant two
+  different things in two others** (fixed · 09-20). `locate`, `signature` and
+  `screen` had no cap at all — `--only screen --max-rows 2` made 24 model
+  calls. `triage` and `read` capped their input rather than their work, so the
+  same three rows sat at the front and `--max-rows 3` run three times did three
+  rows and then nothing.
+- **B-196 · A missing gate file silently zeroed the report** (fixed · 09-20).
+  Deleting `calibration.jsonl` turned a finished three-task run from
+  "attempts: 6" into "attempts: 0" with no note, while `run.py status` over the
+  same directory printed 6. The collection counts are no longer gated — they
+  are counts, not rates — and an empty gate now says so.
+- **B-197 · `run.py status` died on a half-written report** (fixed · 09-20).
+  `report.json` was the one file written without a temporary and a rename, so a
+  kill during the report stage produced a file that every later `status` call
+  crashed on. Written atomically now, and read defensively.
+- **B-198 · A capped control stage reported the cap as work already done**
+  (noted · 09-20). `control 3 produced, 1 already done` on a directory where
+  nothing had been done. The same shape in three other stages: `p.skipped` is
+  computed after the slice, so rows the cap removed are printed as finished.
+
+**What the sweep found holding.** Worth recording as carefully as the defects,
+because it is the part that decides whether a long run can be trusted. A clean
+five-task run converges on the second pass and spends nothing thereafter.
+Killed at each of the eleven stage boundaries and resumed, **not one paid call
+was repeated**, at any boundary; killed mid-attempt with three of six answers
+on disk, the resume ran exactly the three missing candidates. Every stage run
+alone, twice, and first on an empty directory: no cost, no output, exit 0. A
+rebuild that adds one task, removes another and changes a third prunes and
+re-collects exactly the right rows and re-runs no candidate for the two
+untouched tasks. A run with a transient candidate failure, a repository that
+never clones, empty replies and two grading timeouts converges in three passes
+and stays converged. Every one of the twelve stage files emptied, and
+separately deleted, one at a time: no traceback in any case. Three processes
+appending to one answers file across six trials: 36 rows written, 36 on disk,
+none lost or torn.
+
 ### 7.10 Other providers
 
 - **B-91 · Azure was inferred from an environment variable** (fixed · 09-19 ·
@@ -1907,3 +1967,10 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   81 attempts, and one Kimi attempt was graded after its container died. The
   round also read the modules nobody had looked at, which is where both of
   those were. Five rounds, 110 defects; the rate is not yet falling.
+- **09-20** — the first end-to-end sweep of all eleven stages, nine scenarios,
+  only the model, container and corpus layers faked. Resume repeats no paid
+  call at any of the eleven boundaries; a clean run converges on the second
+  pass; no stage file can be emptied or deleted into a traceback. Seven
+  findings (B-192 to B-198), the largest being that two processes over one run
+  directory do all the work twice rather than colliding — now refused by a
+  run-directory lock.

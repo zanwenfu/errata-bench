@@ -390,9 +390,12 @@ async def stage_triage(paths: Paths, limit: int, concurrency: int) -> Progress:
 
     p = Progress("triage")
     t0 = time.monotonic()
-    moments = load(paths.moments)[:limit]
+    moments = load(paths.moments)
     done = already_done(paths.triaged)
-    todo = [m for m in moments if key_of(m) not in done]
+    # The work, not the input. Slicing the input meant `--max-rows 3` run three
+    # times did three rows and then nothing: the same three were always at the
+    # front and were always already done.
+    todo = [m for m in moments if key_of(m) not in done][:limit]
     p.skipped = len(moments) - len(todo)
     if not todo:
         p.took_s = time.monotonic() - t0
@@ -437,11 +440,11 @@ async def stage_read(paths: Paths, limit: int, concurrency: int) -> Progress:
     t0 = time.monotonic()
     triaged = load(paths.triaged)
     if triaged:
-        moments = [m for m in triaged if m.get("worth_reading")][:limit]
+        moments = [m for m in triaged if m.get("worth_reading")]
     else:
-        moments = load(paths.moments)[:limit]
+        moments = load(paths.moments)
     done = already_done(paths.readings)
-    todo = [m for m in moments if key_of(m) not in done]
+    todo = [m for m in moments if key_of(m) not in done][:limit]
     p.skipped = len(moments) - len(todo)
     if not todo:
         p.took_s = time.monotonic() - t0
@@ -478,7 +481,7 @@ async def stage_locate(paths: Paths, limit: int, concurrency: int) -> Progress:
         if (r.get("reading") or {}).get("benchmark_viable")
     ]
     done = already_done(paths.trajectories)
-    todo = [r for r in viable if key_of(r) not in done]
+    todo = [r for r in viable if key_of(r) not in done][:limit]
     p.skipped = len(viable) - len(todo)
     if not todo:
         p.took_s = time.monotonic() - t0
@@ -536,7 +539,7 @@ async def stage_signature(paths: Paths, limit: int, concurrency: int) -> Progres
     t0 = time.monotonic()
     usable = [r for r in load(paths.trajectories) if r.get("usable")]
     done = already_done(paths.signatures)
-    todo = [r for r in usable if key_of(r) not in done]
+    todo = [r for r in usable if key_of(r) not in done][:limit]
     p.skipped = len(usable) - len(todo)
 
     async def one(r):
@@ -571,7 +574,7 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int) -> Progress:
     t0 = time.monotonic()
     rows = [r for r in load(paths.signatures) if r.get("kind")]
     done = already_done(paths.screened)
-    todo = [r for r in rows if key_of(r) not in done]
+    todo = [r for r in rows if key_of(r) not in done][:limit]
     p.skipped = len(rows) - len(todo)
     if not todo:
         p.took_s = time.monotonic() - t0
@@ -721,7 +724,11 @@ def stage_build(paths: Paths, limit: int) -> Progress:
             for r in result.rejected
         ])
     p.produced = len(result.tasks)
-    p.failed = len(result.rejected)
+    # Skipped, not failed. Four of five located defects are rejected here by
+    # design -- that is the funnel, and its reasons are printed below -- but
+    # counted as failures they made `run.py` exit 1 on every pass of a finished
+    # run, for ever, saying "1 rows failed in: build" when nothing had failed.
+    p.skipped = len(result.rejected)
     # extend, not assign: the loop above records what it deleted, and assigning
     # here threw that away two lines later -- so the one message saying a
     # rebuild removed graded rows and paid-for answers never survived to be
@@ -936,10 +943,13 @@ async def stage_attempt(
     sweep()
     sound = {r["task_id"] for r in load(paths.calibration) if can_be_scored(r)}
     # A task a control passed is satisfiable without doing the work, so running
-    # candidates against it measures nothing.
-    broken = {r["task_id"] for r in load(paths.controls) if not r.get("ok")}
+    # candidates against it measures nothing -- and the same gate the grading
+    # stage applies, not a looser one. Left on "not known-broken" while grading
+    # moved to "known-good", this stage paid for containers on answers grading
+    # then refused: one control run of two is enough to admit a task here and
+    # not there.
     every = read(paths.tasks)
-    tasks = [t for t in every if t.task_id in sound and t.task_id not in broken]
+    tasks = [t for t in every if t.task_id in sound and t.task_id in controlled(paths)]
     # An errored attempt is not a finished one. Twelve of thirty-six attempts
     # died on API rate limits and were then counted as done, so a re-run would
     # have skipped exactly the work that needed redoing. Errored rows are
@@ -1464,10 +1474,10 @@ def stage_report(paths: Paths) -> Progress:
     # Missing means excluded, as it does in every rate: a row with no verdict
     # about whether its reading could be supported is not a result.
     scoreable = [a for a in attempts if a.get("scoreable")]
-    answers = [
-        a for a in load(paths.answers)
-        if not a.get("error") and a.get("task_id") in admitted
-    ]
+    # Unfiltered: this is how many answers were collected, not a rate, and a
+    # gate file that has gone missing should not make a finished run read as an
+    # empty one.
+    answers = [a for a in load(paths.answers) if not a.get("error")]
     answer_keys = {(a.get("task_id"), a.get("run")) for a in answers}
     graded_keys = {(a.get("task_id"), a.get("run")) for a in attempts}
     moments = len(load(paths.moments))
@@ -1539,7 +1549,16 @@ def stage_report(paths: Paths) -> Progress:
             for k in sorted({a.get("kind") or "unknown" for a in scoreable})
         },
     }
-    paths.report.write_text(json.dumps(report, indent=2))
+    if not admitted and load(paths.attempts):
+        p.notes.append(
+            "no task passes its known pair and both controls, so nothing here is "
+            "counted -- check calibration.jsonl and controls.jsonl exist and are complete"
+        )
+    # Through an atomic writer like every other file: a kill during this left a
+    # half-written report.json, which `run.py status` then died on.
+    tmp = paths.report.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(report, indent=2))
+    tmp.replace(paths.report)
     p.produced = len(scoreable)
     p.took_s = time.monotonic() - t0
     p.notes = [json.dumps(report["funnel"]), json.dumps(report["outcomes"])]
@@ -1564,6 +1583,33 @@ async def run_stages(
     Left unset it matches ``concurrency``, so a careless run is merely slow.
     """
     paths = Paths(root)
+    # One process per run directory. Every stage reads its output file to decide
+    # what is left and appends its results, so two runs over one directory do
+    # not collide -- they each do all of it. Measured: two `stages` over four
+    # moments produced 8 triaged rows, 16 readings, 32 trajectories, 64
+    # signatures and 95 screened, the factor doubling at each stage because the
+    # next one reads the duplicated file, and 24 container runs for 12 answers.
+    # Nothing is lost; everything is paid for twice, and a later solo pass does
+    # not clean it up.
+    guard = root / "run.lock"
+    guard.parent.mkdir(parents=True, exist_ok=True)
+    with guard.open("a+") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            raise SystemExit(
+                f"  another run is already working in {root}.\n"
+                f"  Wait for it to finish, or use a different --run directory."
+            ) from None
+        try:
+            return await _run_stages(
+                paths, stages, limit, concurrency, repeats, grade_concurrency
+            )
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
+async def _run_stages(paths, stages, limit, concurrency, repeats, grade_concurrency):
     out = []
     for name in stages:
         if name == "triage":
