@@ -700,6 +700,25 @@ order found.
   itself — the self-grading this benchmark exists to measure. `ERRATA_JUDGE_MODEL`
   now names the grader for every scoring call; unset, nothing changes. Each
   attempt row records both.
+- **B-119 · Demanding a structured answer stopped candidates from using their
+  tools** (fixed · 09-19). Given the same question, the same five tools and a
+  file they had to read to answer it, Kimi-K2.7-Code and DeepSeek-V4-Pro each
+  read the file and answered correctly when asked for plain text, and each
+  answered in one second having called nothing when the same request demanded a
+  structured reply. grok-4.6 was unaffected, which is why it went unseen: the
+  one model that had ever been a candidate here never hit it. Scored as it
+  stood, two of three models would have looked like models that never check
+  anything. Candidates now answer in plain text; which files changed is read
+  from the tree, which was always the better half of that check, and a
+  candidate's own account of its edits is recorded as unknown rather than as a
+  mismatch. Caught by a one-attempt preflight, not by a run.
+- **B-120 · The new gate never reached the pipeline** (fixed · 09-19). D-22
+  made the pass/fail line the gate, the regrade tool used it, and the attempt
+  and control stages went on reading the stored verdict — which on any row
+  written before that day means the older, stricter bar. The first preflight
+  attempt produced nothing at all: its one task holds the line both ways and
+  was skipped because its row said sound=false. One function,
+  `judge.can_be_scored`, now decides it everywhere.
 
 ### 7.11 Phase 0: the capture plugin (archived, kept for the lessons)
 
@@ -1077,3 +1096,6 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   13 of 18 from every judge, 18/18 agreement with the original on pass/fail.
 - **09-19** — B-117 and B-118 fixed: grading no longer holds a container slot,
   and the grader is named separately from the candidate.
+- **09-19** — B-119 and B-120 fixed, both found by preflight rather than by a
+  run: structured output was silencing tool use on two of three models, and the
+  new gate had not reached the pipeline.

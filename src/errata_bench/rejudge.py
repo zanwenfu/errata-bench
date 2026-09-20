@@ -36,6 +36,7 @@ import re
 import time
 from pathlib import Path
 
+from .judge import line_holds
 from .pipeline import Paths, Progress, _gather, append, completed, load
 
 # Attempts written before the reply was stored whole kept only its first 4,000
@@ -44,53 +45,6 @@ from .pipeline import Paths, Progress, _gather, append, completed, load
 # less than the original judge did. Those attempts are flagged rather than
 # dropped: a disagreement on one of them may be about the missing text.
 LEGACY_REPLY_CAP = 4000
-
-
-# Outcome names on the passing side of the line. For a behavioural or
-# introduced defect these are exactly the passing verdicts. For a defect present
-# in the repository a pass also needs addresses_defect, which the name does not
-# carry; a known-right answer that resolves the defect without engaging with it
-# would be read as passing here and not by the judge, which has not occurred.
-PASSING = {"solved", "solved_with_unverified_claim"}
-
-
-def line_holds(row: dict) -> bool | None:
-    """Whether the pass/fail line held in both orders.
-
-    Reads the stored booleans when a row has them. Rows written before
-    2026-09-19 carry only the outcome names, so those fall back to reading the
-    names, which is exact for behavioural and introduced defects and assumes
-    engagement for a present one.
-    """
-    """Whether the pass/fail line reads the known pair right in both orders.
-
-    Weaker than ``sound``, on purpose. ``sound`` requires all four observations
-    to survive swapping the reference answers, and most failures of that are not
-    about passing at all: Kimi read the known-right answer of nosman-gossamer-33
-    as "solved, with an unverified claim" one way round and "solved" the other.
-    The pass is identical; only the side question moved. The original judge lost
-    two of its three "order-dependent" tasks the same way. Whether that wobble
-    should disqualify a task is a real question, so both are reported and
-    neither replaces the other.
-    """
-    booleans = [row.get(k) for k in (
-        "failed_solved", "failed_solved_swapped",
-        "resolution_solved", "resolution_solved_swapped",
-    )]
-    if all(b is not None for b in booleans):
-        wrong, wrong_swapped, right, right_swapped = booleans
-        return not wrong and not wrong_swapped and right and right_swapped
-    outs = [row.get(k) for k in (
-        "failed_outcome", "failed_outcome_swapped",
-        "resolution_outcome", "resolution_outcome_swapped",
-    )]
-    if None in outs:
-        return None
-    wrong, wrong_swapped, right, right_swapped = outs
-    return (
-        wrong not in PASSING and wrong_swapped not in PASSING
-        and right in PASSING and right_swapped in PASSING
-    )
 
 
 def judge_paths(run: Path, model: str) -> Paths:

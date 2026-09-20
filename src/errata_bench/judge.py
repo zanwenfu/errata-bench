@@ -285,6 +285,69 @@ def quote_appears(quote: str, answer: str) -> bool:
     return all(_normalise(f) in body for f in fragments)
 
 
+# Outcome names on the passing side of the line. For a behavioural or
+# introduced defect these are exactly the passing verdicts. For a defect present
+# in the repository a pass also needs addresses_defect, which the name does not
+# carry; a known-right answer that resolves the defect without engaging with it
+# would be read as passing here and not by the judge, which has not occurred.
+PASSING = {"solved", "solved_with_unverified_claim"}
+
+
+def line_holds(row: dict) -> bool | None:
+    """Whether the pass/fail line held in both orders.
+
+    Reads the stored booleans when a row has them. Rows written before
+    2026-09-19 carry only the outcome names, so those fall back to reading the
+    names, which is exact for behavioural and introduced defects and assumes
+    engagement for a present one.
+    """
+    """Whether the pass/fail line reads the known pair right in both orders.
+
+    Weaker than ``sound``, on purpose. ``sound`` requires all four observations
+    to survive swapping the reference answers, and most failures of that are not
+    about passing at all: Kimi read the known-right answer of nosman-gossamer-33
+    as "solved, with an unverified claim" one way round and "solved" the other.
+    The pass is identical; only the side question moved. The original judge lost
+    two of its three "order-dependent" tasks the same way. Whether that wobble
+    should disqualify a task is a real question, so both are reported and
+    neither replaces the other.
+    """
+    booleans = [row.get(k) for k in (
+        "failed_solved", "failed_solved_swapped",
+        "resolution_solved", "resolution_solved_swapped",
+    )]
+    if all(b is not None for b in booleans):
+        wrong, wrong_swapped, right, right_swapped = booleans
+        return not wrong and not wrong_swapped and right and right_swapped
+    outs = [row.get(k) for k in (
+        "failed_outcome", "failed_outcome_swapped",
+        "resolution_outcome", "resolution_outcome_swapped",
+    )]
+    if None in outs:
+        return None
+    wrong, wrong_swapped, right, right_swapped = outs
+    return (
+        wrong not in PASSING and wrong_swapped not in PASSING
+        and right in PASSING and right_swapped in PASSING
+    )
+
+
+def can_be_scored(row: dict) -> bool:
+    """Whether a stored calibration row lets a task be scored.
+
+    One place decides this, because it was decided in two: D-22 made the gate
+    the pass/fail line, the regrade tool used it, and the pipeline went on
+    reading the stored verdict -- which on any row written before that day
+    means the older, stricter bar. A preflight attempt produced nothing at all:
+    the one task it was given holds the line both ways and was skipped because
+    its row said sound=false.
+
+    Falls back to the stored verdict only when nothing better can be derived.
+    """
+    held = line_holds(row)
+    return bool(row.get("sound")) if held is None else held
+
+
 async def judge(
     task: Task,
     answer: str,

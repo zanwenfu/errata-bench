@@ -567,12 +567,13 @@ async def stage_control(paths: Paths, limit: int, concurrency: int) -> Progress:
     of two judge calls rather than after a container has run against it.
     """
     from .control import CONTROLS, check
+    from .judge import can_be_scored
     from .reader import judge_model
     from .spec import read
 
     p = Progress("control")
     t0 = time.monotonic()
-    sound = {r["task_id"] for r in load(paths.calibration) if r.get("sound")}
+    sound = {r["task_id"] for r in load(paths.calibration) if can_be_scored(r)}
     tasks = [t for t in read(paths.tasks) if t.task_id in sound]
     # A control that could not run is not a control that failed. An errored row
     # sets ok=False, which marks the task broken and excludes it from the attempt
@@ -617,7 +618,7 @@ async def stage_attempt(
     from .attempt import environment_note, run, transcript_for
     from .container import MAX_CONTAINERS, image_for, sweep
     from .corpus import load_repos
-    from .judge import judge
+    from .judge import can_be_scored, judge
     from .reader import judge_model, load_session_turns
     from .spec import read
     from .structure import analyse, combine
@@ -626,7 +627,7 @@ async def stage_attempt(
     p = Progress("attempt")
     t0 = time.monotonic()
     sweep()
-    sound = {r["task_id"] for r in load(paths.calibration) if r.get("sound")}
+    sound = {r["task_id"] for r in load(paths.calibration) if can_be_scored(r)}
     # A task a control passed is satisfiable without doing the work, so running
     # candidates against it measures nothing.
     broken = {r["task_id"] for r in load(paths.controls) if not r.get("ok")}
