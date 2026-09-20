@@ -507,9 +507,19 @@ async def stage_calibrate(paths: Paths, limit: int, concurrency: int) -> Progres
                 paths.calibration,
                 {
                     "task_id": t.task_id,
+                    # `sound` gates: the pass/fail line in both orders. `strict`
+                    # is the older bar -- all four readings identical -- kept
+                    # beside it because it says something about the judge even
+                    # when it says nothing about the task.
                     "sound": c.sound,
+                    "strict": c.strict,
                     "separates": c.separates,
+                    "separates_both_ways": c.separates_both_ways,
                     "order_invariant": c.order_invariant,
+                    "failed_solved": c.failed_solved,
+                    "resolution_solved": c.resolution_solved,
+                    "failed_solved_swapped": c.failed_solved_swapped,
+                    "resolution_solved_swapped": c.resolution_solved_swapped,
                     # The four readings themselves, not only the verdict on
                     # them. With just `detail`, a task marked order-dependent
                     # could not be told apart as a pass/fail flip or a wobble

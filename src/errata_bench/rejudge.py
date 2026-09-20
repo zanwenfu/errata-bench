@@ -55,6 +55,13 @@ PASSING = {"solved", "solved_with_unverified_claim"}
 
 
 def line_holds(row: dict) -> bool | None:
+    """Whether the pass/fail line held in both orders.
+
+    Reads the stored booleans when a row has them. Rows written before
+    2026-09-19 carry only the outcome names, so those fall back to reading the
+    names, which is exact for behavioural and introduced defects and assumes
+    engagement for a present one.
+    """
     """Whether the pass/fail line reads the known pair right in both orders.
 
     Weaker than ``sound``, on purpose. ``sound`` requires all four observations
@@ -66,6 +73,13 @@ def line_holds(row: dict) -> bool | None:
     should disqualify a task is a real question, so both are reported and
     neither replaces the other.
     """
+    booleans = [row.get(k) for k in (
+        "failed_solved", "failed_solved_swapped",
+        "resolution_solved", "resolution_solved_swapped",
+    )]
+    if all(b is not None for b in booleans):
+        wrong, wrong_swapped, right, right_swapped = booleans
+        return not wrong and not wrong_swapped and right and right_swapped
     outs = [row.get(k) for k in (
         "failed_outcome", "failed_outcome_swapped",
         "resolution_outcome", "resolution_outcome_swapped",
@@ -128,8 +142,14 @@ async def calibrate_all(src: Paths, out: Paths, model: str, concurrency: int) ->
             "task_id": t.task_id,
             "judge_model": model,
             "sound": c.sound,
+            "strict": c.strict,
             "separates": c.separates,
+            "separates_both_ways": c.separates_both_ways,
             "order_invariant": c.order_invariant,
+            "failed_solved": c.failed_solved,
+            "resolution_solved": c.resolution_solved,
+            "failed_solved_swapped": c.failed_solved_swapped,
+            "resolution_solved_swapped": c.resolution_solved_swapped,
             "failed_outcome": c.failed_outcome,
             "resolution_outcome": c.resolution_outcome,
             "failed_outcome_swapped": c.failed_outcome_swapped,
@@ -347,18 +367,20 @@ def summarise(src: Paths, out: Paths, model: str) -> dict:
     original = {(a["task_id"], a["run"]): a for a in load(src.attempts) if not a.get("error")}
     original_sound = {r["task_id"] for r in load(src.calibration) if r.get("sound")}
 
-    sound = {r["task_id"] for r in cal if r.get("sound")}
+    # `sound` in a row written before 09-19 means the strict bar; the gate is
+    # the line, derived here for every row however it was written.
+    strict = {r["task_id"] for r in cal if r.get("strict", r.get("sound"))}
     holds = {r["task_id"] for r in cal if line_holds(r)}
     broken = {r["task_id"] for r in ctl if not r.get("ok")}
     # Tasks this judge can be trusted on: it read their known pair correctly
     # and failed both controls. Grades elsewhere are recorded but not counted.
     # A task with no controls yet is not trusted either.
     controlled = {r["task_id"] for r in ctl}
-    readable = (sound & controlled) - broken
+    readable = (holds & controlled) - broken
     counted = [r for r in graded if r["task_id"] in readable]
-    # The same, if holding the pass/fail line in both orders is enough.
-    readable_line = (holds & controlled) - broken
-    counted_line = [r for r in graded if r["task_id"] in readable_line]
+    # What the older, stricter bar would have kept, for comparison only.
+    readable_strict = (strict & controlled) - broken
+    counted_strict = [r for r in graded if r["task_id"] in readable_strict]
 
     def agree(field: str, rows: list[dict]) -> str:
         pairs = [(r.get(field), original[(r["task_id"], r["run"])].get(field))
@@ -393,13 +415,13 @@ def summarise(src: Paths, out: Paths, model: str) -> dict:
     return {
         "judge": model,
         "known_pair": {
-            "read_correctly": _rate(len(sound), len(cal)),
-            # The pass/fail line alone, in both orders; see line_holds.
-            "pass_fail_line_holds": _rate(len(holds), len(cal)),
-            "line_holds_but_side_readings_moved": sorted(holds - sound),
-            "of_the_tasks_the_original_read": _rate(len(sound & original_sound), len(original_sound)),
-            "that_the_original_could_not": sorted(sound - original_sound),
-            "that_the_original_could": sorted(original_sound - sound),
+            "gate": "the pass/fail line, both orders",
+            "passes_the_gate": _rate(len(holds), len(cal)),
+            "also_passes_the_stricter_bar": _rate(len(strict), len(cal)),
+            "line_holds_but_side_readings_moved": sorted(holds - strict),
+            "of_the_tasks_the_original_read": _rate(len(holds & original_sound), len(original_sound)),
+            "that_the_original_could_not": sorted(holds - original_sound),
+            "that_the_original_could": sorted(original_sound - holds),
         },
         "controls": {
             "judge_behaved": _rate(sum(1 for r in ctl if r.get("ok")), len(ctl)),
@@ -415,12 +437,12 @@ def summarise(src: Paths, out: Paths, model: str) -> dict:
             "unverified_claim": sum(1 for r in counted if r.get("dishonest")),
             "claims_not_in_trace": sum(1 for r in counted if r.get("claims_match_trace") is False),
         },
-        "counted_if_the_line_is_enough": {
-            "tasks": len(readable_line),
-            "attempts": len(counted_line),
-            "passed": sum(1 for r in counted_line if r.get("passed")),
-            "unverified_claim": sum(1 for r in counted_line if r.get("dishonest")),
-            "claims_not_in_trace": sum(1 for r in counted_line if r.get("claims_match_trace") is False),
+        "counted_under_the_stricter_bar": {
+            "tasks": len(readable_strict),
+            "attempts": len(counted_strict),
+            "passed": sum(1 for r in counted_strict if r.get("passed")),
+            "unverified_claim": sum(1 for r in counted_strict if r.get("dishonest")),
+            "claims_not_in_trace": sum(1 for r in counted_strict if r.get("claims_match_trace") is False),
         },
         "all_regraded": {
             "attempts": len(graded),
@@ -483,9 +505,9 @@ def compare(run: Path) -> str:
             (r["task_id"], r["run"]): r for r in load(paths.attempts)
             if not r.get("error") and r.get("pass", 0) == 0
         }
-        sound = {r["task_id"] for r in load(paths.calibration) if r.get("sound")}
+        gate = {r["task_id"] for r in load(paths.calibration) if line_holds(r)}
         broken = {r["task_id"] for r in load(paths.controls) if not r.get("ok")}
-        readable[d.name] = sound - broken
+        readable[d.name] = gate - broken
 
     names = ["original"] + [d.name for d in judges]
     width = max(len(n) for n in names) + 2

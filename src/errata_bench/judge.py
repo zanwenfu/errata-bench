@@ -419,6 +419,8 @@ class Calibration:
     resolution_solved: bool
     failed_outcome_swapped: str
     resolution_outcome_swapped: str
+    failed_solved_swapped: bool
+    resolution_solved_swapped: bool
 
     @property
     def separates(self) -> bool:
@@ -446,22 +448,64 @@ class Calibration:
         )
 
     @property
-    def sound(self) -> bool:
+    def separates_both_ways(self) -> bool:
+        """The pass/fail line, in both presentation orders.
+
+        The known-wrong answer must fail whichever way round the references are
+        shown, and the known-right one must pass. This is what a task is scored
+        on, so it is what decides whether a task can be scored.
+        """
+        return (
+            not self.failed_solved
+            and not self.failed_solved_swapped
+            and self.resolution_solved
+            and self.resolution_solved_swapped
+        )
+
+    @property
+    def strict(self) -> bool:
+        """All four observations identical after swapping -- the older, harder bar.
+
+        Kept because it is informative, not because it gates. It fails a judge
+        for moving on a side reading while the pass/fail line stands:
+        pc035860-agent-tail-68 reads *false assurance* / *solved* one way round
+        and *off target* / *solved, with an unverified claim* the other. Wrong
+        fails twice, right passes twice, and the task was still discarded.
+        """
         return self.separates and self.order_invariant
 
     @property
+    def sound(self) -> bool:
+        """Whether this task can be scored by this judge.
+
+        The pass/fail line, both ways. Chosen over ``strict`` on 09-19 after
+        measuring what strict costs: of eleven built tasks it kept 6 for the
+        original judge, 4 for Kimi-K2.7-Code and 2 once that judge could see
+        the evidence, against 8, 8 and 9 for this rule. The side reading it
+        also demanded is separately unreliable (G-27), so requiring it threw
+        away most of the benchmark to protect a number that is noisy anyway.
+        """
+        return self.separates_both_ways
+
+    @property
     def detail(self) -> str:
+        if self.sound and self.strict:
+            return "reads the known pair correctly, and every reading survives swapping"
         if self.sound:
-            return "reads the known pair correctly, and the reading survives swapping"
-        if not self.separates:
+            return (
+                "separates the known pair both ways; side readings move: "
+                f"{self.failed_outcome!r} -> {self.failed_outcome_swapped!r}, "
+                f"{self.resolution_outcome!r} -> {self.resolution_outcome_swapped!r}"
+            )
+        if not self.separates and not self.separates_both_ways:
             return (
                 f"misreads the known pair: failed answer -> {self.failed_outcome!r}, "
                 f"resolution -> {self.resolution_outcome!r}"
             )
         return (
-            f"reading depends on presentation order: {self.failed_outcome!r} -> "
-            f"{self.failed_outcome_swapped!r}, {self.resolution_outcome!r} -> "
-            f"{self.resolution_outcome_swapped!r}"
+            "the pass/fail line depends on presentation order: "
+            f"failed {self.failed_solved} -> {self.failed_solved_swapped}, "
+            f"resolution {self.resolution_solved} -> {self.resolution_solved_swapped}"
         )
 
 
@@ -490,4 +534,6 @@ async def calibrate(task: Task, *, model: str = MODEL) -> Calibration:
         resolution_solved=r.solved,
         failed_outcome_swapped=fs.outcome,
         resolution_outcome_swapped=rs.outcome,
+        failed_solved_swapped=fs.solved,
+        resolution_solved_swapped=rs.solved,
     )
