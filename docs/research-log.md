@@ -1417,6 +1417,7 @@ Treat anything marked *void* as a finding about the harness, not a model.
 | R-16 | 09-19 | independent judges on R-14's answers | see §10 | in progress |
 | R-19 | 09-20 | three candidate models, 9 tasks, 3 attempts each, 81 answers, no errors | passed: grok-4.6 13/27, Kimi-K2.7-Code 9/27, DeepSeek-V4-Pro 4/27. Checked anything: 27/27, 20/27, 15/27; median tool calls 34, 6, 3; files changed 4, 4, 0; used every turn without answering 3, 3, 0 | **the benchmark separates models, and the ordering follows the checking** |
 | R-20 | 09-20 | all 81 answers regraded by one judge that wrote none of them (gpt-6-astra) — **read §8's qualifications before quoting any of it** | passed, of the 24 attempts on the 8 tasks it reads: grok-4.6 **14/24**, Kimi-K2.7-Code **9/24**, DeepSeek-V4-Pro **7/24**. Stated something it had not established: **13/24, 13/24, 23/24**. Claimed work its trace does not show: **5/24, 8/24, 13/24**. Judge's own tests: gate 8/9, controls 16/16, trace controls 16/16, probes 8/8, no task's controls failed, 0 errors in 81 gradings | **the ordering survives a single independent judge, and the honesty gap is now comparable: DeepSeek asserts what it has not checked in 23 of 24 answers** |
+| R-21 | 09-20 | the same 81 answers re-graded by the same judge under the fixed renderer, with the old grades kept beside them | **the renderer was not the problem**: 1 of 81 honesty verdicts moved, and it moved towards flagging, not away. The judge agrees with itself on 80/81 pass calls, 79/81 unchecked-claim calls and 80/81 trace calls. What moved the headline was the **admission gate**: the same judge, reading the same nine known pairs six times, admitted 7 tasks every time, 9 at least once, and wobbled on two. Kimi's published 9 of 24 became 6 of 20 because one task it passed 3/3 left the counted set | **the readings are stable and the denominator is not; the earlier headline was one draw** |
 | R-18 | 09-19 | three judges on the same 18 answers, final rules | all three pass 13/18; both independent judges agree with the original answer-for-answer (18/18); grok agrees with itself 18/18, Kimi 17/18; both pass the gate on 9 of 11 tasks with controls 18/18, 18/18 and probes 6/6; unchecked claims 3, 3 and 1 | the pass rate is judge-independent |
 | R-17 | 09-19 | Kimi regraded the same 18 answers with the evidence supplied | passed 13/18 (18/18 agreement with the original, 17/18 with itself); unchecked claims 3/18, down from 8 blind, but on different answers (G-27); controls 18/18 and 18/18, probes 6/6 | the pass rate is judge-independent; the honesty reading is not per-answer reliable |
 
@@ -1788,7 +1789,13 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   produces an answer with no stored transcript, so the rebuild path in the
   grading stage — the one that reads the corpus — is never run.
 - **G-42 · R-20's honesty column was measured through a starved renderer.**
-  *(being settled 09-20: the same 81 answers re-graded by the same judge under
+  *(settled 09-20, and the hypothesis was wrong. Re-graded under the fixed
+  renderer, exactly one of the 81 honesty verdicts changed —
+  basher83-tailnet-microservices #2, from clean to flagged, which is the
+  opposite direction from the one predicted. The clipping was real and is
+  fixed, but it is not what produced those flags. What the re-grade did find is
+  G-51.)*
+  *(original note: the same 81 answers re-graded by the same judge under
   the fixed renderer, with the old grades kept beside them as
   `rejudge/gpt-6-astra-starved/`. `checks/renderer_effect.py` prints both and
   names every attempt whose verdict moved. The loss was one-directional, so the
@@ -1800,6 +1807,19 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   therefore an upper bound, and most inflated on the attempts with the longest
   traces, which is grok's. Re-grading the stored answers under the fixed
   renderer costs no candidate runs and would settle it.
+- **G-51 · The task admission gate is not stable between runs, and it moves
+  the headline more than any fix has.** The same judge, given the same nine
+  known pairs on six separate occasions, admitted seven tasks every time and
+  nine at least once: `nuttycc-LuminTime-68` and
+  `basher83-tailnet-microservices-83` come and go. Because a task carries three
+  attempts, one task entering or leaving moves a model's score by up to three —
+  Kimi's published 9 of 24 became 6 of 20 on the second pass, a third of its
+  score, with no model behaviour involved. The individual readings are steady
+  by comparison: 80/81, 79/81 and 80/81 agreement with itself. Two consequences.
+  A published rate should be computed over the tasks a judge admits *every*
+  time, not the ones it happened to admit on the day. And on that stable set
+  the ordering changes: grok 14-15 of 20, DeepSeek 7 of 20, Kimi 6 of 20 —
+  Kimi is no longer clearly ahead of DeepSeek.
 - **G-43 · One recorded attempt is a harness failure scored as a model
   failure.** *(Not repaired by the re-grade: the damage is in the trace, not in
   the reading of it, so grading it again grades the same broken record. It is
@@ -2050,3 +2070,9 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   fixture written to test a check (B-199). Twenty behaviours had no assertion
   at all; the four that decide a published rate now do. 54 assertions in the
   bug ledger, 32 in the guards, 41 in the equivalence check.
+- **09-20** — R-21. The 81 answers re-graded under the fixed renderer, old
+  grades kept beside them. The renderer hypothesis was wrong: one verdict of 81
+  moved, towards flagging. The re-grade instead found G-51 — the admission gate
+  wobbles between runs of the same judge, and one task entering or leaving
+  moves a model's score by up to three attempts. On the tasks admitted every
+  time, grok 14-15/20, DeepSeek 7/20, Kimi 6/20.
