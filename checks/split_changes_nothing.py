@@ -1,0 +1,394 @@
+# Splitting grading out of the attempt stage must change how fast the work runs
+# and nothing else. This runs both the old combined stage (taken from git) and
+# the new pair against the same fakes, and compares the rows they produce field
+# by field. Fakes stand in for the model and the container, so it runs in
+# seconds with no network and no Docker.
+import asyncio, importlib.util, json, os, subprocess, sys, tempfile, time
+from pathlib import Path
+
+sys.path.insert(0, "src")
+os.environ["ERRATA_JUDGE_MODEL"] = "the-grader"
+os.environ["ERRATA_MODEL"] = "the-candidate"
+
+from errata_bench import attempt as attempt_mod, container as container_mod, corpus, judge as judge_mod, reader, trace as trace_mod
+from errata_bench.attempt import Attempt, ToolCall
+from errata_bench.judge import Judgement
+from errata_bench.pipeline import Paths, stage_attempt, stage_grade, stage_build, load
+from errata_bench.spec import Task, write
+from errata_bench.structure import Structure
+from errata_bench.trace import Claim, TraceCheck
+
+FAIL = []
+
+
+def check(ok, message):
+    if not ok:
+        FAIL.append(message)
+        print(f"  FAIL  {message}")
+    else:
+        print(f"  ok    {message}")
+
+
+# ---------------------------------------------------------------- the fakes
+
+live = {"run": 0, "grade": 0}
+peak = {"run": 0, "grade": 0}
+seen = {"judge": [], "trace": [], "graders": set(), "candidate_calls": 0}
+grading_during_attempt = {"count": 0}
+in_attempt_stage = {"now": False}
+
+
+def note(kind, delta):
+    live[kind] += delta
+    peak[kind] = max(peak[kind], live[kind])
+
+
+# Two tasks answer, one answers with nothing, one fails outright, one grades
+# badly -- every path a row can take.
+REPLIES = {
+    "task-0": "I read the config and the value is wrong.",
+    "task-1": "I ran the tests and they pass.",
+    "task-2": "",                       # used every turn, never reported
+    "task-3": "This one breaks the candidate.",
+    "task-4": "This one breaks the judge.",
+}
+
+
+async def fake_run(task, *, image=None, turns=None, **kw):
+    seen["candidate_calls"] += 1
+    note("run", +1)
+    await asyncio.sleep(0.10)
+    note("run", -1)
+    if task.task_id == "task-3":
+        return Attempt(task.task_id, "the-candidate", error="Timeout: the container died")
+    return Attempt(
+        task.task_id,
+        "the-candidate",
+        reply=REPLIES[task.task_id],
+        out_of_time=(task.task_id == "task-2"),
+        tool_calls=[
+            ToolCall("read_file", {"path": f"{task.task_id}.py"}, result="x = 1"),
+            ToolCall("run_command", {"command": "npm test"}, result="2 passing"),
+        ],
+        actual_changes={f"{task.task_id}.py": "modified"},
+        final_state={f"{task.task_id}.py": "x = 1"},
+        environment=image or "host",
+    )
+
+
+async def fake_judge(task, answer, *, model=None, swap_references=False, tool_calls=None):
+    if in_attempt_stage["now"]:
+        grading_during_attempt["count"] += 1
+    seen["graders"].add(model)
+    seen["judge"].append((task.task_id, answer, json.dumps(tool_calls, sort_keys=True)))
+    note("grade", +1)
+    await asyncio.sleep(0.25)
+    note("grade", -1)
+    if task.task_id == "task-4":
+        raise RuntimeError("the judge deployment returned nothing")
+    return Judgement(
+        addresses_defect=True,
+        defect_remains=(task.task_id == "task-1"),
+        makes_unverified_claim=(task.task_id == "task-1"),
+        reports_limits=False,
+        quote=answer[:20],
+        reasoning=f"read {task.task_id}",
+        quote_found=True,
+    )
+
+
+async def fake_check(answer, calls, *, model=None, context="", given=""):
+    if in_attempt_stage["now"]:
+        grading_during_attempt["count"] += 1
+    seen["graders"].add(model)
+    seen["trace"].append((answer, json.dumps(calls, sort_keys=True), context, given))
+    note("grade", +1)
+    await asyncio.sleep(0.25)
+    note("grade", -1)
+    supported = "ran the tests" not in answer
+    return TraceCheck(
+        claims=[Claim(claim="ran the tests", supported=supported, evidence="npm test")],
+        reasoning="checked",
+    )
+
+
+attempt_mod.run = fake_run
+judge_mod.judge = fake_judge
+trace_mod.check = fake_check
+attempt_mod.transcript_for = lambda task, turns: f"conversation for {task.task_id}"
+attempt_mod.transcripts_for = lambda tasks: {t.task_id: f"conversation for {t.task_id}" for t in tasks}
+container_mod.image_for = lambda lang, **kw: "node:22"
+container_mod.sweep = lambda: None
+container_mod.max_containers = lambda: 2
+corpus.load_repos = lambda: {}
+reader.load_session_turns = lambda ids: {}
+
+
+def fresh_run(task_ids):
+    root = Path(tempfile.mkdtemp()) / "run"
+    paths = Paths(root)
+    tasks = [
+        Task(t, "r/r", "u", "sha", f"s{t}", 10, 11, 12, 13, "wrong " * 10, "right " * 10,
+             "a defect", "none")
+        for t in task_ids
+    ]
+    write(tasks, paths.tasks)
+    paths.calibration.write_text(
+        "".join(json.dumps({"task_id": t, "sound": True}) + "\n" for t in task_ids))
+    paths.controls.write_text(
+        "".join(json.dumps({"task_id": t, "control": c, "ok": True}) + "\n"
+                for t in task_ids for c in ("null", "overclaim")))
+    return paths
+
+
+def rows(path):
+    return [json.loads(l) for l in path.read_text().splitlines() if l.strip()] if path.exists() else []
+
+
+def reset():
+    live.update(run=0, grade=0)
+    peak.update(run=0, grade=0)
+    seen.update(judge=[], trace=[], graders=set(), candidate_calls=0)
+    grading_during_attempt["count"] = 0
+
+
+# ------------------------------------------- 1. the old stage, from git HEAD
+
+print("\n1. the combined stage as it was, for comparison")
+# The newest revision of pipeline.py from before grading became its own stage.
+# Found rather than pinned to a commit, so this keeps comparing against the
+# real previous behaviour however many commits land on top of it.
+revs = subprocess.run(
+    ["git", "log", "--format=%H", "--", "src/errata_bench/pipeline.py"],
+    capture_output=True, text=True, check=True).stdout.split()
+for rev in revs:
+    old_src = subprocess.run(
+        ["git", "show", f"{rev}:src/errata_bench/pipeline.py"],
+        capture_output=True, text=True, check=True).stdout
+    if '"grade",' not in old_src:
+        print(f"     comparing against {rev[:8]}, the last revision before the split")
+        break
+else:
+    raise SystemExit("no pre-split revision of pipeline.py found")
+tmp = Path(tempfile.mkdtemp()) / "pipeline_old.py"
+tmp.write_text(old_src)
+spec = importlib.util.spec_from_file_location("errata_bench.pipeline_old", tmp)
+old = importlib.util.module_from_spec(spec)
+old.__package__ = "errata_bench"
+sys.modules["errata_bench.pipeline_old"] = old
+spec.loader.exec_module(old)
+check("grade" not in old.STAGES, "the old module really is the pre-split one")
+
+reset()
+before = fresh_run(["task-0", "task-1", "task-2", "task-3"])
+p_old = asyncio.run(old.stage_attempt(old.Paths(before.root), 10**9, concurrency=6, repeats=2))
+old_rows = rows(before.attempts)
+old_judge, old_trace = sorted(seen["judge"]), sorted(seen["trace"])
+old_candidates = seen["candidate_calls"]
+print(f"     old: {len(old_rows)} rows in attempts.jsonl, {old_candidates} candidate runs")
+
+# ------------------------------------------------ 2. the new pair of stages
+
+print("\n2. the split pair")
+reset()
+after = fresh_run(["task-0", "task-1", "task-2", "task-3"])
+in_attempt_stage["now"] = True
+t0 = time.monotonic()
+p_att = asyncio.run(stage_attempt(after, 10**9, concurrency=6, repeats=2))
+attempt_s = time.monotonic() - t0
+in_attempt_stage["now"] = False
+peak_run = peak["run"]
+answers = rows(after.answers)
+
+check(grading_during_attempt["count"] == 0,
+      "the attempt stage made no grading call at all")
+check(not seen["graders"], "no grader was contacted while candidates ran")
+check(peak_run <= 2, f"the container bound held: peak {peak_run} candidates at once")
+check(not after.attempts.exists() or not rows(after.attempts),
+      "the attempt stage wrote nothing to attempts.jsonl")
+check(len(answers) == 8, f"one answer row per (task, run): {len(answers)}")
+check(sum(1 for a in answers if a.get("error")) == 2,
+      "the two runs of the task whose container died are recorded as errors")
+check(all("structure" in a for a in answers if not a.get("error")),
+      "every stored answer carries the reading taken while the tree existed")
+
+t0 = time.monotonic()
+p_grade = asyncio.run(stage_grade(after, 10**9, concurrency=6))
+grade_s = time.monotonic() - t0
+new_rows = rows(after.attempts)
+peak_grade = peak["grade"]
+check(peak_grade >= 4, f"grading ran wider than the container bound: peak {peak_grade}")
+check(seen["candidate_calls"] == 8,
+      f"the grade stage ran no candidate: {seen['candidate_calls']} runs, all from the attempt stage")
+print(f"     attempt {attempt_s:.1f}s, grade {grade_s:.1f}s, combined would be ~{8*0.6:.1f}s serial")
+
+# -------------------------------------------- 3. row-for-row equivalence
+
+print("\n3. the same rows, field for field")
+# `seconds` means the candidate's own time now, not candidate plus grading, and
+# scored rows carry two fields they did not before. Everything else must match.
+ADDED = {"graded_seconds", "out_of_time", "structure", "had_conversation", "task_fingerprint"}
+CHANGED = {"seconds"}
+
+
+def comparable(r):
+    return {k: v for k, v in sorted(r.items()) if k not in ADDED | CHANGED}
+
+
+# A candidate that never produced an answer is now recorded where the answers
+# are, not among the scores. Nothing read those rows for anything but dropping
+# them -- the report, the regrade tool and the comparison table all filter on
+# `error` -- so this moves the record without losing it.
+old_errors = {(r["task_id"], r["run"]): r["error"] for r in old_rows if r.get("error")}
+new_errors = {(r["task_id"], r["run"]): r["error"] for r in answers if r.get("error")}
+check(old_errors == new_errors and len(old_errors) == 2,
+      f"a failed candidate is recorded once, with the same message: {len(new_errors)} of them")
+check(not [r for r in new_rows if r.get("error")],
+      "and attempts.jsonl now holds scores only")
+
+old_by_key = {(r["task_id"], r["run"]): r for r in old_rows if not r.get("error")}
+new_by_key = {(r["task_id"], r["run"]): r for r in new_rows}
+check(set(old_by_key) == set(new_by_key),
+      f"the same attempts were scored: {len(old_by_key)} then, {len(new_by_key)} now")
+differing = [k for k in old_by_key if comparable(old_by_key[k]) != comparable(new_by_key.get(k, {}))]
+if differing:
+    k = differing[0]
+    a, b = comparable(old_by_key[k]), comparable(new_by_key[k])
+    print("     first difference:", k)
+    for f in sorted(set(a) | set(b)):
+        if a.get(f) != b.get(f):
+            print(f"       {f}: old={a.get(f)!r}  new={b.get(f)!r}")
+check(not differing, f"every scored row is identical: {len(differing)} differ")
+check(sorted(seen["judge"]) == old_judge,
+      "the judge was asked exactly the same questions, about the same traces")
+check(sorted(seen["trace"]) == old_trace,
+      "the trace check was given the same answer, trace, conversation and rules")
+check(old_candidates == seen["candidate_calls"],
+      f"the same number of candidate runs: {old_candidates} then, {seen['candidate_calls']} now")
+
+no_answer = [r for r in new_rows if r["task_id"] == "task-2"]
+check(all(r["outcome"] == "no_answer" and r["scoreable"] and not r["passed"] for r in no_answer),
+      "an answer of nothing is still scored, not errored")
+check(all(r["out_of_time"] for r in no_answer),
+      "and it records that the candidate used every turn")
+check(all(r.get("told_the_truth_about_edits") is None for r in new_rows),
+      "nothing claims the candidate misreported edits it was never asked to declare")
+
+# ------------------------------------------------------- 4. resume, twice
+
+print("\n4. resume does no work twice")
+reset()
+p2 = asyncio.run(stage_attempt(after, 10**9, concurrency=6, repeats=2))
+check(seen["candidate_calls"] == 2,
+      f"only the failed container is retried on a second attempt pass: {seen['candidate_calls']} runs")
+check(p2.skipped == 6, f"the six stored answers were skipped: {p2.skipped}")
+reset()
+p3 = asyncio.run(stage_grade(after, 10**9, concurrency=6))
+check(not seen["judge"], f"nothing was graded twice: {len(seen['judge'])} judge calls")
+# The retry failed again, so it produced no answer to grade. An errored row is
+# dropped and comes back as work next time, which is the point -- it must not
+# arrive in the scores as a failure the candidate did not have.
+check(len(rows(after.attempts)) == len(new_rows),
+      "a candidate that failed again added nothing to the scores")
+# The grade stage does not tidy answers.jsonl: it does not own that file, and
+# rewriting it from a stale snapshot would drop whatever the attempt stage
+# appended in between. The attempt stage clears its own errors on its next pass.
+check(len([r for r in rows(after.answers) if r.get("error")]) == 2,
+      "grading left the errored answers alone rather than rewriting a file it does not own")
+reset()
+asyncio.run(stage_attempt(after, 10**9, concurrency=6, repeats=2))
+check(seen["candidate_calls"] == 2,
+      "and the next attempt pass dropped them and retried exactly those two")
+
+# ------------------------------------- 5. a run made before the split
+
+print("\n5. a run directory from before the split")
+reset()
+legacy = fresh_run(["task-0", "task-1"])
+for r in old_rows:
+    if r["task_id"] in ("task-0", "task-1"):
+        with legacy.attempts.open("a") as fh:
+            fh.write(json.dumps(r) + "\n")
+check(not legacy.answers.exists(), "it holds graded attempts and no answers file")
+p_legacy = asyncio.run(stage_attempt(legacy, 10**9, concurrency=6, repeats=2))
+check(seen["candidate_calls"] == 0,
+      f"no candidate was re-run for an answer already graded: {seen['candidate_calls']} runs")
+check(p_legacy.skipped == 4, f"all four were counted as done: {p_legacy.skipped}")
+reset()
+asyncio.run(stage_grade(legacy, 10**9, concurrency=6))
+check(not seen["judge"], "and nothing was re-graded either")
+
+# --------------------------------------- 6. a grading failure is one row
+
+print("\n6. one answer that cannot be graded is one row, not a dead stage")
+reset()
+broken = fresh_run(["task-0", "task-4"])
+asyncio.run(stage_attempt(broken, 10**9, concurrency=6, repeats=1))
+p_broken = asyncio.run(stage_grade(broken, 10**9, concurrency=6))
+graded = rows(broken.attempts)
+check(len(graded) == 2, f"both answers produced a row: {len(graded)}")
+check(sum(1 for r in graded if r.get("error")) == 1, "the failed grading is an error row")
+check(any(r["task_id"] == "task-0" and r.get("passed") is not None for r in graded),
+      "the other answer was still graded")
+reset()
+asyncio.run(stage_grade(broken, 10**9, concurrency=6))
+check(len(seen["judge"]) == 1, f"the errored grade is retried, the good one is not: {len(seen['judge'])}")
+
+# ------------------------------- 7. rebuilding tasks does not orphan answers
+
+print("\n7. a rebuild prunes answers with their tasks")
+from errata_bench.spec import read as read_tasks
+import errata_bench.build as build_mod
+
+surviving = [t for t in read_tasks(after.tasks) if t.task_id != "task-0"]
+
+
+class FakeBuild:
+    tasks = surviving
+    rejected = []
+
+
+build_mod.build = lambda rows_: FakeBuild()
+# A real rebuild has screened rows to build from; without them the stage now
+# refuses, which is checked next.
+after.screened.write_text(json.dumps({"session_id": "s", "turn_number": 1}) + "\n")
+p_build = stage_build(after, 10**9)
+left = {r["task_id"] for r in rows(after.answers)}
+check("task-0" not in left, "the dropped task's answers went with it")
+check("task-1" in left, "the surviving tasks' answers are still there")
+
+print("\n7b. a rebuild refuses to empty a finished run directory")
+# The three candidate directories hold tasks, calibration, controls and results
+# but not the screened rows those came from -- they were copied in. Running
+# every stage against one of them would build zero tasks and prune everything
+# downstream to match.
+finished_run = fresh_run(["task-0", "task-1"])
+for r in new_rows:
+    with finished_run.attempts.open("a") as fh:
+        fh.write(json.dumps(r) + "\n")
+with finished_run.answers.open("a") as fh:
+    for a in rows(after.answers):
+        fh.write(json.dumps(a) + "\n")
+before_counts = (len(rows(finished_run.tasks)), len(rows(finished_run.attempts)),
+                 len(rows(finished_run.answers)), len(rows(finished_run.calibration)))
+build_mod.build = lambda rows_: (_ for _ in ()).throw(AssertionError("build must not run"))
+p_refuse = stage_build(finished_run, 10**9)
+after_counts = (len(rows(finished_run.tasks)), len(rows(finished_run.attempts)),
+                len(rows(finished_run.answers)), len(rows(finished_run.calibration)))
+check(before_counts == after_counts and before_counts[1] > 0,
+      f"nothing was deleted: {before_counts} before, {after_counts} after")
+check(any("refused" in n for n in p_refuse.notes), f"and it said so: {p_refuse.notes}")
+
+# --------------------------------------------- 8. the structure round trip
+
+print("\n8. the reading survives the file")
+src = Structure("t", investigated=True, executed=False, wrote=True, tool_calls=7,
+                files_changed={"a.py": "modified"}, token_removed=False,
+                touched_defect_file=True, declaration_matches=None)
+check(Structure.from_json(json.loads(json.dumps(src.to_json()))) == src,
+      "every field written is read back unchanged")
+
+print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
+for f in FAIL:
+    print("  -", f)
+sys.exit(1 if FAIL else 0)

@@ -295,6 +295,16 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   reading the diff fixed first, not one per run. Adopted after B-116; the
   review that followed it found five more defects (B-111 to B-115) that would
   each have cost another run.
+- **D-24 · A fix is only fixed when a script re-checks it.** Twenty-eight
+  defects were found and repaired on 09-20, several of them capable of
+  destroying finished runs or fabricating a result. A line in this log saying
+  "fixed" is a claim about code that keeps changing, so each one has a live
+  assertion in `checks/fixes_are_still_in.py` that runs the real function and
+  fails if the old behaviour returns. Two more scripts sit beside it: one that
+  proves splitting the grading stage changed no scored row, by running the
+  previous revision and the current one over the same fakes and comparing every
+  field, and one for what the stages refuse to do. No network, no containers,
+  no model calls — the whole set runs in seconds, which is the point.
 - **D-23 · Collecting an answer and reading it are separate stages.** `attempt`
   runs candidates and writes `answers.jsonl`; `grade` reads those three ways
   and writes `attempts.jsonl`, whose shape is unchanged. The reason is that the
