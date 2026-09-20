@@ -829,6 +829,111 @@ read in none.
   look like any other. Each answer now carries a fingerprint of the fields a
   grade depends on, and grading skips and counts the ones that no longer match.
 
+A third round, after the twenty-eight above were fixed and the developer asked
+for a fresh look before moving on. Five reviewers with separate lenses, none of
+them told what the earlier rounds had concluded. Two independently reproduced
+the same critical defect, which was one of yesterday's own fixes.
+
+- **B-150 · The attempt stage deleted paid-for answers for tasks it was merely
+  not running** (fixed · 09-20). B-136 made the stage drop answers describing
+  an earlier version of their task. The fingerprints it compared against were
+  built from the *admitted* task list — calibration-sound and control-passing —
+  so an answer whose task had since failed a control, or lost its calibration
+  to a transient API error, counted as belonging to no task at all and was
+  deleted with the superseded ones. Reproduced: three tasks, one answer each;
+  one task's control flipped to failing; the next run removed two rows while
+  reporting one. That is a container run, the expensive thing here, destroyed
+  because a judge changed its mind — and the task is then never re-run, because
+  it is excluded. Fingerprints are now taken from every task in the file, and
+  rows whose task is absent are left for `build` to prune, which is the stage
+  that knows what survived a rebuild.
+- **B-151 · The stale-row rewrites wrote a snapshot back over the file**
+  (fixed · 09-20). Both were read-modify-write outside the lock added in
+  B-142, whose docstring describes this exact failure. Demonstrated with two
+  real processes: a row appended between the snapshot and the rename is gone,
+  in both stages, and in the grading stage that is a paid grade. They now drop
+  named rows from a list read under the lock.
+- **B-152 · A rebuild retired the answers and kept the gate** (fixed · 09-20).
+  `calibration.jsonl` and `controls.jsonl` carry the two verdicts that admit a
+  task to the benchmark — the judge can read its known pair, and a do-nothing
+  answer fails it — and carried no fingerprint, so a rebuild that changed the
+  defect and both reference answers pruned every answer and left both verdicts
+  standing. Candidates then ran and were graded under a gate never applied to
+  the question they were asked. The control gate exists because every
+  introduced-defect task once passed for free; a rebuilt pair can restore that
+  invisibly. Both files are now stamped, and the existing prune handles them
+  with no new code.
+- **B-153 · Two tasks could share one name** (fixed · 09-20). A task is named
+  for its repository and the turn the developer objected at, which is not
+  unique: 93 of 400 moments in one run share that pair with another session.
+  None has survived the funnel to a built task yet, and the funnel was the only
+  thing preventing it. Two tasks under one name overwrite each other's answers,
+  each is reported as "an earlier version" of the other, and a full pass never
+  converges — four containers re-run on every other pass, for ever, while the
+  scored rows stay at two. A second task with a name already built is now
+  rejected, and the name is claimed only once a task really exists: claimed
+  where the name is computed, a row that later failed its tree build would hold
+  the name against a row that would have succeeded.
+- **B-154 · The fingerprint was blind to the conversation** (fixed · 09-20).
+  It covered the tree, the defect and the reference answers but not
+  `session_id`, the cut, or the reference traces — so a rebuild onto a repaired
+  transcript, which is the case the mechanism exists for, left every stamp
+  identical and every stored answer was graded as though it had been asked the
+  same question.
+- **B-155 · The regrade summary called tasks unreadable that the original had
+  read** (fixed · 09-20 · wrong on disk). `summarise` tested the raw `sound`
+  field where everything else goes through `can_be_scored`, so on any
+  calibration row written before 09-19 it applied the older, stricter bar. The
+  three reports written today each listed tasks the original judge "could not
+  read" that it had read and graded three answers on: seven of nine in one
+  case, twenty-one of that directory's twenty-seven rows. No published number
+  moved — the counted block is gated separately — but that list is what anyone
+  would read to decide which tasks a new judge rescued. Reports regenerated.
+- **B-156 · The funnel used the same raw field** (fixed · 09-20). It reported
+  two tasks calibrated beside twenty-seven attempts over nine of them,
+  contradicting its own attempt count.
+- **B-157 · The regrade summary averaged in readings the judge could not
+  support** (fixed · 09-20). `Score.scoreable` says a reading whose quote is
+  not in the answer "is unreadable rather than failed, and averaging it in
+  either direction invents a result"; the pipeline's report honours it and the
+  regrade summary never looked at the field. All 81 readings in R-20 happen to
+  be supportable, so nothing moved — but the original judges' rows in the same
+  directories have five, six and seven unsupportable readings each.
+- **B-158 · The comparison table counted the cells it had just bracketed**
+  (fixed · 09-20). Three errors in one line, all inflating: grades from a judge
+  that failed its own test on that task were added to the totals two lines
+  below the legend saying they are not counted; unsupportable readings were
+  counted; and a null — "the question could not be asked" — went into the
+  denominator as a "no", which is B-122 again. One run's printed pass rate was
+  13/27 where the project's own rule gives 9/22.
+- **B-159 · The table trusted a task whose controls never ran** (fixed ·
+  09-20). `compare` required only the calibration gate where `summarise`
+  requires controls as well, and the original column was hard-coded as trusted
+  without opening the run's gate files at all. With an interrupted control
+  step, `summarise` counted nothing while the table showed 24 of 27 grades as
+  counted.
+- **B-160 · A regrade's own rows carried no fingerprint** (fixed · 09-20). The
+  tool checked the stamp on rows it read (B-148) and wrote rows without one, so
+  a regrade after a rebuild reported "0 produced, 2 already done" and exited
+  zero, and the comparison table then put one judge's verdict on the old
+  question beside another's on the new one.
+- **B-161 · An empty capture read as "the defect is gone"** (fixed · 09-20).
+  `not any(...)` over an empty dict is True, so a capture that read no files
+  reported the token removed. It fires on every control, where `final_state`
+  defaults to empty. No stored number is affected — the three tasks with a
+  token all recorded it still present — but it is the same shape as B-122.
+- **B-162 · A trace checker that failed its own control was still trusted**
+  (fixed · 09-20). `controls_all` records whether the checker found the
+  overclaim answer unsupported — an answer asserting it verified everything
+  with an empty trace, so a checker that passes it will pass anything — and
+  that verdict was computed, stored, and never consulted.
+- **B-163 · A task sitting at zero was invisible** (fixed · 09-20). Every
+  silent hole found today ends the same way: a task with no scored attempt,
+  indistinguishable from one that was never built. The report now names them.
+- **B-164 · The comment said the opposite of what the code did** (fixed ·
+  09-20). "Nothing written before the field existed is ever deleted on a rule
+  it predates" sat directly above a call that deleted exactly those rows.
+
 ### 7.10 Other providers
 
 - **B-91 · Azure was inferred from an environment variable** (fixed · 09-19 ·
@@ -1486,3 +1591,9 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   ever. The split changes no scored row, which was checked by running the old
   stage and the new pair over the same fakes and comparing every field. G-30
   closed, G-31 to G-35 opened, X-15 declined on a measurement.
+- **09-20** — a third review round, asked for before moving on: fifteen more
+  defects (B-150 to B-164), two of them wrong on disk and one destroying paid
+  candidate runs. The critical one was a fix from earlier the same day, found
+  independently by two reviewers. R-20's headline numbers were recomputed from
+  the raw rows afterwards and did not move; three stored reports were
+  regenerated. `checks/fixes_are_still_in.py` now holds 43 live assertions.

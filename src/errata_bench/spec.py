@@ -161,10 +161,20 @@ def fingerprint(task: Task) -> str:
     import hashlib
 
     material = "\x00".join(str(x) for x in (
-        task.task_id, task.sha, task.cut_turn, task.kind, task.defect,
+        task.task_id, task.sha, task.kind, task.defect,
         task.oracle, task.criterion, task.signature_path, task.signature_token,
-        task.edits_replayed, sorted(task.redacted_turns),
+        task.edits_replayed,
+        # Which conversation, and where it is cut. The session was missing, so
+        # a task rebuilt onto a different session -- the repaired-transcript
+        # case this exists for -- kept its stamp and every stored answer was
+        # graded as though it had been asked the same question.
+        task.session_id, task.cut_turn,
+        sorted(task.redacted_turns),
         sorted((task.rewritten_turns or {}).items()),
+        # What the judge is shown beside each reference answer during
+        # calibration. Recovering these traces changes whether the task is
+        # admitted at all, so it changes the question.
+        task.oracle_calls, task.criterion_calls,
     ))
     return hashlib.sha1(material.encode()).hexdigest()[:16]
 

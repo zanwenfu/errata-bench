@@ -131,6 +131,7 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
     defect, resolution) and the derived signature fields (kind, token, path).
     """
     result = BuildResult()
+    seen: set[str] = set()
     # The session start comes from its turns, not from sessions.created_at,
     # which is a completion timestamp: across the eighteen sessions that produced
     # tasks it lands after the last turn in twelve and mid-session in six, never
@@ -256,6 +257,16 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
             reasoning=row.get("sig_reasoning") or row.get("reasoning") or "",
         )
         task_id = f"{repo_id.replace('/', '-')}-{complaint}"
+        # A task is named for its repository and the turn the developer
+        # objected at, which is not unique: 93 of 400 moments in one run share
+        # a (repository, turn) pair with another session. None has survived to
+        # a built task yet, and the funnel is the only reason. Two tasks under
+        # one name is worse than one task fewer -- they overwrite each other's
+        # answers, each is reported as "an earlier version" of the other, and a
+        # full pass never converges because whichever is written second wins.
+        if task_id in seen:
+            reject(f"another session already built {task_id}; two tasks cannot share a name")
+            continue
         url = repo_url(repo_id, repo.url)
 
         base = scratch or Path(tempfile.gettempdir()) / "errata-bench-build"
@@ -296,6 +307,12 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
             reject(presence.detail)
             continue
 
+        # Claimed only once the task really exists. Claimed at the point the
+        # name is computed, a row that went on to fail the tree build or the
+        # edit replay would hold the name against a later row that would have
+        # succeeded -- refusing a good task to protect against a collision with
+        # one that was never built.
+        seen.add(task_id)
         result.tasks.append(
             Task(
                 task_id=task_id,

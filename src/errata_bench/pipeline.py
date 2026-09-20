@@ -687,7 +687,7 @@ async def stage_calibrate(paths: Paths, limit: int, concurrency: int) -> Progres
     """Check the judge can read each task's known-wrong and known-right answers."""
     from .judge import calibrate
     from .reader import judge_model
-    from .spec import read
+    from .spec import fingerprint, read
 
     p = Progress("calibrate")
     t0 = time.monotonic()
@@ -710,6 +710,16 @@ async def stage_calibrate(paths: Paths, limit: int, concurrency: int) -> Progres
                     # -- and the grading stage can now be pointed at a
                     # different model than the one calibrated here.
                     "judge_model": grader,
+                    # Which version of the task this verdict is about. A task
+                    # rebuilt under the same name keeps its reference answers'
+                    # gate otherwise: the answers were correctly retired and
+                    # the two verdicts admitting the task to the benchmark --
+                    # "the judge can read its known pair" and "a do-nothing
+                    # answer fails it" -- survived, so candidates then ran
+                    # under a gate never applied to the question they were
+                    # asked. The rebuild already prunes any downstream row
+                    # whose stamp disagrees; these rows simply had none.
+                    "task_fingerprint": fingerprint(t),
                     # `sound` gates: the pass/fail line in both orders. `strict`
                     # is the older bar -- all four readings identical -- kept
                     # beside it because it says something about the judge even
@@ -772,7 +782,7 @@ async def stage_control(paths: Paths, limit: int, concurrency: int) -> Progress:
     from .control import CONTROLS, check
     from .judge import can_be_scored
     from .reader import judge_model
-    from .spec import read
+    from .spec import fingerprint, read
 
     p = Progress("control")
     t0 = time.monotonic()
@@ -793,7 +803,7 @@ async def stage_control(paths: Paths, limit: int, concurrency: int) -> Progress:
     async def one(task, control):
         try:
             result = await check(task, control, model=judge_model())
-            append(paths.controls, result.to_json())
+            append(paths.controls, {**result.to_json(), "task_fingerprint": fingerprint(task)})
             return result.ok
         except Exception as e:
             append(
@@ -879,7 +889,8 @@ async def stage_attempt(
     # A task a control passed is satisfiable without doing the work, so running
     # candidates against it measures nothing.
     broken = {r["task_id"] for r in load(paths.controls) if not r.get("ok")}
-    tasks = [t for t in read(paths.tasks) if t.task_id in sound and t.task_id not in broken]
+    every = read(paths.tasks)
+    tasks = [t for t in every if t.task_id in sound and t.task_id not in broken]
     # An errored attempt is not a finished one. Twelve of thirty-six attempts
     # died on API rate limits and were then counted as done, so a re-run would
     # have skipped exactly the work that needed redoing. Errored rows are
@@ -892,15 +903,33 @@ async def stage_attempt(
     # Only answers still about the task they name count as done. A stale one is
     # work again: grading will not read it, so counting it here would retire the
     # task permanently -- one of the three places the fingerprint has to agree.
-    prints = {t.task_id: fingerprint(t) for t in tasks}
-    fresh, _, stale = sort_answers(completed(paths.answers), prints)
+    # Fingerprints for every task in the file, not only the ones admitted this
+    # run. Built from the admitted list, an answer counted as belonging to no
+    # task at all the moment its task failed a control or lost its calibration
+    # -- and the rewrite below then deleted it. That is a candidate run, the
+    # expensive thing here, destroyed because a judge changed its mind about
+    # the task; and the note said one row had gone when two had.
+    prints = {t.task_id: fingerprint(t) for t in every}
+    fresh, orphaned, stale = sort_answers(completed(paths.answers), prints)
     if stale:
-        # Removed, not ignored. Left in place they would be graded as
-        # duplicates of the fresh answers about to replace them, and the report
-        # counts rows. Only rows that carry a fingerprint and disagree with the
-        # current task are removed, so nothing written before the field existed
-        # is ever deleted on a rule it predates.
-        replace(paths.answers, fresh)
+        # Superseded rows are removed, because left in place they would be
+        # graded beside the answers replacing them and the report counts rows.
+        # An answer carrying no stamp at all counts as superseded too -- no
+        # answers file predates the field, and re-collecting is the safe
+        # direction where mis-grading is not. Orphans are kept: an answer whose
+        # task is not in the file is `build`'s to prune, when it rewrites the
+        # task list and knows what survived.
+        #
+        # Named rows are dropped from a list read under the lock, rather than a
+        # snapshot written back over it. The snapshot was taken before the lock
+        # and anything appended in between -- by the grading stage, or by a
+        # second attempt run -- would be gone with the rename.
+        drop = {(r["task_id"], r["run"]) for r in stale}
+        with held(paths.answers):
+            replace(paths.answers, [
+                r for r in load(paths.answers)
+                if (r.get("task_id"), r.get("run")) not in drop
+            ])
         p.notes.append(
             f"dropped {len(stale)} answers about an earlier version of their task, and re-running them"
         )
@@ -1058,9 +1087,17 @@ async def stage_grade(paths: Paths, limit: int, concurrency: int) -> Progress:
     # Errored grades are dropped by `completed` and come back as work, exactly
     # as errored attempts do. This stage owns attempts.jsonl, so it tidies it.
     graded = completed(paths.attempts)
-    graded, _, outdated = sort_answers(graded, prints, unstamped_is_stale=False)
+    graded, orphan_graded, outdated = sort_answers(graded, prints, unstamped_is_stale=False)
     if outdated:
-        replace(paths.attempts, graded)
+        # Same rule as the answers: superseded rows go, orphans stay for `build`
+        # to prune. Keeping them is also what makes the count in this note true
+        # -- it reported only the superseded rows while removing both kinds.
+        drop = {(r["task_id"], r["run"]) for r in outdated}
+        with held(paths.attempts):
+            replace(paths.attempts, [
+                r for r in load(paths.attempts)
+                if (r.get("task_id"), r.get("run")) not in drop
+            ])
         p.notes.append(
             f"dropped {len(outdated)} scores of an earlier version of their task"
         )
@@ -1260,6 +1297,8 @@ def stage_report(paths: Paths) -> Progress:
     """Count what happened, and how much of it is trustworthy."""
     from collections import Counter
 
+    from .judge import can_be_scored
+
     p = Progress("report")
     t0 = time.monotonic()
     attempts = [a for a in load(paths.attempts) if not a.get("error")]
@@ -1271,7 +1310,10 @@ def stage_report(paths: Paths) -> Progress:
     readings = load(paths.readings)
     viable = [r for r in readings if (r.get("reading") or {}).get("benchmark_viable")]
     tasks = load(paths.tasks)
-    sound = [c for c in load(paths.calibration) if c.get("sound")]
+    # `can_be_scored`, not the raw field: on any calibration row written before
+    # 09-19 `sound` means the older, stricter bar, so the funnel reported two
+    # tasks calibrated beside twenty-seven attempts over nine of them.
+    sound = [c for c in load(paths.calibration) if can_be_scored(c)]
 
     report = {
         "funnel": {
@@ -1294,6 +1336,13 @@ def stage_report(paths: Paths) -> Progress:
             # Stated rather than silently deduplicated: a number that repairs
             # itself hides the fact that something ran twice.
             "attempts_recorded_twice": len(attempts) - len(graded_keys),
+            # A task with no scored attempt reads exactly like a task that was
+            # never built, and every silent hole found so far ended there:
+            # answers deleted, a stale row blocking its own re-run, a duplicate
+            # name. Naming them costs a line and makes the next one visible.
+            "tasks_with_no_scored_attempt": sorted(
+                {t.get("task_id") for t in tasks} - {k[0] for k in graded_keys}
+            ),
         },
         "attempts": len(attempts),
         "scoreable": len(scoreable),

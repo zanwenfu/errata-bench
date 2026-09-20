@@ -219,6 +219,89 @@ check("B-146", "an empty answer is not handed to a judge to read",
 check("B-149", "why each row was rejected is written to disk, not just printed",
       "paths.rejections" in src(stage_build))
 
+# ======================================================================
+# Found by a second round of review, after the first twenty-eight were fixed.
+# ======================================================================
+
+# ---- B-150: the one that destroyed paid work ---------------------------
+d = run_dir(("keeps", "loses-its-control", "gets-rebuilt"))
+asyncio.run(stage_attempt(d, 10**9, concurrency=2, repeats=1))
+ctl = [dict(r, ok=r["ok"] and r["task_id"] != "loses-its-control") for r in load(d.controls)]
+P.replace(d.controls, ctl)
+write([mktask("keeps"), mktask("loses-its-control"),
+       mktask("gets-rebuilt", "a different defect")], d.tasks)
+prog = asyncio.run(stage_attempt(d, 10**9, concurrency=2, repeats=1))
+left = {r["task_id"] for r in load(d.answers)}
+check("B-150", "an answer survives its task failing a control this run",
+      "loses-its-control" in left)
+check("B-150b", "and the note counts exactly what was removed",
+      any("dropped 1 answers" in n for n in prog.notes) and left == {"keeps", "loses-its-control", "gets-rebuilt"})
+
+# ---- B-151: the rewrite must not write back a stale snapshot ----------
+check("B-151", "stale-row rewrites re-read under the lock",
+      src(stage_attempt).count("with held(paths.answers)") == 1 and
+      "for r in load(paths.answers)" in src(stage_attempt) and
+      "for r in load(paths.attempts)" in src(stage_grade))
+
+# ---- B-152: the two gate files carry the task version -----------------
+from errata_bench.pipeline import stage_calibrate, stage_control
+check("B-152", "calibration and control rows are stamped, so a rebuild prunes them",
+      '"task_fingerprint": fingerprint(t)' in src(stage_calibrate) and
+      '"task_fingerprint": fingerprint(task)' in src(stage_control))
+
+# ---- B-153: two tasks may not share one name --------------------------
+# read from the file: an earlier check replaces build() with a stub
+build_src = Path("src/errata_bench/build.py").read_text()
+check("B-153", "a second task with the same name is rejected, not silently merged",
+      "two tasks cannot share a name" in build_src and "seen.add(task_id)" in build_src)
+
+# ---- B-154: the stamp covers the conversation -------------------------
+base = fingerprint(mktask())
+import dataclasses
+check("B-154", "a rebuild onto a different session changes the stamp",
+      fingerprint(dataclasses.replace(mktask(), session_id="other")) != base and
+      fingerprint(dataclasses.replace(mktask(), cut_turn=99)) != base and
+      fingerprint(dataclasses.replace(mktask(), oracle_calls=[{"name": "x"}])) != base)
+
+# ---- B-156 / B-157: one gate, everywhere ------------------------------
+from errata_bench.pipeline import stage_report
+from errata_bench import rejudge as RJ
+check("B-156", "the regrade summary uses the gate, not the raw field",
+      "if can_be_scored(r)" in src(RJ.summarise))
+check("B-157", "the funnel uses the gate, not the raw field",
+      "if can_be_scored(c)" in src(stage_report))
+
+# ---- B-158: an unsupportable reading is not a result ------------------
+check("B-158", "the regrade summary drops readings the judge could not support",
+      'r.get("scoreable", True)' in src(RJ.summarise))
+
+# ---- B-159 / B-160: the table counts only what it says it counts ------
+check("B-159", "the comparison totals exclude bracketed, unsupportable and unasked cells",
+      "def tally(" in src(RJ.compare) and 'is not None' in src(RJ.compare))
+check("B-160", "and a task with no control is untrusted in the table too",
+      "original_readable" in src(RJ.compare))
+
+# ---- B-161: a regrade's own rows carry the task version ---------------
+check("B-161", "regraded rows are stamped and keyed on the stamp",
+      'stamps[a["task_id"]]' in src(RJ.regrade_all) and
+      'r.get("task_fingerprint")' in src(RJ.regrade_all))
+
+# ---- B-162: an empty capture is not a searched tree -------------------
+from errata_bench.structure import analyse
+from errata_bench.attempt import Attempt as At
+t = mktask(); t = dataclasses.replace(t, signature_token="2000")
+check("B-162", "a capture that read nothing does not report the defect as gone",
+      analyse(t, At("t", "m"), {}).token_removed is None and
+      analyse(t, At("t", "m"), {"a": "no token here"}).token_removed is True)
+
+# ---- B-163: a checker that failed its own control is not trusted ------
+check("B-163", "a failed trace-check control marks the task untrusted",
+      'r.get("trace_ok") is False' in src(RJ.summarise))
+
+# ---- B-164: a task at zero is visible ---------------------------------
+check("B-164", "the report names any task with no scored attempt",
+      "tasks_with_no_scored_attempt" in src(stage_report))
+
 bad = [b for b, ok in RESULTS if not ok]
 print(f"\n  {len(RESULTS) - len(bad)} of {len(RESULTS)} fixes verified live"
       + (f"; STILL BROKEN: {bad}" if bad else "; none still present"))

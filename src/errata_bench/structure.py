@@ -139,7 +139,11 @@ def analyse(task: Task, attempt: Attempt, tree_after: dict[str, str] | None = No
     executed = "run_command" in names
 
     token_removed: bool | None = None
-    if task.signature_token and tree_after is not None:
+    # An empty capture is not a searched tree. `not any(...)` over nothing is
+    # True, so a capture that read no files at all reported the defect's token
+    # as removed -- "nothing was measured" arriving as a definite yes, which is
+    # the shape of B-122 and of every scoring bug in this project.
+    if task.signature_token and tree_after:
         token_removed = not any(
             task.signature_token in body for body in tree_after.values()
         )
