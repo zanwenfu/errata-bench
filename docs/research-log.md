@@ -1007,6 +1007,7 @@ Treat anything marked *void* as a finding about the harness, not a model.
 | R-15 | 09-19 | 922-moment run (83 repositories) | triaged 922 → 375 kept; 122 read, 253 to retry | halted: API credits |
 | R-16 | 09-19 | independent judges on R-14's answers | see §10 | in progress |
 | R-19 | 09-20 | three candidate models, 9 tasks, 3 attempts each, 81 answers, no errors | passed: grok-4.6 13/27, Kimi-K2.7-Code 9/27, DeepSeek-V4-Pro 4/27. Checked anything: 27/27, 20/27, 15/27; median tool calls 34, 6, 3; files changed 4, 4, 0; used every turn without answering 3, 3, 0 | **the benchmark separates models, and the ordering follows the checking** |
+| R-20 | 09-20 | all 81 answers regraded by one judge that wrote none of them (gpt-6-astra) | passed, of the 24 attempts on the 8 tasks it reads: grok-4.6 **14/24**, Kimi-K2.7-Code **9/24**, DeepSeek-V4-Pro **7/24**. Stated something it had not established: **13/24, 13/24, 23/24**. Claimed work its trace does not show: **5/24, 8/24, 13/24**. Judge's own tests: gate 8/9, controls 16/16, trace controls 16/16, probes 8/8, no task's controls failed, 0 errors in 81 gradings | **the ordering survives a single independent judge, and the honesty gap is now comparable: DeepSeek asserts what it has not checked in 23 of 24 answers** |
 | R-18 | 09-19 | three judges on the same 18 answers, final rules | all three pass 13/18; both independent judges agree with the original answer-for-answer (18/18); grok agrees with itself 18/18, Kimi 17/18; both pass the gate on 9 of 11 tasks with controls 18/18, 18/18 and probes 6/6; unchecked claims 3, 3 and 1 | the pass rate is judge-independent |
 | R-17 | 09-19 | Kimi regraded the same 18 answers with the evidence supplied | passed 13/18 (18/18 agreement with the original, 17/18 with itself); unchecked claims 3/18, down from 8 blind, but on different answers (G-27); controls 18/18 and 18/18, probes 6/6 | the pass rate is judge-independent; the honesty reading is not per-answer reliable |
 
@@ -1056,6 +1057,54 @@ viable → 51 located → 11 built → 6 calibrated.
   with a join key, its own pruning rules and its own way of going missing, to
   save 5%, is a worse trade than the duplication. Revisit if a run's
   transcripts approach the 60,000-character cap rather than a tenth of it.
+
+- **X-16 · Searching back through commits for the version holding the defect**
+  (09-20). The developer asked for it directly: "can we improve our agent to
+  trace down the git commit and find the defected version, instead of just
+  looking at the latest commit and pass if no defect left in there?" Designed
+  as: when the presence probe can look for the defect and does not find it in
+  the base tree, walk back through earlier commits and take the most recent one
+  where the defect is present and the agent's pre-cut edits still replay.
+  Measured before building, and not built. The numbers:
+
+  - **The trigger fires on zero rows.** Rebuilding scale400c's 51 screened rows
+    with current code produces 11 tasks and exactly one present-kind task with a
+    token probe, `nosman-gossamer-33`, which now reads `src/server.ts contains
+    '2000'` — present. That row is the only "absent" in the project's history,
+    and it was a false negative from B-121, fixed the previous day: the probe
+    matched a bare filename only at the repository root while the file sat in
+    `src/`. The single case that motivated the request was our own path lookup.
+  - **The walk points the wrong way.** Of every commit in the corpus whose patch
+    deletes a defect token, not one sits at or before the base commit:
+    ASRagab/optimize-anything +0.09 days, nosman/gossamer +1.07 days, and three
+    repositories where no commit ever deletes the token. This is structural, not
+    a small sample: `base_commit` already takes the last commit authored before
+    the session's *first turn*, so any commit that repairs the defect is after
+    the session began and is already excluded. A repair landing before the
+    session would mean the developer's own session could not have hit the
+    defect. The described failure is B-25 — taking the last commit a session
+    *produced* — which was fixed on 09-16.
+  - **Its acceptance test is vacuous where it would act.** The replay gate
+    proves only that each edit hunk's `old_string` still occurs in the file the
+    agent edited; it is silent about every file the agent only read, `Write`
+    hunks can never fail, and 19 of 51 screened rows have no constraining hunk
+    at all. Eleven consecutive pre-session trees of one repository spanning 3.8
+    days all accept the same three edits.
+  - **One step back would break the task it was meant to save.** For
+    `nosman-gossamer-33`, the commit before the base is 8.4 days earlier, deletes
+    `Shell.tsx` and `EmbeddedTerminal.tsx` — whose contents the transcript pastes
+    at turns 6, 9, 13 and 14 — and shrinks `ActiveSessions.tsx` from 299 lines to
+    104 with no `handleSpawn`, while the known-wrong answer the judge is
+    calibrated on cites `ActiveSessions.tsx:188` and `handleSpawn` at 91-98.
+    Both proposed gates would say "qualifies". Nothing downstream could notice:
+    calibration, the controls, the judge and the trace check contain no
+    reference to the tree, so a task rewound eight days still certifies sound.
+    The candidates would be scored `off_target` for reading the code they were
+    given, which is B-31 exactly.
+
+  Cost was never the obstacle — the whole git stage is 26 seconds for 51 rows,
+  and a bounded walk adds about a second per task. It was declined because the
+  prize is zero and the risk is a silent one.
 
 ## 10. Judge independence study (09-19)
 
@@ -1216,7 +1265,13 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   claim, so both kinds read correctly. The honesty question becomes a fact
   check only for attempts run from here on (G-28).
 - **G-29 · The honesty comparison across candidates is confounded by the
-  grader.** grok's answers were graded by Kimi and the other two by grok, and
+  grader.** *(closed 09-20, R-20.)* Answered by regrading all 81 answers with
+  gpt-6-astra, which wrote none of them, so nothing is a model grading itself —
+  the option that did not exist when this was written, because all three
+  available judges were also the three candidates. It passed its own tests
+  cleanly (gate 8 of 9, controls 16/16, trace controls 16/16, probes 8/8) and
+  graded 81 answers with no errors. The pass ordering holds and the honesty
+  reading is now like-for-like. grok's answers were graded by Kimi and the other two by grok, and
   those judges differ in strictness on exactly this reading (3 of 18 against 1
   of 18 on the same answers, R-18). So "unchecked claim" rates of 19/24, 13/24
   and 20/27 cannot be compared between models as they stand. Pass/fail is
@@ -1254,6 +1309,21 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   appended without a lock, and nothing deduplicates `(task, run)`. The report
   states how many rows are duplicates rather than quietly dropping them,
   because a count that repairs itself hides that something ran twice.
+- **G-36 · Three tasks are lost to a git fetch that failed.** Rebuilding
+  scale400c rejected three rows with "could not build the tree: git fetch -q
+  --depth=2 origin <sha>". Those may be transient, or a rewritten history, or a
+  repository that has since changed — it is not recorded which, because the
+  rejection keeps only the first 110 characters of the error. Three tasks is
+  substantial against eleven built, and this is the cheapest of the rejection
+  reasons to investigate.
+- **G-37 · The largest single loss is edits that will not replay** — 9 of the
+  51 located defects. The check is also weak in a way that matters both
+  directions: it proves only that each edit hunk's `old_string` still occurs in
+  the file the agent edited, is silent about files the agent only read, and
+  cannot fail for a `Write`. So it rejects 9 tasks while certifying trees it has
+  barely examined. Walking back through commits does not recover them: applied
+  edit counts fall monotonically going back, and across the 9 rows not one
+  recovered within 16 commits (X-16).
 - **G-35 · Lowering `--repeats` leaves the extra answers in place.** They are
   still graded and still counted, so a run's repeat count is whatever the
   highest setting ever used was.
@@ -1279,6 +1349,25 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
 
 Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
 
+- **Where the yield actually goes.** Rebuilding scale400c's 51 located
+  defects with current code, 09-20: **11 tasks built, 40 rejected**, and the
+  reasons are worth knowing because they are where more tasks would come from.
+  The agent's in-session edits do not apply to the base commit: **9**. The
+  defect is outside what the developer asked for: **8**. No commit exists
+  before the session started: **5**. The conversation still signals trouble
+  after redaction: **4**. Nothing for the candidate to answer: **3**. The
+  resolving turn is a tool call rather than an answer: **3**. The tree could
+  not be built at all — a `git fetch --depth=2` that failed: **3**. The failed
+  answer is too short to test against: **1**. Not one rejection is "the defect
+  was repaired by a later commit" (X-16).
+- **What a presence probe can see.** Of those 51 located defects: 22 are
+  behaviours with no signature at all, 13 are introduced-kind (where a clean
+  tree is the correct setup, so a probe looking for the defect has its polarity
+  reversed), and 16 are present-kind. Only 5 carry a token, and of those only 2
+  are distinctive enough for the probe to search a tree for — `TODO`, `v2.6.2`
+  and `2000` are refused a tree-wide search by `_is_distinctive`. Exactly one
+  present-kind task with a token probe survives every gate to reach a built
+  task. Any proposal aimed at the presence probe has to beat that denominator.
 - **Size and shape.** Revision `f66cca95b14caaa4177f7ed5eaa424608dadcffa`:
   12 GB, six parquet tables and 5,852 transcript files. 2.69M conversation
   turns over 5,851 sessions; 14,459 commit rows, 9,254 of them with a patch,
