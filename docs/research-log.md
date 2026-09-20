@@ -719,6 +719,13 @@ order found.
   attempt produced nothing at all: its one task holds the line both ways and
   was skipped because its row said sound=false. One function,
   `judge.can_be_scored`, now decides it everywhere.
+- **B-121 · The presence probe missed a file it was standing on** (fixed ·
+  09-20). A signature that names a bare filename was matched only from the
+  repository root, so nosman-gossamer-33's `server.ts` was reported "not in the
+  tree" while candidates were reading `src/server.ts` line by line. Its sibling
+  probe `file_exists` already searched by name; the two disagreed about the
+  same tree. Presence is advisory, so nothing was rejected for it — what it
+  corrupted is the record of how strongly each task's setup was verified.
 
 ### 7.11 Phase 0: the capture plugin (archived, kept for the lessons)
 
@@ -1120,3 +1127,5 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
 - **09-20** — R-19: three candidate models measured on the same nine tasks.
   grok-4.6 13/27, Kimi 9/27, DeepSeek 4/27, with checking in the same order.
   G-14 closed, G-29 and G-30 opened.
+- **09-20** — B-121 fixed: a bare filename in a defect signature is now found
+  wherever it sits in the tree.
