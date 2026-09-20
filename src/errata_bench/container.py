@@ -33,6 +33,22 @@ from pathlib import Path
 
 # Concurrency and size, chosen for a 24GB laptop with Docker Desktop holding 8GB
 # and other work already running. Raise deliberately, not by default.
+def max_containers() -> int:
+    """How many containers may run at once, per process.
+
+    Two is right for one run on this laptop: Docker Desktop holds 8 GB and each
+    container takes 2. Three candidate models running as three processes would
+    take six between them, so ERRATA_MAX_CONTAINERS lowers it to one each and
+    the total stays where it was.
+    """
+    import os
+
+    try:
+        return max(1, int(os.environ.get("ERRATA_MAX_CONTAINERS") or MAX_CONTAINERS))
+    except ValueError:
+        return MAX_CONTAINERS
+
+
 MAX_CONTAINERS = 2
 MEMORY = "2g"
 CPUS = "2"

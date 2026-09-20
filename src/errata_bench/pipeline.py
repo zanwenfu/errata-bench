@@ -616,7 +616,7 @@ async def stage_attempt(
     """Run candidates against every task the judge can read."""
     from .attempt import INSTRUCTIONS as CANDIDATE_RULES
     from .attempt import environment_note, run, transcript_for
-    from .container import MAX_CONTAINERS, image_for, sweep
+    from .container import image_for, max_containers, sweep
     from .corpus import load_repos
     from .judge import can_be_scored, judge
     from .reader import judge_model, load_session_turns
@@ -662,7 +662,7 @@ async def stage_attempt(
     # inside the container bound, two slots of container capacity sat idle for
     # the two to six minutes a slow judge takes, and every other attempt queued
     # behind work that had already finished using a container.
-    box = asyncio.Semaphore(MAX_CONTAINERS)
+    box = asyncio.Semaphore(max_containers())
     host = asyncio.Semaphore(max(1, concurrency // 2))
     grading = asyncio.Semaphore(concurrency)
     grader = judge_model()
