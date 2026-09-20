@@ -771,6 +771,7 @@ Treat anything marked *void* as a finding about the harness, not a model.
 | R-14 | 09-18 | three readings, 6 tasks × 3 | 13/18 passed; judge 3/18 unverified; trace 4/18 | pass/fail stands (R-16); trace 4/18 is at most 1/18 (B-69, B-70); `run-three-readings.json` |
 | R-15 | 09-19 | 922-moment run (83 repositories) | triaged 922 → 375 kept; 122 read, 253 to retry | halted: API credits |
 | R-16 | 09-19 | independent judges on R-14's answers | see §10 | in progress |
+| R-18 | 09-19 | three judges on the same 18 answers, final rules | all three pass 13/18; both independent judges agree with the original answer-for-answer (18/18); grok agrees with itself 18/18, Kimi 17/18; both pass the gate on 9 of 11 tasks with controls 18/18, 18/18 and probes 6/6; unchecked claims 3, 3 and 1 | the pass rate is judge-independent |
 | R-17 | 09-19 | Kimi regraded the same 18 answers with the evidence supplied | passed 13/18 (18/18 agreement with the original, 17/18 with itself); unchecked claims 3/18, down from 8 blind, but on different answers (G-27); controls 18/18 and 18/18, probes 6/6 | the pass rate is judge-independent; the honesty reading is not per-answer reliable |
 
 The funnel for the run behind R-13/R-14: 400 moments → 168 past triage → 69
@@ -841,11 +842,15 @@ its 9/18 pass rate would otherwise have looked plausible.
 | passed | 13/18 — identical to the original |
 | "stated something it had not checked" | 8/18 (original 3/18); agrees with itself 16/18 |
 
-**grok-4.6 — complete.** Controls 18/18 and 18/18. It holds the pass/fail line
-on 9 of 11 known pairs, the best of the three, and reads 4 of the 6 the original
-read. It passes 10 of 18 against the original's 13, agreeing on 15 — but it
-agrees with *itself* on only 16 of 18 across two gradings, so its disagreements
-sit inside its own noise. It is the most lenient on honesty (2 of 18 flagged).
+**grok-4.6 — complete, under the final rules.** Controls 18/18 and 18/18,
+probes 6/6, the gate on 9 of 11 tasks. It passes the same 13 of 18 as the
+original, answer for answer, and agrees with itself on all 18 across two
+gradings — the steadiest of the three. It is the most lenient on honesty: 1 of
+18 flagged, and no answer flagged for claiming work its trace lacks.
+
+Its earlier, blind run passed only 10 of 18 and agreed with itself on 16; both
+numbers improved once it could see what the candidate had done, which is the
+same direction Kimi moved in.
 
 **All three, on the same eighteen answers:**
 
@@ -859,10 +864,12 @@ sit inside its own noise. It is the most lenient on honesty (2 of 18 flagged).
 | known pairs: strict · pass-fail line | 6/11 · 8/11 | 4/11 · 8/11 | 4/11 · 9/11 | 0/11 · 3/11 |
 
 
-**What it shows.** The pass/fail line is not the original model agreeing with
-itself: Kimi reproduces it answer for answer, and grok differs no more than it
-differs from itself. The honesty reading spreads from 2 to 8 flags across
-judges on identical answers, which is not a property of the answers. The honesty readings are not trustworthy yet, and the cause is the
+**What it shows.** The pass/fail line is a property of the answers, not of who
+grades them: three judges from three companies pass the same 13 of 18, answer
+for answer, and the steadiest of them never contradicts itself across two
+gradings. Blind, the same judges spread from 2 to 8 flags on honesty; with the
+evidence supplied they land on 3, 3 and 1 — but on different answers (G-27), so
+that reading is a rate and not a verdict. The honesty readings are not trustworthy yet, and the cause is the
 system rather than any model: the judge is asked about checks it cannot see
 (B-68) and the trace check about claims whose source it cannot see (B-69,
 B-70). The comparison also exposed that the strict calibration rule fails
@@ -1052,3 +1059,5 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
 - **09-19** — G-26 closed: tools record their output and the trace check reads
   it, with probes for both directions. G-28 opened for the answers that predate
   it.
+- **09-19** — R-18: the three-judge comparison completed under the final rules.
+  13 of 18 from every judge, 18/18 agreement with the original on pass/fail.
