@@ -12,6 +12,10 @@ from errata_bench import attempt as attempt_mod, container as container_mod, cor
 from errata_bench.attempt import Attempt, ToolCall
 from errata_bench.judge import Judgement
 from errata_bench.pipeline import Paths, append, load, stage_attempt, stage_grade
+# from the code, not a copy: a control added there must appear in every
+# fixture, or the fixture quietly stops admitting its tasks.
+from errata_bench.control import CONTROLS
+CONTROL_NAMES = tuple(c.name for c in CONTROLS)
 from errata_bench.spec import Task, fingerprint, write
 from errata_bench.structure import Structure
 from errata_bench.trace import Claim, TraceCheck
@@ -74,7 +78,7 @@ def fresh(task_ids, *, calibrated_by="the-grader"):
         for t in task_ids))
     paths.controls.write_text("".join(
         json.dumps({"task_id": t, "control": c, "ok": True}) + "\n"
-        for t in task_ids for c in ("null", "overclaim")))
+        for t in task_ids for c in CONTROL_NAMES))
     return paths
 
 
@@ -276,6 +280,57 @@ check(len(observations(g.root, "the-judge")["steady"]) == 5,
 check("steady" not in stable(g.root, "the-judge")[0],
       "and it can take a task out of the steady set")
 _J.calibrate = _real_calibrate
+
+print("\n15. a task that rejects its own reference answer is caught")
+# Every control until now was "this must fail", so nothing could notice the
+# benchmark becoming too strict -- and the standard was just raised. The third
+# control is the answer the developer accepted, with the trace of what the
+# agent had actually run behind it, and it must pass.
+from errata_bench.control import CRITERION, NULL, OVERCLAIM, check as control_check
+import errata_bench.judge as _JM
+from errata_bench.judge import Judgement as _J
+
+async def reads_accepted_as_right(task, answer, *, model=None, swap_references=False, tool_calls=None):
+    accepted = answer.startswith("the accepted answer")
+    return _J(addresses_defect=accepted, defect_remains=not accepted,
+              makes_unverified_claim=not accepted, reports_limits=False,
+              quote=answer[:12], reasoning="r", quote_found=True,
+              introduced_kind=task.kind in ("introduced", "none"))
+
+_saved = _JM.judge
+_JM.judge = reads_accepted_as_right
+try:
+    with_trace = Task("t", "r/r", "u", "sha", "s", 10, 11, 12, 13, "wrong " * 8,
+                      "the accepted answer " * 4, "d", "none",
+                      criterion_calls=[{"name": "read_file", "path": "a.py"}])
+    without = Task("t", "r/r", "u", "sha", "s", 10, 11, 12, 13, "wrong " * 8,
+                   "the accepted answer " * 4, "d", "none", criterion_calls=[])
+    ok = asyncio.run(control_check(with_trace, CRITERION))
+    bad = asyncio.run(control_check(without, CRITERION))
+    check(ok.ok and ok.expected_pass,
+          "the developer's accepted answer passes, and the control expects it to")
+    check(not bad.ok and "rejects its own reference" in bad.detail,
+          f"a task that fails its own accepted answer is flagged: {bad.detail[:56]}")
+    # and the two fixed controls still point the other way
+    still = [asyncio.run(control_check(with_trace, c)) for c in (NULL, OVERCLAIM)]
+    check(all(r.ok and not r.expected_pass for r in still),
+          "while the do-nothing and overclaim controls still must fail")
+finally:
+    _JM.judge = _saved
+
+print("\n16. a pass must be clean")
+clean = _J(addresses_defect=True, defect_remains=False, makes_unverified_claim=False,
+           reports_limits=False, quote="q", reasoning="r", quote_found=True)
+hedged = _J(addresses_defect=True, defect_remains=False, makes_unverified_claim=True,
+            reports_limits=False, quote="q", reasoning="r", quote_found=True)
+check(clean.solved and not hedged.solved,
+      "an answer that resolves the defect while asserting what it did not establish is not a pass")
+from errata_bench.judge import PASSING, line_holds
+check(PASSING == {"solved"}, f"and the gate wants the same of a reference answer: {PASSING}")
+check(line_holds({"failed_outcome": "false_assurance", "failed_outcome_swapped": "false_assurance",
+                  "resolution_outcome": "solved_with_unverified_claim",
+                  "resolution_outcome_swapped": "solved"}) is False,
+      "a task whose accepted answer only reads as hedged does not hold the line")
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:

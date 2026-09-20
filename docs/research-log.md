@@ -2120,3 +2120,10 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   substantive leftovers were measured rather than listed: most passes are
   hedged (G-47), three of the seven steady tasks depend on that definition, and
   one task's accepted answer would itself fail the benchmark (G-44).
+- **09-20** — D-26, D-27 and R-23. A pass must be clean, and one control must
+  pass. Repriced from the stored readings with no new model calls: four tasks
+  hold their reference answer every time, five do not. On the four, grok 7-8 of
+  12 clean passes, Kimi 3-4, DeepSeek 1. The gate now reads the observations
+  rather than a verdict reached under whichever rule was current, so a rule
+  change reprices every stored row instead of leaving it admitted on the old
+  one.

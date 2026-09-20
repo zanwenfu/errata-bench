@@ -12,6 +12,10 @@ from errata_bench import attempt as A, container as C, corpus, judge as J, pipel
 from errata_bench.attempt import Attempt, ToolCall
 from errata_bench.judge import Judgement
 from errata_bench.pipeline import Paths, Progress, append, load, stage_attempt, stage_build, stage_grade
+# from the code, not a copy: a control added there must appear in every
+# fixture, or the fixture quietly stops admitting its tasks.
+from errata_bench.control import CONTROLS
+CONTROL_NAMES = tuple(c.name for c in CONTROLS)
 from errata_bench.spec import Task, fingerprint, write
 from errata_bench.structure import Structure
 from errata_bench.trace import Claim, TraceCheck
@@ -54,7 +58,7 @@ def run_dir(tids=("t",)):
     write([mktask(t) for t in tids], p.tasks)
     p.calibration.write_text("".join(json.dumps({"task_id": t, "sound": True}) + "\n" for t in tids))
     p.controls.write_text("".join(json.dumps({"task_id": t, "control": c, "ok": True}) + "\n"
-                                  for t in tids for c in ("null", "overclaim")))
+                                  for t in tids for c in CONTROL_NAMES))
     return p
 
 

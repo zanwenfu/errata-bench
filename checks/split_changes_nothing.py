@@ -23,6 +23,10 @@ from errata_bench import attempt as attempt_mod, container as container_mod, cor
 from errata_bench.attempt import Attempt, ToolCall
 from errata_bench.judge import Judgement
 from errata_bench.pipeline import Paths, stage_attempt, stage_grade, stage_build, load
+# from the code, not a copy: a control added there must appear in every
+# fixture, or the fixture quietly stops admitting its tasks.
+from errata_bench.control import CONTROLS
+CONTROL_NAMES = tuple(c.name for c in CONTROLS)
 from errata_bench.spec import Task, write
 from errata_bench.structure import Structure
 from errata_bench.trace import Claim, TraceCheck
@@ -147,7 +151,7 @@ def fresh_run(task_ids):
         "".join(json.dumps({"task_id": t, "sound": True}) + "\n" for t in task_ids))
     paths.controls.write_text(
         "".join(json.dumps({"task_id": t, "control": c, "ok": True}) + "\n"
-                for t in task_ids for c in ("null", "overclaim")))
+                for t in task_ids for c in CONTROL_NAMES))
     return paths
 
 

@@ -50,7 +50,12 @@ def observations(run: Path, model: str) -> dict[str, list[bool]]:
     paths = Paths(run)
     for row in load(paths.gate):
         if row.get("judge_model") == model and not row.get("error"):
-            seen.setdefault(row["task_id"], []).append(bool(row.get("holds")))
+            # Re-derived from the four stored readings rather than read off the
+            # verdict recorded at the time. What counts as the known-right
+            # answer reading correctly is a rule, and the rule changes; the
+            # readings do not. So tightening it costs nothing and cannot
+            # silently leave old verdicts in place beside new ones.
+            seen.setdefault(row["task_id"], []).append(can_be_scored(row))
     rejudged = run / "rejudge"
     if rejudged.exists():
         for d in sorted(p for p in rejudged.iterdir() if p.is_dir()):
