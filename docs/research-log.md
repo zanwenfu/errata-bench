@@ -804,6 +804,7 @@ Treat anything marked *void* as a finding about the harness, not a model.
 | R-14 | 09-18 | three readings, 6 tasks × 3 | 13/18 passed; judge 3/18 unverified; trace 4/18 | pass/fail stands (R-16); trace 4/18 is at most 1/18 (B-69, B-70); `run-three-readings.json` |
 | R-15 | 09-19 | 922-moment run (83 repositories) | triaged 922 → 375 kept; 122 read, 253 to retry | halted: API credits |
 | R-16 | 09-19 | independent judges on R-14's answers | see §10 | in progress |
+| R-19 | 09-20 | three candidate models, 9 tasks, 3 attempts each, 81 answers, no errors | passed: grok-4.6 13/27, Kimi-K2.7-Code 9/27, DeepSeek-V4-Pro 4/27. Checked anything: 27/27, 20/27, 15/27; median tool calls 34, 6, 3; files changed 4, 4, 0; used every turn without answering 3, 3, 0 | **the benchmark separates models, and the ordering follows the checking** |
 | R-18 | 09-19 | three judges on the same 18 answers, final rules | all three pass 13/18; both independent judges agree with the original answer-for-answer (18/18); grok agrees with itself 18/18, Kimi 17/18; both pass the gate on 9 of 11 tasks with controls 18/18, 18/18 and probes 6/6; unchecked claims 3, 3 and 1 | the pass rate is judge-independent |
 | R-17 | 09-19 | Kimi regraded the same 18 answers with the evidence supplied | passed 13/18 (18/18 agreement with the original, 17/18 with itself); unchecked claims 3/18, down from 8 blind, but on different answers (G-27); controls 18/18 and 18/18, probes 6/6 | the pass rate is judge-independent; the honesty reading is not per-answer reliable |
 
@@ -953,10 +954,12 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   property of a model until frozen rules hold on unseen moments.
 - **G-13 · The 270 gold labels are unverified by any human** (A-18). The dataset
   revision is confirmed (A-17).
-- **G-14 · No attempt has ever written a file.** All 18 wrote nothing, so the
-  "does it fix" half of P-05 is untested. Five of six calibrated tasks are
-  behavioural, which rarely need an edit — the gates may be selecting one kind
-  of task.
+- **G-14 · No attempt has ever written a file** — closed 09-20 by R-19. Eight
+  of 81 attempts changed files: grok and Kimi four each, DeepSeek none. The
+  most interesting were three Kimi attempts on bids-standard-bids-utils-24 that
+  edited files across 35 to 40 tool calls and never answered at all. What
+  remains untested is fixing proper: only one of the nine tasks has a defect in
+  the repository, and all three models fail it 0/3 (G-06).
 - **G-15 · Calibration discards about half the built tasks** and nobody has
   looked at why: 6 of 8, 7 of 13, 6 of 11 across builds. Part of it is
   genuine (G-16), part may be the strict rule (G-03).
@@ -1000,6 +1003,21 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   the check still asks of those whether a call *could* have established the
   claim, so both kinds read correctly. The honesty question becomes a fact
   check only for attempts run from here on (G-28).
+- **G-29 · The honesty comparison across candidates is confounded by the
+  grader.** grok's answers were graded by Kimi and the other two by grok, and
+  those judges differ in strictness on exactly this reading (3 of 18 against 1
+  of 18 on the same answers, R-18). So "unchecked claim" rates of 19/24, 13/24
+  and 20/27 cannot be compared between models as they stand. Pass/fail is
+  unaffected: the judges agree on it answer-for-answer. Fixing it means grading
+  all 81 answers with one judge, which is cheap in money and slow in wall clock
+  at grok's pace.
+- **G-30 · Grading runs inline with the candidate, and dominates the clock.**
+  The slowest attempt of the night took 22 minutes on 2 tool calls: the
+  candidate answered in seconds and the rest was a judge and a trace check
+  queued behind a 3-wide bound. Every answer and trace is stored, so grading
+  can be a separate pass at much higher concurrency — the regrade tool already
+  works that way. About 11 hours of work ran in 2.5 hours of wall clock; a
+  split would cut that again.
 - **G-28 · The eighteen scored answers predate recorded outputs**, so their
   honesty reading stays a judgement call. Settling it means running candidates
   again — which needs a candidate, and the OpenAI account has no credit, so the
@@ -1099,3 +1117,6 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
 - **09-19** — B-119 and B-120 fixed, both found by preflight rather than by a
   run: structured output was silencing tool use on two of three models, and the
   new gate had not reached the pipeline.
+- **09-20** — R-19: three candidate models measured on the same nine tasks.
+  grok-4.6 13/27, Kimi 9/27, DeepSeek 4/27, with checking in the same order.
+  G-14 closed, G-29 and G-30 opened.
