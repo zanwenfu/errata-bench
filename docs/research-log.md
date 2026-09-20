@@ -686,6 +686,20 @@ order found.
   moved 2 → 8 → 0 on the same eighteen answers, about two hours of runs. The
   fault was the order of work, not any single fix. D-21 states what replaces
   it.
+- **B-117 · A container slot was held for the whole of grading** (fixed ·
+  09-19). The attempt stage took the container bound before running a
+  candidate and kept it through the judge and trace calls, which are network
+  waiting and use no container. With two slots and a judge taking two to six
+  minutes, every other attempt queued behind work that had already finished
+  using a container. Grading now has its own bound. Simulated with fakes: eight
+  attempts in 1.2s against 4.8s serial, container peak 2, grading peak 6, the
+  two overlapping.
+- **B-118 · One setting named both the candidate and its grader** (fixed ·
+  09-19). `ERRATA_MODEL` fed the candidate, the judge, the trace check,
+  calibration and the controls alike, so a model could only ever be marked by
+  itself — the self-grading this benchmark exists to measure. `ERRATA_JUDGE_MODEL`
+  now names the grader for every scoring call; unset, nothing changes. Each
+  attempt row records both.
 
 ### 7.11 Phase 0: the capture plugin (archived, kept for the lessons)
 
@@ -1061,3 +1075,5 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   it.
 - **09-19** — R-18: the three-judge comparison completed under the final rules.
   13 of 18 from every judge, 18/18 agreement with the original on pass/fail.
+- **09-19** — B-117 and B-118 fixed: grading no longer holds a container slot,
+  and the grader is named separately from the candidate.

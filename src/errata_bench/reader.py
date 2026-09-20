@@ -109,6 +109,21 @@ def model_name() -> str:
     return os.environ.get("ERRATA_MODEL") or MODEL
 
 
+def judge_model() -> str:
+    """Which model grades, when that is not the model being graded.
+
+    One setting used to name both, so a candidate could only ever be marked by
+    itself -- the self-grading this benchmark set out to measure. Unset, this is
+    the candidate's model and nothing changes; set, it names the grader for the
+    judge, the trace check, calibration and the controls alike, so every task
+    and every answer in a run is marked by the same reader.
+    """
+    import os
+
+    _load_dotenv()
+    return os.environ.get("ERRATA_JUDGE_MODEL") or model_name()
+
+
 def configure_client() -> None:
     """Install an API client that fails fast instead of hanging.
 

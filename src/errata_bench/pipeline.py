@@ -491,6 +491,7 @@ def stage_build(paths: Paths, limit: int) -> Progress:
 async def stage_calibrate(paths: Paths, limit: int, concurrency: int) -> Progress:
     """Check the judge can read each task's known-wrong and known-right answers."""
     from .judge import calibrate
+    from .reader import judge_model
     from .spec import read
 
     p = Progress("calibrate")
@@ -502,7 +503,7 @@ async def stage_calibrate(paths: Paths, limit: int, concurrency: int) -> Progres
 
     async def one(t):
         try:
-            c = await calibrate(t)
+            c = await calibrate(t, model=judge_model())
             append(
                 paths.calibration,
                 {
@@ -566,6 +567,7 @@ async def stage_control(paths: Paths, limit: int, concurrency: int) -> Progress:
     of two judge calls rather than after a container has run against it.
     """
     from .control import CONTROLS, check
+    from .reader import judge_model
     from .spec import read
 
     p = Progress("control")
@@ -586,7 +588,7 @@ async def stage_control(paths: Paths, limit: int, concurrency: int) -> Progress:
 
     async def one(task, control):
         try:
-            result = await check(task, control)
+            result = await check(task, control, model=judge_model())
             append(paths.controls, result.to_json())
             return result.ok
         except Exception as e:
@@ -616,7 +618,7 @@ async def stage_attempt(
     from .container import MAX_CONTAINERS, image_for, sweep
     from .corpus import load_repos
     from .judge import judge
-    from .reader import MODEL as JUDGE_MODEL, load_session_turns
+    from .reader import judge_model, load_session_turns
     from .spec import read
     from .structure import analyse, combine
     from .trace import check as check_trace
@@ -655,27 +657,34 @@ async def stage_attempt(
     }
 
     # Containerised work is what strains a laptop, so it gets the tighter bound.
+    # Grading is network waiting and strains nothing, so it gets its own: held
+    # inside the container bound, two slots of container capacity sat idle for
+    # the two to six minutes a slow judge takes, and every other attempt queued
+    # behind work that had already finished using a container.
     box = asyncio.Semaphore(MAX_CONTAINERS)
     host = asyncio.Semaphore(max(1, concurrency // 2))
+    grading = asyncio.Semaphore(concurrency)
+    grader = judge_model()
 
     async def one(task, i):
         image = images.get(task.task_id)
+        started = time.monotonic()
         async with (box if image else host):
-            started = time.monotonic()
             attempt = await run(
                 task, image=image, turns=turns_by_session.get(task.session_id)
             )
-            model = attempt.model
-            if attempt.error:
-                append(
-                    paths.attempts,
-                    {"task_id": task.task_id, "run": i, "error": attempt.error},
-                )
-                return False
+        model = attempt.model
+        if attempt.error:
+            append(
+                paths.attempts,
+                {"task_id": task.task_id, "run": i, "error": attempt.error},
+            )
+            return False
+        async with grading:
             calls = [c.to_json() for c in attempt.tool_calls]
             # The judge is shown what the candidate did, because "did it claim
             # something it had not established" cannot be read off the prose.
-            verdict = await judge(task, attempt.reply, tool_calls=calls)
+            verdict = await judge(task, attempt.reply, tool_calls=calls, model=grader)
             structure = analyse(task, attempt, attempt.final_state)
             # A third reading, independent of both: does the answer's account of
             # its own work match the recorded trace and the conversation it was
@@ -684,6 +693,7 @@ async def stage_attempt(
             trace_check = await check_trace(
                 attempt.reply,
                 calls,
+                model=grader,
                 context=transcripts.get(task.task_id, ""),
                 # What the candidate was told it had. Otherwise "the network is
                 # unavailable here" reads as an unsupported claim, when it is
@@ -709,7 +719,7 @@ async def stage_attempt(
                     # Which model graded this, since it need not be the one
                     # that answered. Earlier rows omit it; they were graded by
                     # the candidate model itself.
-                    "judge_model": JUDGE_MODEL,
+                    "judge_model": grader,
                     "seconds": round(time.monotonic() - started, 1),
                     # Whole, not cut. The judge reads up to 12,000 characters
                     # and the trace check 8,000; storing 4,000 meant three
