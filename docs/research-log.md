@@ -1788,6 +1788,12 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   produces an answer with no stored transcript, so the rebuild path in the
   grading stage — the one that reads the corpus — is never run.
 - **G-42 · R-20's honesty column was measured through a starved renderer.**
+  *(being settled 09-20: the same 81 answers re-graded by the same judge under
+  the fixed renderer, with the old grades kept beside them as
+  `rejudge/gpt-6-astra-starved/`. `checks/renderer_effect.py` prints both and
+  names every attempt whose verdict moved. The loss was one-directional, so the
+  flag count should fall; if it does not, the clipping was not what produced
+  those flags and this entry should say so.)*
   B-177: 41 of the 81 stored attempts had recorded tool output the checker
   never saw, one losing 84,749 characters, and the bias is one-directional
   towards flagging. "Claimed work its trace does not show" — 5, 8 and 13 — is
@@ -1795,7 +1801,9 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   traces, which is grok's. Re-grading the stored answers under the fixed
   renderer costs no candidate runs and would settle it.
 - **G-43 · One recorded attempt is a harness failure scored as a model
-  failure.** B-178: `runs/cand-kimi`, `nosman-gossamer-33` #1. Either re-run
+  failure.** *(Not repaired by the re-grade: the damage is in the trace, not in
+  the reading of it, so grading it again grades the same broken record. It is
+  reported separately rather than left inside Kimi's twenty-four.)* B-178: `runs/cand-kimi`, `nosman-gossamer-33` #1. Either re-run
   that pair or exclude it and say so; it is one of Kimi's 24.
 - **G-44 · Calibration certifies a task under a different pass rule than the
   one applied to candidates.** `calibrate()` never sets `did_the_work`, which
