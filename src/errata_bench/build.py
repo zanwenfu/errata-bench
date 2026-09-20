@@ -33,7 +33,7 @@ from .signature import Signature
 from .spec import MIN_ORACLE_CHARS, BuildResult, Rejection, Task
 from .session_time import session_starts
 from .timeline import load_commits_by_repo
-from .workspace import GitError, fetch
+from .workspace import GitError, fetch, is_permanent
 
 
 
@@ -276,7 +276,11 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
                 checkout = fetch(url, sha, Path(d) / "repo")
                 tree = checkout.export_tree(sha, Path(d) / "tree")
             except GitError as e:
-                reject(f"could not build the tree: {str(e)[:110]}")
+                # Named, so the funnel distinguishes a task worth retrying
+                # from one whose code no longer exists anywhere.
+                why = ("the code is gone from the remote"
+                       if is_permanent(e) else "could not build the tree")
+                reject(f"{why}: {str(e)[:110]}")
                 continue
             # The base commit predates the session; the agent's own edits up to
             # the cut are replayed onto it so the tree matches the transcript.

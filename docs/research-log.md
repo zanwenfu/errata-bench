@@ -1281,6 +1281,16 @@ other sixteen are recorded in G-49.
   it, every task silently disappeared from the report. Found by a fixture
   written to test B-205, not by the code under test.
 
+- **B-207 · A task lost for good read like a task worth retrying** (fixed ·
+  09-20). `build` rejected three rows with "could not build the tree: git fetch
+  ... fatal: ...", which is also what a dropped connection looks like. All
+  three were permanent -- two repositories gone, one whose history had been
+  force-pushed away -- and an hour went into chasing them before that was
+  established. The remote says which it is in its own words (`Repository not
+  found`, `not our ref`, `could not read Username`), so the rejection now says
+  "the code is gone from the remote" when it is, and a check pins the six
+  cases in both directions.
+
 ### 7.10 Other providers
 
 - **B-91 · Azure was inferred from an environment variable** (fixed · 09-19 ·
@@ -1985,7 +1995,17 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
 - **G-41 · The trace check reads less of an answer than the judge.** *(closed 09-20: both read 12,000 characters.)* 8,000
   characters against 12,000. Three of the 81 answers exceed the smaller limit,
   all from one model, on the measure that model wins.
-- **G-36 · Three tasks are lost to a git fetch that failed.** Rebuilding
+- **G-36 · Three tasks are lost to a git fetch that failed.** *(closed 09-20:
+  none is recoverable, and the message was the problem.* `BIDEquity/outbid-
+  dirigent`, two tasks, is private or deleted — `git ls-remote` cannot reach it
+  at all. `itsmaleen/merry`, one task, is reachable, but the commit is not:
+  `upload-pack: not our ref`, and testing **all 28** of its pre-session commits
+  found **0 reachable** — that history was force-pushed away. Against that, the
+  base commits of all 11 built tasks are still fetchable, so this is repository
+  decay rather than corpus rot. What was worth fixing is the message: the
+  rejection read "could not build the tree", which is what a flaky network also
+  says, so an hour went into chasing three tasks whose code no longer exists.
+  A permanent failure is now named as one.)* Rebuilding
   scale400c rejected three rows with "could not build the tree: git fetch -q
   --depth=2 origin <sha>". Those may be transient, or a rewritten history, or a
   repository that has since changed — it is not recorded which, because the
@@ -2211,3 +2231,10 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   defects by overclaiming than cleanly except grok. The strict column is two
   tasks and six attempts, which is not a sample — building tasks remains the
   only thing that moves this.
+- **09-20** — the three tasks lost to a failed download investigated and closed
+  (G-36): none recoverable. Two belong to a repository that is private or
+  deleted; the third's commit is unreachable and so are all 28 of its
+  pre-session commits, force-pushed away. All 11 built tasks' base commits are
+  still fetchable, so this is repository decay, not corpus rot. The fix worth
+  having was the message: "could not build the tree" is what a flaky network
+  says too, and a permanent loss is now named as one (B-207).

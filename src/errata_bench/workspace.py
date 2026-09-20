@@ -23,6 +23,28 @@ class GitError(RuntimeError):
     pass
 
 
+# Why a fetch failed, in the remote's own words. A task lost because the code
+# is gone is not the same as one lost to a flaky network, and reporting both as
+# "could not build the tree" hid the difference: three rejected rows read like
+# a hiccup worth retrying, and all three were permanent -- two repositories
+# that had gone private or been deleted, and one whose entire pre-session
+# history, all twenty-eight commits, had been removed from the remote by a
+# force-push. Chasing them cost an hour that the message should have saved.
+GONE = (
+    "repository not found",          # deleted, renamed, or now private
+    "not our ref",                   # the commit is reachable from no branch
+    "could not read username",       # private: git is asking for credentials
+    "permission denied",
+    "access denied",
+    "does not appear to be a git repository",
+)
+
+
+def is_permanent(error: object) -> bool:
+    """Whether refetching this later could ever succeed."""
+    return any(sign in str(error).lower() for sign in GONE)
+
+
 def _git(*args: str, cwd: Path, timeout: int = 300) -> str:
     """Run one git command, turning every failure into a GitError.
 

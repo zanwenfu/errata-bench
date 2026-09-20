@@ -374,6 +374,23 @@ for passing, label in ((PASSING, "clean"), (PASSING_WITH_HEDGE, "hedged")):
           f"under the {label} standard, a task whose reference answer did no work "
           f"is refused: {sorted(got)}")
 
+print("\n18. a task lost because the code is gone says so")
+# Three tasks were rejected with "could not build the tree", which reads like a
+# network hiccup worth retrying. All three were permanent: two repositories
+# private or deleted, one whose entire pre-session history had been force-pushed
+# away. An hour went into chasing them.
+from errata_bench.workspace import is_permanent
+for text, permanent in (
+    ("remote: Repository not found.\nfatal: repository not found", True),
+    ("fatal: remote error: upload-pack: not our ref a7e26001", True),
+    ("fatal: could not read Username for 'https://github.com'", True),
+    ("fatal: unable to access: Could not resolve host: github.com", False),
+    ("error: RPC failed; curl 92 HTTP/2 stream 0 was not closed cleanly", False),
+    ("fatal: the remote end hung up unexpectedly", False),
+):
+    check(is_permanent(text) is permanent,
+          f"{'gone for good' if permanent else 'worth retrying'}: {text.splitlines()[-1][:52]}")
+
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:
     print("  -", f)
