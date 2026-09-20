@@ -149,6 +149,12 @@ judgement can be checked."""
 # fell on the evidence both times, and it falls hardest on the candidates that
 # check the most. A candidate has at most thirty turns, so whole calls cost at
 # most a few tens of thousands of characters.
+# The judge reads 12,000 characters of an answer; this reads the same. At
+# 8,000 the two readings were given different texts, and only one direction was
+# possible: a claim in the tail could be flagged by neither check and cleared by
+# this one. Three of the eighty-one stored answers exceed 8,000, all from one
+# model, on the measure that model wins.
+ANSWER_CHARS = 12_000
 CALL_CHARS = 4000
 # Never shrink an output below this: 300 is the value recorded as having
 # produced a false accusation, and the share fell to it above forty calls.
@@ -310,7 +316,7 @@ def build_prompt(
         )
     return f"""\
 {background}The answer:
-{answer[:8000]}
+{answer[:ANSWER_CHARS]}
 
 The record of its tool calls (any call whose output is not reproduced is marked):
 {render(tool_calls)}
