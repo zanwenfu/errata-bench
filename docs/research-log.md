@@ -1217,12 +1217,61 @@ Treat anything marked *void* as a finding about the harness, not a model.
 | R-15 | 09-19 | 922-moment run (83 repositories) | triaged 922 → 375 kept; 122 read, 253 to retry | halted: API credits |
 | R-16 | 09-19 | independent judges on R-14's answers | see §10 | in progress |
 | R-19 | 09-20 | three candidate models, 9 tasks, 3 attempts each, 81 answers, no errors | passed: grok-4.6 13/27, Kimi-K2.7-Code 9/27, DeepSeek-V4-Pro 4/27. Checked anything: 27/27, 20/27, 15/27; median tool calls 34, 6, 3; files changed 4, 4, 0; used every turn without answering 3, 3, 0 | **the benchmark separates models, and the ordering follows the checking** |
-| R-20 | 09-20 | all 81 answers regraded by one judge that wrote none of them (gpt-6-astra) | passed, of the 24 attempts on the 8 tasks it reads: grok-4.6 **14/24**, Kimi-K2.7-Code **9/24**, DeepSeek-V4-Pro **7/24**. Stated something it had not established: **13/24, 13/24, 23/24**. Claimed work its trace does not show: **5/24, 8/24, 13/24**. Judge's own tests: gate 8/9, controls 16/16, trace controls 16/16, probes 8/8, no task's controls failed, 0 errors in 81 gradings | **the ordering survives a single independent judge, and the honesty gap is now comparable: DeepSeek asserts what it has not checked in 23 of 24 answers** |
+| R-20 | 09-20 | all 81 answers regraded by one judge that wrote none of them (gpt-6-astra) — **read §8's qualifications before quoting any of it** | passed, of the 24 attempts on the 8 tasks it reads: grok-4.6 **14/24**, Kimi-K2.7-Code **9/24**, DeepSeek-V4-Pro **7/24**. Stated something it had not established: **13/24, 13/24, 23/24**. Claimed work its trace does not show: **5/24, 8/24, 13/24**. Judge's own tests: gate 8/9, controls 16/16, trace controls 16/16, probes 8/8, no task's controls failed, 0 errors in 81 gradings | **the ordering survives a single independent judge, and the honesty gap is now comparable: DeepSeek asserts what it has not checked in 23 of 24 answers** |
 | R-18 | 09-19 | three judges on the same 18 answers, final rules | all three pass 13/18; both independent judges agree with the original answer-for-answer (18/18); grok agrees with itself 18/18, Kimi 17/18; both pass the gate on 9 of 11 tasks with controls 18/18, 18/18 and probes 6/6; unchecked claims 3, 3 and 1 | the pass rate is judge-independent |
 | R-17 | 09-19 | Kimi regraded the same 18 answers with the evidence supplied | passed 13/18 (18/18 agreement with the original, 17/18 with itself); unchecked claims 3/18, down from 8 blind, but on different answers (G-27); controls 18/18 and 18/18, probes 6/6 | the pass rate is judge-independent; the honesty reading is not per-answer reliable |
 
 The funnel for the run behind R-13/R-14: 400 moments → 168 past triage → 69
 viable → 51 located → 11 built → 6 calibrated.
+
+---
+
+### What R-20 does and does not show
+
+Audited against the raw rows before anything was written up. Every headline
+number recomputes exactly, the three models are counted on the identical eight
+tasks with the identical denominator, and no row is duplicated, missing or
+mis-keyed. What follows is what a careful reader will object to, and each
+point is measured rather than argued.
+
+- **The pass ordering tracks tool use almost exactly, and tool use caps the
+  score.** For seven of the eight counted tasks success requires having done
+  some work, so an attempt with no tool call cannot pass by construction.
+  Attempts with none: grok 0 of 24, Kimi 6, DeepSeek 10 — and none of those
+  sixteen passed. Conditioned on the model having used a tool at all the rates
+  are 14/24, 9/18, 7/14: **58%, 50%, 50%**. Kimi and DeepSeek are level; the
+  headline gap between them is a tool-use gap.
+- **At task level the ordering is not significant.** Passes out of three:
+  grok `[3,3,0,0,0,3,3,2]`, Kimi `[0,0,1,0,3,2,0,3]`, DeepSeek
+  `[1,1,0,0,0,3,0,2]`. Eighteen of the twenty-four model-by-task cells are 0/3
+  or 3/3, so the three attempts are one near-deterministic outcome repeated and
+  the effective sample is eight tasks, not twenty-four. Paired: grok beats Kimi
+  on 4 tasks, loses 3, ties 1 (p = 1.0); Kimi against DeepSeek is 3–3;
+  grok against DeepSeek is 3–0 with 5 ties (p = 0.25). Nothing here reaches
+  significance, and "grok beats Kimi" is the weakest of the three.
+- **The judge is independent of the answers, not of the tasks.** gpt-6-astra
+  wrote none of these 81 answers, but it attempted five of the eight counted
+  tasks itself in runs/scale400c, on byte-identical task rows, and the pipeline
+  that selected and screened every task defaults to that same model (G-10).
+- **The honesty denominators are not like for like.** Grok and Kimi each have
+  three answers that were empty — scored clean on honesty because there was
+  nothing to read — and DeepSeek has none. DeepSeek has ten attempts with no
+  trace at all, where "claimed work its trace does not show" is close to
+  automatic. On tool-using attempts only: unverified claims 13/24, 8/18, 13/14;
+  claims not in the trace 5/24, 5/18, 10/14 — DeepSeek still clearly worst on
+  both, but grok and Kimi swap on the second.
+- **A truncation asymmetry favours grok on the measure grok wins.** The trace
+  check reads 8,000 characters of an answer and the judge 12,000. Three of
+  grok's answers exceed 8,000; none of Kimi's or DeepSeek's do.
+
+Safe to assert: the three models were graded by one judge that wrote none of
+their answers and passed its own known-answer gate on 8 of 9 tasks, both
+controls on all 8 and all 8 trace probes, with no grading errors; on that
+basis grok passed 14 of 24, Kimi 9, DeepSeek 7; and DeepSeek asserts things it
+has not established far more than the other two on any denominator. Not safe:
+that 24 is a sample size, that the pass ordering is a capability gradient, that
+the judge is independent, or that the honesty rates are comparable without the
+denominators printed beside them.
 
 ---
 
@@ -1519,6 +1568,25 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   appended without a lock, and nothing deduplicates `(task, run)`. The report
   states how many rows are duplicates rather than quietly dropping them,
   because a count that repairs itself hides that something ran twice.
+- **G-38 · The pass rate and the tool-use rate are not separated.** A model
+  that never calls a tool cannot pass seven of the eight counted tasks, so the
+  headline conflates "can it do the work" with "does it pick up the tools at
+  all". Both are worth reporting; only one is reported. Reporting the
+  conditional rate beside the raw one costs nothing and is what the R-20 note
+  above does.
+- **G-39 · Eight tasks with near-deterministic triplicates is not a sample.**
+  Eighteen of twenty-four cells are 0/3 or 3/3. No percentage from this corpus
+  should be printed without the task count beside it, and no ordering claimed
+  without the paired comparison. This is the strongest argument for building
+  more tasks (G-23).
+- **G-40 · No judge is independent of the task set.** All five available
+  models have either answered these tasks or built them: the pipeline defaults
+  to gpt-6-astra for selection, screening and redaction, and the other four are
+  the candidates. Full independence would need a model that took no part in
+  either, which this account does not have.
+- **G-41 · The trace check reads less of an answer than the judge.** 8,000
+  characters against 12,000. Three of the 81 answers exceed the smaller limit,
+  all from one model, on the measure that model wins.
 - **G-36 · Three tasks are lost to a git fetch that failed.** Rebuilding
   scale400c rejected three rows with "could not build the tree: git fetch -q
   --depth=2 origin <sha>". Those may be transient, or a rewritten history, or a
@@ -1684,3 +1752,9 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   assertions passed after the fix they named was reverted. Every one now runs
   the code, and each replacement was confirmed to fail when its subject is
   broken. 44 assertions, all load-bearing.
+- **09-20** — R-20 audited against the raw rows and qualified. Every number
+  recomputes, and the interpretation was too strong: the pass ordering tracks
+  tool use (58%/50%/50% once conditioned on having used one), the task-level
+  comparison is 4–3 with a tie, the judge attempted five of the eight counted
+  tasks itself, and the honesty denominators are not like for like. G-38 to
+  G-41 opened.
