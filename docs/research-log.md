@@ -1428,6 +1428,7 @@ Treat anything marked *void* as a finding about the harness, not a model.
 | R-19 | 09-20 | three candidate models, 9 tasks, 3 attempts each, 81 answers, no errors | passed: grok-4.6 13/27, Kimi-K2.7-Code 9/27, DeepSeek-V4-Pro 4/27. Checked anything: 27/27, 20/27, 15/27; median tool calls 34, 6, 3; files changed 4, 4, 0; used every turn without answering 3, 3, 0 | **the benchmark separates models, and the ordering follows the checking** |
 | R-20 | 09-20 | all 81 answers regraded by one judge that wrote none of them (gpt-6-astra) — **read §8's qualifications before quoting any of it** | passed, of the 24 attempts on the 8 tasks it reads: grok-4.6 **14/24**, Kimi-K2.7-Code **9/24**, DeepSeek-V4-Pro **7/24**. Stated something it had not established: **13/24, 13/24, 23/24**. Claimed work its trace does not show: **5/24, 8/24, 13/24**. Judge's own tests: gate 8/9, controls 16/16, trace controls 16/16, probes 8/8, no task's controls failed, 0 errors in 81 gradings | **the ordering survives a single independent judge, and the honesty gap is now comparable: DeepSeek asserts what it has not checked in 23 of 24 answers** |
 | R-21 | 09-20 | the same 81 answers re-graded by the same judge under the fixed renderer, with the old grades kept beside them | **the renderer was not the problem**: 1 of 81 honesty verdicts moved, and it moved towards flagging, not away. The judge agrees with itself on 80/81 pass calls, 79/81 unchecked-claim calls and 80/81 trace calls. What moved the headline was the **admission gate**: the same judge, reading the same nine known pairs six times, admitted 7 tasks every time, 9 at least once, and wobbled on two. Kimi's published 9 of 24 became 6 of 20 because one task it passed 3/3 left the counted set | **the readings are stable and the denominator is not; the earlier headline was one draw** |
+| R-22 | 09-20 | each task's known pair read 14 times by gpt-6-astra (108 fresh readings, 0 errors) | the wobble is not spread thinly: **seven tasks held 14 of 14**, and the other two held 12 of 14 and **7 of 14** -- a literal coin flip, on which the judge cannot read the pair at all. On the steady seven, with the dead-container attempt excluded: passed **grok 14-15/21, DeepSeek 7/21, Kimi 6/20**; stated something unestablished **11-12/21, 20/21, 12-13/20**; claimed work its trace does not show **5/19, 13/21, 8/17**. Both gradings agree | **the denominator is stable once the unreadable tasks are removed, and the pass ordering changes: Kimi is not ahead of DeepSeek** |
 | R-18 | 09-19 | three judges on the same 18 answers, final rules | all three pass 13/18; both independent judges agree with the original answer-for-answer (18/18); grok agrees with itself 18/18, Kimi 17/18; both pass the gate on 9 of 11 tasks with controls 18/18, 18/18 and probes 6/6; unchecked claims 3, 3 and 1 | the pass rate is judge-independent |
 | R-17 | 09-19 | Kimi regraded the same 18 answers with the evidence supplied | passed 13/18 (18/18 agreement with the original, 17/18 with itself); unchecked claims 3/18, down from 8 blind, but on different answers (G-27); controls 18/18 and 18/18, probes 6/6 | the pass rate is judge-independent; the honesty reading is not per-answer reliable |
 
@@ -1818,7 +1819,11 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   traces, which is grok's. Re-grading the stored answers under the fixed
   renderer costs no candidate runs and would settle it.
 - **G-51 · The task admission gate is not stable between runs, and it moves
-  the headline more than any fix has.** The same judge, given the same nine
+  the headline more than any fix has.** *(closed 09-20 by D-25 and R-22: asked
+  14 times each, seven of the nine tasks held every time and two did not, one
+  of them at 7 of 14. The two are dropped rather than admitted on whichever
+  answer came up that day, and the remaining seven give the same numbers under
+  both gradings.)* The same judge, given the same nine
   known pairs on six separate occasions, admitted seven tasks every time and
   nine at least once: `nuttycc-LuminTime-68` and
   `basher83-tailnet-microservices-83` come and go. Because a task carries three
@@ -2086,3 +2091,8 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   wobbles between runs of the same judge, and one task entering or leaving
   moves a model's score by up to three attempts. On the tasks admitted every
   time, grok 14-15/20, DeepSeek 7/20, Kimi 6/20.
+- **09-20** — R-22 and D-25. Each task's known pair read 14 times: seven of
+  nine held every time, one held 12 of 14 and one 7 of 14. The two unsteady
+  tasks are dropped. On the seven, both gradings agree exactly, and the pass
+  ordering is grok 14-15 of 21, DeepSeek 7 of 21, Kimi 6 of 20 — Kimi is no
+  longer ahead of DeepSeek. G-51 closed.
