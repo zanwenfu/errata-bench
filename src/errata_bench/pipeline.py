@@ -1029,7 +1029,7 @@ async def stage_grade(paths: Paths, limit: int, concurrency: int) -> Progress:
     from .attempt import INSTRUCTIONS as CANDIDATE_RULES
     from .attempt import environment_note, transcripts_for
     from .judge import judge
-    from .reader import judge_model
+    from .reader import judge_model, model_name
     from .spec import fingerprint, read
     from .structure import Structure, combine
     from .trace import check as check_trace
@@ -1056,6 +1056,16 @@ async def stage_grade(paths: Paths, limit: int, concurrency: int) -> Progress:
     todo = [a for a in answers if (a["task_id"], a["run"]) not in done]
     p.skipped = len(answers) - len(todo)
     p.notes.append(f"graded by {grader}")
+    # Naming no grader leaves `judge_model()` falling back to the candidate's
+    # own model, which is the thing B-118 was fixed to stop. It is a legitimate
+    # configuration -- the first eighteen scored answers were graded that way --
+    # but it is never what someone wants by accident, and this stage is now run
+    # by itself, where the setting is easiest to forget.
+    if grader == model_name():
+        p.notes.append(
+            f"warning: {grader} is grading its own answers; set ERRATA_JUDGE_MODEL "
+            f"to have a different model read them"
+        )
     if orphaned:
         p.notes.append(f"{len(orphaned)} answers belong to tasks that no longer exist")
     if stale:
