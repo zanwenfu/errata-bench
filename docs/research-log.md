@@ -706,6 +706,83 @@ away from deleting eighty-one paid-for answers.
   conversation becomes unsupported, which is B-109 arriving by a different
   route. Both are now written on the answer row and read from there, and the
   row records whether a conversation was available at all.
+A sixth reviewer was then given the five reports and the half-finished code and
+asked what they had all missed. It found the multiplier: almost every guard
+above reported through `Progress.notes`, which is written in ten places and was
+read in none.
+
+- **B-135 · Every guard reported into a void** (fixed · 09-20). `Progress.line`
+  printed stage, seconds and counts, and never `notes` — so the rebuild
+  refusing to empty a directory, the count of answers whose task had changed,
+  the warning that the grader was never calibrated and the warning that these
+  answers already had a grade were all invisible. Running the grade stage
+  against a rebuilt task printed exactly `grade 0s 0 produced` while the notes
+  held the explanation. Every "make it loud" fix from the review had been
+  implemented as a note, so none of them was loud. This is B-86 again, and it
+  multiplied everything else on this list.
+- **B-136 · The fingerprint landed in one of the three places it must agree**
+  (fixed · 09-20). Grading refused an answer whose task had been rebuilt
+  (B-134) — but the attempt stage still counted that answer as work already
+  done, and the rebuild still kept it. So a rebuilt task sat at zero scored
+  attempts for ever: re-running every stage changed nothing, and the only trace
+  was a count in the report that never went down. Reproduced against the real
+  functions before and after: 0 of 3 runs re-collected, then 3 of 3, with the
+  superseded rows removed rather than left to be counted twice.
+- **B-137 · The row's task kind was not the kind that scored it** (fixed ·
+  09-20). The graded row carried the kind stored with the answer while the
+  judge applied the kind the task has now, and those rules differ at the
+  pass/fail line: an introduced defect passes on having done the work, a
+  present one on having addressed it. A stub run produced a row reading `kind:
+  present, addresses_defect: false, passed: true` — an impossible pass under
+  its own label, which `by_kind` would then group under `present`.
+- **B-138 · The captured tree was capped per file and not per row** (fixed ·
+  09-20). The working copy is bind-mounted into the container, so everything a
+  candidate's build writes is recorded as a file it changed and read back into
+  the answer row. Five thousand build outputs of 50 KB each is a single 200 MB
+  line, which every later `load` reads back whole to count rows. There is now a
+  budget for the row as well: the file the signature names first, then the
+  smallest of the rest.
+- **B-139 · An empty conversation was recorded and then graded anyway** (fixed ·
+  09-20). A session the corpus cannot produce renders as an empty transcript.
+  The candidate is shown that transcript and nothing else, so it was being
+  asked to answer a blank page, and the trace check then called every claim
+  citing the conversation unsupported — B-109 arriving by another route. The
+  row recorded `had_conversation: false` and nothing read it. Both stages now
+  refuse: no container is spent, and the row is an error to retry.
+- **B-140 · A second judge over a graded run was a silent success** (fixed ·
+  09-20). One answer has one grade in a run directory, so pointing a different
+  judge at it graded nothing and reported "0 produced" — which reads exactly
+  like a directory with nothing left to do. It is now refused by name, with the
+  `rejudge` command that does the job printed in the refusal, and the stage
+  exits non-zero.
+- **B-141 · The rebuild discarded its own warning two lines later** (fixed ·
+  09-20). `p.notes.append(...)` recorded how many graded rows a prune deleted;
+  `p.notes = [...]` three lines down replaced the list with the rejection
+  summary. The one message saying a rebuild had destroyed paid-for work was
+  gone before anything could print it.
+- **B-142 · Two grading processes could delete each other's rows** (fixed ·
+  09-20). `completed` is a read-modify-write with no lock: it loads a file,
+  drops the errored rows and renames a new file over the old one, so whatever
+  another process appended in between is silently gone. Splitting the stages
+  made that likely rather than theoretical, because re-running the cheap stage
+  over a directory is now the obvious thing to do. Appending and tidying now
+  take an exclusive lock on a sibling file, and the tidy re-reads under it.
+- **B-143 · A failed stage exited zero** (fixed · 09-20). A stage that wrote 81
+  error rows and one that graded 81 answers were indistinguishable to the shell
+  loop driving the runs.
+- **B-144 · Two copies of the task id on one row, only one load-bearing**
+  (fixed · 09-20). `Score.to_json` writes `task_id` from the structural
+  reading, and it was merged over the row's own. They always agree today, but
+  the resume key is read back from the written row while the rebuild prunes on
+  the answer's, so a disagreement would file a row under one identity and
+  resume under another: in a synthetic run every answer was regraded on every
+  pass, 4 rows then 8 then 12, reporting "0 already done" each time. They are
+  now checked against each other.
+- **B-145 · The newline repair worked only while the rows stayed ASCII** (fixed
+  · 09-20). `fh.seek(fh.tell() - 1)` on a text handle is not a valid seek;
+  it worked because `json.dumps` escapes non-ASCII, making the cookie a byte
+  offset. Done in bytes now.
+
 - **B-134 · An answer could be graded against a rebuilt task** (fixed ·
   09-20). Task identifiers are derived from the repository and the turn, so a
   rebuild keeps the name while changing the content — a different base commit,
@@ -956,6 +1033,16 @@ viable → 51 located → 11 built → 6 calibrated.
 - **X-14 · DeepSeek-V4-Pro as a judge** (phase 10). §10.
 
 ---
+
+- **X-15 · A sidecar file for the conversations** (09-20). Proposed to stop the
+  transcript being stored three times per task, once per attempt, and estimated
+  at 48 MB of duplication in a 400-task run. Measured on the real thing first:
+  in the answer row from the end-to-end check the transcript is 7.4 KB of a
+  135 KB row, about 5%, while the tool trace is 120 KB of it — 52 calls with
+  their outputs, which is per-answer data and cannot be shared. A second file
+  with a join key, its own pruning rules and its own way of going missing, to
+  save 5%, is a worse trade than the duplication. Revisit if a run's
+  transcripts approach the 60,000-character cap rather than a tenth of it.
 
 ## 10. Judge independence study (09-19)
 
@@ -1264,8 +1351,11 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
 - **09-20** — B-122 fixed: re-grading turned "we never asked" into "it lied" on
   every plain-text answer. It would have fired the moment the 81 answers were
   re-graded, which is the next thing planned.
-- **09-20** — D-23: grading split from the attempt stage. Found while reviewing
-  the plan, before writing it: B-123 to B-134, of which B-125 would have
-  deleted three finished run directories and B-133 would have graded answers
-  against rules and conversations rebuilt after the fact. G-30 closed, G-31 to
-  G-35 opened.
+- **09-20** — D-23: grading split from the attempt stage. Twenty-three defects
+  found by review before the code ran (B-123 to B-145), in two rounds: five
+  reviewers over the plan, then one over their reports and the half-written
+  code. B-125 would have deleted three finished run directories; B-135 had made
+  every other guard invisible; B-136 would have retired a rebuilt task for
+  ever. The split changes no scored row, which was checked by running the old
+  stage and the new pair over the same fakes and comparing every field. G-30
+  closed, G-31 to G-35 opened, X-15 declined on a measurement.

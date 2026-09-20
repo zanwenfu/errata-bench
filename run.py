@@ -255,8 +255,8 @@ def main() -> None:
 
     # A ceiling of zero is a semaphore nothing can pass: the run starts, prints
     # its stages and hangs for ever with no output and no work done.
-    if args.concurrency < 1 or args.grade_concurrency < 0:
-        ap.error("--concurrency must be at least 1, and --grade-concurrency at least 0")
+    if not 1 <= args.concurrency <= 32 or not 0 <= args.grade_concurrency <= 32:
+        ap.error("--concurrency must be 1..32, and --grade-concurrency 0..32 (0 means match it)")
 
     root = Path(args.run)
     paths = Paths(root)
@@ -302,7 +302,7 @@ def main() -> None:
 
     print(f"  run: {root}")
     print(f"  stages: {', '.join(stages)}\n")
-    asyncio.run(
+    done = asyncio.run(
         run_stages(
             root,
             stages,
@@ -312,6 +312,15 @@ def main() -> None:
             grade_concurrency=args.grade_concurrency or None,
         )
     )
+    # A stage that wrote eighty-one error rows and a stage that graded
+    # eighty-one answers were both worth exit code 0, so the shell loop driving
+    # the runs could not tell them apart and neither could anyone reading a log
+    # afterwards.
+    failed = [p for p in done if p.failed]
+    if failed:
+        print(f"\n  {sum(p.failed for p in failed)} rows failed in: "
+              f"{', '.join(p.stage for p in failed)}")
+        sys.exit(1)
 
 
 if __name__ == "__main__":

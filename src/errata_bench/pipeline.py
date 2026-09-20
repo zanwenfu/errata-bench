@@ -44,8 +44,11 @@ already on disk, and re-grading them is one stage.
 from __future__ import annotations
 
 import asyncio
+import fcntl
 import json
+import os
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -126,6 +129,30 @@ def load(path: Path) -> list[dict]:
     return rows
 
 
+@contextmanager
+def held(path: Path):
+    """Exclusive access to one stage file, across processes.
+
+    Appending and tidying are both safe alone and not safe together. `completed`
+    reads a file, drops the errored rows and writes the rest back; another
+    process appending in between has its row read by nobody and overwritten by
+    the rename. Splitting grading out makes that likely rather than theoretical,
+    because running the cheap stage again over a directory is now the obvious
+    thing to do when one looks stuck.
+
+    The lock is a sibling file, not the data file: `replace` renames a new file
+    over the old one, and a lock on the old inode would protect nothing.
+    """
+    path.parent.mkdir(parents=True, exist_ok=True)
+    guard = path.with_suffix(path.suffix + ".lock")
+    with guard.open("a+") as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(fh, fcntl.LOCK_UN)
+
+
 def replace(path: Path, rows: list[dict]) -> None:
     """Rewrite a stage's file atomically.
 
@@ -146,17 +173,26 @@ def append(path: Path, row: dict) -> None:
     killed a rebuild and lost every model call before it.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
-    with path.open("a+") as fh:
-        # A row cut off by a kill leaves no newline, and the next append lands
-        # on the same line: one truncated row silently eats the next good one
-        # as well, and `load` skips the pair without either being recoverable.
-        # Closing the broken line first costs one seek and loses only the row
-        # that never finished.
-        if fh.tell():
-            fh.seek(fh.tell() - 1)
-            if fh.read(1) != "\n":
-                fh.write("\n")
-        fh.write(json.dumps(row) + "\n")
+    line = json.dumps(row).encode() + b"\n"
+    # A row cut off by a kill leaves no newline, and the next append lands on
+    # the same line: one truncated row silently eats the next good one as well,
+    # and `load` skips the pair without either being recoverable. Closing the
+    # broken line first costs one byte read and loses only the row that never
+    # finished. Done in bytes: a text handle's seek accepts only offsets its own
+    # tell produced, and `tell() - 1` happens to work solely because these rows
+    # are ASCII today.
+    # Probe and write under one lock: read outside it and another process can
+    # append between the two, so the repair is decided against a file that no
+    # longer ends where it did.
+    with held(path):
+        size = path.stat().st_size if path.exists() else 0
+        if size:
+            with path.open("rb") as fh:
+                fh.seek(size - 1)
+                if fh.read(1) != b"\n":
+                    line = b"\n" + line
+        with path.open("ab") as fh:
+            fh.write(line)
 
 
 def key_of(row: dict) -> tuple:
@@ -191,10 +227,53 @@ def completed(path: Path) -> list[dict]:
     recomputes `done` from what is left, so the failed rows come back as work.
     """
     rows = load(path)
-    kept = [r for r in rows if _succeeded(r)]
-    if len(kept) != len(rows):
+    if all(_succeeded(r) for r in rows):
+        return rows
+    # Re-read under the lock before writing. The rows counted a moment ago may
+    # be out of date by now, and writing that stale list back would delete
+    # whatever another process appended in between.
+    with held(path):
+        kept = [r for r in load(path) if _succeeded(r)]
         replace(path, kept)
     return kept
+
+
+def sort_answers(
+    answers: list[dict], prints: dict[str, str], *, unstamped_is_stale: bool = True
+) -> tuple[list, list, list]:
+    """Split stored answers by whether they still describe their task.
+
+    Task identifiers are the repository and the complaint turn, so a rebuilt
+    task keeps its name while its content changes underneath. An answer written
+    before that rebuild was about a different question.
+
+    One helper for the three stages that must agree about this. The check went
+    into grading alone first, and that was worse than not having it: grading
+    refused the answer, the attempt stage counted it as work already done, and
+    the rebuild kept it -- so the task sat at zero scored attempts for ever,
+    re-running every stage changed nothing, and the only trace was a count in
+    the report that never went down.
+
+    An answer with no fingerprint at all is stale: nothing on disk predates the
+    field, and refusing to grade is the safe direction. Scored rows are read
+    with ``unstamped_is_stale=False``, because every run directory made before
+    the split holds graded attempts carrying no fingerprint, and calling those
+    stale would re-run eighty-one candidates to replace answers already paid
+    for.
+    """
+    fresh, orphaned, stale = [], [], []
+    for a in answers:
+        task_id = a.get("task_id")
+        stamp = a.get("task_fingerprint")
+        if task_id not in prints:
+            orphaned.append(a)
+        elif stamp is None and not unstamped_is_stale:
+            fresh.append(a)
+        elif stamp != prints[task_id]:
+            stale.append(a)
+        else:
+            fresh.append(a)
+    return fresh, orphaned, stale
 
 
 def finished(path: Path) -> list[dict]:
@@ -231,7 +310,14 @@ class Progress:
             bits.append(f"{self.skipped} already done")
         if self.failed:
             bits.append(f"{self.failed} failed")
-        return f"  {self.stage:10s} {self.took_s:6.0f}s  {', '.join(bits)}"
+        head = f"  {self.stage:10s} {self.took_s:6.0f}s  {', '.join(bits)}"
+        # Notes were written in ten places and printed in none. Everything a
+        # stage refuses or skips says so here -- a rebuild declining to empty a
+        # finished directory, answers whose task has changed under them, a
+        # grader that was never calibrated -- and all of it went to a field no
+        # code read. A stage that stops to protect something has to say so on
+        # the screen, or the protection is indistinguishable from doing nothing.
+        return "\n".join([head] + [f"             {n}" for n in self.notes])
 
 
 async def _gather(coros, limit: int):
@@ -526,7 +612,7 @@ def stage_build(paths: Paths, limit: int) -> Progress:
     "sound" verdicts pointing at tasks that are gone.
     """
     from .build import build
-    from .spec import write
+    from .spec import fingerprint, write
 
     p = Progress("build")
     t0 = time.monotonic()
@@ -552,17 +638,35 @@ def stage_build(paths: Paths, limit: int) -> Progress:
     write(result.tasks, paths.tasks)
 
     surviving = {t.task_id for t in result.tasks}
+    prints = {t.task_id: fingerprint(t) for t in result.tasks}
+
+    def still_describes(row: dict) -> bool:
+        if row.get("task_id") not in surviving:
+            return False
+        # A task that kept its name and changed its content leaves rows about
+        # the older version behind. They are dropped here for the same reason
+        # rows of a vanished task are: the stage that reads them resumes on
+        # task_id, and a stale row would sit there claiming work that no longer
+        # applies. Rows written before fingerprints existed carry none, and are
+        # kept rather than destroyed on a rule they predate.
+        stamp = row.get("task_fingerprint")
+        return stamp is None or stamp == prints[row["task_id"]]
+
     for downstream in (paths.calibration, paths.controls, paths.answers, paths.attempts):
         if not downstream.exists():
             continue
-        kept = [r for r in load(downstream) if r.get("task_id") in surviving]
-        dropped = len(load(downstream)) - len(kept)
-        if dropped:
+        rows = load(downstream)
+        kept = [r for r in rows if still_describes(r)]
+        if len(kept) != len(rows):
             replace(downstream, kept)
-            p.notes.append(f"dropped {dropped} stale rows from {downstream.name}")
+            p.notes.append(f"dropped {len(rows) - len(kept)} stale rows from {downstream.name}")
     p.produced = len(result.tasks)
     p.failed = len(result.rejected)
-    p.notes = [f"{r.repo_id} t={r.complaint_turn}: {r.reason[:70]}" for r in result.rejected]
+    # extend, not assign: the loop above records what it deleted, and assigning
+    # here threw that away two lines later -- so the one message saying a
+    # rebuild removed graded rows and paid-for answers never survived to be
+    # printed, even once notes are printed.
+    p.notes.extend(f"{r.repo_id} t={r.complaint_turn}: {r.reason[:70]}" for r in result.rejected)
     p.took_s = time.monotonic() - t0
     return p
 
@@ -697,21 +801,43 @@ async def stage_control(paths: Paths, limit: int, concurrency: int) -> Progress:
     return p
 
 
-# How much of a captured file to keep on the answer row. The capture holds
-# every file that still contains the defect's token, and one of those can be a
-# lock file of several megabytes; an answers file that large is slow to read and
-# no more useful. Each file that was cut says so, so nothing later mistakes a
-# truncated file for a file in which the token is absent.
+# How much of the captured tree to keep on the answer row: per file, and in
+# total. The capture holds the file the signature names, every file the
+# candidate changed, and every file still containing the defect's token -- and
+# "changed" is a before-and-after listing of a tree that is bind-mounted into
+# the container, so a candidate that ran the project's build has "changed"
+# every file that build wrote. Five thousand build outputs of 50 KB each is a
+# single 200 MB line, which `append` writes in one go and every later `load`
+# reads back whole, for a stage that only wants to count rows.
+#
+# The total budget is what makes the row bounded; a per-file cap alone does
+# not. The named file goes in first because it is the one the token check
+# reads, then the smallest of the rest, so a row holds as many useful files as
+# it can rather than one enormous one.
 KEPT_FILE_CHARS = 40_000
+KEPT_STATE_CHARS = 2_000_000
 
 
-def _capped(state: dict[str, str]) -> dict[str, str]:
-    out = {}
-    for path, body in (state or {}).items():
-        if len(body) > KEPT_FILE_CHARS:
-            out[path] = body[:KEPT_FILE_CHARS] + "\n... [cut: file continues]"
-        else:
-            out[path] = body
+def _capped(state: dict[str, str], first: str = "") -> dict[str, str]:
+    """As much of the captured tree as fits, smallest files after the named one."""
+    def cut(body: str) -> str:
+        if len(body) <= KEPT_FILE_CHARS:
+            return body
+        # Said in the file's own text, so nothing later reads a truncated file
+        # as one in which the token is simply absent.
+        return body[:KEPT_FILE_CHARS] + "\n... [cut: file continues]"
+
+    state = state or {}
+    order = ([first] if first in state else []) + sorted(
+        (k for k in state if k != first), key=lambda k: len(state[k])
+    )
+    out, total = {}, 0
+    for path in order:
+        body = cut(state[path])
+        if total + len(body) > KEPT_STATE_CHARS:
+            break
+        out[path] = body
+        total += len(body)
     return out
 
 
@@ -751,8 +877,30 @@ async def stage_attempt(
     # before grading was split out holds its answers only inside attempts.jsonl,
     # and without this line the split would silently re-run eighty-one
     # candidates, at full price, for answers already on disk.
-    done = {(r["task_id"], r["run"]) for r in completed(paths.answers)}
-    done |= {(r["task_id"], r["run"]) for r in finished(paths.attempts)}
+    # Only answers still about the task they name count as done. A stale one is
+    # work again: grading will not read it, so counting it here would retire the
+    # task permanently -- one of the three places the fingerprint has to agree.
+    prints = {t.task_id: fingerprint(t) for t in tasks}
+    fresh, _, stale = sort_answers(completed(paths.answers), prints)
+    if stale:
+        # Removed, not ignored. Left in place they would be graded as
+        # duplicates of the fresh answers about to replace them, and the report
+        # counts rows. Only rows that carry a fingerprint and disagree with the
+        # current task are removed, so nothing written before the field existed
+        # is ever deleted on a rule it predates.
+        replace(paths.answers, fresh)
+        p.notes.append(
+            f"dropped {len(stale)} answers about an earlier version of their task, and re-running them"
+        )
+    done = {(r["task_id"], r["run"]) for r in fresh}
+    # A graded row claims its pair too, so a stale one would keep the task
+    # retired just as a stale answer did. Rows with no fingerprint are counted
+    # as current: every run directory made before the split holds its answers
+    # only there, and requiring one would re-run eighty-one candidates.
+    graded_fresh, _, _ = sort_answers(
+        finished(paths.attempts), prints, unstamped_is_stale=False
+    )
+    done |= {(r["task_id"], r["run"]) for r in graded_fresh}
     repos = load_repos()
     images = {
         t.task_id: image_for(getattr(repos.get(t.repo_id), "language", None))
@@ -786,6 +934,17 @@ async def stage_attempt(
     host = asyncio.Semaphore(max(1, concurrency // 2))
 
     async def one(task, i):
+        if not transcripts.get(task.task_id, "").strip():
+            # The candidate is shown this conversation and nothing else; empty,
+            # it would be asked to respond to a blank page, and the trace check
+            # would then call every claim citing that conversation unsupported.
+            # A session the corpus cannot produce is an error to retry, not an
+            # attempt to score.
+            append(paths.answers, {
+                "task_id": task.task_id, "run": i,
+                "error": "no conversation for this session: the corpus returned nothing",
+            })
+            return False
         image = images.get(task.task_id)
         started = time.monotonic()
         async with (box if image else host):
@@ -834,7 +993,8 @@ async def stage_attempt(
                 # above was taken from the tree itself -- but without them a
                 # change to what counts as fixed can only be applied by running
                 # every candidate again, and those are the expensive calls.
-                "final_state": _capped(attempt.final_state),
+                "final_state": _capped(attempt.final_state, task.signature_path),
+                "final_state_files": len(attempt.final_state or {}),
                 # What the candidate was shown and what it was told, kept
                 # verbatim. These are inputs to the grading, and an input that
                 # is reconstructed later is an input that can drift.
@@ -882,29 +1042,24 @@ async def stage_grade(paths: Paths, limit: int, concurrency: int) -> Progress:
     # Read, not tidied: this stage does not own answers.jsonl, and `completed`
     # would rewrite it from a stale snapshot while the attempt stage may be
     # appending to it.
-    stored = finished(paths.answers)
-    answers, orphaned, stale = [], 0, 0
-    for a in stored:
-        if a.get("task_id") not in tasks:
-            orphaned += 1
-        elif a.get("task_fingerprint") and a["task_fingerprint"] != prints[a["task_id"]]:
-            # The task kept its name and changed its content. Grading this
-            # answer would score it against reference answers the candidate
-            # never saw, and the row would look exactly like any other.
-            stale += 1
-        else:
-            answers.append(a)
+    answers, orphaned, stale = sort_answers(finished(paths.answers), prints)
     # Errored grades are dropped by `completed` and come back as work, exactly
     # as errored attempts do. This stage owns attempts.jsonl, so it tidies it.
     graded = completed(paths.attempts)
+    graded, _, outdated = sort_answers(graded, prints, unstamped_is_stale=False)
+    if outdated:
+        replace(paths.attempts, graded)
+        p.notes.append(
+            f"dropped {len(outdated)} scores of an earlier version of their task"
+        )
     done = {(r["task_id"], r["run"]) for r in graded}
     todo = [a for a in answers if (a["task_id"], a["run"]) not in done]
     p.skipped = len(answers) - len(todo)
     p.notes.append(f"graded by {grader}")
     if orphaned:
-        p.notes.append(f"{orphaned} answers belong to tasks that no longer exist")
+        p.notes.append(f"{len(orphaned)} answers belong to tasks that no longer exist")
     if stale:
-        p.notes.append(f"{stale} answers were written about an earlier version of their task")
+        p.notes.append(f"{len(stale)} answers were written about an earlier version of their task")
     # A judge is trusted on a task because it read that task's known pair
     # correctly. If the model doing the grading is not the one that was
     # calibrated, the gate those rows represent says nothing about it.
@@ -920,10 +1075,24 @@ async def stage_grade(paths: Paths, limit: int, concurrency: int) -> Progress:
     # all and report success.
     others = {r.get("judge_model") for r in graded} - {grader, None}
     if others:
+        # Refused rather than reported. One answer has one grade here, so this
+        # would have graded nothing and said "0 produced", which reads exactly
+        # like a run with nothing left to do.
         p.notes.append(
-            f"{len(graded)} answers already graded by {', '.join(sorted(others))} were left alone; "
-            f"use `run.py rejudge --judge {grader}` to grade them again"
+            f"REFUSED: {len(graded)} answers here were graded by "
+            f"{', '.join(sorted(others))}, and this run's judge is {grader}. "
+            f"Mixing two judges in one file makes its counts meaningless. "
+            f"Use `run.py rejudge --run <dir> --judge {grader}`, which keeps the "
+            f"second opinion separate and puts that judge through the known "
+            f"answers first."
         )
+        # At least one, even when there was nothing left to grade: the usual
+        # reason to point a second judge at a directory is that every answer is
+        # already graded, and a refusal that exits zero is a refusal the shell
+        # loop driving these runs cannot see.
+        p.failed = max(1, len(todo))
+        p.took_s = time.monotonic() - t0
+        return p
     if not todo:
         p.took_s = time.monotonic() - t0
         return p
@@ -937,6 +1106,14 @@ async def stage_grade(paths: Paths, limit: int, concurrency: int) -> Progress:
         started = time.monotonic()
         try:
             structure = Structure.from_json(a["structure"])
+            # `Score.to_json` writes task_id from the reading, and it is merged
+            # over the row -- so if the two ever disagreed, the row would be
+            # filed under one identity and resumed under another, and every
+            # answer would be regraded on every pass with "0 already done".
+            if structure.task_id != a["task_id"]:
+                raise ValueError(
+                    f"the reading is for {structure.task_id}, the answer for {a['task_id']}"
+                )
         except (KeyError, TypeError, ValueError) as e:
             # Unreadable, not empty. Defaulting the missing fields would score
             # the attempt as having done nothing, which fails it.
@@ -948,7 +1125,14 @@ async def stage_grade(paths: Paths, limit: int, concurrency: int) -> Progress:
         row = {
             "task_id": a["task_id"],
             "run": a["run"],
-            "kind": a.get("kind"),
+            # The kind the judge actually applied, read from the task now, not
+            # the label the answer was stored with. They are the same thing
+            # while the fingerprint matches, and the row should carry the one
+            # that decided the rule: `solved` for an introduced defect means
+            # "did the work" and for a present one means "addressed it", so a
+            # row labelled with the other kind reads as an impossible pass.
+            "kind": task.kind,
+            "task_fingerprint": prints[a["task_id"]],
             "environment": a.get("environment"),
             "calls": structure.tool_calls,
             "tool_calls": a.get("tool_calls") or [],
@@ -967,7 +1151,9 @@ async def stage_grade(paths: Paths, limit: int, concurrency: int) -> Progress:
             # against. Without it, an answer citing what it was shown looks
             # like an answer inventing it, and the row should say which case
             # this was.
-            "had_conversation": bool(a.get("transcript") or context.get(task.task_id)),
+            "had_conversation": bool(
+                (a.get("transcript") or context.get(task.task_id, "")).strip()
+            ),
         }
         if not row["reply"].strip():
             # No answer to read, so nothing to judge. Recorded as a failed
@@ -987,6 +1173,15 @@ async def stage_grade(paths: Paths, limit: int, concurrency: int) -> Progress:
                         else "answered with nothing",
             })
             return True
+        if not row["had_conversation"]:
+            # Recorded and then graded anyway was the wrong shape: the row said
+            # the check had nothing to check claims against, and nothing read
+            # that field, so a known-bad reading was counted like any other.
+            append(paths.attempts, {
+                "task_id": a["task_id"], "run": a["run"], "judge_model": grader,
+                "error": "no conversation to check the answer's claims against",
+            })
+            return False
         try:
             # The judge is shown what the candidate did, because "did it claim
             # something it had not established" cannot be read off the prose.
