@@ -11,10 +11,11 @@ Each exits non-zero on failure and prints one line per assertion.
 
 **`split_changes_nothing.py`** takes the last revision of `pipeline.py` from
 before grading became its own stage, runs it and the current pair over the same
-fakes, and compares every field of every scored row. Splitting the stage was
+fakes, and compares every field the old row carried, on every scored row, and requires that there be six of them. Splitting the stage was
 supposed to change how fast the work runs and nothing else; this is what says
-so. It also covers resume, the run directories made before the split, and what
-happens when a candidate or a grading fails.
+so. It also covers resume from stored answers alone and from stored grades, the run
+directories made before the split, and what happens when a candidate or a
+grading fails.
 
 **`guards_hold.py`** covers what the two stages refuse to do: grade an answer
 whose task has been rebuilt, grade one whose task is gone, grade with a judge

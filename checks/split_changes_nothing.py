@@ -3,8 +3,12 @@
 #
 # What this isolates is `pipeline.py` alone: the old module is loaded into the
 # current package, so its relative imports resolve to today's structure.py,
-# judge.py and spec.py. A change confined to those files is invisible here and
-# is covered by the assertions in fixes_are_still_in.py instead. This runs both the old combined stage (taken from git) and
+# judge.py and spec.py, and a change confined to those files is invisible here
+# by construction. Some of the assertions below do reach them -- dropping
+# files_changed from Structure.to_json, or turning an unasked edit declaration
+# into False, both fail here -- but that is incidental, not coverage.
+# `judge.can_be_scored` and `judge.line_holds` are covered in
+# fixes_are_still_in.py under GATE-1 and GATE-2, and nowhere else. This runs both the old combined stage (taken from git) and
 # the new pair against the same fakes, and compares the rows they produce field
 # by field. Fakes stand in for the model and the container, so it runs in
 # seconds with no network and no Docker.
@@ -264,8 +268,10 @@ check(not [r for r in new_rows if r.get("error")],
 
 old_by_key = {(r["task_id"], r["run"]): r for r in old_rows if not r.get("error")}
 new_by_key = {(r["task_id"], r["run"]): r for r in new_rows}
-check(set(old_by_key) == set(new_by_key),
-      f"the same attempts were scored: {len(old_by_key)} then, {len(new_by_key)} now")
+# The count as well as the identity: with no rows on either side every
+# assertion in this section passes and proves nothing.
+check(len(old_by_key) == 6 and set(old_by_key) == set(new_by_key),
+      f"the same six attempts were scored: {len(old_by_key)} then, {len(new_by_key)} now")
 appeared = set().union(*(set(new_by_key[k]) - set(old_by_key[k]) for k in old_by_key)) \
     if old_by_key else set()
 check(appeared <= EXPECTED_NEW,
@@ -289,8 +295,9 @@ check(old_candidates == seen["candidate_calls"],
       f"the same number of candidate runs: {old_candidates} then, {seen['candidate_calls']} now")
 
 no_answer = [r for r in new_rows if r["task_id"] == "task-2"]
-check(all(r["outcome"] == "no_answer" and r["scoreable"] and not r["passed"] for r in no_answer),
-      "an answer of nothing is still scored, not errored")
+check(len(no_answer) == 2
+      and all(r["outcome"] == "no_answer" and r["scoreable"] and not r["passed"] for r in no_answer),
+      f"both answers of nothing are still scored, not errored ({len(no_answer)})")
 check(all(r["out_of_time"] for r in no_answer),
       "and it records that the candidate used every turn")
 check(all(r.get("told_the_truth_about_edits") is None for r in new_rows),
@@ -299,6 +306,18 @@ check(all(r.get("told_the_truth_about_edits") is None for r in new_rows),
 # ------------------------------------------------------- 4. resume, twice
 
 print("\n4. resume does no work twice")
+# In its own directory, with no grading at all, so the skip has to come from
+# the stored answers. Resumed only after grading, the graded rows supplied it
+# and the answer-side resume could be deleted with this section still green.
+reset()
+alone = fresh_run(["task-0", "task-1"])
+asyncio.run(stage_attempt(alone, 10**9, concurrency=6, repeats=2))
+first_pass = seen["candidate_calls"]
+reset()
+p_answers_only = asyncio.run(stage_attempt(alone, 10**9, concurrency=6, repeats=2))
+check(first_pass == 4 and seen["candidate_calls"] == 0,
+      f"a stored answer alone stops a candidate being re-run: {first_pass} then {seen['candidate_calls']}")
+check(p_answers_only.skipped == 4, f"all four stored answers skipped: {p_answers_only.skipped}")
 reset()
 p2 = asyncio.run(stage_attempt(after, 10**9, concurrency=6, repeats=2))
 check(seen["candidate_calls"] == 2,

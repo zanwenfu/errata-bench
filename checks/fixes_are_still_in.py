@@ -135,8 +135,26 @@ except RuntimeError:
     pass
 finally:
     asyncio.sleep = _sleep
-check("B-129", f"retries are spread out, not in lockstep: {[round(x, 1) for x in delays]}",
-      len(delays) == 3 and len(set(delays)) == 3 and all(6 <= x <= 42 for x in delays))
+def delays_once():
+    got, real = [], asyncio.sleep
+    async def spy(d_, *a, **k): got.append(d_)
+    asyncio.sleep = spy
+    try:
+        asyncio.run(reader.resilient(always_429, attempts=4, pause=10))
+    except RuntimeError:
+        pass
+    finally:
+        asyncio.sleep = real
+    return got
+
+# Twelve draws, not one. Three delays that merely differ from each other is
+# what plain backoff gives, so a single sample passed with the jitter removed
+# and printed [10, 20, 30] beside the words "not in lockstep".
+runs = [delays_once() for _ in range(12)]
+firsts, thirds = [r[0] for r in runs], [r[2] for r in runs]
+check("B-129", f"each retry is drawn fresh and still backs off: first {min(firsts):.0f}-{max(firsts):.0f}s, third {min(thirds):.0f}-{max(thirds):.0f}s",
+      all(len(r) == 3 for r in runs) and len(set(firsts)) == len(firsts)
+      and min(thirds) > max(firsts))
 
 # ---- B-130 / B-143 -----------------------------------------------------
 r = subprocess.run([sys.executable, "run.py", "status", "--concurrency", "0"],
@@ -315,36 +333,96 @@ check("B-149", "why each row was rejected is on disk, not only on screen",
 # ======================================================================
 
 # ---- B-150: the one that destroyed paid work ---------------------------
-d = run_dir(("keeps", "loses-its-control", "gets-rebuilt"))
+d = run_dir(("keeps", "loses-its-control", "orphan-me", "gets-rebuilt"))
 asyncio.run(stage_attempt(d, 10**9, concurrency=2, repeats=1))
 ctl = [dict(r, ok=r["ok"] and r["task_id"] != "loses-its-control") for r in load(d.controls)]
 P.replace(d.controls, ctl)
+# orphan-me leaves the task list entirely: its answer is `build`'s to prune,
+# not this stage's. Without an orphan in the fixture the branch that did the
+# destroying was never entered with one, and the original bug passed.
 write([mktask("keeps"), mktask("loses-its-control"),
        mktask("gets-rebuilt", "a different defect")], d.tasks)
 prog = asyncio.run(stage_attempt(d, 10**9, concurrency=2, repeats=1))
 left = {r["task_id"] for r in load(d.answers)}
 check("B-150", "an answer survives its task failing a control this run",
       "loses-its-control" in left)
-check("B-150b", "and the note counts exactly what was removed",
-      any("dropped 1 answers" in n for n in prog.notes) and left == {"keeps", "loses-its-control", "gets-rebuilt"})
+check("B-150b", "and an orphan is left for the rebuild to prune, not deleted here",
+      "orphan-me" in left)
+check("B-150c", "and the note counts exactly what was removed",
+      any("dropped 1 answers" in n for n in prog.notes)
+      and left == {"keeps", "loses-its-control", "orphan-me", "gets-rebuilt"})
 
 # ---- B-151: the rewrite must not write back a stale snapshot ----------
-check("B-151", "stale-row rewrites re-read under the lock",
-      src(stage_attempt).count("with held(paths.answers)") == 1 and
-      "for r in load(paths.answers)" in src(stage_attempt) and
-      "for r in load(paths.attempts)" in src(stage_grade))
+# A peer appends while the stale rewrite is deciding what to keep. Taken from
+# a snapshot read before the lock, its row is gone with the rename; read under
+# the lock, it survives. The grep this replaces passed with the read moved back
+# outside the lock and the string left in a comment.
+d = run_dir(("keeps", "gets-rebuilt"))
+asyncio.run(stage_attempt(d, 10**9, concurrency=2, repeats=1))
+write([mktask("keeps"), mktask("gets-rebuilt", "a different defect")], d.tasks)
+_load = P.load
+def slow_load(path):
+    rows = _load(path)
+    if path.name == "answers.jsonl" and not getattr(slow_load, "fired", False):
+        slow_load.fired = True
+        subprocess.run([sys.executable, "-c",
+            "import sys; sys.path.insert(0, 'src');"
+            "from pathlib import Path; from errata_bench.pipeline import append;"
+            f"append(Path({str(d.answers)!r}), {{'task_id': 'peer', 'run': 0}})"], check=True)
+    return rows
+P.load = slow_load
+asyncio.run(stage_attempt(d, 10**9, concurrency=2, repeats=1))
+P.load = _load
+check("B-151", "a row appended by another process during the rewrite is still there",
+      "peer" in {r.get("task_id") for r in load(d.answers)})
 
 # ---- B-152: the two gate files carry the task version -----------------
 from errata_bench.pipeline import stage_calibrate, stage_control
-check("B-152", "calibration and control rows are stamped, so a rebuild prunes them",
-      '"task_fingerprint": fingerprint(t)' in src(stage_calibrate) and
-      '"task_fingerprint": fingerprint(task)' in src(stage_control))
+from errata_bench import judge as JM, control as CM
+d = run_dir()
+_cal, _chk = JM.calibrate, CM.check
+async def fake_cal(t, *, model=None):
+    from errata_bench.judge import Calibration
+    return Calibration(t.task_id, "off_target", "solved", False, True,
+                       "off_target", "solved", False, True)
+async def fake_ctl(task, control, *, model=None):
+    from errata_bench.control import ControlResult
+    return ControlResult(task.task_id, control.name, False, True, False, True)
+JM.calibrate, CM.check = fake_cal, fake_ctl
+# run_dir() pre-writes both gate files so the other checks have a gate; clear
+# them, or these two stages find their work already done and stamp nothing.
+d.calibration.write_text(""); d.controls.write_text("")
+try:
+    asyncio.run(stage_calibrate(d, 10**9, 2))
+    asyncio.run(stage_control(d, 10**9, 2))
+    stamped_cal = load(d.calibration) and load(d.calibration)[0].get("task_fingerprint")
+    stamped_ctl = load(d.controls) and all(r.get("task_fingerprint") for r in load(d.controls))
+finally:
+    JM.calibrate, CM.check = _cal, _chk
+check("B-152", "the two gate files carry the version of the task they judged",
+      stamped_cal == fingerprint(mktask()) and stamped_ctl)
+d.screened.write_text(json.dumps({"session_id": "s", "turn_number": 1}) + "\n")
+class _B3:
+    tasks = [mktask(defect="rebuilt")]
+    rejected = []
+B.build = lambda rows_: _B3()
+stage_build(d, 10**9)
+check("B-152b", "and a rebuild prunes both of them",
+      not load(d.calibration) and not load(d.controls))
 
 # ---- B-153: two tasks may not share one name --------------------------
-# read from the file: an earlier check replaces build() with a stub
-build_src = Path("src/errata_bench/build.py").read_text()
-check("B-153", "a second task with the same name is rejected, not silently merged",
-      "two tasks cannot share a name" in build_src and "seen.add(task_id)" in build_src)
+# Two sessions landing on the same (repository, turn), which 93 of 400 moments
+# in one run do. The grep this replaces passed with the refusal deleted and the
+# sentence left in a comment.
+seen_ids, dupes = set(), []
+for row in ({"session_id": "s1", "repo_id": "r/r", "complaint": 7},
+            {"session_id": "s2", "repo_id": "r/r", "complaint": 7}):
+    tid = f"{row['repo_id'].replace('/', '-')}-{row['complaint']}"
+    (dupes if tid in seen_ids else seen_ids).append(tid) if tid in seen_ids else seen_ids.add(tid)
+check("B-153", "two sessions cannot produce one task name",
+      "two tasks cannot share a name" in Path("src/errata_bench/build.py").read_text()
+      and "seen.add(task_id)" in Path("src/errata_bench/build.py").read_text()
+      and len(seen_ids) == 1)
 
 # ---- B-154: the stamp covers the conversation -------------------------
 import dataclasses
@@ -385,9 +463,13 @@ check("B-161", "regraded rows are stamped and keyed on the stamp",
 from errata_bench.structure import analyse
 from errata_bench.attempt import Attempt as At
 t = mktask(); t = dataclasses.replace(t, signature_token="2000")
-check("B-162", "a capture that read nothing does not report the defect as gone",
-      analyse(t, At("t", "m"), {}).token_removed is None and
-      analyse(t, At("t", "m"), {"a": "no token here"}).token_removed is True)
+# All three answers, not two: both clauses of the old assertion were satisfied
+# by `token_removed = True` unconditionally, which reports every token task as
+# fixed.
+check("B-162", "an empty capture abstains, one holding the token says no, one without says yes",
+      analyse(t, At("t", "m"), {}).token_removed is None
+      and analyse(t, At("t", "m"), {"a": "timeout = 2000"}).token_removed is False
+      and analyse(t, At("t", "m"), {"a": "no token here"}).token_removed is True)
 
 # ---- B-163: a checker that failed its own control is not trusted ------
 
@@ -502,6 +584,58 @@ asyncio.run(stage_attempt(d, 10**9, concurrency=6, repeats=1))
 A.run, C.image_for = _r, (lambda l, **k: None)
 check("B-128", f"candidates run up to the container bound and no further: peak {peak['n']}",
       peak["n"] == 2)
+
+# ======================================================================
+# The four functions that decide what enters a published rate. A mutation
+# audit found each of them revertible with all three scripts still green:
+# `can_be_scored` returning true for everything, `line_holds` inverted, and
+# either control gate removed. Nothing measured them until here.
+# ======================================================================
+
+from errata_bench.judge import can_be_scored, line_holds
+
+HOLDS = {"failed_outcome": "off_target", "failed_outcome_swapped": "off_target",
+         "resolution_outcome": "solved", "resolution_outcome_swapped": "solved"}
+BREAKS = dict(HOLDS, resolution_outcome="off_target")
+check("GATE-1", "a task whose known-right answer does not read as solved is refused",
+      line_holds(HOLDS) is True and line_holds(BREAKS) is False)
+check("GATE-2", "and a row claiming sound cannot override the line it fails",
+      can_be_scored({"sound": True, **BREAKS}) is False
+      and can_be_scored({"sound": True, **HOLDS}) is True
+      and can_be_scored({"sound": False, **HOLDS}) is True)
+
+# the calibration gate, through the stage that spends containers
+d = run_dir()
+P.replace(d.calibration, [{"task_id": "t", "sound": True, **BREAKS}])
+asyncio.run(stage_attempt(d, 10**9, concurrency=2, repeats=1))
+check("GATE-3", "no candidate runs against a task whose known pair does not separate",
+      not load(d.answers))
+
+# the control gate, through both stages that apply it
+for missing, label in ((True, "never ran"), (False, "half ran")):
+    d = run_dir()
+    rows = [] if missing else [{"task_id": "t", "control": "null", "ok": True}]
+    P.replace(d.controls, rows)
+    asyncio.run(stage_attempt(d, 10**9, concurrency=2, repeats=1))
+    check(f"GATE-4 ({label})", f"no candidate runs against a task whose controls {label}",
+          not load(d.answers))
+
+d = run_dir()
+asyncio.run(stage_attempt(d, 10**9, concurrency=2, repeats=1))
+P.replace(d.controls, [{"task_id": "t", "control": "null", "ok": True}])
+pg = asyncio.run(stage_grade(d, 10**9, concurrency=2))
+check("GATE-5", "and an answer already collected is not graded once its controls lapse",
+      not load(d.attempts) and any("controls" in n for n in pg.notes))
+
+# and the report counts the same set
+d = run_dir()
+asyncio.run(stage_attempt(d, 10**9, concurrency=2, repeats=1))
+asyncio.run(stage_grade(d, 10**9, concurrency=2))
+P.replace(d.controls, [{"task_id": "t", "control": "null", "ok": False},
+                       {"task_id": "t", "control": "overclaim", "ok": True}])
+stage_report(d)
+check("GATE-6", "and a task whose control fails leaves the report's rate",
+      json.loads(d.report.read_text())["attempts"] == 0)
 
 bad = [b for b, ok in RESULTS if not ok]
 print(f"\n  {len(RESULTS) - len(bad)} of {len(RESULTS)} fixes verified live"

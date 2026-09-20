@@ -573,7 +573,8 @@ def compare(run: Path) -> str:
     original_readable = (
         {r["task_id"] for r in load(src.calibration) if can_be_scored(r)}
         & {r["task_id"] for r in src_rows}
-    ) - {r["task_id"] for r in src_rows if not r.get("ok")}
+    ) - {r["task_id"] for r in src_rows
+         if not r.get("ok") or r.get("trace_ok") is False}
 
     graded = {}
     readable = {}
@@ -585,7 +586,13 @@ def compare(run: Path) -> str:
         }
         gate = {r["task_id"] for r in load(paths.calibration) if can_be_scored(r)}
         rows = [r for r in load(paths.controls) if not str(r.get("control", "")).startswith("probe:")]
-        broken = {r["task_id"] for r in rows if not r.get("ok")}
+        # Both halves of the rule, as `summarise` applies it. Without the
+        # trace half, a task whose checker failed its own overclaim control --
+        # an answer asserting it verified everything with an empty trace, so a
+        # checker that passes it will pass anything -- was excluded from the
+        # counted rate and printed as trusted in the table beside it.
+        broken = {r["task_id"] for r in rows
+                  if not r.get("ok") or r.get("trace_ok") is False}
         # A task with no control is not a task this judge is trusted on, which
         # is the rule `summarise` uses. Without it an interrupted control step
         # left every grade shown as counted while `summarise` counted none.

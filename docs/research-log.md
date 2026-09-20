@@ -1171,6 +1171,48 @@ separately deleted, one at a time: no traceback in any case. Three processes
 appending to one answers file across six trials: 36 rows written, 36 on disk,
 none lost or torn.
 
+The check scripts were audited the same way a second time, with a hundred
+mutations: each assertion's subject reverted in a worktree, all three scripts
+re-run, and the question asked whether anything noticed. The ten rewritten
+earlier that day all flipped to failing, so those replacements were real. Six
+more did not.
+
+- **B-199 · Two readings of the same rule disagreed about which judge to
+  trust** (fixed · 09-20). `summarise` excludes a task whose trace checker
+  failed its own overclaim control — an answer asserting it verified everything
+  with an empty trace, so a checker that passes it will pass anything — and
+  `compare` did not. The same task was bracketed and excluded in one and
+  printed as trusted in the other, under a comment saying the table uses "the
+  rule `summarise` uses". Found by a fixture written to test the check, not the
+  code.
+- **B-200 · Six more assertions passed with their subject reverted** (fixed ·
+  09-20). The retry-jitter check sampled one draw and asked only that the three
+  delays differ from each other, which plain backoff satisfies: with the jitter
+  removed it printed "not in lockstep: [10, 20, 30]". The answer-deletion check
+  had no orphan in its fixture, so the branch that did the destroying was never
+  entered with one and the original bug passed. Three were still source greps
+  defeated by leaving the literal in a comment. The token check asserted two
+  cases both satisfied by "the token is always gone". Each replacement was
+  confirmed to fail under the exact mutation that defeated its predecessor.
+- **B-201 · Five assertions in the equivalence check passed on zero rows**
+  (fixed · 09-20). Nothing required that any row had been scored, so with both
+  sides empty "every scored row is identical" was true. It now requires six.
+- **B-202 · The resume claim never tested the half it names** (fixed · 09-20).
+  Section 4 resumed after grading, so the skip came entirely from the graded
+  rows: deleting the answer-side resume — the "re-run eighty-one candidates"
+  failure — left it green. It now resumes with no grading in between.
+- **B-203 · A bound compared against the constant it imports** (fixed ·
+  09-20). Raised from 2 MB to 2 TB, `guards_hold` printed "the row holds
+  199,969,924 characters" beside the word ok. The same anti-pattern the first
+  audit was run to remove, reintroduced in the fix for it.
+
+**Twenty regressions that nothing caught.** The audit reverted each and found
+all three scripts still green. Four of them decide what enters a published
+rate: `can_be_scored` returning true for every row, `line_holds` inverted, and
+either control gate removed. Those four now have assertions of their own
+(GATE-1 to GATE-6), each confirmed to fail when its subject is reverted. The
+other sixteen are recorded in G-49.
+
 ### 7.10 Other providers
 
 - **B-91 · Azure was inferred from an environment variable** (fixed · 09-19 ·
@@ -1725,6 +1767,26 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   appended without a lock, and nothing deduplicates `(task, run)`. The report
   states how many rows are duplicates rather than quietly dropping them,
   because a count that repairs itself hides that something ran twice.
+- **G-49 · Sixteen behaviours have no assertion at all.** Found by reverting
+  each and watching all three check scripts stay green: `Score.passed` going
+  back to requiring a verified quote; `structure.checked` no longer counting
+  reading as investigation; `combine` not feeding the trace into
+  `did_the_work`; the give-up path; the `no_context` terminal row; `completed`
+  no longer dropping errored rows, which makes every resume skip its failures
+  for ever; `_succeeded` ignoring an `error:` reason; `key_of` back to the
+  turn-zero bug; `--max-rows` in the attempt stage; `replace` back to one
+  shared temporary name; `unstamped_is_stale` ignored; `seconds` and
+  `graded_seconds` set to constants — the split's own headline claim; the
+  report's ungraded count set to zero; and three of the notes. Each is a fix
+  already made and recorded in this log, and each could be undone without
+  anything noticing.
+- **G-50 · The fakes are unlike the data in three ways that hide code.** Every
+  task in every check has `kind="none"` and no defect signature, so
+  `token_removed` and `touched_defect_file` are always null in a
+  stage-produced reading, `analyse`'s declared-versus-actual branch is dead,
+  and no present or introduced task is exercised end to end. No fixture ever
+  produces an answer with no stored transcript, so the rebuild path in the
+  grading stage — the one that reads the corpus — is never run.
 - **G-42 · R-20's honesty column was measured through a starved renderer.**
   B-177: 41 of the 81 stored attempts had recorded tool output the checker
   never saw, one losing 84,749 characters, and the bias is one-directional
@@ -1974,3 +2036,9 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   findings (B-192 to B-198), the largest being that two processes over one run
   directory do all the work twice rather than colliding — now refused by a
   run-directory lock.
+- **09-20** — the check scripts audited a second time, a hundred mutations.
+  The ten replacements written that morning all held; six other assertions did
+  not, and five more passed on zero rows. One live source bug found by a
+  fixture written to test a check (B-199). Twenty behaviours had no assertion
+  at all; the four that decide a published rate now do. 54 assertions in the
+  bug ledger, 32 in the guards, 41 in the equivalence check.

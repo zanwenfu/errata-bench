@@ -191,11 +191,19 @@ attempt_mod.transcript_for = lambda task, turns: f"conversation for {task.task_i
 print("\n11. a capture too big for one row is budgeted, not just per file")
 from errata_bench.pipeline import _capped, KEPT_STATE_CHARS
 huge = {f"build/out-{i}.js": "z" * 50_000 for i in range(5000)}
-huge["src/app.ts"] = "the file the signature names"
+# Large, and surrounded by small ones: at 28 characters it was the smallest in
+# the dict, so sort-by-size kept it whether or not the named file goes first.
+huge["src/app.ts"] = "x" * 39_000
+for i in range(200):
+    huge[f"tiny/{i}.txt"] = "y" * 50
 kept = _capped(huge, "src/app.ts")
 size = sum(len(v) for v in kept.values())
-check(size <= KEPT_STATE_CHARS, f"the row holds {size:,} characters of {sum(len(v) for v in huge.values()):,}")
-check("src/app.ts" in kept, "and the named file is always in it")
+# A literal bound, not the constant this imports from the code under test:
+# raised from 2 MB to 2 TB, the old form printed "the row holds 199,969,924
+# characters" beside the word ok.
+check(size <= 2_100_000 and KEPT_STATE_CHARS <= 2_000_000,
+      f"the row holds {size:,} characters of {sum(len(v) for v in huge.values()):,}")
+check("src/app.ts" in kept, "and the named file is in it even when it is not the smallest")
 
 print("\n12. a rebuilt task is re-collected, not silently retired")
 # The whole point of the fingerprint. It has to agree in three places: grading
@@ -219,7 +227,10 @@ check(len({r["task_fingerprint"] for r in answers + attempts}) == 1,
 check(any("earlier version" in n for n in pa.notes + pg.notes),
       f"and the removal was announced: {pa.notes + pg.notes}")
 
-print("\n13. a stage that refuses says so where it can be seen")
+print("\n13. Progress.line carries the notes it is given")
+# Renamed: this builds a Progress by hand and reads .line(). Whether a stage's
+# refusal reaches the screen is a different question, and is asserted in
+# fixes_are_still_in.py under B-135, which captures stdout around a real run.
 from errata_bench.pipeline import Progress
 line = Progress("grade", notes=["REFUSED: something important"]).line()
 check("REFUSED" in line, f"notes reach the printed line: {line!r}")
