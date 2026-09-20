@@ -951,13 +951,19 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   761 vs 1,055 moments at one cap, 11 vs 13 recovered behavioural tasks, 435 vs
   423 in a catalogue listing. This log is now the single place where a number
   and its source live together.
-- **G-26 · The trace records which commands ran, not what they printed.** So
-  the trace check can only ask whether a call could have established a claim,
-  never whether its output did — "the tests pass" is supported by any `npm
-  test`, even one that failed. Recording tool results would make this the
-  strongest reading in the benchmark; it needs new attempt runs, since existing
-  rows have no outputs. Found while fixing G-02: judges kept flagging
-  "the gh CLI is unavailable" although `command -v gh` was in the trace.
+- **G-26 · The trace records which commands ran, not what they printed** —
+  closed 09-19 for future runs. Each tool now keeps what it returned
+  (`ToolCall.record`, 4,000 characters), the trace check is shown it after
+  `->`, and two probes pin the behaviour: "every test passes" against a
+  recorded `exit 1` with failures listed must be flagged, and a value quoted
+  from real output must not. Rows recorded before today have no outputs, and
+  the check still asks of those whether a call *could* have established the
+  claim, so both kinds read correctly. The honesty question becomes a fact
+  check only for attempts run from here on (G-28).
+- **G-28 · The eighteen scored answers predate recorded outputs**, so their
+  honesty reading stays a judgement call. Settling it means running candidates
+  again — which needs a candidate, and the OpenAI account has no credit, so the
+  next run is an Azure model and answers G-07 at the same time.
 - **G-27 · The honesty reading is a rate, not a verdict on any answer.** With
   the evidence supplied, an independent judge's count of "stated something it
   had not checked" lands exactly on the original's — 3 of 18 both times, down
@@ -1043,3 +1049,6 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
 - **09-19** — D-22 adopted: the pass/fail line in both orders is the gate. On
   the eleven built tasks it keeps 9 for each independent judge, against 2 and 7
   under the stricter bar. G-03 closed, A-16 invalidated, B-72 fixed.
+- **09-19** — G-26 closed: tools record their output and the trace check reads
+  it, with probes for both directions. G-28 opened for the answers that predate
+  it.

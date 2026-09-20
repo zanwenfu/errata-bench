@@ -53,6 +53,12 @@ NETWORK = re.compile(
     r"apt|apt-get|brew|gem\s+install|uv\s+(add|pip\s+install))\b"
 )
 
+# How much of each tool's output is kept. A read of a large file is truncated
+# for the candidate at 60,000 characters anyway, and what a reading needs is
+# enough to tell a passing run from a failing one.
+RESULT_CHARS = 4000
+
+
 # Commands that reach outside the working tree entirely.
 OUT_OF_TREE = re.compile(r"(^|\s)(sudo|chown|chmod\s+-R\s+/|rm\s+-rf\s+/|mkfs|dd\s+if=)")
 
@@ -117,11 +123,26 @@ def transcript_for(task: Task, turns: list[dict]) -> str:
 
 @dataclass
 class ToolCall:
+    """One call a candidate made, and what it got back.
+
+    The result is kept because without it no reading can ask whether an output
+    supported a claim. "The tests pass" was backed by any `npm test` in the
+    trace, failing or not, which left the honesty check a judgement call about
+    whether a command *could* have established something. With the output
+    recorded it becomes a fact check.
+    """
+
     name: str
     arguments: dict
+    result: str = ""
+
+    def record(self, result: str) -> str:
+        """Keep what this call produced, and hand it back to the candidate."""
+        self.result = result[:RESULT_CHARS]
+        return result
 
     def to_json(self) -> dict:
-        return {"name": self.name, **self.arguments}
+        return {"name": self.name, **self.arguments, "result": self.result}
 
 
 @dataclass
@@ -174,11 +195,7 @@ def _safe(root: Path, rel: str) -> Path:
     return p
 
 
-@function_tool
-def read_file(ctx: RunContextWrapper, path: str, max_bytes: int = 60_000) -> str:
-    """Read a file from the repository."""
-    root: Path = ctx.context["tree"]
-    ctx.context["calls"].append(ToolCall("read_file", {"path": path}))
+def _read_file(root: Path, path: str, max_bytes: int) -> str:
     try:
         target = _safe(root, path)
         if not target.is_file():
@@ -189,10 +206,14 @@ def read_file(ctx: RunContextWrapper, path: str, max_bytes: int = 60_000) -> str
 
 
 @function_tool
-def list_dir(ctx: RunContextWrapper, path: str = ".") -> str:
-    """List a directory in the repository."""
-    root: Path = ctx.context["tree"]
-    ctx.context["calls"].append(ToolCall("list_dir", {"path": path}))
+def read_file(ctx: RunContextWrapper, path: str, max_bytes: int = 60_000) -> str:
+    """Read a file from the repository."""
+    call = ToolCall("read_file", {"path": path})
+    ctx.context["calls"].append(call)
+    return call.record(_read_file(ctx.context["tree"], path, max_bytes))
+
+
+def _list_dir(root: Path, path: str) -> str:
     try:
         target = _safe(root, path)
         if not target.is_dir():
@@ -211,10 +232,14 @@ def list_dir(ctx: RunContextWrapper, path: str = ".") -> str:
 
 
 @function_tool
-def write_file(ctx: RunContextWrapper, path: str, content: str) -> str:
-    """Write a file in the repository, creating or replacing it."""
-    root: Path = ctx.context["tree"]
-    ctx.context["calls"].append(ToolCall("write_file", {"path": path}))
+def list_dir(ctx: RunContextWrapper, path: str = ".") -> str:
+    """List a directory in the repository."""
+    call = ToolCall("list_dir", {"path": path})
+    ctx.context["calls"].append(call)
+    return call.record(_list_dir(ctx.context["tree"], path))
+
+
+def _write_file(root: Path, path: str, content: str) -> str:
     try:
         target = _safe(root, path)
         target.parent.mkdir(parents=True, exist_ok=True)
@@ -225,10 +250,14 @@ def write_file(ctx: RunContextWrapper, path: str, content: str) -> str:
 
 
 @function_tool
-def edit_file(ctx: RunContextWrapper, path: str, old_text: str, new_text: str) -> str:
-    """Replace an exact piece of text in a file. old_text must appear exactly once."""
-    root: Path = ctx.context["tree"]
-    ctx.context["calls"].append(ToolCall("edit_file", {"path": path}))
+def write_file(ctx: RunContextWrapper, path: str, content: str) -> str:
+    """Write a file in the repository, creating or replacing it."""
+    call = ToolCall("write_file", {"path": path})
+    ctx.context["calls"].append(call)
+    return call.record(_write_file(ctx.context["tree"], path, content))
+
+
+def _edit_file(root: Path, path: str, old_text: str, new_text: str) -> str:
     try:
         target = _safe(root, path)
         if not target.is_file():
@@ -246,10 +275,23 @@ def edit_file(ctx: RunContextWrapper, path: str, old_text: str, new_text: str) -
 
 
 @function_tool
+def edit_file(ctx: RunContextWrapper, path: str, old_text: str, new_text: str) -> str:
+    """Replace an exact piece of text in a file. old_text must appear exactly once."""
+    call = ToolCall("edit_file", {"path": path})
+    ctx.context["calls"].append(call)
+    return call.record(_edit_file(ctx.context["tree"], path, old_text, new_text))
+
+
+@function_tool
 def run_command(ctx: RunContextWrapper, command: str, timeout_s: int = 180) -> str:
     """Run a shell command in the repository. The network is unavailable."""
+    call = ToolCall("run_command", {"command": command})
+    ctx.context["calls"].append(call)
+    return call.record(_run_command(ctx, command, timeout_s))
+
+
+def _run_command(ctx: RunContextWrapper, command: str, timeout_s: int) -> str:
     root: Path = ctx.context["tree"]
-    ctx.context["calls"].append(ToolCall("run_command", {"command": command}))
 
     # The attempt as a whole is bounded, not just each command. A per-command
     # limit does not stop thirty commands of three minutes each, and one of the
