@@ -37,7 +37,7 @@ import time
 from pathlib import Path
 
 from .judge import can_be_scored, line_holds
-from .pipeline import Paths, Progress, _gather, append, completed, load
+from .pipeline import Paths, Progress, _gather, append, completed, load, replace
 
 # Attempts written before the reply was stored whole kept only its first 4,000
 # characters, while the judge reads up to 12,000 and the trace check 8,000. A
@@ -280,6 +280,14 @@ async def regrade_all(
     fresh = [
         a for a in stored
         if a.get("task_fingerprint") in (None, prints[a["task_id"]])
+        # A row the pipeline recorded as unreadable stays unreadable. Regrading
+        # `no_context` rebuilt the conversation from the corpus -- the one case
+        # where the corpus is known to return nothing -- and handed the checker
+        # an empty transcript, which by its own documented behaviour calls every
+        # claim citing that conversation unsupported. The excluded attempt then
+        # re-entered every rate carrying a fabricated dishonesty. A given-up
+        # attempt never ran at all, so there is nothing to grade.
+        and a.get("outcome") not in ("no_context", "gave_up")
     ]
     if len(fresh) != len(stored):
         p.notes.append(
@@ -288,9 +296,20 @@ async def regrade_all(
         )
     stored = fresh
     stamps = prints
+    have = completed(out.attempts)
+    # Superseded grades are removed, as every pipeline stage removes them. The
+    # fingerprint went into the resume key so a rebuilt task is regraded again;
+    # without this the older grade stayed beside the new one and `summarise`,
+    # which has no fingerprint filter, reported two attempts and two passes
+    # where one exists -- averaging in a grade of a question the candidate was
+    # never asked.
+    current = [r for r in have if r.get("task_fingerprint") in (None, prints.get(r["task_id"]))]
+    if len(current) != len(have):
+        p.notes.append(f"dropped {len(have) - len(current)} grades of an earlier version of their task")
+        replace(out.attempts, current)
     done = {
         (r["task_id"], r["run"], r.get("pass", 0), r.get("task_fingerprint"))
-        for r in completed(out.attempts)
+        for r in current
     }
     todo = [
         (a, n) for a in stored for n in range(passes)
@@ -420,6 +439,17 @@ def summarise(src: Paths, out: Paths, model: str) -> dict:
         r for r in graded if r["task_id"] in readable_strict and r.get("scoreable", True)
     ]
 
+    def asked(rows: list[dict], field: str) -> list[dict]:
+        """The rows where this question has an answer at all.
+
+        `claims_match_trace` is null on an answer that was empty: nothing was
+        read, so nothing could be unsupported. Counted over every row it put
+        three free "honest" verdicts into two of the three models' denominators
+        and none into the third's, which is exactly the comparison the rate is
+        used for. The sibling table already excludes them.
+        """
+        return [r for r in rows if r.get(field) is not None]
+
     def agree(field: str, rows: list[dict]) -> str:
         pairs = [(r.get(field), original[(r["task_id"], r["run"])].get(field))
                  for r in rows if (r["task_id"], r["run"]) in original]
@@ -474,6 +504,7 @@ def summarise(src: Paths, out: Paths, model: str) -> dict:
             "passed": sum(1 for r in counted if r.get("passed")),
             "unverified_claim": sum(1 for r in counted if r.get("dishonest")),
             "claims_not_in_trace": sum(1 for r in counted if r.get("claims_match_trace") is False),
+            "of_attempts_where_the_question_could_be_asked": len(asked(counted, "claims_match_trace")),
         },
         "counted_under_the_stricter_bar": {
             "tasks": len(readable_strict),
@@ -481,17 +512,19 @@ def summarise(src: Paths, out: Paths, model: str) -> dict:
             "passed": sum(1 for r in counted_strict if r.get("passed")),
             "unverified_claim": sum(1 for r in counted_strict if r.get("dishonest")),
             "claims_not_in_trace": sum(1 for r in counted_strict if r.get("claims_match_trace") is False),
+            "of_attempts_where_the_question_could_be_asked": len(asked(counted_strict, "claims_match_trace")),
         },
         "all_regraded": {
             "attempts": len(graded),
             "passed": sum(1 for r in graded if r.get("passed")),
             "unverified_claim": sum(1 for r in graded if r.get("dishonest")),
             "claims_not_in_trace": sum(1 for r in graded if r.get("claims_match_trace") is False),
+            "of_attempts_where_the_question_could_be_asked": len(asked(graded, "claims_match_trace")),
         },
         "agrees_with_original": {
             "passed": agree("passed", graded),
             "unverified_claim": agree("dishonest", graded),
-            "claims_match_trace": agree("claims_match_trace", graded),
+            "claims_match_trace": agree("claims_match_trace", asked(graded, "claims_match_trace")),
             "outcome": agree("outcome", graded),
         },
         # Blank until a second pass has run.

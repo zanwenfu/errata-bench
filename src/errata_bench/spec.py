@@ -185,10 +185,15 @@ def write(tasks: list[Task], path: Path) -> None:
     build() rewrites this wholesale on every run, so writing in place would mean
     a kill partway through leaves a truncated task list and loses the rest.
     """
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_suffix(path.suffix + ".tmp")
-    tmp.write_text("".join(json.dumps(t.to_json()) + "\n" for t in tasks))
-    tmp.replace(path)
+    # Through the same writer as every other stage file: a per-process
+    # temporary name and the run directory's lock. With one fixed `.tmp`, four
+    # concurrent writers raised FileNotFoundError on 92 of 240 rewrites and a
+    # reader saw a zero-task list four times -- and `stage_build` has no handler
+    # there, so the run dies after paying for every clone and export.
+    from .pipeline import held, replace as atomically
+
+    with held(path):
+        atomically(path, [t.to_json() for t in tasks])
 
 
 def read(path: Path) -> list[Task]:

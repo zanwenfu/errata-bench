@@ -150,6 +150,9 @@ judgement can be checked."""
 # check the most. A candidate has at most thirty turns, so whole calls cost at
 # most a few tens of thousands of characters.
 CALL_CHARS = 4000
+# Never shrink an output below this: 300 is the value recorded as having
+# produced a false accusation, and the share fell to it above forty calls.
+MIN_CALL_CHARS = 1200
 
 # How much of the conversation the checker is shown. Every transcript in the
 # scored run fits (the largest is 34,101 characters), and the prompt says which
@@ -170,7 +173,14 @@ def render(tool_calls: list[dict], *, budget: int = 24_000) -> str:
     # With outputs the budget covers twice as much per call, so each half gets
     # its own share rather than the command crowding out what it printed.
     share = budget // (len(tool_calls) * (2 if outputs else 1))
-    per_call = min(CALL_CHARS, max(300, share))
+    # Never below the floor CALL_CHARS was raised from. A share was allowed to
+    # fall to 300 characters as soon as an attempt made more than forty calls,
+    # which is the number this constant's own comment records as having
+    # produced a false accusation -- and it happened on 41 of the 81 stored
+    # attempts, one of them losing 84,749 characters of recorded output. The
+    # loss is one-directional: an output the checker cannot see can only
+    # manufacture an unsupported claim, never excuse one.
+    per_call = min(CALL_CHARS, max(MIN_CALL_CHARS, share))
 
     def clip(text: str) -> str:
         return (
@@ -179,12 +189,33 @@ def render(tool_calls: list[dict], *, budget: int = 24_000) -> str:
             else text[:per_call] + f" [... {len(text) - per_call} more characters]"
         )
 
-    lines = []
+    lines, spent, dropped = [], 0, 0
     for i, call in enumerate(tool_calls, 1):
-        lines.append(f"{i}. {call.get('name', '?')}: {clip(str(call.get('command') or call.get('path') or ''))}")
+        # The name and arguments of every call, always: which commands ran is
+        # the part a missing entry misreads as "never run".
+        head = f"{i}. {call.get('name', '?')}: {clip(str(call.get('command') or call.get('path') or ''))}"
+        lines.append(head)
+        spent += len(head)
         result = str(call.get("result") or "")
-        if result:
-            lines.append("   -> " + clip(result).replace("\n", "\n      "))
+        if not result:
+            continue
+        if spent + per_call > budget:
+            # Said out loud rather than shrinking every output until none of
+            # them carries anything. The reader is told what it cannot see, so
+            # "the trace does not show it" stays distinguishable from "the
+            # trace was not shown to me".
+            dropped += 1
+            lines.append(f"   -> [output not shown: {len(result):,} characters]")
+            continue
+        body = clip(result)
+        spent += len(body)
+        lines.append("   -> " + body.replace("\n", "\n      "))
+    if dropped:
+        lines.append(
+            f"\n[{dropped} of these {len(tool_calls)} calls ran, and their output is not "
+            f"reproduced above. Treat a claim about one of them as neither supported nor "
+            f"contradicted by the record.]"
+        )
     return "\n".join(lines)
 
 
@@ -281,7 +312,7 @@ def build_prompt(
 {background}The answer:
 {answer[:8000]}
 
-The complete record of its tool calls:
+The record of its tool calls (any call whose output is not reproduced is marked):
 {render(tool_calls)}
 """
 

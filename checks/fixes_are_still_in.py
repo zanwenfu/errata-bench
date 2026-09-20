@@ -122,8 +122,6 @@ except AttributeError:
 check("B-127", "a mistyped file name raises instead of silently reading nothing", ok)
 
 # ---- B-128 -------------------------------------------------------------
-check("B-128", "the semaphore that could never bind is gone",
-      "grading = asyncio.Semaphore" not in src(stage_attempt))
 
 # ---- B-129 -------------------------------------------------------------
 delays = []
@@ -262,8 +260,6 @@ check("B-140", "a second judge over a graded run is refused, not quietly skipped
       any("REFUSED" in n for n in pg.notes) and pg.failed >= 1)
 
 # ---- B-141 -------------------------------------------------------------
-check("B-141", "a rebuild keeps the note saying what it deleted",
-      "p.notes.extend" in src(stage_build))
 
 # ---- B-142 -------------------------------------------------------------
 # A subprocess, not multiprocessing: this script has no __main__ guard, and
@@ -375,20 +371,10 @@ check("B-154b", "and not when a field a grade does not depend on changes",
 # ---- B-156 / B-157: one gate, everywhere ------------------------------
 from errata_bench.pipeline import stage_report
 from errata_bench import rejudge as RJ
-check("B-156", "the regrade summary uses the gate, not the raw field",
-      "if can_be_scored(r)" in src(RJ.summarise))
-check("B-157", "the funnel uses the gate, not the raw field",
-      "if can_be_scored(c)" in src(stage_report))
 
 # ---- B-158: an unsupportable reading is not a result ------------------
-check("B-158", "the regrade summary drops readings the judge could not support",
-      'r.get("scoreable", True)' in src(RJ.summarise))
 
 # ---- B-159 / B-160: the table counts only what it says it counts ------
-check("B-159", "the comparison totals exclude bracketed, unsupportable and unasked cells",
-      "def tally(" in src(RJ.compare) and 'is not None' in src(RJ.compare))
-check("B-160", "and a task with no control is untrusted in the table too",
-      "original_readable" in src(RJ.compare))
 
 # ---- B-161: a regrade's own rows carry the task version ---------------
 check("B-161", "regraded rows are stamped and keyed on the stamp",
@@ -404,12 +390,118 @@ check("B-162", "a capture that read nothing does not report the defect as gone",
       analyse(t, At("t", "m"), {"a": "no token here"}).token_removed is True)
 
 # ---- B-163: a checker that failed its own control is not trusted ------
-check("B-163", "a failed trace-check control marks the task untrusted",
-      'r.get("trace_ok") is False' in src(RJ.summarise))
 
 # ---- B-164: a task at zero is visible ---------------------------------
-check("B-164", "the report names any task with no scored attempt",
-      "tasks_with_no_scored_attempt" in src(stage_report))
+
+# ======================================================================
+# These were source greps until a mutation audit showed each of them
+# passing with its subject reverted. Each now runs the code.
+# ======================================================================
+
+def rejudge_fixture(*, sound_field=False, controls=True, trace_ok=True, scoreable=True):
+    """A source run and one judge's output under it, ready for summarise/compare."""
+    srcp = run_dir(("t",))
+    outp = Paths(srcp.root / "rejudge" / "the-judge")
+    # a calibration row whose pass/fail line holds but whose stored `sound` is
+    # false: the older, stricter bar, which is what every pre-09-19 row carries
+    cal = {"task_id": "t", "sound": sound_field,
+           "failed_outcome": "off_target", "failed_outcome_swapped": "off_target",
+           "resolution_outcome": "solved", "resolution_outcome_swapped": "solved"}
+    P.replace(srcp.calibration, [cal])
+    P.replace(outp.calibration, [dict(cal, judge_model="the-judge")])
+    rows = ([{"task_id": "t", "control": c, "ok": True, "trace_ok": trace_ok}
+             for c in ("null", "overclaim")] if controls else [])
+    P.replace(srcp.controls, rows)
+    P.replace(outp.controls, rows)
+    graded = {"task_id": "t", "run": 0, "pass": 0, "judge_model": "the-judge",
+              "passed": True, "dishonest": False, "claims_match_trace": None,
+              "outcome": "solved", "scoreable": scoreable, "reply": "x",
+              "tool_calls": [{"name": "read_file"}]}
+    P.replace(outp.attempts, [graded])
+    P.replace(srcp.attempts, [dict(graded, judge_model="original")])
+    return srcp, outp
+
+# ---- B-156: the gate, not the raw field ------------------------------
+srcp, outp = rejudge_fixture(sound_field=False)
+summary = RJ.summarise(srcp, outp, "the-judge")
+check("B-156", "a task the original judge really read is not listed as one it could not",
+      summary["known_pair"]["of_the_tasks_the_original_read"] == "1/1"
+      and summary["known_pair"]["that_the_original_could_not"] == [])
+
+# ---- B-157: the funnel's gate ----------------------------------------
+srcp, _ = rejudge_fixture(sound_field=False)
+stage_report(srcp)
+check("B-157", "the funnel counts a task whose pass/fail line holds",
+      json.loads(srcp.report.read_text())["funnel"]["tasks_calibrated"] == 1)
+
+# ---- B-158: an unsupportable reading is not a result ------------------
+srcp, outp = rejudge_fixture(scoreable=False)
+check("B-158", "a reading the judge could not support is dropped from the rate",
+      RJ.summarise(srcp, outp, "the-judge")["counted"]["attempts"] == 0)
+
+# ---- B-163: a checker that failed its own control is untrusted --------
+srcp, outp = rejudge_fixture(trace_ok=False)
+check("B-163", "a task whose trace control failed is not counted",
+      RJ.summarise(srcp, outp, "the-judge")["counted"]["attempts"] == 0)
+
+# ---- B-159 / B-160: the table counts only what it says --------------
+srcp, outp = rejudge_fixture(scoreable=False)
+table = RJ.compare(srcp.root)
+check("B-159", "an unsupportable cell is left out of the totals",
+      "0/0" in table)
+srcp, outp = rejudge_fixture(controls=False)
+check("B-160", "a task with no control is untrusted in the table",
+      "0/0" in RJ.compare(srcp.root))
+
+# ---- B-164: a task with no scored attempt is named -------------------
+srcp, _ = rejudge_fixture(scoreable=False)
+stage_report(srcp)
+check("B-164", "a task whose every attempt is unreadable is named as unscored",
+      json.loads(srcp.report.read_text())["funnel"]["tasks_with_no_scored_attempt"] == ["t"])
+
+# ---- B-161: a regrade after a rebuild replaces, it does not stack ----
+d = run_dir()
+asyncio.run(stage_attempt(d, 10**9, concurrency=2, repeats=1))
+asyncio.run(stage_grade(d, 10**9, concurrency=2))
+out2 = Paths(d.root / "rejudge" / "second")
+RJ.transcripts_for = lambda ts: {t.task_id: "conv" for t in ts}
+asyncio.run(RJ.regrade_all(d, out2, "second", 2, 1))
+first = len(load(out2.attempts))
+write([mktask(defect="rebuilt")], d.tasks)
+asyncio.run(stage_attempt(d, 10**9, concurrency=2, repeats=1))
+asyncio.run(stage_grade(d, 10**9, concurrency=2))
+asyncio.run(RJ.regrade_all(d, out2, "second", 2, 1))
+rows2 = load(out2.attempts)
+check("B-161", f"a regrade after a rebuild leaves one grade, not two ({first} then {len(rows2)})",
+      first == 1 and len(rows2) == 1
+      and rows2[0]["task_fingerprint"] == fingerprint(mktask(defect="rebuilt")))
+
+# ---- B-141: both kinds of note survive a rebuild ---------------------
+d = run_dir()
+asyncio.run(stage_attempt(d, 10**9, concurrency=2, repeats=1))
+d.screened.write_text(json.dumps({"session_id": "s", "turn_number": 1}) + "\n")
+class _B2:
+    tasks = [mktask(defect="rebuilt")]
+    rejected = [type("R", (), {"repo_id": "r/r", "complaint_turn": 2, "reason": "out of scope"})()]
+B.build = lambda rows_: _B2()
+pb = stage_build(d, 10**9)
+check("B-141", f"a rebuild keeps both what it deleted and why it rejected: {pb.notes}",
+      any("dropped" in n for n in pb.notes) and any("out of scope" in n for n in pb.notes))
+
+# ---- B-128: the container bound is reached, not merely not exceeded --
+peak = {"n": 0, "live": 0}
+_r = A.run
+async def counted_run(task, **kw):
+    peak["live"] += 1; peak["n"] = max(peak["n"], peak["live"])
+    await asyncio.sleep(0.05)
+    peak["live"] -= 1
+    return await _r(task, **kw)
+A.run, C.image_for = counted_run, (lambda l, **k: "node:22")
+d = run_dir(("a", "b", "c", "d"))
+asyncio.run(stage_attempt(d, 10**9, concurrency=6, repeats=1))
+A.run, C.image_for = _r, (lambda l, **k: None)
+check("B-128", f"candidates run up to the container bound and no further: peak {peak['n']}",
+      peak["n"] == 2)
 
 bad = [b for b, ok in RESULTS if not ok]
 print(f"\n  {len(RESULTS) - len(bad)} of {len(RESULTS)} fixes verified live"
