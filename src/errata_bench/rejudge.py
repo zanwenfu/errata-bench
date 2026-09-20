@@ -267,6 +267,26 @@ async def regrade_all(
         a for a in load(src.attempts)
         if not a.get("error") and a.get("task_id") in tasks and "tool_calls" in a
     ]
+    # The fourth place the task fingerprint has to agree. An answer written
+    # before its task was rebuilt describes a different question, and grading it
+    # against the current reference answers scores it on a problem its candidate
+    # never saw. The pipeline stages check this; this tool did not, so a regrade
+    # was the one path by which a stale answer could still reach a judge. Rows
+    # carrying no fingerprint predate the field and are read as current, which
+    # is every answer collected before 09-20.
+    from .spec import fingerprint
+
+    prints = {tid: fingerprint(t) for tid, t in tasks.items()}
+    fresh = [
+        a for a in stored
+        if a.get("task_fingerprint") in (None, prints[a["task_id"]])
+    ]
+    if len(fresh) != len(stored):
+        p.notes.append(
+            f"{len(stored) - len(fresh)} stored answers describe an earlier version "
+            f"of their task and were not regraded"
+        )
+    stored = fresh
     done = {(r["task_id"], r["run"], r.get("pass", 0)) for r in completed(out.attempts)}
     todo = [
         (a, n) for a in stored for n in range(passes)

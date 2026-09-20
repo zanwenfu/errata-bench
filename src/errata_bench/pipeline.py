@@ -83,6 +83,7 @@ FILES = (
     "controls",
     "answers",
     "attempts",
+    "rejections",
 )
 
 
@@ -660,6 +661,17 @@ def stage_build(paths: Paths, limit: int) -> Progress:
         if len(kept) != len(rows):
             replace(downstream, kept)
             p.notes.append(f"dropped {len(rows) - len(kept)} stale rows from {downstream.name}")
+    # Kept on disk, not only printed. Forty of fifty-one located defects are
+    # rejected here, and which gate each one died at is the question anyone
+    # asking "where do more tasks come from?" needs answered -- but the reasons
+    # lived in this stage's stdout and were gone with the terminal scrollback,
+    # so answering it meant replaying every gate by hand against the screened
+    # rows. The file is rewritten with the tasks, since both describe the same
+    # build.
+    replace(paths.rejections, [
+        {"repo_id": r.repo_id, "complaint": r.complaint_turn, "reason": r.reason}
+        for r in result.rejected
+    ])
     p.produced = len(result.tasks)
     p.failed = len(result.rejected)
     # extend, not assign: the loop above records what it deleted, and assigning

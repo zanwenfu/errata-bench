@@ -783,6 +783,21 @@ read in none.
   it worked because `json.dumps` escapes non-ASCII, making the cookie a byte
   offset. Done in bytes now.
 
+- **B-148 · The regrade tool was the fourth place the fingerprint had to
+  agree, and it did not check** (fixed · 09-20). B-136 made the attempt stage,
+  the grading stage and the rebuild agree about which version of a task an
+  answer describes. `rejudge` reads the same stored answers and was left out,
+  so a regrade was the one remaining path by which an answer written before its
+  task was rebuilt could still reach a judge — and be scored against reference
+  answers its candidate never saw.
+- **B-149 · Forty rejections a build, kept only in the terminal** (fixed ·
+  09-20). `stage_build` rejects four fifths of what it is given, and which gate
+  each row died at is exactly the question "where would more tasks come from?"
+  needs answered. Those reasons went to `Progress.notes` and nowhere else, so
+  answering it meant replaying every gate by hand against the screened rows —
+  which is what measuring X-16 actually cost. They are now written to
+  `rejections.jsonl` beside the tasks.
+
 - **B-146 · The regrade tool asked a judge to read an answer that was not
   there** (fixed · 09-20). Six of the eighty-one stored answers are empty: the
   candidate used every turn and never reported. The pipeline has always

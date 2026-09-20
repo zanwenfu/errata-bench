@@ -182,6 +182,7 @@ def show_status(paths: Paths) -> None:
         ("signatures", paths.signatures),
         ("screened", paths.screened),
         ("tasks", paths.tasks),
+        ("rejections", paths.rejections),
         ("calibration", paths.calibration),
         ("controls", paths.controls),
         ("answers", paths.answers),
