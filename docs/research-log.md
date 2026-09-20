@@ -305,6 +305,16 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   previous revision and the current one over the same fakes and comparing every
   field, and one for what the stages refuse to do. No network, no containers,
   no model calls — the whole set runs in seconds, which is the point.
+- **D-25 · A task's admission is measured, not assumed.** Whether the judge
+  can tell the developer's rejected answer from the accepted one decides
+  whether a task counts at all, and it carries three attempts with it. It was
+  one yes/no decision taken once per run, and it is not reproducible: the same
+  judge, the same nine pairs, six occasions, seven tasks every time and nine at
+  least once (G-51). So it is asked repeatedly — `run.py gate --passes N` — and
+  a task counts only where the answer held every time. A task that wobbles is
+  not a task this judge can score; admitting it on whichever answer came up
+  that day puts a coin flip worth three attempts into a published rate. No
+  candidate runs: the known pair is two fixed strings from the transcript.
 - **D-23 · Collecting an answer and reading it are separate stages.** `attempt`
   runs candidates and writes `answers.jsonl`; `grade` reads those three ways
   and writes `attempts.jsonl`, whose shape is unchanged. The reason is that the

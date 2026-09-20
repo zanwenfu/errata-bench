@@ -235,6 +235,48 @@ from errata_bench.pipeline import Progress
 line = Progress("grade", notes=["REFUSED: something important"]).line()
 check("REFUSED" in line, f"notes reach the printed line: {line!r}")
 
+print("\n14. a task whose admission wobbles is not counted as steady")
+# The admission decision -- can this judge tell the developer's rejected answer
+# from the accepted one -- carries three attempts with it, and is not
+# reproducible. Asked repeatedly, a task that does not hold every time is
+# dropped rather than admitted on whichever answer came up that day.
+import errata_bench.judge as _J
+from errata_bench.judge import Calibration
+from errata_bench.stability import measure, stable, observations
+
+answers = {"wobbles": iter([True, False, True, True])}
+async def fake_calibrate(task, *, model=None):
+    ok = True if task.task_id == "steady" else next(answers["wobbles"])
+    return Calibration(task.task_id, "off_target", "solved" if ok else "off_target",
+                       False, ok, "off_target", "solved" if ok else "off_target", False, ok)
+_real_calibrate = _J.calibrate
+_J.calibrate = fake_calibrate
+g = fresh(["steady", "wobbles"])
+asyncio.run(measure(g.root, "the-judge", passes=4, concurrency=2))
+keep, tally = stable(g.root, "the-judge")
+check(keep == {"steady"}, f"only the task that held every time is kept: {sorted(keep)}")
+check(tally["wobbles"] == {"held": 3, "asked": 4},
+      f"and the tally records how often it held: {tally['wobbles']}")
+
+# one reading is not evidence of steadiness
+one = fresh(["once"])
+answers["wobbles"] = iter([True])
+asyncio.run(measure(one.root, "the-judge", passes=1, concurrency=1))
+keep_one, _ = stable(one.root, "the-judge", least=2)
+check(not keep_one, "a task read only once is not called steady")
+
+# a reading taken by a regrade on its way past counts as another draw
+side = Paths(g.root / "rejudge" / "same-judge")
+side.calibration.write_text(json.dumps({
+    "task_id": "steady", "judge_model": "the-judge", "sound": False,
+    "failed_outcome": "solved", "failed_outcome_swapped": "solved",
+    "resolution_outcome": "solved", "resolution_outcome_swapped": "solved"}) + "\n")
+check(len(observations(g.root, "the-judge")["steady"]) == 5,
+      "a regrade's own reading of the same pair is counted as another draw")
+check("steady" not in stable(g.root, "the-judge")[0],
+      "and it can take a task out of the steady set")
+_J.calibrate = _real_calibrate
+
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:
     print("  -", f)

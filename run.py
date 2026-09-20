@@ -187,6 +187,7 @@ def show_status(paths: Paths) -> None:
         ("controls", paths.controls),
         ("answers", paths.answers),
         ("attempts", paths.attempts),
+        ("gate", paths.gate),
     ]
     print(f"  {'file':16s} {'rows':>7s}")
     for name, path in rows:
@@ -205,7 +206,7 @@ def show_status(paths: Paths) -> None:
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("command", choices=["moments", "stages", "status", "rejudge", "judges"])
+    ap.add_argument("command", choices=["moments", "stages", "status", "rejudge", "judges", "gate"])
     ap.add_argument("--run", default="runs/current", help="directory for this run's files")
     ap.add_argument(
         "--limit",
@@ -252,7 +253,8 @@ def main() -> None:
         "--passes",
         type=int,
         default=1,
-        help="how many times to grade each answer (the `rejudge` command only); 2 measures a judge's own noise",
+        help="how many times to grade each answer (`rejudge`), or to read each "
+             "task's known pair (`gate`); more than one is how a judge's own noise is measured",
     )
     ap.add_argument(
         "--judge",
@@ -285,6 +287,22 @@ def main() -> None:
         shown = {k: v for k, v in summary.items() if k != "disagreements"}
         print("\n   ", json.dumps(shown, indent=2).replace("\n", "\n    "))
         print(f"\n  {len(summary['disagreements'])} attempts graded differently from the original")
+        return
+
+    if args.command == "gate":
+        # How reliably this judge can read each task's known pair. A task is
+        # admitted on one yes/no decision that turns out not to be
+        # reproducible, and it carries three attempts with it, so the decision
+        # is taken repeatedly instead of once. No candidate runs.
+        if not args.judge:
+            ap.error("gate needs --judge <model or deployment name>")
+        from errata_bench.stability import measure, report
+
+        prog = asyncio.run(
+            measure(root, args.judge, passes=args.passes, concurrency=args.concurrency)
+        )
+        print(prog.line())
+        print(report(root, args.judge))
         return
 
     if args.command == "judges":

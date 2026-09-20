@@ -84,6 +84,7 @@ FILES = (
     "answers",
     "attempts",
     "rejections",
+    "gate",
 )
 
 
