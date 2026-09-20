@@ -1261,6 +1261,26 @@ other sixteen are recorded in G-49.
   is the case the control exists to catch. Caught because thirteen of thirteen
   failing is not a result, it is a bug.
 
+- **B-205 · Pricing a control by the judge's name for it dropped half the
+  rule** (fixed · 09-20). The looser column needs to know whether a must-pass
+  control failed because the answer did not resolve the defect or because it
+  resolved it while overclaiming, and the quickest way to ask looked like
+  reading `outcome`. But `outcome` is derived from what the judge observed and
+  says nothing about whether the candidate did any work -- so pricing on it
+  silently dropped `did_the_work` and re-admitted `pc035860-agent-tail-68`, the
+  one task the must-pass control had correctly rejected, whose accepted answer
+  was written with no tool calls at all. Its row reads `strict pass=False,
+  hedged pass=False, outcome=solved`, which is the whole bug in one line. The
+  row now stores both verdicts rather than inviting one to be inferred. Caught
+  because a task reappeared in a list that should not have changed.
+- **B-206 · A directory with one calibration reading admitted nothing** (fixed
+  · 09-20). D-25 admits a task on repeated readings, and `stable` correctly
+  refuses to call a task read once steady -- but the caller only fell back to
+  the single reading when there were *no* readings at all. With exactly one,
+  which is the normal state of a run that has never had `run.py gate` run on
+  it, every task silently disappeared from the report. Found by a fixture
+  written to test B-205, not by the code under test.
+
 ### 7.10 Other providers
 
 - **B-91 · Azure was inferred from an environment variable** (fixed · 09-19 ·

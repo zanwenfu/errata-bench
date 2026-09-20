@@ -340,6 +340,40 @@ check(line_holds({"failed_outcome": "false_assurance", "failed_outcome_swapped":
                   "resolution_outcome_swapped": "solved"}) is False,
       "a task whose accepted answer only reads as hedged does not hold the line")
 
+print("\n17. the looser standard still requires the work to have been done")
+# A control row carries three things: the judge's name for what it saw, whether
+# it passed under the strict rule, and whether it would pass if a hedge still
+# counted. Priced from the name alone, the looser column silently dropped the
+# requirement that the candidate did any work -- and let back in the one task
+# whose accepted answer was written with no tool calls at all, which is the
+# task the must-pass control exists to reject.
+from errata_bench.rejudge import admitted, judge_paths
+from errata_bench.judge import PASSING, PASSING_WITH_HEDGE
+from errata_bench.pipeline import Paths as _P
+
+g = fresh(["did-the-work", "did-nothing"])
+out = _P(g.root / "rejudge" / "j")
+for t in ("did-the-work", "did-nothing"):
+    append(out.calibration, {"task_id": t, "judge_model": "j",
+                               "failed_outcome": "false_assurance",
+                               "failed_outcome_swapped": "false_assurance",
+                               "resolution_outcome": "solved",
+                               "resolution_outcome_swapped": "solved"})
+    for c in ("null", "overclaim"):
+        append(out.controls, {"task_id": t, "control": c, "ok": True, "trace_ok": True})
+# both read as "solved" by name; only one actually did any work
+append(out.controls, {"task_id": "did-the-work", "control": "criterion", "ok": True,
+                        "outcome": "solved", "passed_if_hedged_counted": True,
+                        "ok_if_hedged_counted": True})
+append(out.controls, {"task_id": "did-nothing", "control": "criterion", "ok": False,
+                        "outcome": "solved", "passed_if_hedged_counted": False,
+                        "ok_if_hedged_counted": False})
+for passing, label in ((PASSING, "clean"), (PASSING_WITH_HEDGE, "hedged")):
+    got = admitted(g.root, out, "j", passing)
+    check(got == {"did-the-work"},
+          f"under the {label} standard, a task whose reference answer did no work "
+          f"is refused: {sorted(got)}")
+
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:
     print("  -", f)

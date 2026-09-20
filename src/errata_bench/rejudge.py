@@ -247,7 +247,14 @@ def admitted(run: Path, out: Paths, model: str, passing: set[str]) -> set[str]:
     from .stability import stable
 
     steady, tally = stable(run, model, passing=passing)
-    if not tally:
+    # Enough readings to say anything about steadiness? A task read once is
+    # neither steady nor unsteady, and `stable` rightly refuses to call it
+    # steady -- but falling through on that left a directory that had never had
+    # `run.py gate` run on it admitting nothing at all, silently, which is the
+    # normal state of a fresh run. Where the measurement is too thin, the
+    # single reading is used and the thinness is what the report should say.
+    measured = tally and max(t["asked"] for t in tally.values()) >= 2
+    if not measured:
         steady = {
             r["task_id"] for r in load(out.calibration)
             if line_holds(r, passing=passing)
