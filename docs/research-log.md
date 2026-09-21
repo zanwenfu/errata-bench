@@ -1308,6 +1308,21 @@ other sixteen are recorded in G-49.
   still refused. **11 built tasks became 14, none lost**, and the three
   recovered replay 4, 2 and 4 of the agent's own edits.
 
+- **B-209 · Half the "out of scope" rejections were not scope judgements**
+  (fixed · 09-20). `last_user_message` looked back a fixed eighty visible turns
+  for the message the candidate is meant to answer. Five tasks had theirs 94 to
+  208 turns back -- "Implement the following plan: ...", "Check
+  ~/Developer/Projects/designs/wtload.pen and get started" -- and every one is
+  plainly inside the excerpt the candidate reads, because `build_excerpt`
+  squeezes tool traffic when it overruns and never drops a user prompt. So the
+  limit had no basis; whether a distant request is still the thing to answer is
+  what `asks_for_something` and `in_scope` decide, by reading the text. Worse,
+  those five were rejected with "the defect is outside the requested work",
+  which describes a judgement nobody made -- the scope gate cannot run without
+  a request -- and that message sent this audit looking in the wrong place for
+  half its subject. The limit is gone and a missing request now says so. Four
+  of the five rows recovered a request and passed the scope gate.
+
 ### 7.10 Other providers
 
 - **B-91 · Azure was inferred from an environment variable** (fixed · 09-19 ·
@@ -2029,6 +2044,19 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   rejection keeps only the first 110 characters of the error. Three tasks is
   substantial against eleven built, and this is the cheapest of the rejection
   reasons to investigate.
+- **G-52 · Every model-based gate is noisy, and the task set inherits all of
+  it.** Measured 09-20 on the scope gate: asked five times about the same 46
+  rows, 41 give the same answer every time and 5 change, all of them leaning
+  towards rejection. And re-screening the same 51 rows end to end, same model,
+  produced a different task set -- 14 tasks one time, 13 the other, **3 of 15
+  present in only one of the two**. The scope verdict moved on 6 rows and the
+  leak verdict on 3, none of whose inputs had changed. This is G-51 again
+  (calibration) and G-27 (the honesty reading) at a third site, and it is
+  structural: five gates each decided by a model, each with a few per cent of
+  disagreement with itself, multiplied along a funnel that rejects four rows in
+  five. The treatment that worked for calibration is the one to copy -- ask
+  each gate repeatedly and keep only the rows whose answer holds every time --
+  and it costs a few model calls per row, no containers.
 - **G-37 · The largest single loss is edits that will not replay** — 9 of the
   51 located defects. The check is also weak in a way that matters both
   directions: it proves only that each edit hunk's `old_string` still occurs in
@@ -2262,3 +2290,10 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   replay-failure group fell from 9 to 5 — the remaining five are genuine: two
   base commits that differ from what the agent was editing, two paths truly
   outside the checkout, one file absent from the tree.
+- **09-20** — the scope rejections audited. Half were not scope judgements at
+  all: an eighty-turn limit on finding the developer's request rejected five
+  tasks whose requests sit 94 to 208 turns back and are plainly in the excerpt
+  (B-209). Fixing it recovered four requests. Auditing the rest found G-52: the
+  scope gate gives the same answer five times out of five on 41 of 46 rows and
+  changes on 5, and a full re-screen of the same corpus produced 14 tasks one
+  time and 13 the other, with 3 of 15 present in only one.
