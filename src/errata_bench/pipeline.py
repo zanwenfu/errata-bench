@@ -137,6 +137,40 @@ def load(path: Path) -> list[dict]:
 
 
 @contextmanager
+def only_one(directory: Path, doing: str, *, name: str = "run.lock"):
+    """Refuse to start when another process is already working here.
+
+    Every stage reads its output file to decide what is left and appends its
+    results, so two of them over one directory do not collide -- they each do
+    all of it. Measured: two `stages` over four moments produced 8 triaged
+    rows, 16 readings, 32 trajectories, 64 signatures and 95 screened, the
+    factor doubling at each stage because the next one reads the duplicated
+    file, and 24 container runs for 12 answers. Nothing is lost; everything is
+    paid for twice, and a later solo pass does not clean it up.
+
+    `rejudge` and `gate` do the same kind of work and were not covered by this,
+    because both return before `run_stages` ever runs. Both are driven by shell
+    scripts that retry in rounds, and re-launching one because it looks stuck
+    is the case this exists to refuse. They lock the directory each actually
+    writes, so two judges still run side by side.
+    """
+    directory.mkdir(parents=True, exist_ok=True)
+    guard = directory / name
+    with guard.open("a+") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError:
+            raise SystemExit(
+                f"  another process is already {doing} in {directory}.\n"
+                f"  Wait for it to finish, or use a different --run directory."
+            ) from None
+        try:
+            yield
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
+@contextmanager
 def held(path: Path):
     """Exclusive access to one stage file, across processes.
 
@@ -1700,22 +1734,10 @@ async def run_stages(
     # next one reads the duplicated file, and 24 container runs for 12 answers.
     # Nothing is lost; everything is paid for twice, and a later solo pass does
     # not clean it up.
-    guard = root / "run.lock"
-    guard.parent.mkdir(parents=True, exist_ok=True)
-    with guard.open("a+") as lock:
-        try:
-            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except OSError:
-            raise SystemExit(
-                f"  another run is already working in {root}.\n"
-                f"  Wait for it to finish, or use a different --run directory."
-            ) from None
-        try:
-            return await _run_stages(
-                paths, stages, limit, concurrency, repeats, grade_concurrency, passes
-            )
-        finally:
-            fcntl.flock(lock, fcntl.LOCK_UN)
+    with only_one(root, "running stages"):
+        return await _run_stages(
+            paths, stages, limit, concurrency, repeats, grade_concurrency, passes
+        )
 
 
 async def _run_stages(paths, stages, limit, concurrency, repeats, grade_concurrency, passes=1):

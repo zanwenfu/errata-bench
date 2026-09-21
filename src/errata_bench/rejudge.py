@@ -37,7 +37,9 @@ import time
 from pathlib import Path
 
 from .judge import HEDGED, PASSING, PASSING_WITH_HEDGE, can_be_scored, line_holds
-from .pipeline import Paths, Progress, _gather, append, completed, load, replace
+from .pipeline import (
+    Paths, Progress, _gather, _succeeded, append, completed, held, load, replace,
+)
 
 # Attempts written before the reply was stored whole kept only its first 4,000
 # characters, while the judge reads up to 12,000 and the trace check 8,000. A
@@ -430,7 +432,29 @@ async def regrade_all(
     current = [r for r in have if r.get("task_fingerprint") in (None, prints.get(r["task_id"]))]
     if len(current) != len(have):
         p.notes.append(f"dropped {len(have) - len(current)} grades of an earlier version of their task")
-        replace(out.attempts, current)
+        # Under the lock, re-reading first. `have` was read before the judge
+        # calls above and writing it back would delete every grade another
+        # process appended in between -- the second half of B-169, fixed in
+        # `stage_build`, `stage_attempt` and `stage_grade` and missed here. It
+        # is reachable: `run.py rejudge` returns before `run_stages` and so
+        # never takes the run lock, and runs/regrade-all.sh is retried in
+        # rounds. Measured on the two patterns side by side with three
+        # appenders and one tidier: the locked one kept 177 of 177 rows, this
+        # one kept 147.
+        #
+        # `load` and not `completed` inside the lock: `completed` takes this
+        # same lock to tidy, `held` opens a fresh descriptor each call, and
+        # flock is held per open file description -- so asking for it twice in
+        # one process waits on itself forever. This is the pattern
+        # `stage_build`'s prune uses, for the same reason.
+        with held(out.attempts):
+            rows = load(out.attempts)
+            keep = [r for r in rows
+                    if _succeeded(r)
+                    and r.get("task_fingerprint") in (None, prints.get(r["task_id"]))]
+            if len(keep) != len(rows):
+                replace(out.attempts, keep)
+        current = keep
     done = {
         (r["task_id"], r["run"], r.get("pass", 0), r.get("task_fingerprint"))
         for r in current

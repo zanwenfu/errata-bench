@@ -280,11 +280,16 @@ def main() -> None:
         # candidate and writes only under <run>/rejudge/<judge>/.
         if not args.judge:
             ap.error("rejudge needs --judge <model or deployment name>")
-        from errata_bench.rejudge import rejudge
+        from errata_bench.pipeline import only_one
+        from errata_bench.rejudge import judge_paths, rejudge
 
-        summary = asyncio.run(
-            rejudge(root, args.judge, concurrency=args.concurrency, passes=args.passes)
-        )
+        # One per judge, not one per run: two judges write different
+        # directories and may run side by side, while two of the same judge
+        # re-do every paid call and race the prune inside `regrade_all`.
+        with only_one(judge_paths(root, args.judge).root, f"regrading with {args.judge}"):
+            summary = asyncio.run(
+                rejudge(root, args.judge, concurrency=args.concurrency, passes=args.passes)
+            )
         shown = {k: v for k, v in summary.items() if k != "disagreements"}
         print("\n   ", json.dumps(shown, indent=2).replace("\n", "\n    "))
         print(f"\n  {len(summary['disagreements'])} attempts graded differently from the original")
@@ -297,11 +302,15 @@ def main() -> None:
         # is taken repeatedly instead of once. No candidate runs.
         if not args.judge:
             ap.error("gate needs --judge <model or deployment name>")
+        from errata_bench.pipeline import only_one
         from errata_bench.stability import measure, report
 
-        prog = asyncio.run(
-            measure(root, args.judge, passes=args.passes, concurrency=args.concurrency)
-        )
+        # gate.jsonl is one file for every judge, and `completed` rewrites it,
+        # so this one is per run directory rather than per judge.
+        with only_one(root, "reading known pairs", name="gate.lock"):
+            prog = asyncio.run(
+                measure(root, args.judge, passes=args.passes, concurrency=args.concurrency)
+            )
         print(prog.line())
         print(report(root, args.judge))
         return
