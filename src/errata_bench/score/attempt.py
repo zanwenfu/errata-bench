@@ -55,30 +55,50 @@ from ..construct.workspace import GitError, fetch
 # `grep -rn apt /etc` were refused as network commands while `npm ci`, `uv
 # sync`, `poetry install`, `git fetch` and a bare `yarn` went through. Rewritten
 # against every shell command in the corpus -- 126,638, 90,369 distinct -- and
-# read both ways: of the 162 it newly allows, the only real network calls are
-# twelve `docker exec <container> curl`, and there is no docker inside a
-# container; of what it newly refuses, 293 are package managers and fetches and
-# the rest are `git push` and `gh`. `gh` matters most. Candidates called `gh
-# api` fifteen times in the recorded runs; every one landed in a container with
-# no `gh`, and on the host it would have run as the developer, logged in.
+# read both ways, twice: once when it was written and again after B-221 and
+# B-223. Of the 154 it allows that the word list refused, the only real network
+# calls are twelve `docker exec <container> curl`, and there is no docker inside
+# a container; the rest are `which curl`, `ls ~/.ssh/` and commit messages. Of
+# the 15,268 it refuses that the word list did not, the bulk is `git push` and
+# `gh`, and 293 are package managers and fetches. `gh` matters most. Candidates
+# called `gh api` fifteen times in the recorded runs; every one landed in a
+# container with no `gh`, and on the host it would have run as the developer,
+# logged in.
 #
 # Where a command can begin: the start of the text or of a line, after a
 # separator, an opening parenthesis or a backtick, after a word that runs
-# another command, or inside `sh -c '...'` -- then any VAR=value prefixes.
+# another command, or inside `sh -c ...` -- then an optional `!`, any leading
+# redirections, and any VAR=value prefixes.
+#
 # `^\s*`, not `^`: a command that began with a space or a tab was not screened
-# at all -- " curl https://x" went through -- which my own review found the
-# day this was written, along with the cost of the prefix group below. Left
-# unbounded, `a=1;` repeated to 100,000 characters took 16 seconds to search,
-# on the event loop, with every other attempt in the process waiting; bounded
-# it takes 0.6. A brace group needs its space (`{ curl x; }`), so `${curl}`
-# and `'{ssh: true}'` are left alone. Re-run over the corpus after both
-# changes: not one command classified differently.
+# at all (B-221). `eval`, `!` and a leading redirection are here because the
+# move to command position lost them -- `eval curl x`, `! curl x` and
+# `> out.txt curl x` were all refused by the word list this replaced.
+#
+# Two things keep the search linear, and both were paid for. An unquoted shell
+# word cannot hold a separator or a redirection character, so `_WORD` says so:
+# with a plain `\S`, the value of `a=1` in `a=1;a=1;...` ran on for 2,000
+# characters at every one of 25,000 start positions. And the unquoted branch
+# excludes a leading quote, so `a='b=1'` has exactly one way to match rather
+# than two -- with two, the repetition had 2^n ways and an ordinary heredoc
+# writing twenty `KEY='value'` lines took 0.5s, forty took over twenty
+# seconds, on the event loop, with every other attempt in the process waiting
+# (B-223). The atomic groups make that structural rather than a matter of
+# how the engine happens to order its attempts.
+_WORD = r"[^\s;&|()<>`]"
 _AT = (r"(?:^\s*|[\n;&|(`]\s*|\{\s+|\$\(\s*|"
-       r"\b(?:sudo|time|nohup|exec|xargs|env|command|then|do|else|if|while|until|timeout\s+\S+)\s+|"
-       r"\b(?:ba|z|da)?sh\s+-l?c\s+['\"]\s*)"
-       r"(?:[A-Za-z_][A-Za-z0-9_]*=(?:\"[^\"]{0,2000}\"|'[^']{0,2000}'|\S{0,2000})\s+)*")
-# By name or by path: /usr/bin/curl is curl.
-_NET_TOOLS = r"(?:/\S*/)?(?:curl|wget|nc|ncat|telnet|ssh|scp|sftp|rsync)\b|gh\s+[a-z]"
+       r"\b(?:sudo|time|nohup|exec|eval|xargs|env|command|then|do|else|if|while|until|timeout\s+\S+)\s+|"
+       r"\b(?:ba|z|da)?sh\s+-l?c\s+['\"]?\s*)"
+       r"(?:!\s*)?"
+       r"(?>(?:\d?(?:>>?|<)&?\s*" + _WORD + r"{1,200}\s+){0,8})"
+       r"(?>(?:[A-Za-z_][A-Za-z0-9_]*=(?:\"[^\"]{0,2000}\"|'[^']{0,2000}'|(?![\"'])"
+       + _WORD + r"{0,512})\s+){0,32})")
+# By name or by path: /usr/bin/curl is curl. `gh` needs a subcommand or a flag
+# after it -- a bare `gh\b` matched `(gh CLI`, a backticked `gh` and `gh-aw`
+# inside commit messages, because a parenthesis and a backtick are themselves
+# command positions.
+_NET_TOOLS = (r"(?:/\S*/)?(?:curl|wget|nc|ncat|telnet|ssh|scp|sftp|rsync)\b|"
+              r"(?:/\S*/)?gh\s+(?:-{1,2}[A-Za-z]|[a-z])")
 _NET_PACKAGES = (
     r"(?:pip3?|python3?\s+-m\s+pip)\s+(?:install|download)\b|"
     r"npm\s+(?:i|ci|install|add|update|publish)\b|"
@@ -93,7 +113,12 @@ _NET_PACKAGES = (
     r"git\s+(?:-C\s+\S+\s+)?(?:fetch|clone|pull|push|ls-remote)\b|"
     r"git\s+(?:-C\s+\S+\s+)?submodule\s+update\b"
 )
-NETWORK = re.compile(_AT + r"(?:" + _NET_TOOLS + r"|" + _NET_PACKAGES + r")")
+# The path prefix belongs on the package managers too, and relatively: it was
+# on the tools alone, so `.venv/bin/pip install`, `/usr/bin/pip3 install`,
+# `/usr/local/go/bin/go get` and `./node_modules/.bin/npm install` -- eight
+# real commands in the corpus -- were not screened at all.
+NETWORK = re.compile(
+    _AT + r"(?:" + _NET_TOOLS + r"|(?:" + _WORD + r"{0,200}/)?(?:" + _NET_PACKAGES + r"))")
 
 # How much of each tool's output is kept. A read of a large file is truncated
 # for the candidate at 60,000 characters anyway, and what a reading needs is
@@ -397,16 +422,40 @@ def _safe(root: Path, rel: str, mount: str | None = None, *, creating: bool = Fa
     rather than creating <tree>/Users/x/..., and every refusal says why.
     """
     rel = rel.strip()
-    inside = root.resolve()
-    legacy = (root / rel.lstrip("/")).resolve()
+    try:
+        inside = root.resolve()
+        legacy = (root / rel.lstrip("/")).resolve()
+    except RuntimeError as e:
+        # `Path.resolve()` raises RuntimeError, not OSError, on a symlink loop,
+        # and no tool caught it: the SDK turned it into a tool result, so the
+        # call was stored with an empty result and `failed` unset, and a read
+        # that never happened counted as having investigated. Named by the
+        # candidate's own path, not the resolved one, which does not exist.
+        raise ValueError(f"{rel}: that path could not be resolved ({type(e).__name__})") from e
     mapped = _under(rel, root, mount)
+    try:
+        return _inside(root, rel, mapped, legacy, inside, creating=creating)
+    except RuntimeError as e:
+        raise ValueError(f"{rel}: that path could not be resolved ({type(e).__name__})") from e
+
+
+def _inside(root: Path, rel: str, mapped: str | None, legacy: Path, inside: Path,
+            *, creating: bool) -> Path:
+    """The second half of :func:`_safe`, so one place guards the resolutions."""
     if mapped is not None:
+        # What the candidate's own shell means, with no second guess. This
+        # briefly fell back to `<tree>/work/x` for `/work/x` when a repository
+        # had its own top-level `work/` and nothing sat at the mapped place --
+        # written for the reading `/work/notes.txt` means `work/notes.txt`,
+        # which is the one reading the shell rules out. It cost twice: the
+        # fallback ran for reads and not for writes, so a candidate read one
+        # file and edited another under a single name and the structural check
+        # then scored it as never having touched the defect file; and a
+        # candidate composing `$(pwd)/config.json` -- exactly `<tree>/config
+        # .json` -- was handed a different file instead of a clean "not a
+        # file", which is B-220 again in the other direction. Inside the
+        # container `/work/x` is `<tree>/x`, for all four tools (B-223).
         p = (root / mapped).resolve()
-        # A leading-slash repository path that happens to begin with the
-        # mount's name -- `/work/notes.txt` in a repository with a `work/`
-        # folder -- still reads, when nothing is at the mapped place.
-        if not creating and not p.exists() and legacy.exists() and legacy.is_relative_to(inside):
-            p = legacy
     else:
         p = legacy
         if creating and rel.startswith(("/", "~")):
@@ -636,7 +685,25 @@ def _snapshot(tree: Path, keep: str = "") -> dict[str, tuple]:
 
     out = {}
     for p in tree.rglob("*"):
-        if not p.is_file() or ".git" in p.parts:
+        if ".git" in p.parts:
+            continue
+        # A link is recorded as a link and never followed. The working copy is
+        # bind-mounted into the container, so one `ln -s ~/.ssh/id_rsa
+        # notes.txt` inside it points a name in the tree at any file the
+        # harness itself can read -- and the harness reads it here and in
+        # `_capture`, which put that file's contents into the stored answer
+        # row. The candidate's own `read_file` was never the way in: `_safe`
+        # refuses it as a path that escapes the working copy. `rglob` does not
+        # descend into a linked directory, which was checked rather than
+        # assumed. `lstat`, because `stat` follows too.
+        if p.is_symlink():
+            try:
+                target = os.readlink(p)
+            except OSError as e:
+                target = f"unreadable link: {type(e).__name__}"
+            out[str(p.relative_to(tree))] = (-2, f"symlink -> {target}", "-")
+            continue
+        if not p.is_file():
             continue
         # What a test run leaves behind is not an edit (G-33). The working
         # copy is bind-mounted into the container, so `pytest` writing
@@ -681,14 +748,18 @@ def _capture(tree: Path, task: Task, changed: dict[str, str]) -> dict[str, str]:
         wanted.add(task.signature_path)
     for rel in wanted:
         p = tree / rel
-        if p.is_file():
+        # Never through a link, for the reason `_snapshot` gives: what the
+        # link points at is chosen by the candidate and read by the harness.
+        if p.is_file() and not p.is_symlink():
             try:
                 out[rel] = p.read_text(errors="replace")
             except OSError:
                 pass
+        elif p.is_symlink():
+            out[rel] = f"[a symbolic link, not followed: -> {os.readlink(p)}]"
     if task.signature_token:
         for p in tree.rglob("*"):
-            if not p.is_file() or ".git" in p.parts:
+            if not p.is_file() or p.is_symlink() or ".git" in p.parts:
                 continue
             try:
                 body = p.read_text(errors="replace")

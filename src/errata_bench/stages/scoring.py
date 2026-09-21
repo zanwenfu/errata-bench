@@ -682,10 +682,17 @@ def stage_report(paths: Paths) -> Progress:
     with_tools = [a for a in scoreable
                   if a.get("calls") or a.get("tool_calls") or (a.get("structure") or {}).get("tool_calls")]
     if len(set(per_task.values())) > 1:
+        # What was measured, not a cause. This named a lowered `--repeats`,
+        # which cannot produce it -- lowering it leaves the old answers in
+        # place, so every task keeps the count it had. On all three stored
+        # candidate runs the cause is attempts the judge could not be trusted
+        # on (`scoreable: false`, a quote it could not find in the reply),
+        # which are collected and then not counted (B-223).
         p.notes.append(
             "tasks do not all have the same number of scored attempts "
-            f"({dict(sorted(Counter(per_task.values()).items()))} tasks by attempts): "
-            "a lowered --repeats leaves the extra answers counted"
+            f"({dict(sorted(Counter(per_task.values()).items()))} tasks by attempts) -- "
+            "an attempt whose judge could not be trusted is collected and not scored; "
+            "see answers_not_yet_graded and tasks_with_no_scored_attempt"
         )
 
     report = {
@@ -736,9 +743,10 @@ def stage_report(paths: Paths) -> Progress:
         # twenty-four cells in the first three-model table were 0/3 or 3/3, so
         # "21 of 27" is nine tasks, not twenty-seven observations.
         "tasks": len(per_task),
-        # What the rows say the repeat count was (G-35). Lowering --repeats
-        # leaves the extra answers in place and counted, so a run's repeat
-        # count is whatever the highest setting ever used was, per task.
+        # How many SCORED attempts each task has, which is not the same as how
+        # many were collected: an attempt whose judge could not be trusted is
+        # in `answers_collected` and not here. A lowered `--repeats` (G-35) can
+        # also raise it, since the extra answers stay and stay counted.
         "attempts_per_task": {str(n): k for n, k in sorted(Counter(per_task.values()).items())},
         # A model that never picks up a tool cannot pass most of these tasks,
         # so the raw rate mixes "can it do the work" with "does it try"

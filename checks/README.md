@@ -16,7 +16,13 @@ often than they catch them -- every suite was green while the pipeline could
 not build a task, while a move broke every stage that reads the corpus, and
 while a check's own fixture had a field no real object has. They are a floor,
 not a proof. A fix counts as covered only when its check has been shown red
-with the fix reverted, and that output pasted, not asserted.
+with the fix reverted, and that output pasted, not asserted. Three assertions
+written on 09-21 were hollow when that was actually done: one read the joined
+notes of a stage, which end with two JSON dumps in which every field name
+appears; one used a fixture a separate exclusion already caught, so it passed
+with the rule it named reverted; and one compared an elapsed time without an
+alarm, so it hung instead of failing. Assume the next one is hollow too until
+its red output exists.
 
 Each exits non-zero on failure and prints one line per assertion.
 
@@ -44,8 +50,12 @@ developer's machine without an opt-in, and the network screen against a table
 of commands drawn from the corpus; tool caches, refused reads and the trace
 check's claim counts; and the harness version, attempt limits and the counts
 a report puts behind a rate; each gate reading as much as the candidate is
-shown, the leak gate all of it; and a re-judge's controls asked repeatedly,
-every reading required. Its fake judge sets the task's kind the way the
+shown, the leak gate all of it; a re-judge's controls asked repeatedly, every
+reading required, and the same rule where the numbers are printed; the network
+screen against a table of commands and against the three shapes that used to
+take it exponential (under an alarm, because with the fix reverted it does not
+fail, it runs for ever); and the harness never following a link a candidate
+made. Its fake judge sets the task's kind the way the
 real one does -- left at the default, every task here was graded by the
 present-kind rule and an attempt that did no work passed.
 

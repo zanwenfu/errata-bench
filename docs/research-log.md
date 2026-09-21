@@ -1391,6 +1391,95 @@ other sixteen are recorded in G-49.
   still refused. **11 built tasks became 14, none lost**, and the three
   recovered replay 4, 2 and 4 of the agent's own edits.
 
+- **B-223 · What an independent review of one day's work found, and what my
+  own account of that day was worth** (fixed · 09-21). Twenty-five agents over
+  `f00ba7ac1..aacbe0b64`, eight areas, every finding handed to a separate
+  skeptic instructed to refute it: **17 raised, 5 survived**. Two of the five
+  were in code committed that morning under a message saying it was fixed.
+  Fixing them turned up three more, and the fixture mistakes below are as much
+  of the entry as the defects.
+  **(1) The network screen still backtracked exponentially.** B-221 bounded
+  the `VAR=value` lengths, which fixed the input that had been measured, and
+  left the *ambiguity*: for `a='b=1'` the quoted branch and the unquoted `\S`
+  branch both reach the same position, so the repetition had 2^n ways.
+  0.067/0.265/1.049s at n=18/20/22, doubling every 8 characters. The skeptic's
+  best refutation -- "no model would write 25 quoted assignments" -- failed on
+  the separator `\s+` matching a newline: `cat > .env <<'EOF'` and twenty
+  `KEY='value'` lines, 323 characters, already cost 0.5s, and forty ran past
+  twenty seconds, on the event loop, with every other attempt in the process
+  waiting. Now the unquoted branch excludes a leading quote (one way per
+  assignment), an unquoted word excludes separators and redirection characters
+  (`_WORD`), and the prefix groups are atomic. Measured after: 0.00s, 0.00s,
+  0.01s on the three worst shapes, and no corpus command classified
+  differently for that change.
+  **(2) The path prefix was on the network tools and not on the package
+  managers**, so `.venv/bin/pip install`, `/usr/bin/pip3 install`,
+  `/usr/local/go/bin/go get` and `./node_modules/.bin/npm install` -- eight
+  real commands in the corpus -- were not screened at all. Closed with the
+  shapes the command-position rewrite had also lost: `eval curl`, `! curl`,
+  `> out.txt curl`, and `gh` spelled with a flag or a path. Read over all
+  126,638 corpus commands both ways: **21 newly refused, 0 newly allowed**,
+  and every one of the 21 is a package manager by path or a real `gh -R ...`.
+  The reviewer's own suggested fix for `gh` was wrong and the corpus said so:
+  a bare `gh\b` matched `(gh CLI`, a backticked `gh` and `gh-aw` inside commit
+  messages, because a parenthesis and a backtick are themselves command
+  positions. It needs a subcommand or a flag after it.
+  **(3) The repeated-reading control rule was in one place of three.**
+  `admitted()` required every reading to have behaved; `summarise()`'s counted
+  blocks and `compare()`'s trusted set still asked whether some row existed
+  and some reading behaved. The skeptic drove the real `controls_all` with
+  the second and third readings raising 429 and got a `report.json` printing
+  **`counted` 15 attempts / 7 passed beside `a_pass_must_be_clean` 0 tasks /
+  0 attempts**, with `admitted()` empty -- and `run.py rejudge` prints that
+  whole JSON. There turned out to be a fourth rule: `compare()` gated its
+  *original* column on "the task has a control row of any kind", the loosest
+  of the four. All four now go through one `controls_behaved`, and the
+  original column through `instrument.control.controlled`, the function the
+  pipeline itself uses. No stored number moves.
+  **(4) The `/work` fallback was worse than inconsistent.** Added the same
+  morning so that `/work/notes.txt` would still read a repository's own
+  `work/notes.txt`, it ran for reads and not for writes -- so in such a
+  repository a candidate read one file and edited another under a single
+  name, and `touched_defect_file` then scored it as never having touched the
+  file. The reviewer's fix was shown wrong by its skeptic (it turned the
+  guard green-to-red), and the coherent answer is that the guard was wrong:
+  inside the container `/work/x` is `<tree>/x`, which is the one reading the
+  shell rules out for the fallback. Removed, and the guard now asserts what
+  the shell means. It also cost in the likelier direction: a candidate
+  composing `$(pwd)/config.json` was handed a different file instead of a
+  clean "not a file", which is B-220 again the other way round.
+  **(5) A report note named a cause it cannot have** -- a lowered `--repeats`,
+  which leaves every task's count where it was. On all three stored candidate
+  runs the cause is an attempt the judge could not be trusted on. It now says
+  what was measured and points at the two fields that explain it.
+  **Two standing defects the review turned up and then refuted on
+  provenance** -- both reproduce, both predate the diff, both are now fixed
+  because they are real. `_snapshot` and `_capture` walked the tree with
+  `is_file()`/`read_text()`, which follow symlinks: one `ln -s ~/.ssh/id_rsa
+  notes.txt` inside the container put that file's **contents** into
+  `final_state` and so into `answers.jsonl`. The candidate's own `read_file`
+  was never the way in -- `_safe` refuses it -- and `rglob` does not descend
+  into a linked directory, which was checked rather than assumed; it was the
+  harness reading on its own account. A link is now recorded as a link and
+  never followed. And `Path.resolve()` raises `RuntimeError`, not `OSError`,
+  on a symlink loop: uncaught, the agent SDK turned it into a tool result and
+  the call was stored with an empty result and `failed` unset, so a read that
+  never happened counted as an investigation. `_safe` now turns it into a
+  refusal.
+  **What this says about the checks.** Three of my own assertions were hollow
+  or hung, each found while verifying the fix beside it, and each is the shape
+  this project keeps meeting. One asserted the report's note but read the
+  *joined* notes, and `p.notes` ends with two JSON dumps of the report in
+  which every field name appears -- so it passed on the funnel's text. One
+  asserted the re-judge control rule with a fixture whose control had
+  `ok: False`, which a separate `broken` set already excluded, so it passed
+  with the rule reverted; it needed a control short of its readings instead.
+  And the timing assertion called `search` and compared the elapsed time, so
+  with the fix reverted it did not go red -- it ran for ever, because the
+  reverted pattern needs 2^40 steps. It is under an alarm now. A guard that
+  hangs is worse than one that fails. Also the third name collision between
+  guard sections in one day (`_ran`, `rows`, `_diff`), which is a fair
+  argument for giving each section a function of its own.
 - **B-222 · Three lines that said something near what happened** (fixed ·
   09-21). Found by an end-to-end sweep of the pipeline run at `c1636c84a` --
   ten scenarios, 262 checks, the run directory right every time and the text

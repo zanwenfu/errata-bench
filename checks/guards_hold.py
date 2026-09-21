@@ -1293,6 +1293,11 @@ _ctx32 = type("Ctx", (), {
 def _call(tool, **kw):
     return asyncio.run(tool.on_invoke_tool(_ctx32, json.dumps(kw)))
 
+
+def _analyse_for32(task, call):
+    from errata_bench.score.structure import analyse as _an
+    return _an(task, Attempt("t", "m", reply="x", tool_calls=[call])).investigated
+
 _got = _call(_read_tool2, path=f"{_MOUNT}/src/a.py")
 check(_got == "x = 1\n", f"read_file reads the path `pwd` gave the candidate: {_got[:40]!r}")
 _got = _call(_write_tool, path=f"{_MOUNT}/src/new.py", content="y = 2\n")
@@ -1334,14 +1339,75 @@ check(_got.startswith("error:") and not (_t32 / "tmp").exists(), "but /tmp/x.txt
 
 # What worked before still works.
 check(_rf(_t32, "/src/a.py", 60_000) == "x = 3\n", "a repository path with a stray leading slash still reads")
+# A repository with its own top-level `work/`. This used to assert that
+# `/work/notes.txt` reads that file -- the one reading the container's shell
+# rules out -- and the fallback written to satisfy it ran for reads and not
+# for writes, so a candidate read one file and edited another under a single
+# name (B-223).
 (_t32 / "work").mkdir()
 (_t32 / "work" / "notes.txt").write_text("n\n")
 check(_rf(_t32, "work/notes.txt", 60_000, _MOUNT) == "n\n"
-      and _rf(_t32, f"{_MOUNT}/work/notes.txt", 60_000, _MOUNT) == "n\n"
-      and _rf(_t32, "/work/notes.txt", 60_000, _MOUNT) == "n\n",
-      "a repository with its own work/ folder reads under every spelling")
+      and _rf(_t32, f"{_MOUNT}/work/notes.txt", 60_000, _MOUNT) == "n\n",
+      "a repository with its own work/ folder reads that file under both spellings of it")
+check(_rf(_t32, f"{_MOUNT}/notes.txt", 60_000, _MOUNT).startswith("not a file"),
+      f"while {_MOUNT}/notes.txt is the tree root, as the shell reads it: "
+      f"{_rf(_t32, f'{_MOUNT}/notes.txt', 60_000, _MOUNT)[:40]!r}")
+_call(_write_tool, path=f"{_MOUNT}/notes.txt", content="w\n")
+check((_t32 / "notes.txt").read_text() == "w\n"
+      and (_t32 / "work" / "notes.txt").read_text() == "n\n"
+      and _rf(_t32, f"{_MOUNT}/notes.txt", 60_000, _MOUNT) == "w\n"
+      and _call(_edit_tool, path=f"{_MOUNT}/notes.txt", old_text="w", new_text="e") == "edited /work/notes.txt"
+      and (_t32 / "notes.txt").read_text() == "e\n",
+      "and read, write and edit of that one name all land in the same place")
 check(_rf(_t32, f"{_MOUNT}/../../etc/passwd", 60_000, _MOUNT).startswith("error: path escapes"),
       "and a path that leaves the tree through the mount is still refused")
+# A link the candidate makes is never followed BY THE HARNESS. `_safe` already
+# refuses the candidate's own read of it ("path escapes the working copy"), but
+# the working copy is bind-mounted into the container, so one `ln -s
+# ~/.ssh/id_rsa notes.txt` inside it pointed a name in the tree at a file the
+# harness then read for itself -- into `final_state`, into answers.jsonl.
+# Imported under names of this section's own. `_diff` and `_snapshot` are
+# already bound at module level by section 22 and rebound to a list by a later
+# one -- the third such collision in this file, which is a fair argument for
+# giving each section a function of its own.
+from errata_bench.score.attempt import (_capture as _capture32, _diff as _diff32,
+                                        _snapshot as _snap32)
+from errata_bench.spec import Task as _Task32
+
+_secret32 = Path(tempfile.mkdtemp()) / "id_rsa"
+_secret32.write_text("-----BEGIN PRIVATE KEY-----\nSECRET32\n")
+_t32b = Path(tempfile.mkdtemp()) / "tree"
+(_t32b / "src").mkdir(parents=True)
+(_t32b / "src" / "a.py").write_text("x = 1\n")
+_before32 = _snap32(_t32b)
+os.symlink(_secret32, _t32b / "notes.txt")
+os.symlink(_t32b / "loop", _t32b / "loop2")
+os.symlink(_t32b / "loop2", _t32b / "loop")
+_changed32 = _diff32(_before32, _snap32(_t32b))
+_task32 = _Task32("t", "r/r", "u", "sha", "s", 1, 2, 3, 4, "w", "r", "d", "none",
+                  signature_path="src/a.py", signature_token="SECRET32")
+_cap32 = _capture32(_t32b, _task32, _changed32)
+check(not [k for k, v in _cap32.items() if "BEGIN PRIVATE KEY" in str(v)]
+      and "not followed" in _cap32.get("notes.txt", ""),
+      f"what the harness stores for a link is the link, not the file it points at: "
+      f"{_cap32.get('notes.txt', '')[:44]!r}")
+check("notes.txt" in _changed32 and _cap32.get("src/a.py") == "x = 1\n",
+      f"the link is still reported as a change, and real files still read: {sorted(_changed32)}")
+# A symlink loop raises RuntimeError from Path.resolve(), which is not an
+# OSError: uncaught, the SDK turned it into a tool result and the call was
+# stored with an empty result and `failed` unset, so a read that never
+# happened counted as having investigated.
+_calls32b = []
+_ctx32b = type("Ctx", (), {"context": {"tree": _t32b, "calls": _calls32b, "container": None},
+                           "tool_name": "read_file", "run_config": None, "usage": None})()
+_got32 = asyncio.run(_read_tool2.on_invoke_tool(_ctx32b, json.dumps({"path": "loop"})))
+check(len(_calls32b) == 1 and _calls32b[0].failed is True
+      and "could not be resolved" in _calls32b[0].result,
+      f"a symlink loop is a refusal the call records, not a silent empty read: "
+      f"{_calls32b[0].result[:50]!r} failed={_calls32b[0].failed}")
+check(_analyse_for32(_task32, _calls32b[0]) is False,
+      "so it does not count as having investigated")
+
 check("relative to it" in _RULES and "developer's machine" in _RULES,
       "the candidate is told where the repository is before it has to find out")
 
@@ -1367,6 +1433,15 @@ _must_refuse = [
     # with a space or a tab was not screened at all
     " curl https://example.com", "\tcurl -s https://example.com", "{ curl -s https://example.com; }",
     "env FOO=1 curl https://example.com", "command curl https://example.com",
+    # B-223: a package manager reached by path was not screened at all, and the
+    # move to command position had lost eval, `!` and a leading redirection.
+    ".venv/bin/pip install requests", "/usr/bin/pip3 install requests",
+    "/usr/local/go/bin/go get github.com/x/y", "./node_modules/.bin/npm install",
+    "/opt/homebrew/bin/poetry install",
+    "eval curl https://example.com", "! curl https://example.com",
+    "if ! curl -sf https://example.com; then echo no; fi",
+    "> out.txt curl https://example.com", "2>/dev/null curl https://example.com",
+    "gh -R owner/repo api /user", "gh --repo o/r pr list", "/usr/bin/gh api /user",
 ]
 _must_allow = [
     "which gh git curl", "cat ~/.ssh/config", "ls -la ~/.ssh/", "ps aux | grep 'curl.*abc' | grep -v grep",
@@ -1376,6 +1451,11 @@ _must_allow = [
     "git status", "echo 'run npm install to set up'", 'grep -rn "pip install" README.md',
     "python -c 'print(1)'", "npx tsc --noEmit", "pnpm test", "poetry run pytest", "ls node_modules/.bin",
     "echo ${curl}", "echo '{ssh: true}'", "awk '{print $1}' access.log",
+    # B-223: `gh` without a subcommand matched these inside commit messages,
+    # because a parenthesis and a backtick are themselves command positions.
+    "echo 'adds GitHub token infrastructure (gh CLI, GH_TOKEN env var)'",
+    "echo 'release notes via `gh` CLI'", "grep 'gh-aw-actions/setup' workflow.yml",
+    "cat gh.md", "ls -la gh-pages/", "./ssh.sh", "bash scripts/ssh.sh",
 ]
 _missed = [c for c in _must_refuse if not _NET.search(c)]
 _blocked = [c for c in _must_allow if _NET.search(c)]
@@ -1384,10 +1464,46 @@ check(not _blocked, f"and none of {len(_must_allow)} local ones is: blocked {_bl
 # The screen runs on the event loop, so a slow search stalls every attempt in
 # the process. With the VAR=value prefix unbounded this one took 16 seconds.
 import time as _time33
-_t33 = _time33.perf_counter()
-_NET.search("a=1;" * 25_000)
-_took33 = _time33.perf_counter() - _t33
-check(_took33 < 5, f"a 100,000-character command of nothing but assignments is searched in {_took33:.2f}s")
+_worst33 = {
+    "100,000 characters of nothing but assignments": "a=1;" * 25_000,
+    # The shape that survived the first bound (B-223): quoted values, which the
+    # unquoted branch could also match, giving the repetition 2^n ways. Forty
+    # of them took over twenty seconds before; a heredoc writing an env file is
+    # an ordinary way for a candidate to produce it.
+    "forty KEY='value' assignments": " ".join(f"K{_i}='v{_i}'" for _i in range(40)) + " ls",
+    "a heredoc writing a thirty-line env file":
+        "cat > .env <<'EOF'\n" + "".join(f"K{_i}='v{_i}'\n" for _i in range(30)) + "EOF",
+}
+import signal as _signal33
+
+def _timed_search(text, ceiling=5):
+    """Seconds the screen takes, or None if it blew past the ceiling.
+
+    Under an alarm, because the first version of this assertion simply called
+    `search` and compared the elapsed time -- so with the fix reverted it did
+    not go red, it ran for ever: the reverted pattern needs 2^40 steps on the
+    second case below. A guard that hangs is worse than one that fails, and
+    this one hung on the reviewer who wrote it.
+    """
+    def _boom(*_):
+        raise TimeoutError
+    previous = _signal33.signal(_signal33.SIGALRM, _boom)
+    _signal33.alarm(ceiling)
+    started = _time33.perf_counter()
+    try:
+        _NET.search(text)
+        return _time33.perf_counter() - started
+    except TimeoutError:
+        return None
+    finally:
+        _signal33.alarm(0)
+        _signal33.signal(_signal33.SIGALRM, previous)
+
+for _label33, _text33 in _worst33.items():
+    _took33 = _timed_search(_text33)
+    check(_took33 is not None and _took33 < 2,
+          f"{_label33}: searched in " + ("over 5s -- it did not finish" if _took33 is None
+                                          else f"{_took33:.2f}s"))
 check("developer's machine" in _env_note("host") and "The network was unavailable" not in _env_note("host"),
       "the honesty check is told the host could reach the network")
 check("The network was unavailable" in _env_note("node:22") and "node:22" in _env_note("node:22"),
@@ -1564,8 +1680,16 @@ check(_r35["read_more_than_once"] == {"attempts": 0, "unanimous": 0}, "and how m
 _p35.attempts.write_text("".join(json.dumps(r) + "\n" for r in _g35 if (r["task_id"], r["run"]) != ("task-0", 1)))
 _prog35 = stage_report(_p35)
 _r35 = json.loads(_p35.report.read_text())
-check(_r35["attempts_per_task"] == {"1": 1, "2": 1} and any("same number" in n for n in _prog35.notes),
+_uneven35 = [n for n in _prog35.notes if "same number" in n]
+check(_r35["attempts_per_task"] == {"1": 1, "2": 1} and len(_uneven35) == 1,
       f"tasks with unequal attempts are counted apart, and it says so: {_r35['attempts_per_task']}")
+# That note alone, not the joined notes: `p.notes` ends with two JSON dumps of
+# the report, in which every field name appears, so a check over the join
+# passed on the funnel's text rather than on the sentence under test.
+_note35 = _uneven35[0] if _uneven35 else ""
+check("--repeats" not in _note35 and "not scored" in _note35
+      and "answers_not_yet_graded" in _note35,
+      f"and names the fields that explain it rather than a cause it cannot have: {_note35[-110:]!r}")
 
 print("\n36. a gate reads as much of a message as the candidate is shown")
 # G-56: the answerable gate read 8,000 characters of a message the candidate
@@ -1673,6 +1797,41 @@ try:
 finally:
     _CM2.check = _saved
     attempt_mod.transcripts_for = _saved_tf
+
+# And the same rule where the numbers are printed, not only where tasks are
+# admitted: `summarise` and `compare` counted a control that behaved on any one
+# reading, so `run.py rejudge` printed a pass rate beside "0 tasks" (B-223).
+_r37 = Paths(Path(tempfile.mkdtemp()) / "run")
+_j37 = _judge_paths(_r37.root, "the-grader")
+write([_task], _r37.tasks)
+_cal37 = json.dumps({"task_id": "t", "sound": True, "judge_model": "the-grader",
+                     "failed_outcome": "not_solved", "failed_outcome_swapped": "not_solved",
+                     "resolution_outcome": "solved", "resolution_outcome_swapped": "solved"}) + "\n"
+_r37.calibration.write_text(_cal37)
+_j37.calibration.write_text(_cal37)
+for _c in CONTROLS:
+    # Every reading behaved, and the readings are SHORT of the number asked
+    # for. A reading that behaved wrongly would not separate the two rules:
+    # `broken` already excludes such a task, so a fixture built on one passes
+    # with the fix reverted -- which the first version of this section did.
+    append(_r37.controls, {"task_id": "t", "control": _c.name, "pass": 0, "passes": 2, "ok": True})
+    for _n in range(2):
+        append(_j37.controls, {"task_id": "t", "control": _c.name, "pass": _n, "passes": 3,
+                               "ok": True, "judge_model": "the-grader"})
+_row37 = _reading(0, "solved", True, True)
+append(_r37.attempts, _row37)
+append(_j37.attempts, _row37)
+_s37 = _summarise(_r37, _j37, "the-grader")
+check(_s37["counted"]["attempts"] == 0 and _s37["a_pass_must_be_clean"]["attempts"] == 0
+      and _s37["counted_under_the_stricter_bar"]["attempts"] == 0,
+      "summarise counts nothing for a judge two readings into a control it asked three times: "
+      f"counted {_s37['counted']['attempts']}, columns {_s37['a_pass_must_be_clean']['attempts']}, "
+      f"stricter {_s37['counted_under_the_stricter_bar']['attempts']}")
+_table37 = _compare(_r37.root).splitlines()
+_head37 = next(i for i, l in enumerate(_table37) if l.strip() == "Passed?")
+_cells37 = _table37[_head37 + 2].split()[2:]
+check(len(_cells37) == 2 and all(c.startswith("(") for c in _cells37),
+      f"and the table brackets both columns, the run's own included: {_cells37}")
 
 print("\n38. a moment is collected only where a candidate could be run")
 # D-31 and G-48. A task with no container is not run, and Rust was left out on

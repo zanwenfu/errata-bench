@@ -252,6 +252,41 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int,
     return p
 
 
+def controls_behaved(rows: list[dict], passing: set[str] = PASSING) -> set[str]:
+    """Tasks whose every control behaved, on every reading that was asked for.
+
+    One rule, in one place. It was written in three, and on 09-21 only one of
+    them learned that a control asked three times has to behave three times:
+    `summarise`'s counted blocks and `compare`'s trusted set went on counting a
+    control that had behaved on any single reading. A judge whose second and
+    third readings all failed was then printed as "15 attempts, 7 passed"
+    beside "0 tasks" from `admitted`, in the same JSON, by `run.py rejudge`
+    (B-223). An errored row is not a reading; it is dropped and retried, and a
+    control short of its readings is unproven rather than passed.
+    """
+    from ..instrument.control import CONTROLS
+
+    want = {c.name for c in CONTROLS}
+    readings: dict[tuple, list[bool]] = {}
+    asked: dict[tuple, int] = {}
+    for r in rows:
+        task = r.get("task_id")
+        if not task or str(r.get("control", "")).startswith("probe:") or r.get("error"):
+            continue
+        if passing == PASSING_WITH_HEDGE and "ok_if_hedged_counted" in r:
+            behaved = bool(r["ok_if_hedged_counted"])
+        else:
+            behaved = bool(r.get("ok"))
+        key = (task, r.get("control"))
+        readings.setdefault(key, []).append(behaved)
+        asked[key] = max(asked.get(key, 1), int(r.get("passes") or 1))
+    ran: dict[str, set] = {}
+    for (task, control), got in readings.items():
+        if all(got) and len(got) >= asked[(task, control)]:
+            ran.setdefault(task, set()).add(control)
+    return {task for task, names in ran.items() if names >= want}
+
+
 def admitted(run: Path, out: Paths, model: str, passing: set[str]) -> set[str]:
     """Tasks this judge admits under one standard, whose controls behaved.
 
@@ -283,30 +318,7 @@ def admitted(run: Path, out: Paths, model: str, passing: set[str]) -> set[str]:
             r["task_id"] for r in load(out.calibration)
             if line_holds(r, passing=passing)
         }
-    want = {c.name for c in CONTROLS}
-    # Every reading of a control, and as many as were asked for -- the rule
-    # `controlled()` applies to a run's own controls. This counted a control
-    # that had behaved on any one reading, which is right while each is asked
-    # once and wrong the moment it is asked three times: one bad reading in
-    # three is a must-fail answer that passed, or a reference that was
-    # rejected. An errored row is not a reading; it is dropped and retried.
-    readings: dict[tuple, list[bool]] = {}
-    asked: dict[tuple, int] = {}
-    for r in load(out.controls):
-        if str(r.get("control", "")).startswith("probe:") or r.get("error"):
-            continue
-        if passing == PASSING_WITH_HEDGE and "ok_if_hedged_counted" in r:
-            behaved = bool(r["ok_if_hedged_counted"])
-        else:
-            behaved = bool(r.get("ok"))
-        key = (r["task_id"], r.get("control"))
-        readings.setdefault(key, []).append(behaved)
-        asked[key] = max(asked.get(key, 1), int(r.get("passes") or 1))
-    ran: dict[str, set] = {}
-    for (task, control), got in readings.items():
-        if all(got) and len(got) >= asked[(task, control)]:
-            ran.setdefault(task, set()).add(control)
-    return steady & {t for t, names in ran.items() if names >= want}
+    return steady & controls_behaved(load(out.controls), passing)
 
 
 def _passed(row: dict, passing: set[str]) -> bool:
@@ -754,20 +766,14 @@ def summarise(src: Paths, out: Paths, model: str) -> dict:
     # Tasks this judge can be trusted on: it read their known pair correctly
     # and every control behaved. Grades elsewhere are recorded but not counted.
     #
-    # Every control, not merely one row. Asking only whether some control row
-    # exists admitted tasks whose must-pass control had never run: the
-    # `-starved` directories hold `null` and `overclaim` alone, and this let
-    # four, five and three of their tasks through with no must-pass control at
-    # all. `pipeline.controlled` and `admitted` both require the full set.
-    from ..instrument.control import CONTROLS
-
-    want = {c.name for c in CONTROLS}
-    ran: dict[str, set] = {}
-    for r in ctl:
-        if r.get("ok"):
-            ran.setdefault(r.get("task_id"), set()).add(r.get("control"))
-    controlled = {task for task, names in ran.items() if names >= want}
-    readable = (holds & controlled) - broken
+    # Every control, on every reading asked for -- `controls_behaved`, the one
+    # rule `admitted` and `pipeline.controlled` also apply. Asking only whether
+    # some control row exists admitted tasks whose must-pass control had never
+    # run: the `-starved` directories hold `null` and `overclaim` alone, and
+    # this let four, five and three of their tasks through with no must-pass
+    # control at all.
+    behaved = controls_behaved(ctl)
+    readable = (holds & behaved) - broken
     # `scoreable` as well as the task gate. A reading whose quote is not in the
     # answer described something that was not there, and `Score.scoreable`
     # exists to say so: "averaging it in either direction invents a result".
@@ -775,7 +781,7 @@ def summarise(src: Paths, out: Paths, model: str) -> dict:
     # judge silently contaminated the rate it produced.
     counted = [r for r in graded if r["task_id"] in readable and r.get("scoreable", True)]
     # What the older, stricter bar would have kept, for comparison only.
-    readable_strict = (strict & controlled) - broken
+    readable_strict = (strict & behaved) - broken
     counted_strict = [
         r for r in graded if r["task_id"] in readable_strict and r.get("scoreable", True)
     ]
@@ -940,11 +946,21 @@ def compare(run: Path) -> str:
     # The original column was hard-coded as trusted and never opened the run's
     # own gate files at all.
     src_rows = [r for r in load(src.controls) if not str(r.get("control", "")).startswith("probe:")]
+    # The run's own gate for the run's own column -- `instrument.control.
+    # controlled`, the function every stage of the pipeline uses. This asked
+    # only whether the task had a control row of any kind, which is a fourth
+    # rule for the same question and the loosest of them: a task whose second
+    # reading failed, or whose controls were still short of the readings asked
+    # for, was printed unbracketed beside judge columns held to the full rule.
+    # An errored row is not a verdict here either; `controlled` drops them, and
+    # so does the trace half below, so a 429 does not brand a task for ever.
+    from ..instrument.control import controlled as run_controlled
+
     original_readable = (
         {r["task_id"] for r in load(src.calibration) if can_be_scored(r)}
-        & {r["task_id"] for r in src_rows}
+        & run_controlled(src)
     ) - {r["task_id"] for r in src_rows
-         if not r.get("ok") or r.get("trace_ok") is False}
+         if not r.get("error") and r.get("trace_ok") is False}
 
     graded = {}
     readable = {}
@@ -960,22 +976,14 @@ def compare(run: Path) -> str:
         # counted rate and printed as trusted in the table beside it.
         broken = {r["task_id"] for r in rows
                   if not r.get("ok") or r.get("trace_ok") is False}
-        # Every control, not one row of any kind -- the rule `summarise` and
-        # `admitted` use. Asking only whether some control row exists showed
-        # tasks as trusted whose must-pass control had never run, which is what
-        # the `-starved` directories hold: `null` and `overclaim` alone. Three
-        # of pc035860's attempts were printed unbracketed and added to the
-        # total that way, each of them an answer that resolved the defect while
-        # asserting something it had not established.
-        from ..instrument.control import CONTROLS
-
-        want = {c.name for c in CONTROLS}
-        ran: dict[str, set] = {}
-        for r in rows:
-            if r.get("ok"):
-                ran.setdefault(r.get("task_id"), set()).add(r.get("control"))
-        full = {task for task, names_ in ran.items() if names_ >= want}
-        readable[d.name] = (gate & full) - broken
+        # The same one rule -- `controls_behaved`. Asking only whether some
+        # control row exists showed tasks as trusted whose must-pass control
+        # had never run, which is what the `-starved` directories hold: `null`
+        # and `overclaim` alone. Three of pc035860's attempts were printed
+        # unbracketed and added to the total that way, each of them an answer
+        # that resolved the defect while asserting something it had not
+        # established.
+        readable[d.name] = (gate & controls_behaved(rows)) - broken
 
     names = ["original"] + [d.name for d in judges]
     width = max(len(n) for n in names) + 2
