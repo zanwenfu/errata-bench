@@ -457,6 +457,34 @@ check(last_user_message([{"turn_number": 1, "turn_type": "assistant_response",
                           "content": "no user here"}], 5) is None,
       "and a session with no user message still returns nothing")
 
+print("\n21. a screening gate is asked repeatedly and answered conservatively")
+# Each gate is a model reading prose, and a model reading the same prose twice
+# does not always answer the same way: five of forty-six scope rows changed
+# across five askings, and re-screening one corpus produced fourteen tasks one
+# time and thirteen the other. Asked repeatedly, a doubtful row is kept out.
+from errata_bench.pipeline import _agree
+
+class Says:
+    def __init__(self, v): self.value = v
+
+def alternating(seq):
+    it = iter(seq)
+    async def ask(): return Says(next(it))
+    return ask
+
+for seq, keep_on, want, label in (
+    ([True, True, True],  True,  True,  "unanimous yes is kept"),
+    ([True, False, True], True,  False, "one no among yeses is refused"),
+    ([False, False],      True,  False, "unanimous no stays no"),
+    ([False, False, False], False, False, "unanimous 'no leak' is kept"),
+    ([False, True, False], False, True,  "one reading of 'leaks' is enough to reject"),
+):
+    verdict, tally, _ = asyncio.run(_agree(alternating(seq), len(seq), keep_on=keep_on))
+    check(verdict is want, f"{label}: {tally} -> {verdict}")
+
+verdict, tally, _ = asyncio.run(_agree(alternating([True]), 1, keep_on=True))
+check(verdict is True and tally == "1/1", "asking once still works, and says it asked once")
+
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:
     print("  -", f)

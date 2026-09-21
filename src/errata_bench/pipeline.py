@@ -562,7 +562,33 @@ async def stage_signature(paths: Paths, limit: int, concurrency: int) -> Progres
     return p
 
 
-async def stage_screen(paths: Paths, limit: int, concurrency: int) -> Progress:
+async def _agree(ask, passes: int, keep_on: bool) -> tuple[bool, str, object]:
+    """Ask a gate several times and keep only what it says every time.
+
+    Every gate here is a model reading prose, and a model reading the same
+    prose twice does not always answer the same way. Measured on the scope
+    gate: asked five times about the same forty-six rows, forty-one answered
+    identically and five changed -- and re-screening one corpus end to end
+    produced fourteen tasks one time and thirteen the other, three of fifteen
+    appearing in only one. The gates decide which tasks exist, so their noise
+    is the task set's noise.
+
+    So each is asked repeatedly and answered conservatively, in whichever
+    direction keeps a doubtful row out: a row is answerable only if every
+    reading says so, in scope only if every reading says so, and leaking if
+    *any* reading says so. The tally is stored beside the verdict, because a
+    row that held 3 of 3 and one that held 2 of 3 are different evidence and
+    only one of them should be read as settled.
+    """
+    answers = [await ask() for _ in range(max(1, passes))]
+    values = [bool(getattr(a, "value", a)) for a in answers]
+    held = all(v is keep_on for v in values)
+    return (keep_on if held else not keep_on,
+            f"{sum(1 for v in values if v is keep_on)}/{len(values)}",
+            answers[-1])
+
+
+async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int = 1) -> Progress:
     """Check each conversation is answerable, and repair it if it leaks."""
     from .answerable import asks_for_something
     from .build import last_user_message
@@ -592,8 +618,11 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int) -> Progress:
                 out["asks_for_something"] = False
                 out["request_reason"] = "no user message within 80 turns of the cut"
             else:
-                a = await asks_for_something(message.get("content") or "")
-                out["asks_for_something"] = a.asks_for_something
+                verdict, tally, a = await _agree(
+                    lambda: asks_for_something(message.get("content") or ""),
+                    passes, keep_on=True)
+                out["asks_for_something"] = verdict
+                out["asks_for_something_held"] = tally
                 out["request_reason"] = a.request or a.reasoning
 
             # Is the defect even reachable from what was asked? nsega-mcp-todoist
@@ -602,15 +631,20 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int) -> Progress:
             # only sensible answer, and all three were scored off_target.
             request = (message or {}).get("content") or ""
             if request:
-                scope = await in_scope(request, r.get("defect", ""))
-                out["within_scope"] = scope.within_scope
+                verdict, tally, scope = await _agree(
+                    lambda: in_scope(request, r.get("defect", "")), passes, keep_on=True)
+                out["within_scope"] = verdict
+                out["within_scope_held"] = tally
                 out["scope_reason"] = scope.reason
             else:
                 out["within_scope"] = False
                 out["scope_reason"] = "no request to judge scope against"
 
-            leak = await signals_trouble(build_excerpt(ts, r["cut"]))
-            out["signals_trouble"] = leak.signals_trouble
+            # Leaking is the rejecting answer, so one reading saying so is enough.
+            verdict, tally, leak = await _agree(
+                lambda: signals_trouble(build_excerpt(ts, r["cut"])), passes, keep_on=False)
+            out["signals_trouble"] = verdict
+            out["clean_held"] = tally
             out["leak_reason"] = leak.reasoning
             out["redacted_turns"] = []
             out["rewritten_turns"] = {}
@@ -1574,6 +1608,7 @@ async def run_stages(
     concurrency: int = 4,
     repeats: int = 3,
     grade_concurrency: int | None = None,
+    passes: int = 1,
 ) -> list[Progress]:
     """Run the named stages in order, skipping work already recorded.
 
@@ -1604,13 +1639,13 @@ async def run_stages(
             ) from None
         try:
             return await _run_stages(
-                paths, stages, limit, concurrency, repeats, grade_concurrency
+                paths, stages, limit, concurrency, repeats, grade_concurrency, passes
             )
         finally:
             fcntl.flock(lock, fcntl.LOCK_UN)
 
 
-async def _run_stages(paths, stages, limit, concurrency, repeats, grade_concurrency):
+async def _run_stages(paths, stages, limit, concurrency, repeats, grade_concurrency, passes=1):
     out = []
     for name in stages:
         if name == "triage":
@@ -1622,7 +1657,7 @@ async def _run_stages(paths, stages, limit, concurrency, repeats, grade_concurre
         elif name == "signature":
             out.append(await stage_signature(paths, limit, concurrency))
         elif name == "screen":
-            out.append(await stage_screen(paths, limit, concurrency))
+            out.append(await stage_screen(paths, limit, concurrency, passes))
         elif name == "build":
             out.append(stage_build(paths, limit))
         elif name == "calibrate":

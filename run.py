@@ -253,8 +253,9 @@ def main() -> None:
         "--passes",
         type=int,
         default=1,
-        help="how many times to grade each answer (`rejudge`), or to read each "
-             "task's known pair (`gate`); more than one is how a judge's own noise is measured",
+        help="how many times to ask each question: grading an answer (`rejudge`), "
+             "reading a task's known pair (`gate`), or each screening gate (`stages "
+             "--only screen`). More than one keeps only the rows whose answer never changes",
     )
     ap.add_argument(
         "--judge",
@@ -335,6 +336,7 @@ def main() -> None:
             concurrency=args.concurrency,
             repeats=args.repeats,
             grade_concurrency=args.grade_concurrency or None,
+            passes=args.passes,
         )
     )
     # A stage that wrote eighty-one error rows and a stage that graded

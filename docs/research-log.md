@@ -329,6 +329,18 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   only definition of "right" this corpus contains. A task that rejects its own
   reference is broken, and whether the rule or the task is at fault, its scores
   cannot be trusted. It catches G-44 by itself.
+- **D-28 · Every gate that reads prose is asked more than once.** D-25 did
+  this for the judge's known-pair check after one reading moved a published
+  score by a third. G-52 found the same instability at the screening gates: the
+  scope gate answered identically five times out of five on 41 of 46 rows and
+  changed on 5, and a full re-screen of one corpus produced 14 tasks one time
+  and 13 the other, 3 of 15 appearing in only one. So `--passes N` now applies
+  to screening too, and each gate is answered in whichever direction keeps a
+  doubtful row out: answerable only if every reading says so, in scope only if
+  every reading says so, leaking if *any* reading says so. The tally is stored
+  beside the verdict, because a row that held 3 of 3 and one that held 2 of 3
+  are different evidence. It costs N model calls per gate per row and no
+  containers.
 - **D-25 · A task's admission is measured, not assumed.** Whether the judge
   can tell the developer's rejected answer from the accepted one decides
   whether a task counts at all, and it carries three attempts with it. It was
@@ -2086,6 +2098,55 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
 
 ---
 
+## 11b. The size of the pool, measured 09-20
+
+Everything below is counted from the corpus and from every run directory on
+disk, not estimated.
+
+| | |
+|---|---|
+| sessions in SWE-chat | 5,851 across 201 repositories |
+| conversation turns | 2,692,480 |
+| sessions whose first pushback is one we collect | 4,111 (70%) |
+| **of those, with a known repository and at least 3 agent turns before the pushback** | **2,264, across 161 repositories** |
+
+That 2,264 is the addressable pool: one moment per session, the first genuine
+pushback in it. Everything else in the corpus is either a session with no
+objection, an objection about work from before the transcript starts, or a
+repository the corpus cannot name.
+
+**What has been drawn from it so far**
+
+| | |
+|---|---|
+| moments collected | 1,853 — 81% of the pool |
+| triaged | 1,346 |
+| actually read | 347 — **15% of the pool** |
+| tasks built | 15 |
+
+**What each step costs in survivors**, measured on what was really processed:
+
+| step | survives | rate |
+|---|---|---|
+| triage keeps it | 550 of 1,346 | 40.9% |
+| reading finds a genuine agent error | 113 of 347 | 32.6% |
+| the four turns locate cleanly | 57 of 79 | 72.2% |
+| a defect signature can be derived | 53 of 53 | 100% |
+| it survives screening and build | 15 of 53 | 28.3% |
+
+Compounded, **one moment in 37 becomes a task** — 2.7%.
+
+So the whole pool is worth on the order of **60 tasks**, and the unread
+remainder about **50 more** than we have. That is the ceiling this corpus
+supports, and it is the number every decision about the benchmark's size should
+be measured against: not "how many tasks could we have" but "we have 15 of a
+possible 60, and reading the rest is the work".
+
+The cost of reading the rest is roughly eight model calls per moment for the
+1,900 unread, and no containers.
+
+---
+
 ## 12. Corpus facts worth knowing
 
 Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
@@ -2297,3 +2358,8 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   scope gate gives the same answer five times out of five on 41 of 46 rows and
   changes on 5, and a full re-screen of the same corpus produced 14 tasks one
   time and 13 the other, with 3 of 15 present in only one.
+- **09-20** — the pool measured end to end (§11b): 2,264 addressable moments
+  across 161 repositories, of which 1,853 are collected and only 347 read. One
+  moment in 37 becomes a task, so the corpus supports on the order of 60 and we
+  have 15. D-28 extends repeated asking to the screening gates, which G-52
+  showed were deciding task existence with a few per cent of noise each.
