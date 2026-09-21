@@ -391,6 +391,50 @@ for text, permanent in (
     check(is_permanent(text) is permanent,
           f"{'gone for good' if permanent else 'worth retrying'}: {text.splitlines()[-1][:52]}")
 
+print("\n19. an edit is placed by the tree, not by the folder's name")
+# The agent's recorded paths are absolute, on the developer's own machine, and
+# the tree they must land in is an export of one commit. Matching on "the
+# directory named after the repository" lost four tasks of nine: a checkout
+# called light-protocol3, one still called savanna after the repository was
+# renamed to savanna-vet-go, and a git worktree under .claude/worktrees/.
+from errata_bench.edits import replay as replay_edits
+
+def a_tree(*files):
+    d = Path(tempfile.mkdtemp()) / "tree"
+    for f in files:
+        q = d / f
+        q.parent.mkdir(parents=True, exist_ok=True)
+        q.write_text("original\n")
+    return d
+
+def an_edit(turn, path):
+    return {"turn": turn, "tool": "Edit",
+            "args": {"file_path": path, "old_string": "original", "new_string": "patched"}}
+
+for label, repo, files, es, want in (
+    ("a checkout named after the repository", "L/light-protocol", ["js/x.ts"],
+     [an_edit(1, "/Users/a/dev/light-protocol/js/x.ts")], 1),
+    ("a checkout whose name has a suffix", "L/light-protocol", ["js/e2e/c.test.ts"],
+     [an_edit(1, "/Users/ananas/dev/light-protocol3/js/e2e/c.test.ts")], 1),
+    ("a repository renamed since the session", "135yshr/savanna-vet-go", ["README.md"],
+     [an_edit(1, "/Users/135yshr/go/src/github.com/135yshr/savanna/README.md")], 1),
+    ("a git worktree inside the repository", "o/blog", ["src/content/blog/a.md"],
+     [an_edit(1, ".claude/worktrees/kurzweil/src/content/blog/a.md")], 1),
+    ("a file the session creates, beside one that resolves", "o/blog", ["src/a.md"],
+     [an_edit(1, "/Users/x/odd-name/src/a.md"),
+      {"turn": 2, "tool": "Write",
+       "args": {"file_path": "/Users/x/odd-name/src/new.md", "content": "hi"}}], 2),
+):
+    r = replay_edits(a_tree(*files), es, repo)
+    check(r.applied == want and r.ok, f"{label}: applied {r.applied} of {want}")
+
+outside = replay_edits(
+    a_tree("src/a.md"), [an_edit(1, "/Users/x/repo/src/a.md"),
+                         an_edit(2, "/Users/jgoto/Library/LaunchAgents/com.user.caffeinate.plist")],
+    "u/repo")
+check(not outside.ok and "not inside the repository" in outside.reason,
+      "and a path genuinely outside the checkout is still refused")
+
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:
     print("  -", f)

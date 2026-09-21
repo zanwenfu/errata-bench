@@ -23,7 +23,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass, field
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 from .timeline import to_repo_relative
 
@@ -73,14 +73,53 @@ def edits_before(turns: list[dict], cut_turn: int) -> list[dict]:
     return out
 
 
-def _target(tree: Path, local_path: str, repo_id: str) -> Path | None:
+def _inside(tree: Path, rel: str) -> Path | None:
+    """The path `rel` names inside `tree`, or None if it escapes it."""
+    p = (tree / rel).resolve()
+    root = tree.resolve()
+    return p if p == root or root in p.parents else None
+
+
+def _checkout_root(tree: Path, paths: list[str]) -> tuple[str, ...] | None:
+    """How much of the agent's absolute paths is the machine it worked on.
+
+    `to_repo_relative` assumes the developer's local directory is named after
+    the repository, and a quarter of the replay failures are that assumption:
+    `light-protocol3` for `Lightprotocol/light-protocol`, a checkout still
+    called `savanna` after the repository was renamed to `savanna-vet-go`, and
+    a git worktree under `.claude/worktrees/<name>/`. None of them is a bad
+    task; all of them are this function's guess.
+
+    The tree itself is the better evidence. Any suffix of a recorded path that
+    exists in the exported tree tells us where the checkout began, so the
+    prefix is measured once from the paths that resolve and then applied to the
+    rest -- including files the session creates, which exist nowhere yet and
+    so cannot be resolved on their own.
+    """
+    votes: dict[tuple[str, ...], int] = {}
+    for local in paths:
+        parts = tuple(PurePosixPath(local).parts)
+        for i in range(len(parts)):
+            if _inside(tree, str(Path(*parts[i:]))) and (tree / Path(*parts[i:])).exists():
+                votes[parts[:i]] = votes.get(parts[:i], 0) + 1
+                break
+    if not votes:
+        return None
+    # The prefix the most paths agree on: one file living outside the checkout
+    # should not decide where the checkout is.
+    return max(votes.items(), key=lambda kv: (kv[1], -len(kv[0])))[0]
+
+
+def _target(tree: Path, local_path: str, repo_id: str,
+            root: tuple[str, ...] | None = None) -> Path | None:
+    if root is not None:
+        parts = tuple(PurePosixPath(local_path or "").parts)
+        if parts[:len(root)] == root and len(parts) > len(root):
+            return _inside(tree, str(Path(*parts[len(root):])))
     rel = to_repo_relative(local_path or "", repo_id)
     if not rel:
         return None
-    p = (tree / rel).resolve()
-    if not str(p).startswith(str(tree.resolve())):
-        return None
-    return p
+    return _inside(tree, rel)
 
 
 def _edit(path: Path, old: str, new: str, replace_all: bool) -> str | None:
@@ -106,9 +145,12 @@ def _edit(path: Path, old: str, new: str, replace_all: bool) -> str | None:
 def replay(tree: Path, edits: list[dict], repo_id: str) -> Replay:
     """Apply the edits in order. Stops at the first that does not apply."""
     r = Replay()
+    # Where the developer's checkout began, measured from the tree rather than
+    # guessed from the directory name.
+    root = _checkout_root(tree, [e["args"].get("file_path", "") for e in edits])
     for e in edits:
         args = e["args"]
-        target = _target(tree, args.get("file_path", ""), repo_id)
+        target = _target(tree, args.get("file_path", ""), repo_id, root)
         if target is None:
             r.failed_at = e["turn"]
             r.reason = f"turn {e['turn']}: path {args.get('file_path','')!r} is not inside the repository"

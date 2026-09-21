@@ -1291,6 +1291,23 @@ other sixteen are recorded in G-49.
   "the code is gone from the remote" when it is, and a check pins the six
   cases in both directions.
 
+- **B-208 · Four tasks of nine were lost to a folder's name** (fixed ·
+  09-20). The agent's recorded paths are absolute, on the developer's own
+  machine; the tree they must land in is an export of one commit.
+  `to_repo_relative` bridged the two by looking for a directory named after the
+  repository, which fails whenever the developer's checkout is called something
+  else: `light-protocol3` for `Lightprotocol/light-protocol`, a checkout still
+  called `savanna` after the repository was renamed to `savanna-vet-go`, and a
+  git worktree under `.claude/worktrees/<name>/`. All three were reported as
+  "the agent's in-session edits do not apply to the base commit", which reads
+  as a broken task rather than a failed guess. The tree is the better evidence:
+  the checkout root is now measured once from whichever recorded paths resolve
+  inside it and applied to the rest, including files the session creates, which
+  exist nowhere yet and cannot be resolved on their own. A path genuinely
+  outside the checkout -- a LaunchAgent plist, a Claude Code plan file -- is
+  still refused. **11 built tasks became 14, none lost**, and the three
+  recovered replay 4, 2 and 4 of the agent's own edits.
+
 ### 7.10 Other providers
 
 - **B-91 · Azure was inferred from an environment variable** (fixed · 09-19 ·
@@ -1791,8 +1808,8 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   support any claim, and no further work on the scoring can change that --
   every instrument question that remains is about precision on a sample too
   small to be precise about. The funnel is measured and says where they are:
-  of 51 located defects, 40 are rejected at build, 9 of them because the
-  agent's own edits will not replay onto the base commit, 8 because the defect
+  of 51 located defects, 37 are rejected at build (was 40 before B-208), 5 of
+  them because the agent's own edits will not replay onto the base commit, 8 because the defect
   is outside what the developer asked for, 5 for having no commit before the
   session, 4 to a leak that survives redaction, and 3 to a `git fetch` that
   simply failed. The last is the cheapest thing on the list.
@@ -2238,3 +2255,10 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   still fetchable, so this is repository decay, not corpus rot. The fix worth
   having was the message: "could not build the tree" is what a flaky network
   says too, and a permanent loss is now named as one (B-207).
+- **09-20** — B-208: the biggest single group of rejected tasks was a guess
+  about folder names. The agent's absolute paths are now placed by finding the
+  checkout root in the exported tree rather than by matching a directory named
+  after the repository. **11 built tasks became 14**, none lost, and the
+  replay-failure group fell from 9 to 5 — the remaining five are genuine: two
+  base commits that differ from what the agent was editing, two paths truly
+  outside the checkout, one file absent from the tree.
