@@ -23,7 +23,7 @@ async def stage_triage(paths: Paths, limit: int, concurrency: int) -> Progress:
     they were opening instructions rather than objections.
     """
     from ..corpus.turns import build_excerpt
-    from ..store import load_session_turns
+    from ..corpus.turns import load_session_turns
     from ..find.triage import triage
 
     p = Progress("triage")
@@ -109,7 +109,7 @@ async def stage_read(paths: Paths, limit: int, concurrency: int) -> Progress:
 
 async def stage_locate(paths: Paths, limit: int, concurrency: int) -> Progress:
     """Find the four turns that define each task."""
-    from ..store import load_session_turns
+    from ..corpus.turns import load_session_turns
     from ..find.trajectory import boundaries, locate
 
     p = Progress("locate")
