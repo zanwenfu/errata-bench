@@ -40,8 +40,9 @@ def _load_dotenv() -> None:
     """
     import os
 
-    root = Path(__file__).resolve().parents[2]
-    env = root / ".env"
+    from .project import ROOT
+
+    env = ROOT / ".env"
     if not env.is_file():
         return
     for line in env.read_text().splitlines():

@@ -73,12 +73,28 @@ def main() -> int:
                 top += 1
             resolve(node, package, where)
 
+    # The other thing a module move breaks silently: a path built by counting
+    # parent directories. CORPUS was `parents[2]`, right for
+    # errata_bench/corpus.py and one level short for
+    # errata_bench/corpus/sessions.py -- so it pointed at src/data/swe-chat and
+    # every corpus-reading stage died on a pyarrow FileNotFoundError.
+    from errata_bench.corpus.sessions import CORPUS
+    from errata_bench.project import ROOT as CHECKOUT
+
+    if not (CHECKOUT / "pyproject.toml").is_file():
+        BAD.append(f"project.ROOT is {CHECKOUT}, which is not this checkout")
+    if not CORPUS.is_dir():
+        BAD.append(f"CORPUS is {CORPUS}, which does not exist")
+    for name in ("conversations.parquet", "sessions.parquet", "repositories.parquet"):
+        if CORPUS.is_dir() and not (CORPUS / name).is_file():
+            BAD.append(f"the corpus has no {name}")
+
     print(f"\n  {top} module-level and {deferred} deferred imports, "
           f"{len(BAD)} broken\n")
     for b in BAD:
         print(f"  BROKEN  {b}")
     if not BAD:
-        print("  every import resolves, including the ones no check runs")
+        print("  every import resolves, and the corpus is where the code looks")
     return 1 if BAD else 0
 
 

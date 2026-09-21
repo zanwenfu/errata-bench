@@ -18,7 +18,13 @@ from pathlib import Path
 
 import pyarrow.parquet as pq
 
-CORPUS = Path(__file__).resolve().parents[2] / "data" / "swe-chat"
+from ..project import ROOT
+
+# Located, not counted. `parents[2]` was right while this file was
+# errata_bench/corpus.py and pointed at src/data/swe-chat once it became
+# errata_bench/corpus/sessions.py -- taking every corpus-reading stage
+# with it.
+CORPUS = ROOT / "data" / "swe-chat"
 
 
 @dataclass
