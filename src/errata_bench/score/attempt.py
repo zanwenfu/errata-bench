@@ -705,6 +705,12 @@ async def run(
     told so and asked to answer with what it has -- which is a real answer, and
     one this benchmark is specifically interested in.
     """
+    # Here as well as in the stage, because this is where the commands run:
+    # the guarantee should not rest on every future caller remembering it.
+    if not image and not host_allowed():
+        return Attempt(task.task_id, model, error=(
+            "there is no container for this task and ERRATA_ALLOW_HOST is not set, "
+            "so it was not run on this machine"))
     configure_client()
     # One pass over a 1.3 GB parquet per attempt, unless the caller already has
     # the turns. The pipeline loads them once for every task it is about to run.

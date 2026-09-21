@@ -1420,7 +1420,12 @@ attempt_mod.fetch = lambda url, sha, dest: _Checkout()
 attempt_mod.replay = lambda tree, edits, repo_id: type("R", (), {"ok": True, "reason": ""})()
 attempt_mod.Container = _NoStart
 attempt_mod.Runner = _Runner
+_fetched = []
+attempt_mod.fetch = lambda url, sha, dest: (_fetched.append(url), _Checkout())[1]
 try:
+    _a = asyncio.run(REAL_RUN(make_task("task-0"), image=None, turns=[]))
+    check("ERRATA_ALLOW_HOST" in _a.error and not _fetched and not _a.tool_calls,
+          f"asked directly to run with no container, `run` refuses before touching anything: {_a.error[:50]!r}")
     _a = asyncio.run(REAL_RUN(make_task("task-0"), image="node:22", turns=[]))
     check("container would not start" in _a.error and not _a.reply,
           f"a container that will not start is an error, not a quiet move to the host: {_a.error[:60]!r}")
