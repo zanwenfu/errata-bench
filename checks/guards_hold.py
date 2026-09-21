@@ -704,10 +704,30 @@ for _label, _out in (("a 5,000-char first line", "A" * 5000 + "\n" + "line\n" * 
 # The candidate is shown the first max_bytes of a file; the record kept the
 # last 4,000, so the honesty check read a window the answer was not about.
 (_tree / "big.py").write_text("".join(f"def f{i}():\n    return {i}\n" for i in range(400)))
-_c = ToolCall("read_file", {"path": "big.py"})
-_c.record(_read_file(_tree, "big.py", 60_000), from_end=False)
-check("def f0(" in _c.result and len(_c.result) <= RESULT_CHARS + 60,
-      "a file read is recorded from the end the candidate was shown")
+# Through the real tool, not by calling record(from_end=False) directly --
+# that tests `record` and cannot notice the call site losing the argument,
+# which is the thing that was wrong. The decorator hides the function, so it
+# is invoked the way the agent runtime invokes it.
+from errata_bench.score.attempt import read_file as _read_tool
+
+_calls = []
+_ctx = type("Ctx", (), {
+    "context": {"tree": _tree, "calls": _calls},
+    "tool_name": "read_file",
+    "run_config": None,
+    "usage": None,
+})()
+_shown = asyncio.run(_read_tool.on_invoke_tool(_ctx, json.dumps({"path": "big.py"})))
+check(len(_calls) == 1, f"the real read_file tool recorded one call: {len(_calls)}")
+_rec = _calls[0].result
+check(_shown.startswith("def f0(") and "def f5(" in _shown,
+      "the candidate is shown the head of the file")
+# `def f5(`, not `def f0(`. record() always keeps the first line as its head,
+# so the very top of the file is present either way and asserting on it passes
+# with the fix reverted -- which it did. The fifth definition is in the head
+# region and nowhere near the tail, so it separates the two.
+check("def f5(" in _rec and len(_rec) <= RESULT_CHARS + 60,
+      f"and the record holds that same head, inside the cap: {len(_rec)}")
 
 # A hook that is not executable does not run, and that is sometimes the whole
 # defect. On contents alone the fix read as no work at all.
@@ -849,8 +869,27 @@ from errata_bench.find.leakage import Leakage as _Lk, signals_trouble as _sig
 from errata_bench.find.scope import Scope as _Sc, in_scope as _insc
 from errata_bench.find.triage import Triage as _Tr, triage as _tri
 
+# Patched on each gate module, not on llm. They do `from ..llm import
+# configure_client` at import, so the name is bound there and replacing it on
+# llm intercepts nothing -- the real one ran, `_load_dotenv` found this
+# checkout's .env, and the section passed while quietly requiring a live
+# credential. Without one it raises RuntimeError and aborts the suite. Same
+# shape as B-151, and the reason every stub here is counted.
+import errata_bench.find.answerable as _an_mod
+import errata_bench.find.leakage as _lk_mod
+import errata_bench.find.scope as _sc_mod
+
+_cc_calls = {"n": 0}
+
+def _no_client():
+    _cc_calls["n"] += 1
+
+_gate_mods = (_an_mod, _sc_mod, _lk_mod)
+_saved_ccs = [m.configure_client for m in _gate_mods]
+for _m in _gate_mods:
+    _m.configure_client = _no_client
 _saved_cc = reader.configure_client
-reader.configure_client = lambda: None
+reader.configure_client = _no_client
 try:
     for _label, _fn, _args, _answer in (
         ("answerable", _asks, ("do the thing",), _An(asks_for_something=True, request="r", reasoning="x")),
@@ -867,7 +906,13 @@ try:
             check(False, f"{_label}: a throttle still reaches the caller as an error")
 finally:
     reader.configure_client = _saved_cc
+    for _m, _cc in zip(_gate_mods, _saved_ccs):
+        _m.configure_client = _cc
     asyncio.sleep = _real_sleep
+
+check(_cc_calls["n"] > 0,
+      f"and the client stub really intercepted ({_cc_calls['n']} calls) -- "
+      "otherwise this section needs a live credential")
 
 check(bool(_slept), f"and it waits between tries rather than hammering ({len(_slept)} waits)")
 

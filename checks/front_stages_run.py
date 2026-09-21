@@ -219,11 +219,24 @@ def main() -> int:
     q = Paths(Path(tempfile.mkdtemp()) / "run")
     append(q.moments, {"session_id": "s-1", "turn_number": 7, "repo_id": "acme/up",
                        "kind": "correction", "agent_turns_before": 4})
-    for stage in (stage_triage, stage_read, stage_locate, stage_signature):
-        asyncio.run(stage(q, 10**9, concurrency=1))
-    scope_mod.in_scope = sometimes_out_of_scope
-    asyncio.run(stage_screen(q, 10**9, concurrency=1, passes=3))
-    row = load(q.screened)[0]
+    try:
+        for stage in (stage_triage, stage_read, stage_locate, stage_signature):
+            asyncio.run(stage(q, 10**9, concurrency=1))
+        scope_mod.in_scope = sometimes_out_of_scope
+        asyncio.run(stage_screen(q, 10**9, concurrency=1, passes=3))
+    except Exception as e:
+        # Caught for the same reason section 1 catches: the stage failure this
+        # section exists to notice would otherwise abort the script before its
+        # own assertion ran, and an aborted script reports nothing.
+        check(False, f"a stage raised before the gates could be read: {type(e).__name__}: {e}")
+        print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
+        for f in FAIL:
+            print("  -", f)
+        return 1
+    rows = load(q.screened)
+    check(len(rows) == 1 and not rows[0].get("error"),
+          f"the row screened without error: {rows[0].get('error') if rows else 'no rows'}")
+    row = rows[0]
     check(row["within_scope"] is False and row.get("within_scope_held") == "2/3",
           f"one 'out of scope' in three keeps the row out: "
           f"{row.get('within_scope')} held {row.get('within_scope_held')}")

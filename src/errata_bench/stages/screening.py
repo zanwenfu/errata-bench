@@ -274,7 +274,44 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
     }
     todo = [r for r in rows if done.get(key_of(r), 0) < passes][:limit]
     p.skipped = len(rows) - len(todo)
+
+    def prune() -> None:
+        """Keep one reading per row: the best one.
+
+        "Best" ranks a row that finished above one that errored, before it
+        ranks by pass count. Ranking on pass count alone let a re-screen that
+        hit a transient 429 -- an error row carrying screen_passes=3 --
+        outrank and delete the completed 1-pass row it was meant to replace.
+        `build` reads only rows without an error, so that moment then vanished
+        from its input entirely: not built, and not rejected either, so
+        nothing in rejections.jsonl said so. Its task_id disappeared from
+        tasks.jsonl and the prune in `stage_build` deleted its calibration,
+        controls, answers and graded attempts to match. Measured end to end:
+        12 graded attempts down to 9 from one simulated 429, in a single
+        `stages` command.
+
+        Run on every exit, not only after work. A run interrupted between the
+        append and the prune leaves duplicates behind, and the next run has
+        nothing to re-screen and returned early -- so `build` read the same
+        conversation twice, at one pass and at five, for ever.
+        """
+        def rank(row: dict) -> tuple:
+            return (0 if row.get("error") else 1, row.get("screen_passes", 1))
+
+        with held(paths.screened):
+            rows_now = load(paths.screened)
+            best: dict[tuple, dict] = {}
+            for r in rows_now:
+                k = key_of(r)
+                if k not in best or rank(r) >= rank(best[k]):
+                    best[k] = r
+            kept = list(best.values())
+            if len(kept) != len(rows_now):
+                replace(paths.screened, kept)
+                p.notes.append(f"dropped {len(rows_now) - len(kept)} superseded screenings")
+
     if not todo:
+        prune()
         p.took_s = time.monotonic() - t0
         return p
 
@@ -351,35 +388,7 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
     results = await _gather([one(r) for r in todo], concurrency)
     p.produced = sum(1 for r in results if r)
     p.failed = sum(1 for r in results if not r)
-    # Re-screening appends, so the row it supersedes is still in the file and
-    # `build` would read the same conversation twice -- once at one pass and
-    # once at five. Only the best reading of each row is kept.
-    #
-    # "Best" ranks a row that finished above one that errored, before it ranks
-    # by pass count. Ranking on pass count alone let a re-screen that hit a
-    # transient 429 -- an error row carrying screen_passes=3 -- outrank and
-    # delete the completed 1-pass row it was meant to replace. `build` reads
-    # only rows without an error, so that moment then vanished from its input
-    # entirely: not built, and not rejected either, so nothing in
-    # rejections.jsonl said so. Its task_id disappeared from tasks.jsonl and
-    # the prune in `stage_build` deleted its calibration, controls, answers
-    # and graded attempts to match. Measured end to end: 12 graded attempts
-    # down to 9 from one simulated 429, in a single `stages` command, exit 0
-    # for every stage but screen.
-    def rank(row: dict) -> tuple:
-        return (0 if row.get("error") else 1, row.get("screen_passes", 1))
-
-    with held(paths.screened):
-        rows_now = load(paths.screened)
-        best: dict[tuple, dict] = {}
-        for r in rows_now:
-            k = key_of(r)
-            if k not in best or rank(r) >= rank(best[k]):
-                best[k] = r
-        kept = list(best.values())
-        if len(kept) != len(rows_now):
-            replace(paths.screened, kept)
-            p.notes.append(f"dropped {len(rows_now) - len(kept)} superseded screenings")
+    prune()
     p.took_s = time.monotonic() - t0
     return p
 
