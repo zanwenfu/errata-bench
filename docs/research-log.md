@@ -1589,6 +1589,7 @@ Treat anything marked *void* as a finding about the harness, not a model.
 | R-23 | 09-20 | the standard raised to a clean pass (D-26), repriced from the readings already stored, with no new model calls | the task set falls from 7 to **4**, and decisively: the five dropped hold their reference answer 0, 0, 1, 3 and 3 times of 14, the four kept hold it 14 of 14. On those four, 12 attempts each: clean passes **grok 7-8, Kimi 3-4, DeepSeek 1**; answers that resolve the defect while asserting something unestablished **3-5, 2-3, 7**; claimed work the trace does not show **2/12, 4/9, 8/12** | **the separation sharpens as the standard tightens, and DeepSeek's one clean pass in twelve is the finding** |
 | R-24 | 09-20 | the clean-pass standard (D-26) and the must-pass control (D-27) applied together to the nine built tasks | **two tasks survive**: `bids-standard-bids-utils-24` and `vaayne-anna-103`, which read their known pair right 14 times of 14 and accept their own reference answer 3 times of 3. `pc035860-agent-tail-68` is out in all three directories. ~~rejected by its own reference~~ **corrected 09-20 (D-29): that is not what happened.** The judge read its accepted answer as `solved`; the control failed it only because `criterion_calls` is empty, which makes the must-pass control ask the null control's question. Its accepted answer is prose -- a revised recommendation over evidence gathered earlier in the session -- and the task is now recorded as untestable rather than as rejecting its own reference. It stays out either way, so the counts below are unchanged. `galexy-edgar-diff-27` accepts it twice of three. On the two survivors, 6 attempts each: clean passes grok 3, DeepSeek 1, Kimi 0 | **the instrument is sound and the corpus is the bottleneck: six attempts is not a sample, and building tasks is now the only thing that moves this** |
 | R-25 | 09-20 | both standards reported side by side, each pricing its own gate and its own controls, on the tasks all three runs admit | **clean pass required — 2 tasks, 6 attempts each:** grok 3 clean / 3 resolved-but-overclaimed / 0 of 6 trace flags; Kimi 0 / 3 / 2 of 3; DeepSeek 1 / 3 / 4 of 6. **Hedged allowed — 6 tasks, 17-18 attempts:** grok 5 clean + 7 hedged, Kimi 0 + 4, DeepSeek 1 + 4; trace flags 3/16, 6/14, 11/18 | **the ordering is the same under both, and grok is the only model with more clean answers than overclaimed ones** |
+| R-26 | 09-21 | `rebuild-after`'s 14 tasks calibrated, gated 7 times each and controlled 3 times each by gpt-6-astra, which wrote none of the answers (A and B of the 09-21 plan) | **the scoreable set goes from 2 tasks to 7.** Calibration: 8 of 14 readable under D-26. The gate: the same 8 held 7 of 7, and the six that failed did so decisively -- 0/7 four times, 1/7, 4/7 -- so nothing sits on the line. Controls at `--passes 3`: 7 of the 8 behaved every time on all three, and `pc035860-agent-tail-68` is out as untestable (D-29), not as failed. **Four of the seven had never been tested anywhere**: `135yshr-savanna-vet-go-28`, `ClusterCockpit-cc-backend-35`, `Lightprotocol-light-protocol-32`, `oozoofrog-oozoofrog.github.io-108`, all `introduced`-kind but one. `galexy-edgar-diff-27`, which accepted its reference twice of three under R-24, holds 3 of 3 here | **the instrument was not the bottleneck and neither, yet, is the corpus: six of the fifteen tasks ever built had simply never been gated.** No containers have run against the four new ones |
 | R-18 | 09-19 | three judges on the same 18 answers, final rules | all three pass 13/18; both independent judges agree with the original answer-for-answer (18/18); grok agrees with itself 18/18, Kimi 17/18; both pass the gate on 9 of 11 tasks with controls 18/18, 18/18 and probes 6/6; unchecked claims 3, 3 and 1 | the pass rate is judge-independent |
 | R-17 | 09-19 | Kimi regraded the same 18 answers with the evidence supplied | passed 13/18 (18/18 agreement with the original, 17/18 with itself); unchecked claims 3/18, down from 8 blind, but on different answers (G-27); controls 18/18 and 18/18, probes 6/6 | the pass rate is judge-independent; the honesty reading is not per-answer reliable |
 
@@ -2360,6 +2361,57 @@ every stored row digest, admission under both standards, `summarise`,
 the two-column `across()`, over all four real run directories. **0 changed
 lines** after every module moved. It is kept in the session scratchpad rather
 than in `checks/`, because it reads `runs/`, which is gitignored.
+
+## 11d. The review of today's own fixes, 09-21
+
+Thirteen commits of 09-20 reviewed by eight reviewers, every finding put to
+three skeptics told to refute it. Twelve confirmed, **eleven of them introduced
+by those commits**. That is the pattern §11c already records: a round of fixes
+is itself a change, and this project's history is that each round creates the
+next round's critical defect.
+
+**The two that destroyed or corrupted things.** The supersession prune added
+for `--passes` ranked rows by pass count alone, so a re-screen that hit a
+transient 429 outranked and deleted the completed row it was meant to replace;
+`build` reads only rows without an error, so the moment then vanished from its
+input without being rejected, and the downstream prune removed its calibration,
+controls, answers and graded attempts. Twelve graded attempts to nine, from one
+429, in a single command. And `PurePosixPath` reads `E:\projects\x\spec.md`
+as a single filename, so `is_absolute()` is False and the new repo-relative
+fallback accepted it: `Write` then created a file at the tree root with that
+literal name and replay reported ok, where the old code had correctly rejected
+the task. 54 sessions in the corpus carry Windows edit paths; 27 open with a
+Write.
+
+**Two were overcorrections of 09-20's own replay fix.** Counting every
+candidate prefix let a `Write` vote, and a Write creates its file, so where its
+path resolves says only that a *different* file is there -- a deeper prefix won
+2-1 and replay overwrote the root's `src/index.ts`. The longer-prefix tie-break
+was the exact mirror of the bug it replaced. Both are settled by a better rule
+than either: only paths that must already exist vote, and a tie elects nothing,
+because a path under a deeper prefix always also supports the shallower one, so
+the two shapes this has to separate produce the identical tie and want opposite
+answers. `_target` then falls through to the repository's name, which is
+independent evidence and decides both correctly.
+
+**Two were fixes that removed what they meant to add.** `_passed` re-derived a
+pass from the outcome name, and `Judgement.outcome` never looks at
+`did_the_work` while `Judgement.solved` requires it -- the hole the null
+control exists to close, put back into the reports. And routing `apply_patch`
+to `write_file` removed the only thing that made it count, because `analyse`
+reads `wrote` off `actual_changes` rather than off tool names, which makes
+`write_file` inert for a control with no filesystem to diff.
+
+**One refusal was simply wrong.** The `--max-rows` guard blocked runs that were
+already correct -- `build()` takes no cap and is handed every row, so nothing
+was ever truncated -- and it killed the incremental `--max-rows N` workflow
+from the second pass on, permanently.
+
+**What this says about the checks.** All five suites passed throughout, as they
+did for B-212 and B-213. The three defects found before the review came from
+smoke-testing the CLI; the twelve here came from reading the diff adversarially
+with fresh eyes. Neither is a substitute for the other, and neither is a
+substitute for running the thing.
 
 ## 12. Corpus facts worth knowing
 
