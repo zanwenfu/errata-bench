@@ -106,6 +106,41 @@ p = stage_build(d, 10**9)
 check("B-125", "a rebuild refuses to empty a directory that holds results",
       len(load(d.tasks)) == 1 and len(load(d.attempts)) == 1 and any("refused" in n for n in p.notes))
 
+# ---- B-210: the same wipe, reached from the other side ------------------
+# B-125's guard only asks whether there was anything to build FROM. The likelier
+# accident is a full screened.jsonl every row of which fails for a reason that
+# has nothing to do with the tasks: an unreachable remote, an absent git, an
+# expired token. Measured against a copy of runs/scale400c with a git that
+# cannot resolve its host: 11 tasks, 11 calibrations, 12 controls and 18 graded
+# attempts to zero, from a command that exits 0 and prints "0 produced, 51
+# already done".
+from errata_bench.spec import BuildResult, Rejection
+
+d = run_dir()
+append(d.attempts, {"task_id": "t", "run": 0, "passed": True})
+append(d.screened, {"session_id": "s", "complaint": 1})
+B.build = lambda rows, **kw: BuildResult(
+    tasks=[],
+    rejected=[Rejection(repo_id="r", complaint_turn=1,
+                        reason="could not build the tree: unable to access")],
+)
+p = stage_build(d, 10**9)
+check("B-210", "a rebuild that builds nothing from something prunes nothing",
+      len(load(d.tasks)) == 1 and len(load(d.attempts)) == 1
+      and len(load(d.calibration)) == 1 and len(load(d.controls)) == len(CONTROL_NAMES)
+      and any("refused" in n for n in p.notes))
+
+# and a capped rebuild cannot prune the tasks it never looked at
+d = run_dir()
+append(d.attempts, {"task_id": "t", "run": 0, "passed": True})
+for i in range(3):
+    append(d.screened, {"session_id": f"s{i}", "complaint": i})
+B.build = lambda rows, **kw: (_ for _ in ()).throw(AssertionError("build must not run"))
+p = stage_build(d, 1)
+check("B-211", "and --max-rows is refused rather than silently ignored here",
+      len(load(d.tasks)) == 1 and len(load(d.attempts)) == 1
+      and any("refused" in n for n in p.notes))
+
 # ---- B-126 / B-145 -----------------------------------------------------
 d = run_dir()
 # cut in the middle of an em dash, which model replies are full of

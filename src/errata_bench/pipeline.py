@@ -747,7 +747,48 @@ def stage_build(paths: Paths, limit: int) -> Progress:
         ]
         p.took_s = time.monotonic() - t0
         return p
+    # A partial rebuild cannot safely rewrite the whole file. `limit` caps rows
+    # for every other stage, and this one rewrites tasks.jsonl from scratch and
+    # prunes four files to match, so honouring it would build one task and
+    # delete the rows of every task it did not look at. It has always been
+    # ignored here; now it is refused out loud rather than silently.
+    if limit and limit < len(rows) and (load(paths.tasks) or load(paths.attempts)):
+        p.failed = 1
+        p.notes = [
+            f"refused: --max-rows {limit} against {len(rows)} screened rows. This stage "
+            "rewrites tasks.jsonl in full and prunes the downstream files to match, so a "
+            "capped run would delete the rows of every task it skipped. Drop the cap."
+        ]
+        p.took_s = time.monotonic() - t0
+        return p
+
     result = build(rows)
+
+    # The guard above refuses to build nothing from nothing. This refuses to
+    # build nothing from *something*, which is the likelier accident: the rows
+    # are all there and every one of them failed for a reason that has nothing
+    # to do with the tasks. An unreachable remote, an absent or broken git, an
+    # expired token and a GitHub outage each reject every row alive, and the
+    # prune below then rewrites four files to match. Measured on a copy with an
+    # unresolvable host: 18 graded attempts, 11 calibrations and 12 controls
+    # destroyed by a command that exits 0 and prints "0 produced, 51 already
+    # done", because `skipped` renders as "already done" and a total wipe reads
+    # like a no-op resume.
+    if not result.tasks and (load(paths.tasks) or load(paths.attempts) or load(paths.answers)):
+        transient = sum(1 for r in result.rejected
+                        if "could not build the tree" in (r.reason or ""))
+        p.failed = 1
+        p.notes = [
+            f"refused: built 0 tasks from {len(rows)} screened rows, and this directory "
+            f"already holds results. {transient} of {len(result.rejected)} rejections were "
+            "transient (the tree could not be fetched), which is what an unreachable "
+            "remote or a broken git looks like. Nothing was pruned. Check the remote, "
+            "then re-run."
+        ]
+        p.skipped = len(result.rejected)
+        p.took_s = time.monotonic() - t0
+        return p
+
     write(result.tasks, paths.tasks)
 
     surviving = {t.task_id for t in result.tasks}
