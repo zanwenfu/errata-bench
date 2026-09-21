@@ -2221,6 +2221,91 @@ The cost of reading the rest is roughly eight model calls per moment for the
 
 ---
 
+## 11c. The review of 09-20, and the restructure
+
+Five reviewers over the storage layer, the scoring logic, the sandbox and
+replay, the stage orchestration and the readers, plus a structural pass. Every
+finding below was reproduced by running the real code; nothing is a reading of
+the source alone. 35 findings, 21 fixed in the ten commits that follow.
+
+**The one that mattered most.** `_agree` reduced every gate reading with
+`bool(getattr(a, "value", a))`, and no gate returns anything with a `.value`:
+`asks_for_something` returns `Answerable`, `in_scope` returns `Scope`,
+`signals_trouble` returns `Leakage`. So each reading truth-tested as the model
+object and came out True, all three screening gates became constants --
+answerable and in-scope pinned to keep, leaking pinned to leaks -- and `build`
+rejected every row alive under "the context already signals trouble". **The
+pipeline could not produce a task.** It landed in `3cc60c610` and 0 of 257
+stored screened rows carry a tally, so no run used it and no published number
+moved. `checks/guards_hold.py` passed throughout, because its fake gate carried
+the `.value` attribute no real gate has -- the same failure as B-174, a fixture
+shaped unlike the thing it stands for.
+
+**Two ways a command destroyed paid work.** B-125's guard refused to build
+nothing from *nothing*; it did not cover building nothing from *something*.
+An unreachable remote, an absent git or an expired token rejects every row,
+and the prune then rewrote four files to match. Measured on a copy of
+runs/scale400c with a git that cannot resolve its host: 11 tasks, 11
+calibrations, 12 controls and 18 graded attempts to zero, from a command that
+exits 0 and prints "0 produced, 51 already done". Separately, `regrade_all`
+held the only `replace()` in the codebase not under `held()`, and it wrote
+back a list snapshotted before the judge calls -- 69 of 180 rows kept in an
+A/B against the locked version. `run.py rejudge` and `run.py gate` also
+returned before `run_stages` and so never took the run lock at all.
+
+**Silently wrong trees.** `_checkout_root` stopped at the first suffix that
+resolved, which is the longest -- and a longer suffix is a shorter prefix. For
+a checkout at `~/code/web` of a repo that also holds `web/package.json`, the
+ordinary shape of a monorepo, an edit to `~/code/web/package.json` elected the
+root `~/code` and replayed onto the wrong file. With `Write` that is silent.
+Replay also round-tripped every file through `read_text(errors="replace")`,
+converting CRLF to LF across the whole file and turning undecodable bytes into
+U+FFFD, then rejecting the next edit whose old_string still held the `\r\n`.
+
+**Traces that did not match what the candidate saw.** `_safe` tested
+containment with a string prefix, so `../tree-escape/loot.txt` resolved
+outside the tree and `_snapshot` never saw the write. `ToolCall.record`
+computed a negative `keep` whenever the first line ran past ~3,960 characters,
+sliced from the front, and stored 7,879 characters against a 4,000 cap under a
+marker claiming 4,930 dropped when 1,052 were. A file read showed the
+candidate the head and recorded the tail. `_snapshot` missed the executable
+bit -- sometimes the whole defect -- and reported an unreadable file as
+deleted. And `_as_harness_tool` listed `applypatch` while the corpus says
+`apply_patch`: 2,053 calls read as a file the agent had merely looked at.
+
+**Reports that disagreed with themselves.** `summarise` printed the
+two-standard columns, which re-derive from the outcome names, beside three
+older blocks that read the stored `passed` boolean -- `Judgement.solved` as it
+stood when the row was written. Every rejudge row predates D-26, so
+runs/cand-grok/rejudge/gpt-6-astra/report.json says "9 attempts, 9 passed"
+beside "9 attempts, 5 clean passes" over the same rows. It also printed
+`passes_the_gate 5/9` beside `also_passes_the_stricter_bar 6/9` -- a stricter
+bar keeping more than the bar it is stricter than. `across()`, which is where
+R-25 comes from, re-derives correctly and did not move.
+
+**What did not change.** No stored row is corrupted. R-20 through R-25 stand.
+The one finding that would have moved a published number is D-29, and the
+decision there was to keep the task out.
+
+**The restructure.** Twenty-four modules in one flat directory became
+`store/ corpus/ find/ construct/ instrument/ score/ stages/` plus `llm.py` and
+`spec.py`, following the three phases the pipeline runs in. It fixed three
+real things rather than tidying: `pipeline.py` was 1,824 lines holding the
+storage primitives, all eleven stages and the driver, splitting at a line
+whose only cross-reference was in a docstring; `pipeline.py` and `spec.py`
+imported each other, a cycle that worked only because all six of pipeline's
+domain imports were deferred into function bodies; and `reader.py` was
+imported by eleven modules, ten of which wanted the model plumbing that
+happened to sit next to the reader (`MODEL` 10 times, `configure_client` 10,
+against `read_pushback` once).
+
+Behaviour is unchanged, and the evidence is an oracle written for the purpose:
+every stored row digest, admission under both standards, `summarise`,
+`compare`, `tally_of`, the per-row pass predicates, the structure rebuild and
+the two-column `across()`, over all four real run directories. **0 changed
+lines** after every module moved. It is kept in the session scratchpad rather
+than in `checks/`, because it reads `runs/`, which is gitignored.
+
 ## 12. Corpus facts worth knowing
 
 Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.

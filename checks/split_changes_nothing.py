@@ -183,9 +183,16 @@ revs = subprocess.run(
     ["git", "log", "--format=%H", "--", "src/errata_bench/pipeline.py"],
     capture_output=True, text=True, check=True).stdout.split()
 for rev in revs:
-    old_src = subprocess.run(
+    # `git log -- <path>` lists the commit that *deleted* the file too, and the
+    # restructure did delete it, so the newest revisions have no blob to show.
+    # Skipped rather than fatal: the revision being looked for is older than
+    # any of them.
+    shown = subprocess.run(
         ["git", "show", f"{rev}:src/errata_bench/pipeline.py"],
-        capture_output=True, text=True, check=True).stdout
+        capture_output=True, text=True)
+    if shown.returncode != 0:
+        continue
+    old_src = shown.stdout
     if '"grade",' not in old_src:
         print(f"     comparing against {rev[:8]}, the last revision before the split")
         break

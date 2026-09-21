@@ -147,6 +147,33 @@ candidate — each judge must first pass the same known-answer tests, and
         --judge <deployment> --passes 2
     python run.py judges --run runs/scale400c      every judge, side by side
 
+## Where the code lives
+
+The package follows the three things the pipeline does, in order.
+
+    src/errata_bench/
+      store/        the run directory: rows in, rows out, safely.
+                    pure stdlib -- nothing here knows what a task is
+      corpus/       the raw SWE-chat material: sessions, turns, timelines
+      find/         phase 1 -- which recorded moments can become tasks.
+                    triage, reading, locate, signature, and the three
+                    screening gates
+      construct/    phase 2 -- rebuild the tree the agent worked in:
+                    git checkout, edit replay, container, defect probe
+      instrument/   phase 2b -- is the benchmark sound? the three controls
+                    and the admission gate
+      score/        phase 3 -- read an answer three ways: the judge, its
+                    trace, and whether its account of itself is honest
+      stages/       the eleven stages, grouped by phase, and the driver
+      llm.py        talking to the model: which one, how, and what to do
+                    when it answers with nothing
+      spec.py       the task itself, and the fingerprint that says which
+                    version of it an answer was written about
+
+Dependencies run one way: `store` depends on nothing, `spec` on `store`, and
+the phase packages on those. A stage may reach across phases; the phases do
+not reach into `stages`.
+
 ## Documents
 
 - [`docs/research-log.md`](docs/research-log.md) — the running record: every

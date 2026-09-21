@@ -28,3 +28,19 @@ conversation, or let one answer row grow without bound.
 saying "fixed" is a claim, and several of these were dangerous enough that the
 claim should be re-checkable: one of them deleted three finished run
 directories on an ordinary-looking command.
+
+**`oracle_over_real_runs.py`** fingerprints every read-only path over the run
+directories on disk: each stored row, admission under both standards,
+`summarise`, `compare`, `tally_of`, the per-row pass predicates, the structure
+rebuild and the two-column `across()`. Run it before a refactor and after, and
+diff. It found no difference across the 09-20 restructure, in which every
+module in the package moved. It reads `runs/`, which is gitignored, so on a
+fresh clone it prints ABSENT and proves nothing -- the right tool before a
+refactor, the wrong one in CI.
+
+A note on `split_changes_nothing.py` after the restructure: the pre-split
+`pipeline.py` it loads was written against the flat layout, so it asks for
+`errata_bench.attempt`, `errata_bench.judge` and the rest. Those names are
+aliased back into `sys.modules` for the length of the check, pointing at
+today's modules -- which is the point, since the check isolates `pipeline.py`
+and says so in its own header.
