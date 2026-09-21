@@ -21,8 +21,9 @@ default is chosen for the machine in front of us rather than an ideal one.
 
 Images are per-language and cached. Building one per task would cost minutes
 each; the toolchains are shared, so the repository's language picks from a small
-set. A language with no image runs on the host as before, which is worse but
-honest, and the task records which happened.
+set. A language with no image is not run at all unless ERRATA_ALLOW_HOST=1
+(`host_allowed`): the host is the developer's own machine, and a candidate's
+commands are a model's.
 """
 
 from __future__ import annotations
@@ -74,8 +75,8 @@ IMAGES = {
     # No Rust image is local, and rust:1.83-slim is a ~700MB download. It is
     # listed so `docker pull rust:1.83-slim` is all that is needed, but nothing
     # pulls it automatically: a benchmark run should not quietly consume a
-    # developer's bandwidth and disk. Until it is present, Rust tasks fall back
-    # to the host and record that they did.
+    # developer's bandwidth and disk. Until it is present, Rust tasks are not
+    # run, and the attempt stage says which image would let them.
     "Rust": "rust:1.83-slim",
     # Neither had an entry, so every Shell and Astro task ran on the host --
     # not by the policy above, by omission. Found on 09-21 while preparing
@@ -87,6 +88,21 @@ IMAGES = {
     "Shell": "python:3.12",
     "Astro": "node:22",
 }
+
+
+def host_allowed() -> bool:
+    """Whether a task with no container may run on this machine instead.
+
+    Off unless ERRATA_ALLOW_HOST=1. A candidate's commands are a model's
+    commands, and on the host they run as the developer: their files, their
+    SSH keys, their logged-in `gh`. It used to be the silent fallback -- no
+    image for the language, or a container that would not start -- and 49 of
+    the first 420 recorded attempts ran that way behind a word list (G-48).
+    Candidates called `gh api` fifteen times in the recorded runs; every one
+    happened to land in a container with no `gh`. A task that cannot be
+    sandboxed is now not run, and the stage names it and says what to pull.
+    """
+    return os.environ.get("ERRATA_ALLOW_HOST", "").strip() == "1"
 
 
 def is_local(image: str) -> bool:
@@ -103,11 +119,12 @@ def is_local(image: str) -> bool:
 
 
 def image_for(language: str | None, *, only_local: bool = True) -> str | None:
-    """The image for a repository's language, or None to fall back to the host.
+    """The image for a repository's language, or None when there is none here.
 
     ``only_local`` keeps a benchmark run from downloading anything. A missing
-    image means that task runs on the host, which is worse but visible, rather
-    than the run pausing to fetch several hundred megabytes nobody asked for.
+    image means that task is left out and named (or, with ERRATA_ALLOW_HOST=1,
+    run on the host), rather than the run pausing to fetch several hundred
+    megabytes nobody asked for.
     """
     image = IMAGES.get(language or "")
     if image is None:

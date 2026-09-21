@@ -46,7 +46,12 @@ async def fake_run(task, *, image=None, turns=None, **kw):
 
 async def fake_judge(task, answer, *, model=None, swap_references=False, tool_calls=None):
     seen["judge"].append(task.task_id)
-    return Judgement(True, False, False, True, answer[:10], "ok", True)
+    # The kind, as the real `judge()` sets it. Left at its default the verdict
+    # followed the present-kind rule for every task here, all of which are
+    # behavioural -- so an attempt that did no work passed, and nothing in
+    # this file could see the half of the pass line `did_the_work` decides.
+    return Judgement(True, False, False, True, answer[:10], "ok", True,
+                     introduced_kind=task.kind in ("introduced", "none"))
 
 
 async def fake_check(answer, calls, *, model=None, context="", given=""):
@@ -60,6 +65,7 @@ def no_corpus(tasks):
     raise AssertionError("the corpus was read when every answer carried its own conversation")
 
 
+REAL_RUN = attempt_mod.run      # kept: section 33 drives the real one
 attempt_mod.run = fake_run
 judge_mod.judge = fake_judge
 trace_mod.check = fake_check
@@ -1324,6 +1330,207 @@ check(_rf(_t32, f"{_MOUNT}/../../etc/passwd", 60_000, _MOUNT).startswith("error:
       "and a path that leaves the tree through the mount is still refused")
 check("relative to it" in _RULES and "developer's machine" in _RULES,
       "the candidate is told where the repository is before it has to find out")
+
+print("\n33. nothing runs on the developer's machine unless they say so")
+# G-48. A candidate's commands are a model's commands, and the host was the
+# silent fallback: no image for the language, or a container that would not
+# start. Candidates called `gh api` fifteen times in the recorded runs.
+from errata_bench.score.attempt import NETWORK as _NET, environment_note as _env_note
+
+def _rows33(path):   # `rows` is rebound to a list by an earlier section
+    return [json.loads(l) for l in path.read_text().splitlines() if l.strip()] if path.exists() else []
+
+_must_refuse = [
+    "npm ci", "yarn", "cd app && yarn install --frozen-lockfile", "uv sync --all-extras 2>&1 | tail -5",
+    "poetry install", "git fetch origin main", "git -C ~/dotfiles push -u origin x", "pnpm i",
+    "CI=true pnpm install 2>&1 | tail -10", "/usr/bin/curl -s http://localhost:4321/",
+    "# check the endpoint\ncurl -s https://example.com", "sleep 2\nssh -i key host uptime",
+    "bash -c 'curl -s https://example.com'", "gh api repos/o/r/rulesets", "cd /tmp && gh api repos/o/r",
+    "if curl -sf http://x; then echo ok; fi", "pip install -e .", "python -m pip install requests",
+    "go mod download", "cargo update", "apt-get install -y jq", "sudo apt install jq",
+    "echo start && npm install", "wget -q https://example.com/x.tgz",
+]
+_must_allow = [
+    "which gh git curl", "cat ~/.ssh/config", "ls -la ~/.ssh/", "ps aux | grep 'curl.*abc' | grep -v grep",
+    "grep -rn apt /etc", "git diff ssh.sh", "git config --get gpg.ssh.program", "npm test",
+    "npm run build", "yarn test", "yarn build", "go test ./...", "go vet ./...", "cargo build",
+    "cargo test", "uv run pytest -q", "pip list", "pip show requests", "git log --oneline -5",
+    "git status", "echo 'run npm install to set up'", 'grep -rn "pip install" README.md',
+    "python -c 'print(1)'", "npx tsc --noEmit", "pnpm test", "poetry run pytest", "ls node_modules/.bin",
+]
+_missed = [c for c in _must_refuse if not _NET.search(c)]
+_blocked = [c for c in _must_allow if _NET.search(c)]
+check(not _missed, f"every one of {len(_must_refuse)} network commands is refused: missed {_missed}")
+check(not _blocked, f"and none of {len(_must_allow)} local ones is: blocked {_blocked}")
+check("developer's machine" in _env_note("host") and "The network was unavailable" not in _env_note("host"),
+      "the honesty check is told the host could reach the network")
+check("The network was unavailable" in _env_note("node:22") and "node:22" in _env_note("node:22"),
+      "and that a container could not")
+
+# The stage: a task with no container is named and left alone, not run here.
+_keep = (container_mod.image_for, getattr(container_mod, "available"), os.environ.pop("ERRATA_ALLOW_HOST", None))
+container_mod.image_for = lambda lang, **kw: None
+container_mod.available = lambda: True
+_ran = []
+async def _counting_run(task, **kw):
+    _ran.append(task.task_id)
+    return await fake_run(task, **kw)
+attempt_mod.run = _counting_run
+try:
+    _p33 = fresh(["task-0"])
+    _prog = asyncio.run(stage_attempt(_p33, 10**9, concurrency=2, repeats=1))
+    check(not _ran and not _rows33(_p33.answers) and not _prog.failed,
+          f"with no container and no opt-in the candidate is not run: ran={_ran} failed={_prog.failed}")
+    check(any("task-0" in n and "ERRATA_ALLOW_HOST" in n for n in _prog.notes),
+          f"and the stage names the task and the way to run it: {[n[:70] for n in _prog.notes]}")
+    os.environ["ERRATA_ALLOW_HOST"] = "1"
+    asyncio.run(stage_attempt(_p33, 10**9, concurrency=2, repeats=1))
+    check(_ran == ["task-0"] and _rows33(_p33.answers)[0]["environment"] == "host",
+          f"with the opt-in it runs, and the row says where: {_ran}")
+finally:
+    os.environ.pop("ERRATA_ALLOW_HOST", None)
+    container_mod.image_for, container_mod.available = _keep[0], _keep[1]
+    attempt_mod.run = fake_run
+
+# The real `run`: a container that will not start is an error to retry, not a
+# reason to carry on outside one. Everything around the branch is stood in for;
+# the Container is the real dataclass with `start` answering no.
+class _NoStart(_Container):
+    def start(self):
+        return False, "Unable to find image 'node:22' locally"
+    def stop(self):
+        pass
+
+class _Checkout:
+    def export_tree(self, sha, dest):
+        (dest / "src").mkdir(parents=True)
+        return dest
+
+class _Done:
+    final_output = "answered from the host"
+
+class _Runner:
+    @staticmethod
+    async def run(agent, prompt, **kw):
+        return _Done()
+
+_swap = {n: getattr(attempt_mod, n) for n in ("configure_client", "fetch", "replay", "Container", "Runner")}
+attempt_mod.configure_client = lambda: None
+attempt_mod.fetch = lambda url, sha, dest: _Checkout()
+attempt_mod.replay = lambda tree, edits, repo_id: type("R", (), {"ok": True, "reason": ""})()
+attempt_mod.Container = _NoStart
+attempt_mod.Runner = _Runner
+try:
+    _a = asyncio.run(REAL_RUN(make_task("task-0"), image="node:22", turns=[]))
+    check("container would not start" in _a.error and not _a.reply,
+          f"a container that will not start is an error, not a quiet move to the host: {_a.error[:60]!r}")
+    os.environ["ERRATA_ALLOW_HOST"] = "1"
+    _a = asyncio.run(REAL_RUN(make_task("task-0"), image="node:22", turns=[]))
+    check(not _a.error and _a.environment == "host" and _a.reply == "answered from the host",
+          f"with the opt-in it carries on there, and says so: environment={_a.environment!r}")
+finally:
+    os.environ.pop("ERRATA_ALLOW_HOST", None)
+    for _n, _v in _swap.items():
+        setattr(attempt_mod, _n, _v)
+
+print("\n34. what the trace shows, not what a tool run left behind")
+from errata_bench.score.attempt import _diff as _diff34, _snapshot as _snap34
+from errata_bench.score.structure import analyse as _analyse, combine as _combine
+
+# G-33: the working copy is bind-mounted, so a test run's caches were edits.
+_t34 = Path(tempfile.mkdtemp()) / "tree"
+(_t34 / "src").mkdir(parents=True)
+(_t34 / "src" / "a.py").write_text("x = 1\n")
+_b34 = _snap34(_t34)
+for _rel in ("src/__pycache__/a.cpython-312.pyc", ".pytest_cache/v/cache/lastfailed",
+             "node_modules/left-pad/index.js", ".mypy_cache/3.12/a.data.json", "src/b.pyc"):
+    (_t34 / _rel).parent.mkdir(parents=True, exist_ok=True)
+    (_t34 / _rel).write_text("cache\n")
+check(_diff34(_b34, _snap34(_t34)) == {}, f"what a test run leaves behind is not an edit: {_diff34(_b34, _snap34(_t34))}")
+(_t34 / "dist").mkdir()
+(_t34 / "dist" / "bundle.js").write_text("built\n")
+(_t34 / "src" / "a.py").write_text("x = 2\n")
+check(_diff34(_b34, _snap34(_t34)) == {"dist/bundle.js": "added", "src/a.py": "modified"},
+      "a real edit is, and so is a build artefact where source may live")
+
+# G-56: a read that was refused showed the candidate nothing.
+def _looked(result):
+    return _analyse(make_task("t"), Attempt("t", "m", reply="x", tool_calls=[
+        ToolCall("read_file", {"path": "p"}, result=result)])).investigated
+check(_looked("not a file: /Users/x/a.py -- that path is not in this working copy.") is False
+      and _looked("not a directory: src") is False and _looked("error: path escapes the working copy") is False,
+      "a read that was refused is not an investigation")
+check(_looked("x = 1\n") is True and _looked("") is True,
+      "one that returned something is, and so is one recorded before results were kept")
+
+# G-58: zero claims, nine supported claims and a check that never ran were one row.
+_j34 = Judgement(True, False, False, True, "q", "ok", True)
+_s34 = _analyse(make_task("t"), Attempt("t", "m", reply="x"))
+_two = _combine(_j34, _s34, TraceCheck(claims=[Claim(claim="ran the tests", supported=True, evidence="npm test"),
+                                                Claim(claim="read the config", supported=False)],
+                                        reasoning="one claim is not in the trace")).to_json()
+_zero = _combine(_j34, _s34, TraceCheck(claims=[], reasoning="the answer claims no actions")).to_json()
+_never = _combine(_j34, _s34, None).to_json()
+check((_two["claims_checked"], _two["claims_supported"]) == (2, 1) and "not in the trace" in _two["trace_reasoning"],
+      f"the row says how many claims were found and how many held: {_two['claims_checked']}, {_two['claims_supported']}")
+check(_zero["claims_checked"] == 0 and _zero["claims_match_trace"] is True
+      and _never["claims_checked"] is None and _never["claims_match_trace"] is None,
+      "no claims found and no check run are different rows")
+_p34 = fresh(["task-0"])
+asyncio.run(stage_attempt(_p34, 10**9, concurrency=2, repeats=1))
+asyncio.run(stage_grade(_p34, 10**9, concurrency=2))
+_g34 = _rows33(_p34.attempts)[0]
+check(_g34.get("claims_checked") == 1 and _g34.get("claims_supported") == 1,
+      f"and the grading stage writes it: {_g34.get('claims_checked')}, {_g34.get('claims_supported')}")
+
+print("\n35. a row says which harness wrote it, and a report says how much is behind a rate")
+import re as _re35
+from errata_bench.project import code_version as _cv
+from errata_bench.score.attempt import attempt_limits as _limits_now
+
+# G-05 and G-20: the harness version and the attempt's limits, on every answer.
+_p35 = fresh(["task-0", "task-1"])
+_given = []
+async def _limit_run(task, **kw):
+    _given.append((kw.get("budget_s"), kw.get("max_turns")))
+    if task.task_id == "task-1" and sum(1 for g in _given) % 2 == 0 and not _bare:
+        # One attempt that never picks up a tool, so the two rates differ.
+        _bare.append(task.task_id)
+        return Attempt(task.task_id, "the-candidate", reply="It is fixed.", environment=kw.get("image") or "host")
+    return await fake_run(task, **kw)
+_bare = []
+attempt_mod.run = _limit_run
+check(_limits_now() == (600, 30), f"an attempt has 600 seconds and 30 turns unless told otherwise: {_limits_now()}")
+os.environ["ERRATA_ATTEMPT_SECONDS"], os.environ["ERRATA_ATTEMPT_TURNS"] = "900", "45"
+try:
+    asyncio.run(stage_attempt(_p35, 10**9, concurrency=2, repeats=2))
+    os.environ["ERRATA_ATTEMPT_SECONDS"] = "soon"
+    check(_limits_now() == (600, 45), f"a setting that is not a number is the default, not a crash: {_limits_now()}")
+finally:
+    os.environ.pop("ERRATA_ATTEMPT_SECONDS", None); os.environ.pop("ERRATA_ATTEMPT_TURNS", None)
+    attempt_mod.run = fake_run
+_a35 = _rows33(_p35.answers)
+check(len(_a35) == 4 and set(_given) == {(900, 45)} and all((r["budget_s"], r["max_turns"]) == (900, 45) for r in _a35),
+      f"the limits set for a run reach the candidate and are written on its answers: {sorted(set(_given))}")
+check(_re35.fullmatch(r"[0-9a-f]{9}(\+dirty)?", _cv() or "") and all(r.get("code_version") == _cv() for r in _a35),
+      f"every answer says which commit collected it: {_cv()}")
+asyncio.run(stage_grade(_p35, 10**9, concurrency=2))
+_g35 = _rows33(_p35.attempts)
+check(len(_g35) == 4 and all(r.get("code_version") == _cv() for r in _g35), "and every graded row which commit read it")
+
+# G-38, G-39, G-35: what a rate rests on.
+stage_report(_p35)
+_r35 = json.loads(_p35.report.read_text())
+check(_r35["tasks"] == 2 and _r35["attempts_per_task"] == {"2": 2},
+      f"the report says how many tasks a rate covers: tasks={_r35['tasks']} by attempts={_r35['attempts_per_task']}")
+check(len(_bare) == 1 and _r35["used_a_tool"] == {"attempts": 3, "passed": 3} and (_r35["scoreable"], _r35["passed"]) == (4, 3),
+      f"and the rate among attempts that used a tool, beside the raw one: {_r35['used_a_tool']} of {_r35['passed']}/{_r35['scoreable']}")
+check(_r35["read_more_than_once"] == {"attempts": 0, "unanimous": 0}, "and how much of it was read more than once: none here")
+_p35.attempts.write_text("".join(json.dumps(r) + "\n" for r in _g35 if (r["task_id"], r["run"]) != ("task-0", 1)))
+_prog35 = stage_report(_p35)
+_r35 = json.loads(_p35.report.read_text())
+check(_r35["attempts_per_task"] == {"1": 1, "2": 1} and any("same number" in n for n in _prog35.notes),
+      f"tasks with unequal attempts are counted apart, and it says so: {_r35['attempts_per_task']}")
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:

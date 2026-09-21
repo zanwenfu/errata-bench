@@ -38,3 +38,33 @@ def _find_root() -> Path:
 
 
 ROOT = _find_root()
+
+
+_VERSION: str | None = None
+
+
+def code_version() -> str:
+    """The commit this code is at, for stamping on every row it writes (G-05).
+
+    Rows outlive the code that wrote them. B-220 changed what a candidate is
+    told and how its file tools behave, and nothing on an answer row says which
+    side of that change it was collected on -- the answer to "were these two
+    runs like for like?" had to be reconstructed from file times. `+dirty` when
+    the package or `run.py` differs from the commit, because an uncommitted
+    harness is exactly the one whose rows need telling apart. Asked once per
+    process; "unknown" outside a git checkout rather than an error.
+    """
+    global _VERSION
+    if _VERSION is None:
+        import subprocess
+
+        def git(*args: str) -> str:
+            return subprocess.run(["git", "-C", str(ROOT), *args], capture_output=True,
+                                  text=True, timeout=10).stdout.strip()
+        try:
+            sha = git("rev-parse", "--short=9", "HEAD")
+            dirty = git("status", "--porcelain", "--", "src", "run.py")
+            _VERSION = (sha + ("+dirty" if dirty else "")) if sha else "unknown"
+        except (OSError, subprocess.SubprocessError):
+            _VERSION = "unknown"
+    return _VERSION

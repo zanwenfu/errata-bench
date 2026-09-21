@@ -71,8 +71,9 @@ async def stage_attempt(
     attempt ends. The three readings of that answer belong to `grade`.
     """
     from ..score.attempt import INSTRUCTIONS as CANDIDATE_RULES
-    from ..score.attempt import environment_note, run, transcript_for
-    from ..construct.container import image_for, max_containers, sweep
+    from ..score.attempt import attempt_limits, environment_note, run, transcript_for
+    from ..project import code_version
+    from ..construct.container import IMAGES, available, host_allowed, image_for, max_containers, sweep
     from ..corpus.sessions import load_repos
     from ..score.judge import can_be_scored
     from ..corpus.turns import load_session_turns
@@ -153,6 +154,24 @@ async def stage_attempt(
         t.task_id: image_for(getattr(repos.get(t.repo_id), "language", None))
         for t in tasks
     }
+    # A task with no container is not run on the developer's machine unless
+    # they have said so (G-48): named, with what would let it run, and left out
+    # of the work rather than failed -- nothing about it is wrong.
+    unboxed = [t for t in tasks if images.get(t.task_id) is None]
+    if unboxed and not host_allowed():
+        def wants(t) -> str:
+            language = getattr(repos.get(t.repo_id), "language", None)
+            image = IMAGES.get(language or "")
+            return (f"{t.task_id} (docker pull {image})" if image
+                    else f"{t.task_id} (no image is listed for {language or 'its language'})")
+        why = ("Docker is not reachable" if not available()
+               else "no container image is on this machine for them")
+        p.notes.append(
+            f"{len(unboxed)} tasks were not run, because {why}: "
+            + ", ".join(wants(t) for t in unboxed[:6]) + (" ..." if len(unboxed) > 6 else "")
+            + ". Set ERRATA_ALLOW_HOST=1 to run them on this machine, unsandboxed."
+        )
+        tasks = [t for t in tasks if images.get(t.task_id) is not None]
     jobs = [(t, i) for t in tasks for i in range(repeats) if (t.task_id, i) not in done]
     # `--max-rows` is documented as capping how many rows each stage processes
     # and was read by two of eleven stages. It is how anyone would smoke-test a
@@ -184,6 +203,7 @@ async def stage_attempt(
     # only thing this stage waits on is the container it is holding.
     box = asyncio.Semaphore(max_containers())
     host = asyncio.Semaphore(max(1, concurrency // 2))
+    budget_s, max_turns = attempt_limits()
 
     async def one(task, i):
         try:
@@ -217,7 +237,8 @@ async def stage_attempt(
         started = time.monotonic()
         async with (box if image else host):
             attempt = await run(
-                task, image=image, turns=turns_by_session.get(task.session_id)
+                task, image=image, turns=turns_by_session.get(task.session_id),
+                budget_s=budget_s, max_turns=max_turns,
             )
         if attempt.error:
             # How many times this pair has already died. An errored row is
@@ -239,6 +260,7 @@ async def stage_attempt(
                     "transcript": transcripts.get(task.task_id, ""),
                     "rules": f"{CANDIDATE_RULES}\n\n{environment_note(attempt.environment)}",
                     "task_fingerprint": fingerprint(task),
+                    "code_version": code_version(), "budget_s": budget_s, "max_turns": max_turns,
                     "gave_up_after": before, "last_error": attempt.error,
                 })
                 p.notes.append(
@@ -296,6 +318,9 @@ async def stage_attempt(
                 "rules": f"{CANDIDATE_RULES}\n\n{environment_note(attempt.environment)}",
                 # Which version of this task the answer was written about.
                 "task_fingerprint": fingerprint(task),
+                # And which version of the harness collected it, under which
+                # limits (G-05, G-20).
+                "code_version": code_version(), "budget_s": budget_s, "max_turns": max_turns,
             },
         )
         return True
@@ -323,6 +348,7 @@ async def stage_grade(paths: Paths, limit: int, concurrency: int,
     """
     from ..score.attempt import INSTRUCTIONS as CANDIDATE_RULES
     from ..score.attempt import environment_note, transcripts_for
+    from ..project import code_version
     from ..score.judge import can_be_scored, judge
     from ..llm import judge_model, model_name
     from ..spec import fingerprint, read
@@ -467,6 +493,9 @@ async def stage_grade(paths: Paths, limit: int, concurrency: int,
             # row labelled with the other kind reads as an impossible pass.
             "kind": task.kind,
             "task_fingerprint": prints[a["task_id"]],
+            # The harness that read it (G-05); the one that collected the
+            # answer is on the answer row and may be another.
+            "code_version": code_version(),
             "environment": a.get("environment"),
             "calls": structure.tool_calls,
             "tool_calls": a.get("tool_calls") or [],
@@ -583,7 +612,7 @@ async def stage_grade(paths: Paths, limit: int, concurrency: int,
             # everything. An answer that cannot be graded is one row to retry,
             # not a reason to stop reading the other eighty.
             append(paths.attempts, {
-                "task_id": a["task_id"], "run": a["run"], "judge_model": grader,
+                "task_id": a["task_id"], "run": a["run"], "pass": n, "judge_model": grader,
                 "error": f"{type(e).__name__}: {e}",
             })
             return False
@@ -641,6 +670,16 @@ def stage_report(paths: Paths) -> Progress:
     # tasks calibrated beside twenty-seven attempts over nine of them.
     sound = [c for c in load(paths.calibration) if can_be_scored(c)]
 
+    per_task = Counter(a.get("task_id") for a in scoreable)
+    with_tools = [a for a in scoreable
+                  if a.get("calls") or a.get("tool_calls") or (a.get("structure") or {}).get("tool_calls")]
+    if len(set(per_task.values())) > 1:
+        p.notes.append(
+            "tasks do not all have the same number of scored attempts "
+            f"({dict(sorted(Counter(per_task.values()).items()))} tasks by attempts): "
+            "a lowered --repeats leaves the extra answers counted"
+        )
+
     report = {
         "funnel": {
             "moments": moments,
@@ -685,6 +724,27 @@ def stage_report(paths: Paths) -> Progress:
         "passed": sum(1 for a in scoreable if a.get("passed")),
         "made_unverified_claim": sum(1 for a in scoreable if a.get("dishonest")),
         "checked_first": sum(1 for a in scoreable if a.get("checked")),
+        # No rate without the number of tasks behind it (G-39): eighteen of
+        # twenty-four cells in the first three-model table were 0/3 or 3/3, so
+        # "21 of 27" is nine tasks, not twenty-seven observations.
+        "tasks": len(per_task),
+        # What the rows say the repeat count was (G-35). Lowering --repeats
+        # leaves the extra answers in place and counted, so a run's repeat
+        # count is whatever the highest setting ever used was, per task.
+        "attempts_per_task": {str(n): k for n, k in sorted(Counter(per_task.values()).items())},
+        # A model that never picks up a tool cannot pass most of these tasks,
+        # so the raw rate mixes "can it do the work" with "does it try"
+        # (G-38). Both, side by side.
+        "used_a_tool": {
+            "attempts": len(with_tools),
+            "passed": sum(1 for a in with_tools if a.get("passed")),
+        },
+        # How much of this rests on more than one reading (D-30).
+        "read_more_than_once": {
+            "attempts": sum(1 for a in scoreable if (a.get("readings") or 1) > 1),
+            "unanimous": sum(1 for a in scoreable
+                             if (a.get("readings") or 1) > 1 and a.get("unanimous")),
+        },
         "outcomes": dict(Counter(a.get("outcome") for a in scoreable)),
         "by_kind": {
             k: {

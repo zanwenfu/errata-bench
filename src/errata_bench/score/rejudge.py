@@ -508,6 +508,7 @@ async def regrade_all(
     each agrees with itself.
     """
     from .attempt import INSTRUCTIONS as CANDIDATE_RULES, environment_note
+    from ..project import code_version
     from .judge import judge
     from ..spec import read
     from .structure import combine
@@ -650,6 +651,7 @@ async def regrade_all(
             # Which version of the task this grade is about, so a later regrade
             # of a rebuilt task is work rather than a silent skip.
             "task_fingerprint": stamps[a["task_id"]],
+            "code_version": code_version(),
             "candidate_model": a.get("model"),
             "reply_was_cut": len(reply) == LEGACY_REPLY_CAP,
             # combine() has already set did_the_work from the trace, so the

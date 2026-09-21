@@ -7,6 +7,9 @@ from pathlib import Path
 sys.path.insert(0, "src")
 os.environ["ERRATA_JUDGE_MODEL"] = "the-grader"
 os.environ["ERRATA_MODEL"] = "the-candidate"
+# These fixtures have no container image, and `run` is faked, so nothing here
+# reaches the host: the opt-in is set so the stage still hands them to it.
+os.environ["ERRATA_ALLOW_HOST"] = "1"
 
 from errata_bench.score import attempt as A
 from errata_bench.construct import container as C

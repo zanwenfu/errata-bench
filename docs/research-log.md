@@ -1973,6 +1973,11 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   with two passes, so judges are compared on identical rules (B-90).
 - **G-05 · Record the code version with every graded row**, so a mid-run change
   is visible in the data rather than reconstructed from file times (B-90).
+  **Closed 09-21.** `project.code_version()` -- the commit, `+dirty` when the
+  package or `run.py` differs from it -- is written on every answer, every
+  graded row and every re-grade. It mattered the day it was added: B-220
+  changed what a candidate is told and how its file tools behave, and nothing
+  on the rows collected before it says which side of that change they are on.
 - **G-06 · grok-4.6's empty replies** — closed 09-19: throttling answered as
   an empty 200, now retried in the call rather than a run later (B-96).
 - **G-07 · Only one candidate model has been evaluated.** **Closed** by R-20..R-25: three. Nothing yet shows the
@@ -2017,6 +2022,13 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   desplega-ai among them), and its errors fail open.
 - **G-20 · The attempt time limit is global (10 minutes), not derived from what
   each task's own commands take** — the developer's suggestion, never built.
+  **Narrowed 09-21, not closed.** The limits are now settings
+  (`ERRATA_ATTEMPT_SECONDS`, `ERRATA_ATTEMPT_TURNS`; 600 and 30 by default) and
+  both are written on every answer, so two runs under different limits cannot be
+  read as one. Deriving them per task from what the developer's own commands
+  took is still unbuilt. What prompted it: all three of grok's savanna attempts
+  used every turn without answering, and the rows could not say under which
+  limits -- or, until B-220, how many of those turns the harness had wasted.
 - **G-21 · `off_target` absorbs ~~8~~ 4 of the 16 observation combinations.** *(recounted 09-21: `outcome` tests defect_remains first, so the other four read as solved or hedged.)* The raw
   four booleans are stored, so this can be re-cut without re-running anything.
 - **G-22 · Edit replay is barely exercised**: it applies to 1 of 6 calibrated
@@ -2094,6 +2106,14 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   `node_modules` — is recorded as a file the candidate changed, and `wrote` is
   part of whether it did any work. Not yet measured; a candidate that ran the
   tests and edited nothing would look like one that edited something.
+  **Narrowed 09-21.** Measured first: of 133 stored attempts 12 changed
+  anything, and in none was a toolchain's cache among the changes -- with no
+  network nothing installs, so the case has not arisen. `_snapshot` now leaves
+  out the directories a tool writes on its own account while running
+  (`__pycache__`, `.pytest_cache`, `.mypy_cache`, `.ruff_cache`, `.tox`, `.nox`,
+  `node_modules`, `.gradle`, `.cache`) and `.pyc` files. A compiled artefact
+  under `dist/`, `build/` or `target/` is still counted, because repositories
+  commit those; it is named in `files_changed`, so it can be seen.
 - **G-34 · Two processes grading one directory would double-count.** *(closed 09-20, B-193: a run directory takes an exclusive lock and a second run is refused by name.)* Rows are
   appended without a lock, and nothing deduplicates `(task, run)`. The report
   states how many rows are duplicates rather than quietly dropping them,
@@ -2118,6 +2138,12 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   and no present or introduced task is exercised end to end. No fixture ever
   produces an answer with no stored transcript, so the rebuild path in the
   grading stage — the one that reads the corpus — is never run.
+  **Narrowed 09-21.** A fourth way, found writing a report check: the guard
+  suite's fake judge never set `introduced_kind`, which the real `judge()` takes
+  from the task, so every task in that file -- all behavioural -- was graded by
+  the present-kind rule and an attempt that did no work passed. It now sets the
+  kind as production does; all thirty-five sections still hold, and an attempt
+  with no tool calls fails there as it does in a real run.
 - **G-42 · R-20's honesty column was measured through a starved renderer.**
   *(settled 09-20, and the hypothesis was wrong. Re-graded under the fixed
   renderer, exactly one of the 81 honesty verdicts changed —
@@ -2224,17 +2250,47 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   420 recorded attempts ran on the host, where the network is genuinely
   reachable, and the honesty checker was told in every case that "any command
   reaching it returned a refusal".
+  **Closed 09-21, three ways.** *The host is opt-in.* A candidate's commands
+  are a model's commands, and the host -- the developer's files, SSH keys and
+  logged-in `gh` -- was the silent fallback whenever a language had no image or
+  a container would not start. Now a task with no container is not run: the
+  attempt stage names it and the image to pull, and `run` returns an error to
+  retry instead of carrying on outside. `ERRATA_ALLOW_HOST=1` opts in. What made
+  this more than tidiness: candidates called `gh api` **fifteen times** in the
+  recorded runs -- `gh api repos/lightfastai/lightfast/rulesets/...` -- and
+  every one happened to land in a container with no `gh`. *The screen was
+  rewritten against the corpus.* All 126,638 shell commands in SWE-chat (90,369
+  distinct), both directions read: of 162 it newly allows, the only real network
+  calls are twelve `docker exec <container> curl`, and there is no docker in a
+  container; the rest were the old list matching a word anywhere -- `which
+  curl`, `cat ~/.ssh/config`, `ps aux | grep ssh`, `grep -rn apt /etc`, commit
+  messages. Of what it newly refuses, 293 are package managers and fetches
+  (`npm ci`, `uv sync`, `poetry install`, `cargo update`, `git -C x push`, a
+  bare `yarn`) and the rest `git push` and `gh`. It matches at command position
+  -- start of a line, after a separator, after `sudo`/`if`/`do`, inside
+  `sh -c '...'`, past `VAR=x` prefixes -- by name or by path. My first two
+  drafts missed multi-line scripts and `KEY=... ssh`; the corpus showed both
+  before anything was committed, which is G-55's lesson applied. *The honesty
+  check is told the truth:* `environment_note` says of the host that nothing but
+  the word list stood between a command and the network, and of a container
+  that the network was unavailable.
 - **G-38 · The pass rate and the tool-use rate are not separated.** A model
   that never calls a tool cannot pass seven of the eight counted tasks, so the
   headline conflates "can it do the work" with "does it pick up the tools at
   all". Both are worth reporting; only one is reported. Reporting the
   conditional rate beside the raw one costs nothing and is what the R-20 note
   above does.
+  **Closed 09-21.** The report prints `used_a_tool: {attempts, passed}` beside
+  the raw rate. On R-28 it is what separates the three: grok 9 of 9 attempts
+  used a tool, DeepSeek 0 of 9.
 - **G-39 · Eight tasks with near-deterministic triplicates is not a sample.**
   Eighteen of twenty-four cells are 0/3 or 3/3. No percentage from this corpus
   should be printed without the task count beside it, and no ordering claimed
   without the paired comparison. This is the strongest argument for building
   more tasks (G-23).
+  **Narrowed 09-21.** The report now carries `tasks` beside every count, so a
+  rate cannot be quoted from it without the number of tasks it covers. The
+  sample itself is G-23's to fix.
 - **G-40 · No judge is independent of the task set.** All five available
   models have either answered these tasks or built them: the pipeline defaults
   to gpt-6-astra for selection, screening and redaction, and the other four are
@@ -2294,6 +2350,12 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   `Score.to_json` keeps only `claims_match_trace` and the first five unsupported
   claims, so a row with zero claims and one with nine supported claims are
   identical on disk. Not recoverable from any attempts.jsonl.
+  **Closed 09-21 for what it named.** A graded row now carries `claims_checked`,
+  `claims_supported` and the check's own `trace_reasoning`, so no claims found,
+  nine claims supported and a check that never ran are three different rows.
+  The third state inside the check -- a claim whose evidence was withheld or
+  clipped -- is left off the list by instruction, which the ninth probe tests;
+  that was a decision and stays one.
 - **G-57 · Two of the seven scoreable tasks may be unsatisfiable in any
   environment, and the must-pass control cannot see it.** *(raised 09-21.)*
   `galexy-edgar-diff-27`'s accepted answer rests on `ls ~/.claude/skills/` --
@@ -2317,6 +2379,12 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   was the word "추정"), report the build limit. No candidate has walked it, so
   this is a reading of nine verdicts and not an existence proof. `galexy`
   stays open as written.
+  **Closed 09-21, for galexy, by existence.** grok passed it cleanly on 2 of 3
+  attempts in `cand-grok`, under its original judge and under gpt-6-astra read
+  twice -- 18 tool calls on the first. A task a candidate has passed is
+  reachable. What stays true is the sentence this gap ended on: the must-pass
+  control certifies that the judge accepts the accepted answer, not that a
+  candidate could produce it, and only a candidate's pass shows the second.
 - **G-56 · Seven readers are asked once, and one whole repair path has never
   worked.** *(raised 09-21.)* D-28 as first written claimed every prose-reading
   gate was asked repeatedly. Asked once, with no `--passes` plumbed: triage,
@@ -2333,6 +2401,14 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   trajectory prompt never says the failed/resolved turns must be prose, and
   build rejects three tool-use turns per rebuild for it; a failed read counts
   as having investigated.
+  **One clause closed 09-21: "a failed read counts as having investigated".**
+  Measured first, and it changed no stored verdict -- 207 of 904 recorded reads
+  failed (B-220 is why), 14 attempts had every read fail, and all 14 had also
+  run a command. `investigated` now needs a read that returned something; a call
+  recorded before results were kept still counts, as it did. The readers asked
+  once, the surveyor's rendering, the 8,000-against-4,000 characters and the
+  trajectory prompt all stay open: each changes which tasks get built, and
+  belongs before the next build, measured on real rows.
 - **G-55 · Two replay shapes the checkout election gets wrong, and why they
   stay open.** *(raised 09-21.)* `_checkout_root` elects the prefix of the
   agent's absolute paths that is the developer's checkout. The original gets
@@ -2410,6 +2486,10 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
 - **G-35 · Lowering `--repeats` leaves the extra answers in place.** They are
   still graded and still counted, so a run's repeat count is whatever the
   highest setting ever used was.
+  **Closed 09-21, by saying so rather than pruning.** The report carries
+  `attempts_per_task` -- how many tasks have how many scored attempts -- and
+  notes it when they differ. Deleting the extra answers would destroy paid work
+  to tidy a count.
 - **G-28 · The eighteen scored answers predate recorded outputs**, so their
   honesty reading stays a judgement call. Settling it means running candidates
   again — which needs a candidate, and the OpenAI account has no credit, so the

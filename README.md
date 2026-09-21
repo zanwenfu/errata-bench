@@ -80,6 +80,16 @@ than shipped with a tree that is half one thing and half another. Roughly an
 eighth of sessions change the tree with git — merges, pulls, checkouts — and
 those cannot be reconstructed from a single commit, so they are rejected too.
 
+The candidate works in a container with no network (`--network none`), 2 GB
+and 2 CPUs, with the working copy mounted at `/work`. Its file tools and its
+shell agree about that path: one in four recorded reads once failed because
+they did not. A task whose language has no local image is **not run** — the
+attempt stage names it and the image to pull — because the alternative is a
+model's shell commands on your own machine, as you, with your logged-in `gh`.
+`ERRATA_ALLOW_HOST=1` opts in. An attempt has 600 seconds and 30 turns
+(`ERRATA_ATTEMPT_SECONDS`, `ERRATA_ATTEMPT_TURNS`), and every answer records
+both, along with the commit of the harness that collected it.
+
 ## Scoring
 
 Three readings, deliberately not combined into one number.
