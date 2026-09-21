@@ -40,7 +40,16 @@ from .workspace import GitError, fetch, is_permanent
 # How far back a request may sit and still be what the candidate is answering.
 # Beyond this the excerpt ends in the middle of the agent's own work, and the
 # candidate is continuing a task rather than replying to anyone.
-REQUEST_REACH = 80
+# How far back to look for the developer's request. Unlimited, because the
+# candidate sees every user message at or before the cut: `build_excerpt`
+# squeezes tool traffic when it overruns and never drops a user prompt, so
+# there is no distance at which the request becomes invisible. At 80 visible
+# turns it rejected five tasks whose requests sit 94 to 208 turns back and are
+# plainly in the excerpt -- "Implement the following plan: ...", "Check
+# ~/Developer/Projects/designs/wtload.pen and get started". Whether a distant
+# request is still the thing to answer is what `asks_for_something` and
+# `in_scope` decide, and they read the text rather than counting rows.
+REQUEST_REACH = 0   # 0 means no limit
 
 
 # Turn types that are not part of the conversation. build_excerpt drops these
@@ -67,7 +76,7 @@ def last_user_message(turns: list[dict], cut_turn: int, *, window: int = REQUEST
         if number > cut_turn:
             continue
         seen += 1
-        if seen > window:
+        if window and seen > window:
             break
         if t.get("turn_type") == "user_prompt" and (t.get("content") or "").strip():
             within.append(t)
@@ -188,15 +197,24 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
         # request is "create the pull request" and whose defect is a linter
         # version in a CI workflow nobody mentioned. A gate that silently
         # abstains when its input is absent is not a gate.
+        asked = row.get("asks_for_something")
+        why_not = row.get("request_reason", "")
+
+        # Before the scope gate, because when no request was found the scope
+        # gate cannot have run and its message -- "the defect is outside the
+        # requested work" -- describes a judgement nobody made. Five of the
+        # eight rows rejected for scope were really this, and reading them as
+        # scope judgements sent an audit looking in the wrong place.
+        if asked is False and "no user message" in str(why_not):
+            reject(f"nothing for the candidate to answer: {why_not}")
+            continue
+
         if not row.get("within_scope"):
             reject(
                 "the defect is outside the requested work: "
                 f"{row.get('scope_reason') or 'the scope gate did not run on this row'}"
             )
             continue
-
-        asked = row.get("asks_for_something")
-        why_not = row.get("request_reason", "")
         if asked is False:
             # A candidate answers the developer's most recent message. When the
             # excerpt ends without one -- or ends on pasted terminal output with

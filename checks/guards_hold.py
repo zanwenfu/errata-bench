@@ -435,6 +435,28 @@ outside = replay_edits(
 check(not outside.ok and "not inside the repository" in outside.reason,
       "and a path genuinely outside the checkout is still refused")
 
+print("\n20. the developer's request is found wherever it is")
+# The candidate sees every user message at or before the cut -- the excerpt
+# squeezes tool traffic when it overruns and never drops a user prompt -- so a
+# distance limit on finding the request rejects tasks whose request is plainly
+# on the page. At 80 visible turns it lost five, whose requests sit 94 to 208
+# turns back.
+from errata_bench.build import last_user_message
+
+far = [{"turn_number": 0, "turn_type": "user_prompt", "content": "the real request"}]
+far += [{"turn_number": i, "turn_type": "tool_use", "content": "x"} for i in range(1, 300)]
+check((last_user_message(far, 299) or {}).get("content") == "the real request",
+      "a request 299 visible turns before the cut is still found")
+check(last_user_message(far, 299, window=80) is None,
+      "and the old 80-turn limit is what was losing it")
+noise = [{"turn_number": i, "turn_type": "progress", "content": "x"} for i in range(200)]
+noise.append({"turn_number": 200, "turn_type": "user_prompt", "content": "ask"})
+check((last_user_message(noise, 250) or {}).get("content") == "ask",
+      "progress rows the candidate never sees do not count as distance")
+check(last_user_message([{"turn_number": 1, "turn_type": "assistant_response",
+                          "content": "no user here"}], 5) is None,
+      "and a session with no user message still returns nothing")
+
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:
     print("  -", f)
