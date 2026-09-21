@@ -261,8 +261,10 @@ def main() -> None:
         default=1,
         help="how many times to ask each question: grading an answer (`rejudge`), "
              "reading a task's known pair (`gate`), each screening gate (`stages "
-             "--only screen`) or each control (`stages --only control`). More than "
-             "one keeps only the rows whose answer never changes",
+             "--only screen`), each control (`stages --only control`) or each stored "
+             "answer (`stages --only grade`). More than one keeps only what every "
+             "reading agrees on: a pass must pass every time, and one reading calling "
+             "a claim unsupported is enough",
     )
     ap.add_argument(
         "--judge",

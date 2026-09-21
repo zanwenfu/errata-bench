@@ -147,12 +147,19 @@ Another provider is opt-in and leaves the default path untouched:
     ERRATA_PROVIDER=azure ERRATA_MODEL=<deployment> python run.py stages ...
 
 To grade answers a run already holds with a different judge, running no
-candidate — each judge must first pass the same known-answer tests, and
-`--passes 2` measures its own noise:
+candidate — each judge must first pass the same known-answer tests:
 
     ERRATA_PROVIDER=azure python run.py rejudge --run runs/scale400c \
-        --judge <deployment> --passes 2
+        --judge <deployment> --passes 3
     python run.py judges --run runs/scale400c      every judge, side by side
+
+`--passes N`, on `rejudge` or on `stages --only grade`, reads each answer N
+times. The readings settle to one verdict, the conservative one: a pass only
+if every reading is a pass, a claim unsupported if any reading says so. On the
+first run against fresh tasks the single pass awarded in twenty-seven attempts
+was one reading that did not reproduce; read three times, it was `off_target`
+three times. Each settled row records how many readings it had and whether
+they agreed, and the report prints how often the judge agreed with itself.
 
 ## Where the code lives
 

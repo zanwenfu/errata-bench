@@ -308,7 +308,8 @@ async def stage_attempt(
     return p
 
 
-async def stage_grade(paths: Paths, limit: int, concurrency: int) -> Progress:
+async def stage_grade(paths: Paths, limit: int, concurrency: int,
+                      passes: int = 1) -> Progress:
     """Read every stored answer three ways and write the scored row.
 
     Nothing is re-run: the answer, its trace and what the tree showed are taken
@@ -393,9 +394,15 @@ async def stage_grade(paths: Paths, limit: int, concurrency: int) -> Progress:
         p.notes.append(
             f"dropped {len(outdated)} scores of an earlier version of their task"
         )
-    done = {(r["task_id"], r["run"]) for r in graded}
-    todo = [a for a in answers if (a["task_id"], a["run"]) not in done][:limit]
-    p.skipped = len(answers) - len(todo)
+    # One reading per (answer, pass). Read once, a verdict was one draw of a
+    # reader that does not always answer the same way: on the first candidates
+    # run against the three new tasks the single pass awarded came back
+    # off_target three times of three when re-read. `settled()` combines the
+    # readings, and every rate reads the settled verdict.
+    done = {(r["task_id"], r["run"], r.get("pass", 0)) for r in graded}
+    todo = [(a, n) for a in answers for n in range(max(1, passes))
+            if (a["task_id"], a["run"], n) not in done][:limit]
+    p.skipped = len(answers) * max(1, passes) - len(todo)
     p.notes.append(f"graded by {grader}")
     # Naming no grader leaves `judge_model()` falling back to the candidate's
     # own model, which is the thing B-118 was fixed to stop. It is a legitimate
@@ -424,10 +431,10 @@ async def stage_grade(paths: Paths, limit: int, concurrency: int) -> Progress:
         return p
 
     # Only for answers stored before the conversation was kept on the row.
-    missing = [a for a in todo if a.get("transcript") is None]
+    missing = [a for a, _ in todo if a.get("transcript") is None]
     context = transcripts_for([tasks[a["task_id"]] for a in missing]) if missing else {}
 
-    async def one(a):
+    async def one(a, n):
         task = tasks[a["task_id"]]
         started = time.monotonic()
         try:
@@ -444,13 +451,14 @@ async def stage_grade(paths: Paths, limit: int, concurrency: int) -> Progress:
             # Unreadable, not empty. Defaulting the missing fields would score
             # the attempt as having done nothing, which fails it.
             append(paths.attempts, {
-                "task_id": a["task_id"], "run": a["run"], "judge_model": grader,
+                "task_id": a["task_id"], "run": a["run"], "pass": n, "judge_model": grader,
                 "error": f"the stored reading could not be read: {e}",
             })
             return False
         row = {
             "task_id": a["task_id"],
             "run": a["run"],
+            "pass": n,
             # The kind the judge actually applied, read from the task now, not
             # the label the answer was stored with. They are the same thing
             # while the fingerprint matches, and the row should carry the one
@@ -588,7 +596,7 @@ async def stage_grade(paths: Paths, limit: int, concurrency: int) -> Progress:
         })
         return True
 
-    results = await _gather([one(a) for a in todo], concurrency)
+    results = await _gather([one(a, n) for a, n in todo], concurrency)
     p.produced = sum(1 for r in results if r)
     p.failed = sum(1 for r in results if not r)
     p.took_s = time.monotonic() - t0
@@ -608,10 +616,13 @@ def stage_report(paths: Paths) -> Progress:
     # kept contributing to the pass rate here while `run.py judges` dropped it
     # -- two different pass rates printed for one directory.
     admitted = {r["task_id"] for r in load(paths.calibration) if can_be_scored(r)} & controlled(paths)
-    attempts = [
-        a for a in load(paths.attempts)
-        if not a.get("error") and a.get("task_id") in admitted
-    ]
+    # Through `settled()`: one verdict per attempt, the conservative one when
+    # it was read more than once. Errored readings are dropped there. Without
+    # this the primary report and the rejudge report read the same rows by
+    # different rules and disagreed on the one pass in twenty-seven.
+    from ..score.rejudge import settled
+
+    attempts = [a for a in settled(load(paths.attempts)) if a.get("task_id") in admitted]
     # Missing means excluded, as it does in every rate: a row with no verdict
     # about whether its reading could be supported is not a result.
     scoreable = [a for a in attempts if a.get("scoreable")]

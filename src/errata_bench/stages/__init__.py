@@ -88,7 +88,7 @@ async def _run_stages(paths, stages, limit, concurrency, repeats, grade_concurre
             out.append(await stage_attempt(paths, limit, concurrency, repeats))
         elif name == "grade":
             out.append(
-                await stage_grade(paths, limit, grade_concurrency or concurrency)
+                await stage_grade(paths, limit, grade_concurrency or concurrency, passes)
             )
         elif name == "report":
             out.append(stage_report(paths))

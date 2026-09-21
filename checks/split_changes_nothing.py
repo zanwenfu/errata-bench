@@ -295,15 +295,15 @@ print(f"     attempt {attempt_s:.1f}s, grade {grade_s:.1f}s, combined would be ~
 
 print("\n3. the same rows, field for field")
 # `seconds` means the candidate's own time now, not candidate plus grading, and
-# scored rows carry four fields they did not before. Everything else must
+# scored rows carry five fields they did not before. Everything else must
 # match -- including `out_of_time`, which the old no-answer row already wrote
 # and which was wrongly listed as new, hiding any regression in that path.
 # Derived, not asserted by hand: any field the new row carries that the old one
-# did not must be one of these, so a sixth cannot join the exception list
+# did not must be one of these, so a seventh cannot join the exception list
 # silently. `out_of_time` is in it only because the old code wrote it on the
 # no-answer rows alone -- and on those rows it is compared, below, because the
 # comparison is over the keys the OLD row actually had.
-EXPECTED_NEW = {"graded_seconds", "structure", "had_conversation", "task_fingerprint", "out_of_time"}
+EXPECTED_NEW = {"graded_seconds", "pass", "structure", "had_conversation", "task_fingerprint", "out_of_time"}  # "pass": D-30, one row per reading
 CHANGED = {"seconds"}
 
 

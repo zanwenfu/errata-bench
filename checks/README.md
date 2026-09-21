@@ -28,7 +28,7 @@ so. It also covers resume from stored answers alone and from stored grades, the 
 directories made before the split, and what happens when a candidate or a
 grading fails.
 
-**`guards_hold.py`** is thirty numbered sections, one per guard: what the
+**`guards_hold.py`** is thirty-one numbered sections, one per guard: what the
 attempt and grade stages refuse to do; the gate asked repeatedly; the
 reference-answer control and when it is not applicable; the clean-pass
 standard and the hedged one priced side by side; permanent git loss; the
@@ -36,8 +36,9 @@ checkout election; the screening gates asked repeatedly against the real
 models; what the trace records versus what the candidate saw; recovered tool
 names; a report that cannot disagree with itself; the throttle retry made to
 fail once; controls asked repeatedly, with a proven top-up; the did_the_work
-half of a pass priced everywhere; the renderer's last-call reserve; and a
-control run for either standard.
+half of a pass priced everywhere; the renderer's last-call reserve; a
+control run for either standard; and a verdict read more than once settled
+to the conservative one, on both sides of every agreement rate.
 
 **`fixes_are_still_in.py`** is one live assertion per bug found on 09-20 and
 after (B-122 to B-164, B-210, B-211 and GATE-1 to GATE-6 in
