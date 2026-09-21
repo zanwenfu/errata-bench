@@ -95,6 +95,19 @@ def _checkout_root(tree: Path, paths: list[str]) -> tuple[str, ...] | None:
     prefix is measured once from the paths that resolve and then applied to the
     rest -- including files the session creates, which exist nowhere yet and
     so cannot be resolved on their own.
+
+    Every candidate prefix is counted, not just the first one found. Stopping
+    at the first match meant the *longest* matching suffix won, and a longer
+    suffix is a shorter prefix: for a checkout at `~/code/web` of a repo that
+    also contains `web/package.json` -- the ordinary shape of a monorepo, the
+    same basename at the root and inside a package -- an edit to
+    `~/code/web/package.json` elected the root `~/code` and replayed onto
+    `web/package.json`, the wrong file. With `Edit` that surfaces as a spurious
+    rejection; with `Write`, or an `old_string` that appears in both, it
+    overwrites the wrong file silently and leaves the real one stale. Counting
+    every candidate lets the other paths in the session outvote the
+    coincidence, and a tie now prefers the deeper root, which is where a
+    checkout actually sits.
     """
     votes: dict[tuple[str, ...], int] = {}
     for local in paths:
@@ -102,12 +115,13 @@ def _checkout_root(tree: Path, paths: list[str]) -> tuple[str, ...] | None:
         for i in range(len(parts)):
             if _inside(tree, str(Path(*parts[i:]))) and (tree / Path(*parts[i:])).exists():
                 votes[parts[:i]] = votes.get(parts[:i], 0) + 1
-                break
     if not votes:
         return None
     # The prefix the most paths agree on: one file living outside the checkout
-    # should not decide where the checkout is.
-    return max(votes.items(), key=lambda kv: (kv[1], -len(kv[0])))[0]
+    # should not decide where the checkout is. On a tie, the longer prefix --
+    # the deeper checkout root, which resolves the ambiguous case in the
+    # direction that does not reach further into the tree.
+    return max(votes.items(), key=lambda kv: (kv[1], len(kv[0])))[0]
 
 
 def _target(tree: Path, local_path: str, repo_id: str,
@@ -115,11 +129,51 @@ def _target(tree: Path, local_path: str, repo_id: str,
     if root is not None:
         parts = tuple(PurePosixPath(local_path or "").parts)
         if parts[:len(root)] == root and len(parts) > len(root):
-            return _inside(tree, str(Path(*parts[len(root):])))
+            hit = _inside(tree, str(Path(*parts[len(root):])))
+            # A hint, not a mandate: fall through when it does not resolve. An
+            # empty root is legitimate -- it is what a path already relative to
+            # the repository elects -- but `parts[:0] == ()` is true of every
+            # path, so one relative edit in a session used to claim every
+            # absolute path in it, strip nothing, and reject the whole task
+            # with "not inside the repository". Nine sessions in the corpus
+            # have such a path and one mixes both kinds.
+            if hit is not None:
+                return hit
     rel = to_repo_relative(local_path or "", repo_id)
-    if not rel:
-        return None
-    return _inside(tree, rel)
+    if rel:
+        hit = _inside(tree, rel)
+        if hit is not None:
+            return hit
+    # Already relative to the repository. `to_repo_relative` looks for the
+    # repository's name in the path and finds nothing in a bare `README.md`,
+    # and the elected root is a prefix of the absolute paths, which this has
+    # none of -- so without this a session that mixes the two kinds resolved
+    # neither.
+    if local_path and not PurePosixPath(local_path).is_absolute():
+        return _inside(tree, local_path)
+    return None
+
+
+def _read(path: Path) -> str:
+    """The file's bytes as text, losing nothing and changing nothing.
+
+    Not `read_text`. Text mode translates CRLF to LF on the way in, and
+    `errors="replace"` turns every undecodable byte into U+FFFD, so a file read
+    and written back came out different from the one the agent edited: a CRLF
+    batch file lost its line endings throughout, and `café` in latin-1 became
+    `caf�`. Both are silent -- the replay reports ok -- and the first also
+    rejects the *next* edit in the session, whose old_string still contains the
+    \\r\\n that is no longer there.
+
+    `surrogateescape` round-trips any byte exactly, and reading bytes avoids
+    newline translation entirely.
+    """
+    return path.read_bytes().decode("utf-8", "surrogateescape")
+
+
+def _write(path: Path, body: str) -> None:
+    """The counterpart to `_read`: back to the same bytes."""
+    path.write_bytes(body.encode("utf-8", "surrogateescape"))
 
 
 def _edit(path: Path, old: str, new: str, replace_all: bool) -> str | None:
@@ -127,10 +181,10 @@ def _edit(path: Path, old: str, new: str, replace_all: bool) -> str | None:
     if not path.is_file():
         if old == "":
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(new)
+            _write(path, new)
             return None
         return "file does not exist in the tree"
-    body = path.read_text(errors="replace")
+    body = _read(path)
     if old == "":
         return "empty old_string on an existing file"
     n = body.count(old)
@@ -138,7 +192,7 @@ def _edit(path: Path, old: str, new: str, replace_all: bool) -> str | None:
         return "old_string not found -- the base commit differs from what the agent edited"
     if n > 1 and not replace_all:
         return f"old_string appears {n} times and replace_all is false"
-    path.write_text(body.replace(old, new) if replace_all else body.replace(old, new, 1))
+    _write(path, body.replace(old, new) if replace_all else body.replace(old, new, 1))
     return None
 
 
@@ -159,7 +213,7 @@ def replay(tree: Path, edits: list[dict], repo_id: str) -> Replay:
         why: str | None = None
         if e["tool"] == "Write":
             target.parent.mkdir(parents=True, exist_ok=True)
-            target.write_text(args.get("content") or "")
+            _write(target, args.get("content") or "")
         elif e["tool"] == "Edit":
             why = _edit(target, args.get("old_string") or "", args.get("new_string") or "",
                         bool(args.get("replace_all")))

@@ -456,6 +456,57 @@ outside = replay_edits(
 check(not outside.ok and "not inside the repository" in outside.reason,
       "and a path genuinely outside the checkout is still refused")
 
+# The three ways placing an edit by the tree can go wrong. The first is the
+# dangerous one: it writes to a real file that is not the one the agent edited,
+# and with Write it does so silently.
+def a_tree_of(files: dict):
+    d = Path(tempfile.mkdtemp()) / "tree"
+    for rel, body in files.items():
+        q = d / rel
+        q.parent.mkdir(parents=True, exist_ok=True)
+        q.write_bytes(body if isinstance(body, bytes) else body.encode())
+    return d
+
+# A monorepo holds the same basename at its root and inside a package. Taking
+# the first (longest) matching suffix elected the checkout's *parent*, so an
+# edit to ~/code/web/package.json replayed onto web/package.json.
+t = a_tree_of({"package.json": "v1\n", "web/package.json": "v1\n", "src/i.ts": "a\n"})
+r = replay_edits(t, [
+    {"turn": 1, "tool": "Edit", "args": {"file_path": "/Users/d/code/web/package.json",
+                                         "old_string": "v1", "new_string": "v2"}},
+    {"turn": 2, "tool": "Edit", "args": {"file_path": "/Users/d/code/web/src/i.ts",
+                                         "old_string": "a", "new_string": "b"}}], "acme/web")
+check(r.ok and (t / "package.json").read_text() == "v2\n"
+      and (t / "web" / "package.json").read_text() == "v1\n",
+      "a basename repeated deeper in the tree does not capture the checkout root")
+
+# `parts[:0] == ()` is true of every path, so one already-relative edit used to
+# claim every absolute path in the session and reject the task.
+t = a_tree_of({"README.md": "hello\n", "src/main.py": "x = 1\n"})
+r = replay_edits(t, [
+    {"turn": 1, "tool": "Edit", "args": {"file_path": "README.md",
+                                         "old_string": "hello", "new_string": "hi"}},
+    {"turn": 2, "tool": "Edit", "args": {"file_path": "/Users/d/code/w/src/main.py",
+                                         "old_string": "x = 1", "new_string": "x = 2"}}], "a/w")
+check(r.ok and (t / "src" / "main.py").read_text() == "x = 2\n",
+      "a repo-relative path among absolute ones resolves, and so do they")
+
+# Text mode translated CRLF and `errors="replace"` destroyed undecodable bytes,
+# so a replayed file differed from the agent's in lines it never touched -- and
+# the next edit, whose old_string still held the \r\n, then failed to match.
+t = a_tree_of({"run.bat": b"@echo off\r\nset A=1\r\n", "l.txt": b"caf\xe9\nkeep\n"})
+r = replay_edits(t, [
+    {"turn": 1, "tool": "Edit", "args": {"file_path": "run.bat",
+                                         "old_string": "set A=1", "new_string": "set A=9"}},
+    {"turn": 2, "tool": "Edit", "args": {"file_path": "l.txt",
+                                         "old_string": "keep", "new_string": "kept"}},
+    {"turn": 3, "tool": "Edit", "args": {"file_path": "run.bat",
+                                         "old_string": "off\r\nset A=9", "new_string": "done"}}],
+    "a/w")
+check(r.ok and (t / "run.bat").read_bytes() == b"@echo done\r\n"
+      and (t / "l.txt").read_bytes() == b"caf\xe9\nkept\n",
+      "replay changes only the bytes the edit names, CRLF and latin-1 included")
+
 print("\n20. the developer's request is found wherever it is")
 # The candidate sees every user message at or before the cut -- the excerpt
 # squeezes tool traffic when it overruns and never drops a user prompt -- so a
