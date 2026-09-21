@@ -692,7 +692,7 @@ def stage_report(paths: Paths) -> Progress:
     }
     if not admitted and load(paths.attempts):
         p.notes.append(
-            "no task passes its known pair and both controls, so nothing here is "
+            "no task passes its known pair and every control, so nothing here is "
             "counted -- check calibration.jsonl and controls.jsonl exist and are complete"
         )
     # Through an atomic writer like every other file: a kill during this left a

@@ -9,7 +9,7 @@ and all three were scored as passes. That survived eight rounds of investigation
 because nothing ever asked the obvious question -- what does this benchmark do
 with an answer that is definitionally wrong?
 
-So two controls run alongside the real candidates, and their expected results are
+So three controls run alongside the real candidates, and their expected results are
 known before the run:
 
     null       does nothing, reports nothing, claims nothing. Must fail

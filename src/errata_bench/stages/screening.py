@@ -324,7 +324,7 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
             message = last_user_message(ts, r["cut"])
             if message is None:
                 out["asks_for_something"] = False
-                out["request_reason"] = "no user message within 80 turns of the cut"
+                out["request_reason"] = "no user message before the cut"
             else:
                 verdict, tally, a = await _agree(
                     lambda: asks_for_something(message.get("content") or ""),

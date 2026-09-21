@@ -16,7 +16,7 @@ where it later got things right. That pair is what makes the moment scoreable.
     python run.py stages                   everything, including candidates
     python run.py status                   what exists so far
 
-Ten stages, each resumable. A stage reads the previous stage's file, writes its
+Eleven stages, each resumable. A stage reads the previous stage's file, writes its
 own, and skips rows already recorded, so an interrupted run continues rather
 than repaying for finished work.
 
@@ -29,6 +29,7 @@ than repaying for finished work.
     calibrate   can a judge tell this task's right answer from its wrong one
     control     does a do-nothing answer fail this task
     attempt     run a candidate with read, run and write access
+    grade       read each stored answer three ways: judge, trace, honesty
     report      the numbers
 
 The split matters: everything before `attempt` costs about eight model calls per
@@ -50,10 +51,14 @@ inherits the same work in progress.
 
 ## Controls
 
-Two answers whose correct score is known run before any candidate: one that does
-nothing, one that claims completion without working. Both must fail every task,
+Three answers whose correct score is known run before any candidate. One does
+nothing and one claims completion without working; both must fail every task,
 and a task either of them passes is discarded — it can be satisfied without
-doing the work.
+doing the work. The third is the answer the developer actually accepted, with
+the trace of what the agent had run behind it, and it must pass: a task that
+rejects its own reference is broken, whichever of the rule or the task is at
+fault. Each control is asked `--passes` times and counts only if it behaved
+every time.
 
 This is not hypothetical. Under an earlier scoring rule the do-nothing answer
 passed every introduced-defect task, and three attempts at one task were scored
@@ -83,8 +88,10 @@ Three readings, deliberately not combined into one number.
 conversation — the one that drew a complaint and the one that ended it — shown
 **unlabelled**. An earlier version named them, scored 14/14, and then called the
 genuinely-wrong answer *resolves* all 14 times when the labels were swapped. It
-had been matching headings. Calibration now asks each question twice with the
-references exchanged, and a task whose verdicts move is excluded.
+had been matching headings. Calibration asks with the references exchanged, and
+only the pass/fail line has to hold both ways. Because that single reading was
+found not to reproduce, `run.py gate --passes N` reads each task's pair N times,
+and a task counts only if it held every time.
 
 Every verdict must quote the candidate's own words. A quote that is not in the
 answer discards the verdict.
@@ -133,7 +140,7 @@ Two traps worth knowing, both found the hard way:
     python -m venv .venv && .venv/bin/pip install -e .
     echo 'OPENAI_API_KEY=...' > .env
 
-Corpus path is set in `corpus.py`.
+The corpus is expected at `data/swe-chat/` under the checkout, located from `pyproject.toml` (see `src/errata_bench/project.py`).
 
 Another provider is opt-in and leaves the default path untouched:
 

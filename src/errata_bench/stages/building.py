@@ -300,16 +300,36 @@ async def stage_control(paths: Paths, limit: int, concurrency: int,
     # How many readings each (task, control) already has from this judge. A row
     # written before `pass` existed counts as the first one.
     seen: dict[tuple, int] = {}
+    asked: dict[tuple, int] = {}
     for r in completed(paths.controls):
         if r.get("judge_model", grader) == grader:
             k = (r["task_id"], r["control"])
             seen[k] = seen.get(k, 0) + 1
+            asked[k] = max(asked.get(k, 1), int(r.get("passes") or 1))
+
+    # The requirement ratchets: once a run asked for five readings, five it
+    # is, however many a later run asks for. `controlled()` requires as many
+    # finished readings as the rows say were asked, so a run at --passes 5
+    # that left two readings errored, re-run at --passes 3, found three
+    # finished, said "already done", and `controlled()` excluded the task on
+    # three of five -- with no note anywhere. Topping up to the largest ask
+    # closes that: the stage always finishes what some run started.
+    def need(task, control) -> int:
+        return max(max(1, passes), asked.get((task.task_id, control.name), 1))
+
     jobs = [
         (t, c, n)
         for t in tasks for c in CONTROLS
-        for n in range(seen.get((t.task_id, c.name), 0), max(1, passes))
+        for n in range(seen.get((t.task_id, c.name), 0), need(t, c))
     ][:limit]
-    p.skipped = len(tasks) * len(CONTROLS) * max(1, passes) - len(jobs)
+    ratcheted = sorted({t.task_id for t, c, _ in jobs if need(t, c) > max(1, passes)})
+    if ratcheted:
+        p.notes.append(
+            f"{len(ratcheted)} task(s) were asked for more readings by an earlier run "
+            f"than --passes {passes}; finishing that count: {', '.join(ratcheted[:4])}"
+            + (" ..." if len(ratcheted) > 4 else "")
+        )
+    p.skipped = sum(need(t, c) for t in tasks for c in CONTROLS) - len(jobs)
     if not jobs:
         p.took_s = time.monotonic() - t0
         return p
@@ -318,14 +338,14 @@ async def stage_control(paths: Paths, limit: int, concurrency: int,
         try:
             result = await check(task, control, model=grader)
             append(paths.controls, {**result.to_json(), "judge_model": grader,
-                                    "pass": n, "passes": max(1, passes),
+                                    "pass": n, "passes": need(task, control),
                                     "task_fingerprint": fingerprint(task)})
             return result.ok
         except Exception as e:
             append(
                 paths.controls,
                 {"task_id": task.task_id, "control": control.name, "ok": False,
-                 "judge_model": grader, "pass": n, "passes": max(1, passes),
+                 "judge_model": grader, "pass": n, "passes": need(task, control),
                  "error": f"{type(e).__name__}: {e}",
                  "detail": f"the control could not run: {type(e).__name__}"},
             )

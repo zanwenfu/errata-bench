@@ -32,7 +32,9 @@ from pathlib import Path
 
 sys.path.insert(0, "src")
 
-RUNS = ["cand-grok", "cand-kimi", "cand-deepseek", "rebuild-final"]
+# rebuild-after is the directory the current scoreable set (R-26) comes from;
+# it was missing from this list while three older directories were in it.
+RUNS = ["cand-grok", "cand-kimi", "cand-deepseek", "rebuild-final", "rebuild-after"]
 
 
 def canonical(x):

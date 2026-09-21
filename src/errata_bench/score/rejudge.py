@@ -43,7 +43,7 @@ from ..store import (
 )
 
 # Attempts written before the reply was stored whole kept only its first 4,000
-# characters, while the judge reads up to 12,000 and the trace check 8,000. A
+# characters, while the judge reads up to 12,000 and the trace check 12,000. A
 # stored reply of exactly this length was cut, so a judge grading it now reads
 # less than the original judge did. Those attempts are flagged rather than
 # dropped: a disagreement on one of them may be about the missing text.
@@ -147,7 +147,7 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int) -> 
     # column had no controls at all and silently collapsed onto the narrow one.
     readable = {
         r["task_id"] for r in load(out.calibration)
-        if can_be_scored(r, passing=PASSING_WITH_HEDGE)
+        if (can_be_scored(r) or can_be_scored(r, passing=PASSING_WITH_HEDGE))
     }
     tasks = [t for t in read(src.tasks) if t.task_id in readable]
     done = {(r["task_id"], r["control"]) for r in completed(out.controls)}
@@ -207,7 +207,7 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int) -> 
         p.produced = sum(1 for r in results if r)
         p.failed = sum(1 for r in results if not r)
 
-    # Six known answers for the trace check itself, run once per judge. The
+    # Eight known answers for the trace check itself, run once per judge. The
     # controls above test it through a task; these test it directly, and they
     # exist because every prompt change to it was verified against the same
     # eighteen attempts it was derived from.
@@ -314,7 +314,12 @@ def _passed(row: dict, passing: set[str]) -> bool:
     if judgement.get("introduced_kind"):
         did = judgement.get("did_the_work")
         return bool(did) if did is not None else bool(row.get("passed"))
-    return True
+    # Present kind: `Judgement.solved` requires addresses_defect, which the
+    # outcome name cannot see either -- "defect gone, nothing unverified, but
+    # never engaged with it" is named "solved" and stored solved=False. Eight
+    # of the sixty-four boolean combinations, none on disk today.
+    addr = judgement.get("addresses_defect")
+    return bool(addr) if addr is not None else bool(row.get("passed"))
 
 
 def _order_invariant(row: dict) -> bool | None:

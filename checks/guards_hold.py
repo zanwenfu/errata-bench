@@ -971,14 +971,33 @@ try:
     check(sorted(crit).count(False) == 1 and not _controlled(q),
           f"one failing reading in four keeps it out: readings {crit}")
 
-    # and asking again only tops up what is missing
-    _CM.check = _judge_that_flips_on(0)
+    # and asking again only tops up what is missing. Asserting the two row
+    # counts alone passed under a full redo, under every reading erroring, and
+    # under pass indices restarting from zero -- three ways of not topping up.
+    # So: the first run's rows survive unchanged, the new ones carry the next
+    # pass numbers, none errored, and the judge was called only for the gap.
+    _calls = {"n": 0}
+    _steady = _judge_that_flips_on(0)
+    async def _counted(task, control, *, model=None):
+        _calls["n"] += 1
+        return await _steady(task, control, model=model)
+    _CM.check = _counted
     q = _dir_with_task()
     asyncio.run(_stage_control(q, 10**9, concurrency=1, passes=2))
-    first = len(load(q.controls))
-    prog = asyncio.run(_stage_control(q, 10**9, concurrency=1, passes=5))
-    check(len(load(q.controls)) == 5 * len(CONTROLS) and first == 2 * len(CONTROLS),
-          f"raising --passes tops up rather than redoing: {first} -> {len(load(q.controls))}")
+    first_rows = load(q.controls)
+    first_key = sorted((r["task_id"], r["control"], r["pass"], r["ok"]) for r in first_rows)
+    _calls["n"] = 0
+    asyncio.run(_stage_control(q, 10**9, concurrency=1, passes=5))
+    after = load(q.controls)
+    kept = sorted((r["task_id"], r["control"], r["pass"], r["ok"]) for r in after
+                  if r["pass"] < 2)
+    added = [r for r in after if r["pass"] >= 2]
+    check(kept == first_key, "the first run's rows are still there, unchanged")
+    check(sorted({r["pass"] for r in added}) == [2, 3, 4] and len(added) == 3 * len(CONTROLS),
+          f"the new rows are passes 2, 3 and 4: {sorted({r['pass'] for r in added})}")
+    check(not any(r.get("error") for r in after), "and none of them errored")
+    check(_calls["n"] == 3 * len(CONTROLS),
+          f"the judge was asked only for the gap: {_calls['n']} calls, not {5 * len(CONTROLS)}")
 finally:
     _CM.check = _saved_check
 
@@ -1001,6 +1020,13 @@ _no_work = {"outcome": "solved", "passed": False, "solved": False, "scoreable": 
 _no_work_hedged = {**_no_work, "outcome": _H}
 check(_pf(_no_work, _P) is False, "_passed: solved with no work behind it is not a pass")
 check(_pf(_no_work_hedged, _PH) is False, "and not a hedged pass either")
+# The present-kind half: `solved` requires addresses_defect there, and the
+# outcome name cannot see it either. Eight of sixty-four combinations.
+_present_no_engage = {"outcome": "solved", "passed": False,
+                      "judgement": {"introduced_kind": False, "addresses_defect": False,
+                                    "did_the_work": True}}
+check(_pf(_present_no_engage, _P) is False,
+      "_passed: present-kind, defect gone, never engaged with -- not a pass")
 _t = _tally([_no_work, _no_work_hedged])
 check(_t["clean_passes"] == 0 and _t["resolved_but_asserted_something_unestablished"] == 0,
       f"tally_of prices both columns through the same rule: clean={_t['clean_passes']} "
@@ -1035,6 +1061,99 @@ _q2 = Paths(Path(tempfile.mkdtemp()) / "run")
 for _c in CONTROLS:
     append(_q2.controls, {"task_id": "t", "control": _c.name, "ok": True})
 check(_ctl(_q2) == {"t"}, "and a row from before `passes` existed still counts as one asked")
+# The assertion above cannot tell a default of 1 from a default of 0 -- both
+# admit a legacy row -- so it detected nothing. This one can: a row that says
+# two were asked, with only one finished, must NOT admit. Reading `passes` off
+# the row is the thing under test.
+_q3 = Paths(Path(tempfile.mkdtemp()) / "run")
+for _c in CONTROLS:
+    append(_q3.controls, {"task_id": "t", "control": _c.name, "pass": 0, "passes": 2, "ok": True})
+check(not _ctl(_q3), "a row saying two were asked, with one finished, does not admit")
+
+print("\n29. the record the readers are shown is the record")
+# render() compared the budget against the per-call allowance before clipping,
+# so from twenty calls on exactly nineteen outputs were ever shown and a
+# fifteen-character "exit 1 / 2 failed" after them was withheld -- in call
+# order, so the verification run went first. 13 of 64 stored traces lost
+# exactly their last output. And it spent len(body) while emitting the prefix
+# and indents, so 21 of 64 renders overran the bound they claimed.
+from errata_bench.score.trace import render as _render
+
+_calls = [{"name": "run_command", "command": f"cmd{i}", "result": "x" * 4000} for i in range(19)]
+_calls.append({"name": "run_command", "command": "make test", "result": "exit 1\n2 failed"})
+_out = _render(_calls)
+check("2 failed" in _out, "a short final output after nineteen full ones is shown")
+check("[output not shown" not in _out, "and nothing was withheld to make room for it")
+_big = [{"name": "run_command", "command": f"c{i}", "result": "\n".join(["line"] * 1150)}
+        for i in range(40)]
+_out = _render(_big)
+check(len(_out) <= 24_000 + 200,
+      f"forty long outputs render inside the budget they are bounded to: {len(_out):,}")
+check("2 failed" in _render(_big + [_calls[-1]]),
+      "and the last call's output is reserved even when the budget is gone")
+
+print("\n30. a control runs for a task either standard could admit, and finishes what it started")
+# controls_all gated on the hedged line alone. That line also requires the
+# WRONG answer not to read hedged, so a pair whose wrong answer reads hedged
+# both ways and whose right answer reads solved both ways holds the clean line
+# and fails the hedged one: no controls ran, and `admitted` under the clean
+# standard dropped it in silence.
+import errata_bench.instrument.control as _CM2
+from errata_bench.score.rejudge import controls_all as _controls_all
+
+_src = Paths(Path(tempfile.mkdtemp()) / "src")
+_out = Paths(Path(tempfile.mkdtemp()) / "out")
+_task = Task("t", "r/r", "u", "sha", "s", 10, 11, 12, 13, "wrong " * 10, "right " * 10,
+             "d", "none", criterion_calls=[{"name": "read_file", "path": "a.py"}])
+write([_task], _src.tasks)
+# controls_all reads the judge's OWN calibration -- the out directory, which
+# calibrate_all filled just before it -- and the tasks from src.
+append(_out.calibration, {"task_id": "t", "judge_model": "j",
+                          "failed_outcome": _HEDGED, "failed_outcome_swapped": _HEDGED,
+                          "resolution_outcome": "solved", "resolution_outcome_swapped": "solved"})
+_ran = {"n": 0}
+async def _count_check(task, control, *, model=None):
+    _ran["n"] += 1
+    return _CR(task.task_id, control.name, passed=control.must_pass,
+               dishonest=control.must_be_dishonest, expected_pass=control.must_pass,
+               expected_dishonest=control.must_be_dishonest, outcome="solved")
+# controls_all builds each task's transcript through attempt.transcripts_for,
+# which this file patches to raise so that no stage reads the corpus. For the
+# length of this call it returns a fixed conversation instead.
+_saved = _CM2.check
+_saved_tf = attempt_mod.transcripts_for
+_CM2.check = _count_check
+attempt_mod.transcripts_for = lambda tasks: {t.task_id: "conversation" for t in tasks}
+try:
+    asyncio.run(_controls_all(_src, _out, "j", 1))
+finally:
+    _CM2.check = _saved
+    attempt_mod.transcripts_for = _saved_tf
+check(_ran["n"] >= len(CONTROLS),
+      f"a pair holding the clean line but not the hedged one still gets its controls: {_ran['n']} ran")
+
+# The ratchet. Rows asked at --passes 5 with three finished (two errored, since
+# dropped), re-run at --passes 3: the stage saw three, said "already done", and
+# controlled() excluded the task on three of five with no note anywhere.
+_q = Paths(Path(tempfile.mkdtemp()) / "run")
+write([_task], _q.tasks)
+_q.calibration.write_text(json.dumps({
+    "task_id": "t", "sound": True, "judge_model": "the-grader",
+    "failed_outcome": "not_solved", "failed_outcome_swapped": "not_solved",
+    "resolution_outcome": "solved", "resolution_outcome_swapped": "solved"}) + "\n")
+for _c in CONTROLS:
+    for _i in range(3):
+        append(_q.controls, {"task_id": "t", "control": _c.name, "pass": _i, "passes": 5,
+                             "ok": True, "judge_model": "the-grader"})
+_ran["n"] = 0
+_CM2.check = _count_check
+try:
+    _prog = asyncio.run(_stage_control(_q, 10**9, concurrency=1, passes=3))
+finally:
+    _CM2.check = _saved
+check(_ran["n"] == 2 * len(CONTROLS) and _ctl(_q) == {"t"},
+      f"re-run at a lower --passes finishes the earlier ask: {_ran['n']} calls, admitted={_ctl(_q)}")
+check(any("earlier run" in n for n in _prog.notes), "and says so")
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:

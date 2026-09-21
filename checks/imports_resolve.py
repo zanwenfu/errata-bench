@@ -11,7 +11,8 @@ rewritten to the wrong target -- `load_session_turns` from `..store`, which
 does not have it, in `stage_triage` and `stage_locate`. Importing every module
 did not catch it, because a deferred import is not executed at import time,
 and the check suites did not either, because none of them runs those two
-stages. This resolves all of them without running anything.
+stages. This resolves all of them without running any stage -- importing does execute
+module bodies, which is what makes a broken one visible.
 
     .venv/bin/python checks/imports_resolve.py
 """
@@ -41,16 +42,57 @@ def anchor(path: pathlib.Path) -> str:
     return mod if path.name == "__init__.py" else mod.rsplit(".", 1)[0]
 
 
-def resolve(node: ast.ImportFrom, package: str, where: str) -> None:
+def resolve_from(node: ast.ImportFrom, package: str, where: str) -> None:
+    label = "." * node.level + (node.module or "")
     try:
         target = importlib.import_module("." * node.level + (node.module or ""),
                                          package=package)
     except Exception as e:
-        BAD.append(f"{where}: {'.' * node.level}{node.module} -> {type(e).__name__}: {e}")
+        BAD.append(f"{where}: {label} -> {type(e).__name__}: {e}")
         return
     for alias in node.names:
-        if alias.name != "*" and not hasattr(target, alias.name):
-            BAD.append(f"{where}: {'.' * node.level}{node.module} has no {alias.name!r}")
+        if alias.name == "*" or hasattr(target, alias.name):
+            continue
+        # `from . import leaf`: the name is a submodule Python will import on
+        # demand, not an attribute the package already carries. Checking only
+        # `hasattr` flagged every such line as broken until something else had
+        # happened to import the leaf -- a verdict that depended on order.
+        if node.module is None or hasattr(target, "__path__"):
+            try:
+                importlib.import_module(f"{target.__name__}.{alias.name}")
+                continue
+            except Exception:
+                pass
+        BAD.append(f"{where}: {label} has no {alias.name!r}")
+
+
+def resolve_plain(node: ast.Import, where: str) -> None:
+    """`import a.b.c`, which the restructure could break exactly like a from-import."""
+    for alias in node.names:
+        try:
+            importlib.import_module(alias.name)
+        except Exception as e:
+            BAD.append(f"{where}: import {alias.name} -> {type(e).__name__}: {e}")
+
+
+def optional(tree: ast.AST) -> set:
+    """Imports inside a `try` whose handler catches ImportError: allowed to fail."""
+    out = set()
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Try):
+            continue
+        catches = any(
+            (isinstance(h.type, ast.Name) and h.type.id in ("ImportError", "ModuleNotFoundError"))
+            or (isinstance(h.type, ast.Tuple) and any(
+                isinstance(e, ast.Name) and e.id in ("ImportError", "ModuleNotFoundError")
+                for e in h.type.elts))
+            for h in node.handlers)
+        if catches:
+            for sub in node.body:
+                for n in ast.walk(sub):
+                    if isinstance(n, (ast.Import, ast.ImportFrom)):
+                        out.add(n)
+    return out
 
 
 def main() -> int:
@@ -61,17 +103,23 @@ def main() -> int:
         inside = {
             n for fn in ast.walk(tree)
             if isinstance(fn, (ast.FunctionDef, ast.AsyncFunctionDef))
-            for n in ast.walk(fn) if isinstance(n, ast.ImportFrom)
+            for n in ast.walk(fn) if isinstance(n, (ast.Import, ast.ImportFrom))
         }
+        allowed_to_fail = optional(tree)
         for node in ast.walk(tree):
-            if not isinstance(node, ast.ImportFrom):
+            if not isinstance(node, (ast.Import, ast.ImportFrom)):
+                continue
+            if node in allowed_to_fail:
                 continue
             where = f"{path.relative_to(ROOT)}:{node.lineno}"
             if node in inside:
                 deferred += 1
             else:
                 top += 1
-            resolve(node, package, where)
+            if isinstance(node, ast.ImportFrom):
+                resolve_from(node, package, where)
+            else:
+                resolve_plain(node, where)
 
     # The other thing a module move breaks silently: a path built by counting
     # parent directories. CORPUS was `parents[2]`, right for

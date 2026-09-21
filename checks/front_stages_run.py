@@ -75,8 +75,10 @@ def records(name):
 
 
 # ---- a session, as the corpus stores one ---------------------------------
-# Turn numbers are deliberately sparse and non-contiguous, which is what the
-# corpus really looks like, and the text is non-ASCII because real replies are.
+# Turn numbers are sparse, as in the corpus. With the readers faked, the one
+# real function that sees them is `last_user_message`, and what the sparseness
+# exercises there is a cut (5) that is not itself a turn number. The text is
+# non-ASCII because real replies are.
 SESSION = [
     {"turn_number": 1, "turn_type": "user_prompt",
      "content": "Add retry with backoff to the uploader — it drops on 503."},
@@ -188,6 +190,17 @@ def main() -> int:
         check(len(rows) == 1 and not bad,
               f"{label}: {len(rows)} row, {len(bad)} errored"
               + (f" -- {bad[0]['error'][:70]}" if bad else ""))
+        # Not every stage marks failure with an `error` key. triage's except
+        # branch writes worth_reading=True and triage_reason="error: ...", so
+        # the moment flows on; locate's writes usable=False, reason="error:".
+        # A raise inserted right after each stage's model call left both
+        # "1 row, 0 errored" and the whole check green.
+        if rows and label == "triage":
+            check(not str(rows[0].get("triage_reason", "")).startswith("error:"),
+                  f"triage did not hide a failure behind worth_reading: {rows[0].get('triage_reason', '')[:50]!r}")
+        if rows and label == "locate":
+            check(rows[0].get("usable") is True,
+                  f"locate produced a usable trajectory: {rows[0].get('reason', '')[:50]!r}")
 
     print("\n2. every fake was actually reached")
     # Without this the stages could be skipping the work entirely and each
@@ -197,7 +210,14 @@ def main() -> int:
         check(CALLED.get(name, 0) > 0, f"{name} ran ({CALLED.get(name, 0)}x)")
 
     print("\n3. the screened row carries what build needs")
-    row = load(p.screened)[0]
+    screened = load(p.screened)
+    if not screened:
+        check(False, "no screened row to inspect -- an earlier stage failed")
+        print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
+        for f in FAIL:
+            print("  -", f)
+        return 1
+    row = screened[0]
     for field in ("session_id", "cut", "kind", "defect", "resolution",
                   "asks_for_something", "within_scope", "signals_trouble",
                   "redaction_worked", "screen_passes"):
