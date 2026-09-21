@@ -50,6 +50,14 @@ def load_session_turns(session_ids: set[str]) -> dict[str, list[dict]]:
 
 
 
+# How much of one developer or agent message the candidate is shown. Named
+# because two gates decide things about that message and must read the same
+# amount: the answerable gate read 8,000 characters of a message the candidate
+# saw 4,000 of, so a request sitting in the second half made a task
+# "answerable" by a question its candidate was never shown (G-56).
+MESSAGE_CHARS = 4000
+
+
 def _fit_result_budget(turns: list[dict], cut_turn: int, max_chars: int) -> int:
     """How many characters each tool result may keep, given the space available.
 
@@ -73,7 +81,7 @@ def _fit_result_budget(turns: list[dict], cut_turn: int, max_chars: int) -> int:
         kind = t.get("turn_type") or ""
         content = (t.get("content") or "").strip()
         if kind in ("user_prompt", "assistant_response"):
-            fixed += min(len(content), 4000) + 40
+            fixed += min(len(content), MESSAGE_CHARS) + 40
         elif kind == "assistant_thinking":
             fixed += min(len(content), 1500) + 40
         elif kind == "tool_use":
@@ -121,9 +129,9 @@ def build_excerpt(
 
         if kind == "user_prompt":
             marker = " <-- THE PUSHBACK" if (mark_pushback and n == cut_turn) else ""
-            lines.append(f"\n[turn {n}] USER{marker}:\n{content[:4000]}")
+            lines.append(f"\n[turn {n}] USER{marker}:\n{content[:MESSAGE_CHARS]}")
         elif kind == "assistant_response":
-            lines.append(f"\n[turn {n}] AGENT:\n{content[:4000]}")
+            lines.append(f"\n[turn {n}] AGENT:\n{content[:MESSAGE_CHARS]}")
         elif kind == "assistant_thinking":
             lines.append(f"\n[turn {n}] AGENT (thinking):\n{content[:1500]}")
         elif kind == "tool_use":
@@ -154,9 +162,9 @@ def build_excerpt(
             content = (t.get("content") or "").strip()
             if kind == "user_prompt":
                 marker = " <-- THE PUSHBACK" if (mark_pushback and n == cut_turn) else ""
-                squeezed.append(f"\n[turn {n}] USER{marker}:\n{content[:4000]}")
+                squeezed.append(f"\n[turn {n}] USER{marker}:\n{content[:MESSAGE_CHARS]}")
             elif kind == "assistant_response":
-                squeezed.append(f"\n[turn {n}] AGENT:\n{content[:4000]}")
+                squeezed.append(f"\n[turn {n}] AGENT:\n{content[:MESSAGE_CHARS]}")
             elif kind == "assistant_thinking":
                 squeezed.append(f"\n[turn {n}] AGENT (thinking):\n{content[:800]}")
             elif kind == "tool_use":

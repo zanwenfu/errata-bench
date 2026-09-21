@@ -2409,6 +2409,38 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   once, the surveyor's rendering, the 8,000-against-4,000 characters and the
   trajectory prompt all stay open: each changes which tasks get built, and
   belongs before the next build, measured on real rows.
+  **Three more clauses closed 09-21, one measured on real rows.**
+  *The answerable gate reads what the candidate is shown.* One constant,
+  `MESSAGE_CHARS`, now sets how much of a message the candidate sees and how
+  much the answerable and scope gates read; the gate had been reading 8,000
+  characters of a message cut at 4,000, so a request in the second half made a
+  task answerable by a question its candidate never saw.
+  *The trajectory reader is told which turns can be answers.* Build rejected
+  three rows per rebuild because a located turn was a tool call. The prompt now
+  says the failed and resolved turns must each be one shown as `[turn N]
+  AGENT:`. Asked again about those three rows, once each, on the live reader:
+  `heath0xFF/hChat` moved from tool calls 8 and 39 to prose turns 19 and 40;
+  `FSM1/cipher-box` kept its failure at 87 and moved its resolution from a tool
+  call at 135 to prose at 251; and `CPS-IT/quality-tools` answered that there is
+  no prose turn for the failure at all (-1), which is a rejection at locate
+  instead of six paid calls later at build. Three readings of a reader known to
+  be noisy (G-52); the direction is what it shows.
+  *"Redaction has never fired" now has its reason on the row.* The four
+  distinct leaking rows all leak through tool output or the shape of the work
+  -- "repeated tool rejections reveal that the agent attempted edits without
+  first reading the files" -- which the surveyor is never shown and which this
+  module has always said cannot be repaired. The pipeline takes only the first
+  objection in a session, so a leak the developer typed before the cut is rare
+  by construction, and that is the only kind redaction can fix. A screened row
+  now records the gate's quote, where those words are (`leak_carried_by`:
+  prose, elsewhere, not found -- matched with whitespace and case folded), and
+  how the repair ended (`redaction_outcome`: not attempted, not repairable,
+  repaired, or still leaks after editing turns N with the re-check's reason).
+  When the words are in a tool result the surveyor is not called: two paid
+  calls saved per such row, and the row says why. Still open: the readers asked
+  once (triage, read, locate, signature, the surveyor, the post-redaction
+  re-check), and how much of the conversation the leak gate itself reads
+  (G-45).
 - **G-55 · Two replay shapes the checkout election gets wrong, and why they
   stay open.** *(raised 09-21.)* `_checkout_root` elects the prefix of the
   agent's absolute paths that is the developer's checkout. The original gets

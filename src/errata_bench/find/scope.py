@@ -27,6 +27,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
+from ..corpus.turns import MESSAGE_CHARS
 from ..llm import MODEL, configure_client, resilient, with_field_guide
 
 
@@ -81,7 +82,7 @@ async def in_scope(request: str, defect: str, *, model: str = MODEL) -> Scope:
     )
     prompt = f"""\
 What the developer asked for:
-{request[:4000]}
+{request[:MESSAGE_CHARS]}
 
 The defect that was later found:
 {defect[:2000]}

@@ -173,6 +173,46 @@ lost work for nothing.
 Quote the words that carry each hint, so every judgement can be checked."""
 
 
+def carried_by(turns: list[dict], cut_turn: int, quote: str) -> str:
+    """Where the words the leak gate quoted actually are: "prose", "elsewhere",
+    or "not found".
+
+    The surveyor below is shown the developer's and the agent's prose and
+    nothing else, and a repair can only drop or rewrite those turns. The
+    candidate -- and the leak gate -- also read thinking, tool calls and tool
+    results. So a leak carried by a tool result is in text the surveyor is
+    never shown and no edit of prose can reach: across every screened file, 14
+    rows leaked and none was repaired, and the four distinct ones all read
+    like this -- "repeated tool rejections reveal that the agent attempted
+    edits without first reading the files" (G-56, G-45). That is the shape of
+    the work, which this module has always said cannot be repaired; what was
+    missing was the row saying so, instead of two paid calls ending in a
+    silent False.
+
+    Deterministic, on the gate's own quote: whitespace and case folded, and a
+    long quote matched on its first sixty characters, because a model copying
+    "exactly" still reflows a line. "not found" means the quote was a
+    paraphrase, and the surveyor is asked as before.
+    """
+    def fold(text: str) -> str:
+        return " ".join(str(text or "").lower().split())
+
+    needle = fold(quote)[:60]
+    if len(needle) < 12:            # too short to place: "no", "wrong", an empty quote
+        return "not found"
+    prose, rest = [], []
+    for t in turns:
+        if (t.get("turn_number") or 0) > cut_turn:
+            continue
+        body = fold(t.get("content")) + " " + fold(t.get("command"))
+        (prose if t.get("turn_type") in ("user_prompt", "assistant_response") else rest).append(body)
+    if any(needle in body for body in prose):
+        return "prose"
+    if any(needle in body for body in rest):
+        return "elsewhere"
+    return "not found"
+
+
 @dataclass
 class Redaction:
     """What was edited or removed, and whether the result is usable."""

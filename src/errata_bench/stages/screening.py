@@ -258,7 +258,7 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
     from ..construct.build import last_user_message
     from ..find.leakage import signals_trouble
     from ..corpus.turns import build_excerpt, load_session_turns
-    from ..find.redact import apply, survey
+    from ..find.redact import apply, carried_by, survey
     from ..find.scope import in_scope
 
     p = Progress("screen")
@@ -357,6 +357,7 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
             out["signals_trouble"] = verdict
             out["clean_held"] = tally
             out["leak_reason"] = leak.reasoning
+            out["leak_quote"] = leak.quote
             out["redacted_turns"] = []
             out["rewritten_turns"] = {}
             out["redaction_worked"] = False
@@ -365,11 +366,33 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
             # gate as a whole says it leaks, which with more than one reading is
             # not the same thing as what any single reading said.
             if verdict:
+                # Where the leak is, before paying to repair it. Every outcome
+                # of this branch is written down: fourteen rows leaked across
+                # the stored runs, none was repaired, and not one row said why.
+                out["leak_carried_by"] = carried_by(ts, r["cut"], leak.quote)
+            if verdict and out["leak_carried_by"] == "elsewhere":
+                out["redaction_outcome"] = (
+                    "not attempted: the words that leak are in a tool call, a tool "
+                    "result or the agent's thinking, which removing prose cannot reach"
+                )
+            elif verdict:
                 red = await survey(ts, r["cut"])
                 out["diffuse"] = red.diffuse
+                out["redaction_reason"] = red.reason
+                out["redaction_touched"] = red.touched
+                out["redaction_outcome"] = (
+                    "not repairable: the surveyor found the signal in no single turn"
+                    if red.diffuse else
+                    "not repairable: the surveyor found no turn to edit"
+                    if not red.touched else "attempted"
+                )
                 if red.repairable:
                     kept = apply(ts, red.removed_turns, red.rewritten)
                     again = await signals_trouble(build_excerpt(kept, r["cut"]))
+                    out["redaction_outcome"] = (
+                        "repaired" if not again.signals_trouble
+                        else f"still leaks after editing turns {red.touched}: {again.reasoning}"
+                    )
                     if not again.signals_trouble:
                         out["redacted_turns"] = red.removed_turns
                         out["rewritten_turns"] = {

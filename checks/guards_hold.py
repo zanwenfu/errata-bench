@@ -1532,6 +1532,41 @@ _r35 = json.loads(_p35.report.read_text())
 check(_r35["attempts_per_task"] == {"1": 1, "2": 1} and any("same number" in n for n in _prog35.notes),
       f"tasks with unequal attempts are counted apart, and it says so: {_r35['attempts_per_task']}")
 
+print("\n36. a gate reads as much of a message as the candidate is shown")
+# G-56: the answerable gate read 8,000 characters of a message the candidate
+# saw 4,000 of, so a request in the second half made a task "answerable" by a
+# question its candidate was never shown.
+from errata_bench.corpus.turns import MESSAGE_CHARS as _MC, build_excerpt as _bx
+
+_msg36 = "early-marker " + "x" * 5000 + " LATE-REQUEST: and can you also fix the tests?"
+_seen36 = []
+
+def _capturing(answer):
+    class _R:
+        @staticmethod
+        async def run(agent, prompt, **kw):
+            _seen36.append(prompt)
+            class _Out:
+                final_output = answer
+            return _Out()
+    return _R
+
+_saved36 = (_an_mod.configure_client, _sc_mod.configure_client, _agents_mod.Runner)
+_an_mod.configure_client = _sc_mod.configure_client = lambda: None
+try:
+    _agents_mod.Runner = _capturing(_An(asks_for_something=False, request="", reasoning="x"))
+    asyncio.run(_asks(_msg36))
+    _agents_mod.Runner = _capturing(_Sc(within_scope=True, reason="x"))
+    asyncio.run(_insc(_msg36, "a defect"))
+finally:
+    _an_mod.configure_client, _sc_mod.configure_client, _agents_mod.Runner = _saved36
+_shown36 = _bx([{"turn_number": 1, "turn_type": "user_prompt", "content": _msg36}], 1)
+check(_MC == 4000 and "early-marker" in _shown36 and "LATE-REQUEST" not in _shown36,
+      f"the candidate is shown the first {_MC:,} characters of a message")
+check(len(_seen36) == 2 and all("early-marker" in q and "LATE-REQUEST" not in q for q in _seen36),
+      f"and the answerable and scope gates read that much and no more: "
+      f"{['LATE-REQUEST' in q for q in _seen36]}")
+
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:
     print("  -", f)

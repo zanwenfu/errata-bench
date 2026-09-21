@@ -126,6 +126,12 @@ Find four points:
   3. The user's COMPLAINT about that answer.
   4. Where the agent RESOLVED that specific defect -- if it ever did.
 
+Points 2 and 4 must each be a turn the agent WROTE: one shown below as \
+`[turn N] AGENT:`. A line shown as `[turn N] calls ...` is a tool call, and \
+`[turn N] -> ...` is a tool's output. Neither is an answer, and a task cannot \
+be built from one. When the failure or the fix happened inside tool calls, \
+give the AGENT turn that reported it to the developer.
+
 The fourth is the hard one, and getting it wrong ruins the task.
 
 The resolution is not automatically the next agent turn. Sometimes the user \

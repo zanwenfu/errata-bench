@@ -94,9 +94,22 @@ SESSION = [
 ]
 
 
+# Two more, for section 5: one where the words that leak sit in a tool result,
+# and one where the developer says them.
+SESSION_TOOL = SESSION[:3] + [
+    {"turn_number": 5, "turn_type": "tool_result",
+     "content": "File has not been read yet. Read it first before writing to it."},
+] + SESSION[3:]
+SESSION_PROSE = SESSION[:2] + [
+    {"turn_number": 3, "turn_type": "user_prompt",
+     "content": "you keep getting this wrong — it still drops on 503"},
+] + SESSION[2:]
+SESSIONS = {"s-tool": SESSION_TOOL, "s-prose": SESSION_PROSE, "s-stuck": SESSION_PROSE}
+
+
 def fake_load_session_turns(ids):
     records("load_session_turns")
-    return {sid: list(SESSION) for sid in ids}
+    return {sid: list(SESSIONS.get(sid, SESSION)) for sid in ids}
 
 
 def fake_build_excerpt(turns, cut, **kw):
@@ -260,6 +273,73 @@ def main() -> int:
     check(row["within_scope"] is False and row.get("within_scope_held") == "2/3",
           f"one 'out of scope' in three keeps the row out: "
           f"{row.get('within_scope')} held {row.get('within_scope_held')}")
+
+    print("\n5. a leak says where it is carried, and a repair says how it ended")
+    # G-56 / G-45. Fourteen rows leaked across the stored runs, none was
+    # repaired, and not one row said why. The four distinct ones all leak
+    # through tool output, which the surveyor is never shown.
+    import errata_bench.find.redact as redact_mod
+    from errata_bench.find.redact import Redaction
+
+    surveyed = []
+
+    async def fake_survey(turns, cut, **kw):
+        records("survey")
+        surveyed.append(cut)
+        return Redaction(removed_turns=[3], reason="turn 3 is a complaint", quotes={3: "you keep getting this wrong"})
+
+    async def leaks_where_it_says(excerpt, **kw):
+        records("signals_trouble")
+        if "File has not been read yet" in excerpt:
+            return Leakage(signals_trouble=True, quote="File has not been read  yet. READ it first",
+                           reasoning="repeated tool rejections show the agent struggling")
+        if "you keep getting this wrong" in excerpt:
+            return Leakage(signals_trouble=True, quote="you keep getting this wrong",
+                           reasoning="the developer says the agent keeps failing")
+        return Leakage(signals_trouble=False, quote="", reasoning="nothing is given away")
+
+    async def always_leaks(excerpt, **kw):
+        records("signals_trouble")
+        return Leakage(signals_trouble=True, quote="you keep getting this wrong",
+                       reasoning="it still reads as a conversation going badly")
+
+    scope_mod.in_scope = fake_in_scope
+    redact_mod.survey = fake_survey
+    got = {}
+    try:
+        for sid, gate in (("s-tool", leaks_where_it_says), ("s-prose", leaks_where_it_says),
+                          ("s-stuck", always_leaks)):
+            d = Paths(Path(tempfile.mkdtemp()) / "run")
+            append(d.moments, {"session_id": sid, "turn_number": 7, "repo_id": "acme/up",
+                               "kind": "correction", "agent_turns_before": 4})
+            for stage in (stage_triage, stage_read, stage_locate, stage_signature):
+                asyncio.run(stage(d, 10**9, concurrency=1))
+            leakage_mod.signals_trouble = gate
+            before = len(surveyed)
+            asyncio.run(stage_screen(d, 10**9, concurrency=1))
+            rows = load(d.screened)
+            got[sid] = (rows[0] if rows else {}, len(surveyed) - before)
+    except Exception as e:
+        check(False, f"a stage raised before the rows could be read: {type(e).__name__}: {e}")
+        got = {}
+    finally:
+        leakage_mod.signals_trouble = fake_signals_trouble
+    if got:
+        row, asked = got["s-tool"]
+        check(row.get("signals_trouble") is True and row.get("leak_carried_by") == "elsewhere" and asked == 0
+              and str(row.get("redaction_outcome", "")).startswith("not attempted") and not row.get("error"),
+              f"a leak in a tool result is named as one, and no surveyor is paid to miss it: "
+              f"{row.get('leak_carried_by')!r}, surveyed {asked}x, {str(row.get('redaction_outcome'))[:40]!r} {row.get('error') or ''}")
+        row, asked = got["s-prose"]
+        check(row.get("leak_carried_by") == "prose" and asked == 1 and row.get("redaction_worked") is True
+              and row.get("redacted_turns") == [3] and row.get("redaction_outcome") == "repaired",
+              f"a leak the developer typed is repaired, and the row says so: "
+              f"{row.get('leak_carried_by')!r}, turns {row.get('redacted_turns')}, {row.get('redaction_outcome')!r} {row.get('error') or ''}")
+        row, asked = got["s-stuck"]
+        check(row.get("redaction_worked") is False and asked == 1
+              and str(row.get("redaction_outcome", "")).startswith("still leaks after editing turns [3]")
+              and row.get("redaction_touched") == [3] and row.get("redaction_reason") == "turn 3 is a complaint",
+              f"and one that still leaks afterwards says what was tried: {str(row.get('redaction_outcome'))[:60]!r}")
 
     print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
     for f in FAIL:
