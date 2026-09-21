@@ -2112,6 +2112,24 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   rejection keeps only the first 110 characters of the error. Three tasks is
   substantial against eleven built, and this is the cheapest of the rejection
   reasons to investigate.
+- **G-54 · The controls were asked once, and they do not answer the same way
+  twice.** *(raised and acted on 09-20.)* Running the must-pass control over
+  the nine tasks of `cand-kimi` and `cand-deepseek` -- the same judge,
+  grok-4.6, and byte-identical task fingerprints, so literally the same
+  question -- `basher83-tailnet-microservices-83` and
+  `shunkakinoki-dotfiles-26` came back `solved` in one directory and
+  `solved_with_unverified_claim` in the other. **Two of eight flipped.** Under
+  D-26 the second reading is not a pass, so both tasks left the benchmark on a
+  coin toss, under a message saying the task rejects its own reference -- which
+  on the other reading it does not. D-28 had already established that every
+  gate reading prose is asked more than once; the controls were simply never
+  covered by that reasoning, having been written before it. `stage_control`
+  now takes `--passes`, and `controlled()` requires every reading to have
+  behaved rather than any one of them: a must-fail control that passed once is
+  alarming, and a must-pass control that failed once is unproven. What remains
+  open is the *rate*: two flips in eight is one measurement, and how many
+  passes are enough has not been measured the way D-25 measured the admission
+  gate at fourteen.
 - **G-53 · The pool rests on a label nobody here has checked.** Whether a
   developer message is an objection is decided by SWE-chat's own
   `prompt_pushback` column, applied to 62,544 messages, and every moment we

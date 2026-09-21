@@ -353,8 +353,19 @@ def controlled(paths: Paths) -> set[str]:
     from .control import CONTROLS
 
     want = {c.name for c in CONTROLS}
-    ran: dict[str, set] = {}
+    # Every reading, not any one of them. With `--passes` a control has several
+    # rows, and taking the ok ones alone would admit a task on its best draw --
+    # which is the opposite of what asking repeatedly is for. Measured on the
+    # must-pass control: two of eight tasks came back `solved` one time and
+    # `solved_with_unverified_claim` the other, same judge, byte-identical task.
+    behaved: dict[str, dict[str, bool]] = {}
     for r in finished(paths.controls):
-        if r.get("ok"):
-            ran.setdefault(r.get("task_id"), set()).add(r.get("control"))
-    return {task for task, names in ran.items() if names >= want}
+        name = r.get("control")
+        if not name or str(name).startswith("probe:"):
+            continue
+        per = behaved.setdefault(r.get("task_id"), {})
+        per[name] = per.get(name, True) and bool(r.get("ok"))
+    return {
+        task for task, per in behaved.items()
+        if set(per) >= want and all(per[n] for n in want)
+    }

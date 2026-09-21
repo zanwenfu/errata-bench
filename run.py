@@ -260,8 +260,9 @@ def main() -> None:
         type=int,
         default=1,
         help="how many times to ask each question: grading an answer (`rejudge`), "
-             "reading a task's known pair (`gate`), or each screening gate (`stages "
-             "--only screen`). More than one keeps only the rows whose answer never changes",
+             "reading a task's known pair (`gate`), each screening gate (`stages "
+             "--only screen`) or each control (`stages --only control`). More than "
+             "one keeps only the rows whose answer never changes",
     )
     ap.add_argument(
         "--judge",

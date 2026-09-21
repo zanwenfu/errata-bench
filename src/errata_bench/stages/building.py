@@ -244,7 +244,8 @@ async def stage_calibrate(paths: Paths, limit: int, concurrency: int) -> Progres
     return p
 
 
-async def stage_control(paths: Paths, limit: int, concurrency: int) -> Progress:
+async def stage_control(paths: Paths, limit: int, concurrency: int,
+                        passes: int = 1) -> Progress:
     """Score answers whose correct result is known, before running candidates.
 
     A benchmark that cannot fail a candidate which does nothing is measuring
@@ -255,6 +256,21 @@ async def stage_control(paths: Paths, limit: int, concurrency: int) -> Progress:
 
     Running here, before `attempt`, means a broken task is caught for the price
     of two judge calls rather than after a container has run against it.
+
+    Asked `passes` times, for the reason D-28 gives for every other gate that
+    reads prose: it does not answer the same way twice. Measured 09-20, by
+    running the must-pass control over the same nine tasks in two directories
+    with the same judge and byte-identical task fingerprints --
+    `basher83-tailnet-microservices-83` and `shunkakinoki-dotfiles-26` came
+    back `solved` one time and `solved_with_unverified_claim` the other. Two
+    of eight flipped. Under D-26 the second reading is a failure, so those two
+    tasks left the benchmark on a coin toss, and the message they left under
+    said the task rejects its own reference -- which on the other reading it
+    does not.
+
+    A control counts as behaving only if it behaved every time, which keeps a
+    doubtful task out in both directions: a must-fail control that passed once
+    is alarming, and a must-pass control that failed once is unproven.
     """
     from ..instrument.control import CONTROLS, check
     from ..score.judge import can_be_scored
@@ -276,33 +292,41 @@ async def stage_control(paths: Paths, limit: int, concurrency: int) -> Progress:
     # calibration there was no `judge_model` on the row to notice it
     # afterwards -- the mismatch was undetectable.
     grader = judge_model()
-    done = {
-        (r["task_id"], r["control"]) for r in completed(paths.controls)
-        if r.get("judge_model", grader) == grader
-    }
-    jobs = [(t, c) for t in tasks for c in CONTROLS if (t.task_id, c.name) not in done][:limit]
-    p.skipped = len(tasks) * len(CONTROLS) - len(jobs)
+    # How many readings each (task, control) already has from this judge. A row
+    # written before `pass` existed counts as the first one.
+    seen: dict[tuple, int] = {}
+    for r in completed(paths.controls):
+        if r.get("judge_model", grader) == grader:
+            k = (r["task_id"], r["control"])
+            seen[k] = seen.get(k, 0) + 1
+    jobs = [
+        (t, c, n)
+        for t in tasks for c in CONTROLS
+        for n in range(seen.get((t.task_id, c.name), 0), max(1, passes))
+    ][:limit]
+    p.skipped = len(tasks) * len(CONTROLS) * max(1, passes) - len(jobs)
     if not jobs:
         p.took_s = time.monotonic() - t0
         return p
 
-    async def one(task, control):
+    async def one(task, control, n):
         try:
             result = await check(task, control, model=grader)
             append(paths.controls, {**result.to_json(), "judge_model": grader,
+                                    "pass": n,
                                     "task_fingerprint": fingerprint(task)})
             return result.ok
         except Exception as e:
             append(
                 paths.controls,
                 {"task_id": task.task_id, "control": control.name, "ok": False,
-                 "judge_model": grader,
+                 "judge_model": grader, "pass": n,
                  "error": f"{type(e).__name__}: {e}",
                  "detail": f"the control could not run: {type(e).__name__}"},
             )
             return False
 
-    results = await _gather([one(t, c) for t, c in jobs], concurrency)
+    results = await _gather([one(t, c, n) for t, c, n in jobs], concurrency)
     p.produced = sum(1 for r in results if r)
     p.failed = sum(1 for r in results if not r)
     if p.failed:

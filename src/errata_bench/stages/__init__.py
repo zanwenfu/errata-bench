@@ -83,7 +83,7 @@ async def _run_stages(paths, stages, limit, concurrency, repeats, grade_concurre
         elif name == "calibrate":
             out.append(await stage_calibrate(paths, limit, concurrency))
         elif name == "control":
-            out.append(await stage_control(paths, limit, concurrency))
+            out.append(await stage_control(paths, limit, concurrency, passes))
         elif name == "attempt":
             out.append(await stage_attempt(paths, limit, concurrency, repeats))
         elif name == "grade":
