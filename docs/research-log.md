@@ -1339,6 +1339,32 @@ other sixteen are recorded in G-49.
   still refused. **11 built tasks became 14, none lost**, and the three
   recovered replay 4, 2 and 4 of the agent's own edits.
 
+- **B-213 · The restructure pointed the corpus at a directory that does not
+  exist** (fixed · 09-20). `CORPUS` was
+  `Path(__file__).resolve().parents[2] / "data" / "swe-chat"` -- correct while
+  the file was `errata_bench/corpus.py`, one level short once it became
+  `errata_bench/corpus/sessions.py`. It resolved to `src/data/swe-chat`, and
+  every stage that reads the corpus died on a pyarrow `FileNotFoundError`:
+  moments, triage, read, locate, screen and build. The whole front half of the
+  pipeline, including its first command. `.env` in `llm.py` used the same
+  arithmetic and was still right by accident, at the same depth `reader.py`
+  had been -- and a wrong root there returns silently, costing an API key
+  rather than a traceback. Both now use `project.ROOT`, which finds the
+  checkout by looking for `pyproject.toml`, so moving a module cannot change
+  the answer. Found by smoke-testing the CLI: no check suite reads the corpus,
+  by design, because they stub `load_session_turns` and `load_repos`.
+- **B-212 · Two stages imported a function from a module that does not have
+  it** (fixed · 09-20). The restructure's import rewriter defaulted unknown
+  names to `store`, and `load_session_turns` lives in `corpus.turns`, so
+  `stage_triage` and `stage_locate` both carried
+  `from ..store import load_session_turns`. Importing every module does not
+  catch that -- 82 of the package's 210 imports are inside function bodies and
+  are not executed at import time -- and no check runs those two stages. The
+  stages that read the corpus were therefore the ones left broken, which is
+  the shape of the problem rather than bad luck: a deferred import fails when
+  its branch runs, and the branches are the expensive stages.
+  `checks/imports_resolve.py` now resolves all 214 imports, deferred included,
+  and asserts the corpus is where the code looks.
 - **B-209 · Half the "out of scope" rejections were not scope judgements**
   (fixed · 09-20). `last_user_message` looked back a fixed eighty visible turns
   for the message the candidate is meant to answer. Five tasks had theirs 94 to
