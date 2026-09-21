@@ -610,6 +610,74 @@ verdict, tally, _ = asyncio.run(
     _agree(alternating(make, [True]), 1, keep_on=True, reading=reading))
 check(verdict is True and tally == "1/1", "asking once still works, and says it asked once")
 
+print("\n22. what the trace records is what the candidate saw")
+# The stored trace is the ground truth the honesty check reads. Where it and
+# the candidate disagree, a model is accused of a claim it never made or
+# excused one it did.
+from errata_bench.attempt import RESULT_CHARS, _diff, _read_file, _safe, _snapshot
+
+_work = Path(tempfile.mkdtemp())
+_tree = _work / "tree"
+(_tree / "src").mkdir(parents=True)
+(_tree / "src" / "a.py").write_text("x\n")
+(_work / "tree-escape").mkdir()
+(_work / "tree-escape" / "loot.txt").write_text("secret\n")
+
+# `str(p).startswith(str(root))` is true of any sibling whose name begins with
+# the tree's, and `_snapshot` walks the tree alone -- so a write that landed
+# there was real and invisible.
+_escapes = 0
+for _rel in ("../tree-escape/loot.txt", "src/../../tree-x/y", "/../tree-escape/loot.txt"):
+    try:
+        _safe(_tree, _rel)
+    except ValueError:
+        _escapes += 1
+check(_escapes == 3, f"a path that leaves the tree is refused ({_escapes}/3)")
+check(_safe(_tree, "src/a.py") == (_tree / "src" / "a.py").resolve(),
+      "and one inside it still resolves")
+
+# `keep` went negative whenever the first line overran the budget, so the slice
+# ran from the front: the record exceeded its own cap and announced a cut that
+# had not happened.
+for _label, _out in (("a 5,000-char first line", "A" * 5000 + "\n" + "line\n" * 500),
+                     ("no newline at all", "B" * 20000)):
+    _c = ToolCall("run_command", {})
+    _c.record(_out)
+    _claimed = int(_c.result.split("[cut:")[1].split("characters")[0].strip().replace(",", ""))
+    _marker = f"... [cut: {_claimed:,} characters]"
+    _kept = len(_c.result.replace(_marker, "")) - (2 if _c.result.endswith("\n") else 1)
+    check(len(_c.result) <= RESULT_CHARS + 60 and abs(_claimed - (len(_out) - _kept)) <= 3,
+          f"{_label}: stored {len(_c.result):,} of {RESULT_CHARS:,}, cut count honest")
+
+# The candidate is shown the first max_bytes of a file; the record kept the
+# last 4,000, so the honesty check read a window the answer was not about.
+(_tree / "big.py").write_text("".join(f"def f{i}():\n    return {i}\n" for i in range(400)))
+_c = ToolCall("read_file", {"path": "big.py"})
+_c.record(_read_file(_tree, "big.py", 60_000), from_end=False)
+check("def f0(" in _c.result and len(_c.result) <= RESULT_CHARS + 60,
+      "a file read is recorded from the end the candidate was shown")
+
+# A hook that is not executable does not run, and that is sometimes the whole
+# defect. On contents alone the fix read as no work at all.
+_s = _tree / "hook.sh"
+_s.write_text("#!/bin/sh\necho hi\n")
+os.chmod(_s, 0o644)
+_before = _snapshot(_tree)
+os.chmod(_s, 0o755)
+check(_diff(_before, _snapshot(_tree)).get("hook.sh") == "made executable",
+      "chmod +x is a change, and is named as one rather than as 'modified'")
+
+# Dropped from the snapshot, an unreadable file was absent from the second one
+# and reported deleted -- a change the candidate did not make.
+(_tree / "locked.bin").write_bytes(b"data")
+_before = _snapshot(_tree)
+os.chmod(_tree / "locked.bin", 0o000)
+try:
+    check(_diff(_before, _snapshot(_tree)).get("locked.bin") != "deleted",
+          "and a file that cannot be read is not reported deleted")
+finally:
+    os.chmod(_tree / "locked.bin", 0o644)
+
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:
     print("  -", f)
