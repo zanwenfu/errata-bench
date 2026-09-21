@@ -2056,6 +2056,18 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   rejection keeps only the first 110 characters of the error. Three tasks is
   substantial against eleven built, and this is the cheapest of the rejection
   reasons to investigate.
+- **G-53 · The pool rests on a label nobody here has checked.** Whether a
+  developer message is an objection is decided by SWE-chat's own
+  `prompt_pushback` column, applied to 62,544 messages, and every moment we
+  have ever collected comes through it. A sample of fourteen messages it calls
+  `non_pushback` reads mostly correctly — slash commands, attached images,
+  follow-up requests — but two of the fourteen are arguable ("ok now fogire out
+  why the macos build failed on CI" is a failure report by any reading). Two of
+  fourteen is not a measurement, and a systematic miss would shrink the pool
+  invisibly: we would never see the moments it failed to label. Checking it
+  costs one model call per sampled message against our own reading of what an
+  objection is, on a few hundred `non_pushback` messages, and it would put a
+  number on the one assumption underneath everything else.
 - **G-52 · Every model-based gate is noisy, and the task set inherits all of
   it.** Measured 09-20 on the scope gate: asked five times about the same 46
   rows, 41 give the same answer every time and 5 change, all of them leaning
@@ -2121,6 +2133,33 @@ disk, not estimated.
 | 4,111 | ...the **first** one in its session | a later objection sits in a conversation already full of friction, which the leak gate then rejects |
 | 4,095 | ...whose repository the corpus names | without it there is no code to rebuild |
 | **2,264** | ...with **3 or more agent turns before it** | otherwise the agent has done nothing to object to |
+
+**Which of these are ours, and which are SWE-chat's.** Worth separating,
+because we can fix ours and can only trust theirs.
+
+| filter | whose |
+|---|---|
+| a message from the developer (`turn_type == "user_prompt"`) | **SWE-chat's label** |
+| it pushes back, and of which kind (`prompt_pushback`) | **SWE-chat's label** |
+| which of its kinds to accept — four of six | ours |
+| the repository a session belongs to (`repo_id`) | **SWE-chat's data** |
+| first objection in the session only | ours |
+| three or more agent turns before it | ours |
+
+So the detection itself — *is this developer message an objection?* — is
+entirely SWE-chat's, applied to 62,544 messages, and **we have never validated
+it**. That is the single assumption the whole pool rests on (G-53).
+
+`prompt_pushback` takes six values across those messages: `non_pushback`
+33,854, `correction` 18,937, `failure_report` 4,382, unlabelled 4,299,
+`rejection` 636, `takeover` 435, and one stray `pushback`. We take the four
+named kinds.
+
+The 4,299 unlabelled are not a loss: 2,727 are `[Request interrupted by user]`
+— the developer pressed escape, leaving no text to answer — and 1,070 are
+context-compaction summaries the harness injects, which are not developer
+messages at all. Only **502 are actual prose**, and at the observed rates that
+is worth a handful of tasks.
 
 The last filter looks severe — it removes 45% — but it is not a knob worth
 turning. The distribution behind it is bimodal: **1,615 of those moments have
@@ -2386,3 +2425,8 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   The last filter removes 45%, and it should: 1,615 of the removed have *zero*
   agent turns before the objection. Relaxing it from 3 to 1 buys 216 moments,
   about six tasks.
+- **09-20** — separated which pool filters are ours from which are SWE-chat's.
+  The detection itself — is this message an objection, and of what kind — is
+  entirely theirs and unvalidated here (G-53). The 4,299 unlabelled developer
+  messages are almost all escape presses (2,727) and context-compaction
+  summaries (1,070); only 502 are prose.
