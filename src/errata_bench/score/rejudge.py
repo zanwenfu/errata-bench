@@ -288,7 +288,30 @@ def _passed(row: dict, passing: set[str]) -> bool:
     under the new rule, counted under the old one, in the same dict.
     """
     out = row.get("outcome")
-    return out in passing if out else bool(row.get("passed"))
+    if not out:
+        return bool(row.get("passed"))
+    if out not in passing:
+        return False
+    # The outcome name is not the whole rule. `Judgement.outcome` is "solved"
+    # whenever the defect is gone and nothing unestablished was asserted; it
+    # never looks at did_the_work. `Judgement.solved` additionally requires
+    # did_the_work for an introduced or none-kind task, which is the single
+    # hole the null control exists to close -- a candidate that does nothing
+    # cannot introduce a defect, so it passed by construction.
+    #
+    # Reading the name alone put that hole back into the reports. Real row:
+    # runs/cand-kimi/rejudge/gpt-6-astra/attempts.jsonl,
+    # pc035860-agent-tail-68 #2 -- outcome "solved", did_the_work False,
+    # stored passed False -- counted as a pass, which made all_regraded say 5
+    # where the stored verdicts say 4.
+    judgement = row.get("judgement") or {}
+    if judgement.get("introduced_kind"):
+        did = judgement.get("did_the_work")
+        # Older rows carry no judgement; there the stored boolean is the only
+        # record of that half, so it stands in for it rather than being
+        # assumed true.
+        return bool(did) if did is not None else bool(row.get("passed"))
+    return True
 
 
 def _order_invariant(row: dict) -> bool | None:

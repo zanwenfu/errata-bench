@@ -51,20 +51,25 @@ def stage_build(paths: Paths, limit: int) -> Progress:
         ]
         p.took_s = time.monotonic() - t0
         return p
-    # A partial rebuild cannot safely rewrite the whole file. `limit` caps rows
-    # for every other stage, and this one rewrites tasks.jsonl from scratch and
-    # prunes four files to match, so honouring it would build one task and
-    # delete the rows of every task it did not look at. It has always been
-    # ignored here; now it is refused out loud rather than silently.
-    if limit and limit < len(rows) and (load(paths.tasks) or load(paths.attempts)):
-        p.failed = 1
-        p.notes = [
-            f"refused: --max-rows {limit} against {len(rows)} screened rows. This stage "
-            "rewrites tasks.jsonl in full and prunes the downstream files to match, so a "
-            "capped run would delete the rows of every task it skipped. Drop the cap."
-        ]
-        p.took_s = time.monotonic() - t0
-        return p
+    # `limit` is deliberately ignored here, and saying so is the whole of it.
+    # This stage rewrites tasks.jsonl in full and prunes four downstream files
+    # to match, so a capped run that honoured the cap would delete the rows of
+    # every task it skipped. `build()` takes no cap and is handed every row,
+    # so that has never been possible.
+    #
+    # It was briefly refused instead, which was worse: nothing was ever
+    # truncated, so the refusal only blocked runs that would have been correct
+    # and complete -- and it killed the incremental workflow outright, where
+    # `--max-rows 3` run repeatedly advances three fresh rows a pass. Pass one
+    # built three tasks; pass two had six screened rows and was refused, and so
+    # was every pass after it, for ever. The only escape was dropping the cap,
+    # which uncaps `attempt` -- a container per task per repeat, the stage the
+    # cap exists for.
+    if limit and limit < len(rows):
+        p.notes.append(
+            f"--max-rows {limit} does not apply to build: it rebuilds all {len(rows)} "
+            "screened rows, because it rewrites tasks.jsonl in full"
+        )
 
     result = build(rows)
 

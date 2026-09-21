@@ -514,6 +514,51 @@ check(r.ok and (t / "run.bat").read_bytes() == b"@echo done\r\n"
       and (t / "l.txt").read_bytes() == b"caf\xe9\nkept\n",
       "replay changes only the bytes the edit names, CRLF and latin-1 included")
 
+# A Write creates its file, so where its path happens to resolve is evidence
+# about a DIFFERENT file. Counting Writes let a deeper prefix win 2-1 and the
+# next edit landed on the root's src/index.ts, destroying it.
+t = a_tree_of({"package.json": "ROOTPKG\n", "src/index.ts": "ROOTSRC\n",
+               "web/package.json": "WEBPKG\n"})
+r = replay_edits(t, [
+    {"turn": 1, "tool": "Write", "args": {"file_path": "/Users/d/code/app/web/src/index.ts",
+                                          "content": "new web entry\n"}},
+    {"turn": 2, "tool": "Edit", "args": {"file_path": "/Users/d/code/app/web/package.json",
+                                         "old_string": "WEBPKG", "new_string": "WEBPKG2"}}],
+    "acme/app")
+check(r.ok and (t / "src" / "index.ts").read_text() == "ROOTSRC\n"
+      and (t / "web" / "src" / "index.ts").exists()
+      and (t / "web" / "package.json").read_text() == "WEBPKG2\n",
+      f"a Write does not vote for the checkout root: {r.reason or 'applied ' + str(r.applied)}")
+
+# Both prefixes get one vote and they want opposite answers, so the tree is no
+# help and the repository's name decides. Preferring the longer prefix bumped
+# the version in the ROOT package.json and left web/ stale, reporting ok.
+t = a_tree_of({"package.json": '{"name":"app","version":"1.0.0"}\n',
+               "web/package.json": '{"name":"web","version":"1.0.0"}\n'})
+r = replay_edits(t, [
+    {"turn": 1, "tool": "Edit", "args": {"file_path": "/Users/d/code/app/web/package.json",
+                                         "old_string": '"version":"1.0.0"',
+                                         "new_string": '"version":"2.0.0"'}},
+    {"turn": 2, "tool": "Write", "args": {"file_path": "/Users/d/code/app/web/README.md",
+                                          "content": "web\n"}}], "acme/app")
+check(r.ok and '"version":"1.0.0"' in (t / "package.json").read_text()
+      and '"version":"2.0.0"' in (t / "web" / "package.json").read_text()
+      and (t / "web" / "README.md").exists(),
+      f"an ambiguous tree defers to the repository's name: {r.reason or 'applied ' + str(r.applied)}")
+
+# PurePosixPath reads a backslash path as one filename, so `is_absolute()` is
+# False and the whole string looked repo-relative: Write then created a file at
+# the tree root literally named `E:\projects\...\spec.md` and replay said ok.
+# 54 sessions in the corpus carry Windows edit paths; 27 open with a Write.
+t = a_tree_of({"README.md": "x\n", "src/app.py": "y\n"})
+r = replay_edits(t, [
+    {"turn": 1, "tool": "Write",
+     "args": {"file_path": r"E:\projects\ado-git-repo-insights\specs\042\spec.md",
+              "content": "spec\n"}}], "someorg/task-tracker-mcp")
+junk = [q.name for q in t.iterdir() if "\\" in q.name]
+check(not r.ok and "not inside the repository" in r.reason and not junk,
+      f"a Windows path is refused rather than written at the tree root: {r.reason[:52]}")
+
 print("\n20. the developer's request is found wherever it is")
 # The candidate sees every user message at or before the cut -- the excerpt
 # squeezes tool traffic when it overruns and never drops a user prompt -- so a

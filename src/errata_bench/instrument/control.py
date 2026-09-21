@@ -185,11 +185,30 @@ class Control:
                      {k: v for k, v in c.items() if k != "name"})
             for c in self.calls_for(task)
         ]
+        # What the agent wrote, taken from the trace, because a control has no
+        # filesystem to diff. `analyse` reads `wrote` off `actual_changes` and
+        # not off the tool names -- deliberately, so a candidate that calls
+        # write_file and changes nothing does not get credit -- which makes
+        # write_file an inert bucket for a control. So routing `apply_patch`
+        # (2,053 corpus calls) from read_file to write_file, meant to stop
+        # recovered writes reading as no work, removed the only thing that made
+        # them count at all: `checked` comes from read_file/list_dir/
+        # run_command, and a trace of nothing but writes then scored
+        # did_the_work=False and failed its own reference answer. For a
+        # recovered trace the call IS the evidence; there is nothing else.
+        wrote: dict[str, str] = {}
+        for c in self.calls_for(task):
+            if _as_harness_tool(c.get("name") or "") != "write_file":
+                continue
+            where = (c.get("file_path") or c.get("path") or c.get("filePath")
+                     or f"(recovered {c.get('name')})")
+            wrote[str(where)] = "modified"
         return Attempt(
             task_id=task.task_id,
             model=f"control:{self.name}",
             reply=self.reply_for(task),
             tool_calls=calls,
+            actual_changes=wrote,
         )
 
 

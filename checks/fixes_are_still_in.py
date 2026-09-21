@@ -139,16 +139,23 @@ check("B-210", "a rebuild that builds nothing from something prunes nothing",
       and len(load(d.calibration)) == 1 and len(load(d.controls)) == len(CONTROL_NAMES)
       and any("refused" in n for n in p.notes))
 
-# and a capped rebuild cannot prune the tasks it never looked at
+# and a capped rebuild still rebuilds everything, and says so. It was briefly
+# refused instead: nothing is ever truncated -- build() takes no cap and is
+# handed every row -- so the refusal only blocked correct runs, and it broke
+# the incremental `--max-rows N` workflow from the second pass on, for ever.
 d = run_dir()
 append(d.attempts, {"task_id": "t", "run": 0, "passed": True})
 for i in range(3):
     append(d.screened, {"session_id": f"s{i}", "complaint": i})
-B.build = lambda rows, **kw: (_ for _ in ()).throw(AssertionError("build must not run"))
+saw = {"rows": 0}
+def counting_build(rows, **kw):
+    saw["rows"] = len(rows)
+    return BuildResult(tasks=[mktask("t")], rejected=[])
+B.build = counting_build
 p = stage_build(d, 1)
-check("B-211", "and --max-rows is refused rather than silently ignored here",
-      len(load(d.tasks)) == 1 and len(load(d.attempts)) == 1
-      and any("refused" in n for n in p.notes))
+check("B-211", "a capped rebuild still builds every screened row, and says so",
+      saw["rows"] == 3 and any("does not apply to build" in n for n in p.notes)
+      and len(load(d.tasks)) == 1 and len(load(d.attempts)) == 1)
 
 # ---- B-126 / B-145 -----------------------------------------------------
 d = run_dir()

@@ -22,6 +22,7 @@ it are exactly what the candidate must not see.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
@@ -80,7 +81,23 @@ def _inside(tree: Path, rel: str) -> Path | None:
     return p if p == root or root in p.parents else None
 
 
-def _checkout_root(tree: Path, paths: list[str]) -> tuple[str, ...] | None:
+def _must_already_exist(edit: dict) -> bool:
+    """Whether this call requires its target to be in the tree already.
+
+    An Edit or MultiEdit matches `old_string` against existing content, so its
+    path is evidence about the checkout. A Write creates the file, and an Edit
+    with an empty `old_string` creates it too (see `_edit`), so neither is.
+    """
+    tool = edit.get("tool")
+    args = edit.get("args") or {}
+    if tool == "MultiEdit":
+        return any((sub.get("old_string") or "") for sub in (args.get("edits") or []))
+    if tool == "Edit":
+        return bool(args.get("old_string") or "")
+    return False
+
+
+def _checkout_root(tree: Path, edits: list[dict]) -> tuple[str, ...] | None:
     """How much of the agent's absolute paths is the machine it worked on.
 
     `to_repo_relative` assumes the developer's local directory is named after
@@ -110,18 +127,61 @@ def _checkout_root(tree: Path, paths: list[str]) -> tuple[str, ...] | None:
     checkout actually sits.
     """
     votes: dict[tuple[str, ...], int] = {}
-    for local in paths:
-        parts = tuple(PurePosixPath(local).parts)
+    for e in edits:
+        # Only a path that must ALREADY exist is evidence. A `Write` creates
+        # its file, so the fact that some suffix of its path happens to
+        # resolve says nothing about where the checkout begins -- it says a
+        # different file is there. Counting Writes let a deeper prefix win
+        # outright, 2-1, and replay then overwrote a real unrelated file: a
+        # Write of `~/code/app/web/src/index.ts` voted for the root
+        # `.../app/web` because the tree has `src/index.ts`, and the edit that
+        # followed landed on it.
+        if not _must_already_exist(e):
+            continue
+        parts = tuple(PurePosixPath(e["args"].get("file_path", "") or "").parts)
         for i in range(len(parts)):
             if _inside(tree, str(Path(*parts[i:]))) and (tree / Path(*parts[i:])).exists():
                 votes[parts[:i]] = votes.get(parts[:i], 0) + 1
     if not votes:
         return None
-    # The prefix the most paths agree on: one file living outside the checkout
-    # should not decide where the checkout is. On a tie, the longer prefix --
-    # the deeper checkout root, which resolves the ambiguous case in the
-    # direction that does not reach further into the tree.
-    return max(votes.items(), key=lambda kv: (kv[1], len(kv[0])))[0]
+    ranked = sorted(votes.items(), key=lambda kv: -kv[1])
+    # A tie is not a vote, it is an absence of one. A path under a deeper
+    # prefix always also supports the shallower one, so the two cases this
+    # function has to separate -- a monorepo holding the same basename at its
+    # root and in a package, and a package whose config mirrors the root's --
+    # produce the identical tie and want opposite answers. Guessing either way
+    # silently edits the wrong file. So the tree is declared no help, and
+    # `_target` falls through to the repository's name, which is independent
+    # evidence and decides both correctly.
+    if len(ranked) > 1 and ranked[0][1] == ranked[1][1]:
+        return None
+    return ranked[0][0]
+
+
+def _is_repo_relative(local_path: str) -> bool:
+    """Whether this can be read as a path already relative to the repository.
+
+    A Windows path is not, and `PurePosixPath` cannot tell: it reads
+    `E:\\projects\\thing\\spec.md` as one filename with no separators, so
+    `is_absolute()` is False and the whole backslash string looks relative.
+    `_inside` then says it is contained, `Write` creates a file at the tree
+    root literally named `E:\\projects\\thing\\spec.md`, and replay reports
+    ok -- shipping a task whose tree is, in this module's own words, neither
+    the base commit nor what the agent saw. Measured on session 76f33c0e,
+    whose first eight edit calls are Writes to `E:\\projects\\...`: the old
+    code rejected the task, the fallback accepted it and created six junk
+    files. 54 sessions in the corpus record Windows edit paths and 27 open
+    with a Write.
+
+    A drive letter or a backslash means this path was written on a machine
+    whose layout we cannot reconstruct, and the task is rejected rather than
+    approximated.
+    """
+    if "\\" in local_path:
+        return False
+    if re.match(r"^[A-Za-z]:", local_path):
+        return False
+    return not PurePosixPath(local_path).is_absolute()
 
 
 def _target(tree: Path, local_path: str, repo_id: str,
@@ -149,7 +209,7 @@ def _target(tree: Path, local_path: str, repo_id: str,
     # and the elected root is a prefix of the absolute paths, which this has
     # none of -- so without this a session that mixes the two kinds resolved
     # neither.
-    if local_path and not PurePosixPath(local_path).is_absolute():
+    if local_path and _is_repo_relative(local_path):
         return _inside(tree, local_path)
     return None
 
@@ -201,7 +261,7 @@ def replay(tree: Path, edits: list[dict], repo_id: str) -> Replay:
     r = Replay()
     # Where the developer's checkout began, measured from the tree rather than
     # guessed from the directory name.
-    root = _checkout_root(tree, [e["args"].get("file_path", "") for e in edits])
+    root = _checkout_root(tree, edits)
     for e in edits:
         args = e["args"]
         target = _target(tree, args.get("file_path", ""), repo_id, root)
