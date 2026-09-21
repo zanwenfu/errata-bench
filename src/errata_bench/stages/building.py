@@ -44,7 +44,7 @@ def stage_build(paths: Paths, limit: int) -> Progress:
     # directory is still fine; it has nothing to lose.
     if not rows and (load(paths.tasks) or load(paths.attempts) or load(paths.answers)):
         p.failed = 1
-        p.notes = [
+        p.notes += [
             "refused: no screened rows to build from, but this directory already holds "
             "tasks and results. Re-run the earlier stages first, or use --only to name "
             "the stage you meant."
@@ -87,7 +87,7 @@ def stage_build(paths: Paths, limit: int) -> Progress:
         transient = sum(1 for r in result.rejected
                         if "could not build the tree" in (r.reason or ""))
         p.failed = 1
-        p.notes = [
+        p.notes += [
             f"refused: built 0 tasks from {len(rows)} screened rows, and this directory "
             f"already holds results. {transient} of {len(result.rejected)} rejections were "
             "transient (the tree could not be fetched), which is what an unreachable "
@@ -318,14 +318,14 @@ async def stage_control(paths: Paths, limit: int, concurrency: int,
         try:
             result = await check(task, control, model=grader)
             append(paths.controls, {**result.to_json(), "judge_model": grader,
-                                    "pass": n,
+                                    "pass": n, "passes": max(1, passes),
                                     "task_fingerprint": fingerprint(task)})
             return result.ok
         except Exception as e:
             append(
                 paths.controls,
                 {"task_id": task.task_id, "control": control.name, "ok": False,
-                 "judge_model": grader, "pass": n,
+                 "judge_model": grader, "pass": n, "passes": max(1, passes),
                  "error": f"{type(e).__name__}: {e}",
                  "detail": f"the control could not run: {type(e).__name__}"},
             )

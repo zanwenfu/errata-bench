@@ -474,40 +474,29 @@ def a_tree_of(files: dict):
         q.write_bytes(body if isinstance(body, bytes) else body.encode())
     return d
 
-# A monorepo holds the same basename at its root and inside a package. Taking
-# the first (longest) matching suffix elected the checkout's *parent*, so an
-# edit to ~/code/web/package.json replayed onto web/package.json.
-t = a_tree_of({"package.json": "v1\n", "web/package.json": "v1\n", "src/i.ts": "a\n"})
-r = replay_edits(t, [
-    {"turn": 1, "tool": "Edit", "args": {"file_path": "/Users/d/code/web/package.json",
-                                         "old_string": "v1", "new_string": "v2"}},
-    {"turn": 2, "tool": "Edit", "args": {"file_path": "/Users/d/code/web/src/i.ts",
-                                         "old_string": "a", "new_string": "b"}}], "acme/web")
-check(r.ok and (t / "package.json").read_text() == "v2\n"
-      and (t / "web" / "package.json").read_text() == "v1\n",
-      "a basename repeated deeper in the tree does not capture the checkout root")
-
-# `parts[:0] == ()` is true of every path, so one already-relative edit used to
-# claim every absolute path in the session and reject the task.
-t = a_tree_of({"README.md": "hello\n", "src/main.py": "x = 1\n"})
-r = replay_edits(t, [
-    {"turn": 1, "tool": "Edit", "args": {"file_path": "README.md",
-                                         "old_string": "hello", "new_string": "hi"}},
-    {"turn": 2, "tool": "Edit", "args": {"file_path": "/Users/d/code/w/src/main.py",
-                                         "old_string": "x = 1", "new_string": "x = 2"}}], "a/w")
-check(r.ok and (t / "src" / "main.py").read_text() == "x = 2\n",
-      "a repo-relative path among absolute ones resolves, and so do they")
+# Two shapes the original election gets wrong are NOT asserted here, on
+# purpose: a monorepo holding the same basename at its root and inside a
+# package (the shorter prefix wins a tie and lands one level too shallow), and
+# a session mixing repo-relative and absolute paths. Two rewrites each fixed one
+# of these and, tested against every edit call in the corpus, broke far more --
+# 1,321 sessions open with a Write, and the rewrites misplaced or rejected them.
+# The election was restored to the original on 09-21 and both shapes are open as
+# G-55, with the better rule recorded there. A check that asserted the fixed
+# behaviour would be asserting a rewrite this file's own history says not to make.
 
 # Text mode translated CRLF and `errors="replace"` destroyed undecodable bytes,
 # so a replayed file differed from the agent's in lines it never touched -- and
 # the next edit, whose old_string still held the \r\n, then failed to match.
+# Absolute paths under a checkout named for the repository, so path
+# resolution is not what is on trial here -- an earlier fixture used bare
+# relative paths and failed on resolution while claiming to test bytes.
 t = a_tree_of({"run.bat": b"@echo off\r\nset A=1\r\n", "l.txt": b"caf\xe9\nkeep\n"})
 r = replay_edits(t, [
-    {"turn": 1, "tool": "Edit", "args": {"file_path": "run.bat",
+    {"turn": 1, "tool": "Edit", "args": {"file_path": "/Users/d/code/w/run.bat",
                                          "old_string": "set A=1", "new_string": "set A=9"}},
-    {"turn": 2, "tool": "Edit", "args": {"file_path": "l.txt",
+    {"turn": 2, "tool": "Edit", "args": {"file_path": "/Users/d/code/w/l.txt",
                                          "old_string": "keep", "new_string": "kept"}},
-    {"turn": 3, "tool": "Edit", "args": {"file_path": "run.bat",
+    {"turn": 3, "tool": "Edit", "args": {"file_path": "/Users/d/code/w/run.bat",
                                          "old_string": "off\r\nset A=9", "new_string": "done"}}],
     "a/w")
 check(r.ok and (t / "run.bat").read_bytes() == b"@echo done\r\n"
@@ -528,7 +517,7 @@ r = replay_edits(t, [
 check(r.ok and (t / "src" / "index.ts").read_text() == "ROOTSRC\n"
       and (t / "web" / "src" / "index.ts").exists()
       and (t / "web" / "package.json").read_text() == "WEBPKG2\n",
-      f"a Write does not vote for the checkout root: {r.reason or 'applied ' + str(r.applied)}")
+      f"a Write beside an Edit in a package does not capture the checkout root: {r.reason or 'applied ' + str(r.applied)}")
 
 # Both prefixes get one vote and they want opposite answers, so the tree is no
 # help and the repository's name decides. Preferring the longer prefix bumped
@@ -544,7 +533,7 @@ r = replay_edits(t, [
 check(r.ok and '"version":"1.0.0"' in (t / "package.json").read_text()
       and '"version":"2.0.0"' in (t / "web" / "package.json").read_text()
       and (t / "web" / "README.md").exists(),
-      f"an ambiguous tree defers to the repository's name: {r.reason or 'applied ' + str(r.applied)}")
+      f"a package whose config mirrors the root's is edited in the package: {r.reason or 'applied ' + str(r.applied)}")
 
 # PurePosixPath reads a backslash path as one filename, so `is_absolute()` is
 # False and the whole string looked repo-relative: Write then created a file at
@@ -801,8 +790,12 @@ from errata_bench.score.judge import HEDGED as _HEDGED, PASSING as _PASSING
 _hedged_row = {"outcome": _HEDGED, "passed": True}     # written before D-26
 check(_passed(_hedged_row, _PASSING) is False,
       "a pre-D-26 row storing passed=true for a hedged outcome is not a pass")
-check(_passed({"outcome": "solved", "passed": False}, _PASSING) is True,
-      "and the outcome name wins over the stored boolean the other way too")
+# A row with an outcome but no judgement: the outcome name cannot see
+# did_the_work, and the stored boolean is the only record of it. Rules here
+# have only ever tightened (D-26), so a stored False is a current False. This
+# check asserted the opposite for a day, against _passed's own comment.
+check(_passed({"outcome": "solved", "passed": False}, _PASSING) is False,
+      "a row with no judgement keeps its stored verdict, which saw did_the_work")
 check(_passed({"passed": True}, _PASSING) is True,
       "a row too old to carry an outcome still falls back to its boolean")
 
@@ -988,6 +981,60 @@ try:
           f"raising --passes tops up rather than redoing: {first} -> {len(load(q.controls))}")
 finally:
     _CM.check = _saved_check
+
+print("\n28. the did_the_work half of a pass is priced everywhere, and a control's writes count")
+# Reviewer of 2c63135ee: none of the grading fixes had a check that went red
+# without it -- the control fixtures all carried a read call, so `checked` was
+# already True and `wrote` was never load-bearing, and no fixture put a
+# no-work row through _passed or tally_of. Each block below was verified to
+# go red by reverting exactly the line it covers.
+from errata_bench.instrument.control import CRITERION as _CRIT
+from errata_bench.score.judge import PASSING as _P, PASSING_WITH_HEDGE as _PH, HEDGED as _H
+from errata_bench.score.rejudge import _passed as _pf, tally_of as _tally
+from errata_bench.score.structure import analyse as _analyse
+
+# A row that resolved the defect while doing no work. Judgement.outcome says
+# "solved"; Judgement.solved says no, because did_the_work is half the rule
+# for an introduced or none-kind task -- the hole the null control closes.
+_no_work = {"outcome": "solved", "passed": False, "solved": False, "scoreable": True,
+            "judgement": {"introduced_kind": True, "did_the_work": False}}
+_no_work_hedged = {**_no_work, "outcome": _H}
+check(_pf(_no_work, _P) is False, "_passed: solved with no work behind it is not a pass")
+check(_pf(_no_work_hedged, _PH) is False, "and not a hedged pass either")
+_t = _tally([_no_work, _no_work_hedged])
+check(_t["clean_passes"] == 0 and _t["resolved_but_asserted_something_unestablished"] == 0,
+      f"tally_of prices both columns through the same rule: clean={_t['clean_passes']} "
+      f"hedged={_t['resolved_but_asserted_something_unestablished']}")
+check(_pf({"outcome": "solved", "passed": False}, _P) is False,
+      "a row with no judgement falls back to its stored verdict, as the comment says")
+
+# A recovered trace of nothing but writes. `analyse` reads `wrote` off
+# actual_changes, not tool names, so unless the control supplies them a
+# writes-only reference answer scores did_the_work=False and fails its own
+# must-pass control.
+_writes_only = Task("t", "r/r", "u", "sha", "s", 10, 11, 12, 13, "wrong " * 10, "right " * 10,
+                    "d", "none", criterion_calls=[{"name": "apply_patch", "command": "..."}])
+_att = _CRIT.as_attempt(_writes_only)
+_st = _analyse(_writes_only, _att, _att.final_state)
+check(bool(_att.actual_changes) and _st.wrote and not _st.checked,
+      f"a writes-only recovered trace counts as work through `wrote`: "
+      f"changes={list(_att.actual_changes)} wrote={_st.wrote} checked={_st.checked}")
+
+# A control asked three times whose third reading errored. finished() drops
+# the error row; without counting what was asked, two good readings look
+# unanimous.
+_q = Paths(Path(tempfile.mkdtemp()) / "run")
+for _c in CONTROLS:
+    for _i in range(2 if _c.name == "criterion" else 3):
+        append(_q.controls, {"task_id": "t", "control": _c.name, "pass": _i, "passes": 3, "ok": True})
+append(_q.controls, {"task_id": "t", "control": "criterion", "pass": 2, "passes": 3,
+                     "ok": False, "error": "RuntimeError: 429"})
+from errata_bench.instrument.control import controlled as _ctl
+check(not _ctl(_q), "two finished readings of three asked do not admit the task")
+_q2 = Paths(Path(tempfile.mkdtemp()) / "run")
+for _c in CONTROLS:
+    append(_q2.controls, {"task_id": "t", "control": _c.name, "ok": True})
+check(_ctl(_q2) == {"t"}, "and a row from before `passes` existed still counts as one asked")
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:

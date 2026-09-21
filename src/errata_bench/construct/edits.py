@@ -22,7 +22,6 @@ it are exactly what the candidate must not see.
 from __future__ import annotations
 
 import json
-import re
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
@@ -81,23 +80,7 @@ def _inside(tree: Path, rel: str) -> Path | None:
     return p if p == root or root in p.parents else None
 
 
-def _must_already_exist(edit: dict) -> bool:
-    """Whether this call requires its target to be in the tree already.
-
-    An Edit or MultiEdit matches `old_string` against existing content, so its
-    path is evidence about the checkout. A Write creates the file, and an Edit
-    with an empty `old_string` creates it too (see `_edit`), so neither is.
-    """
-    tool = edit.get("tool")
-    args = edit.get("args") or {}
-    if tool == "MultiEdit":
-        return any((sub.get("old_string") or "") for sub in (args.get("edits") or []))
-    if tool == "Edit":
-        return bool(args.get("old_string") or "")
-    return False
-
-
-def _checkout_root(tree: Path, edits: list[dict]) -> tuple[str, ...] | None:
+def _checkout_root(tree: Path, paths: list[str]) -> tuple[str, ...] | None:
     """How much of the agent's absolute paths is the machine it worked on.
 
     `to_repo_relative` assumes the developer's local directory is named after
@@ -113,75 +96,31 @@ def _checkout_root(tree: Path, edits: list[dict]) -> tuple[str, ...] | None:
     rest -- including files the session creates, which exist nowhere yet and
     so cannot be resolved on their own.
 
-    Every candidate prefix is counted, not just the first one found. Stopping
-    at the first match meant the *longest* matching suffix won, and a longer
-    suffix is a shorter prefix: for a checkout at `~/code/web` of a repo that
-    also contains `web/package.json` -- the ordinary shape of a monorepo, the
-    same basename at the root and inside a package -- an edit to
-    `~/code/web/package.json` elected the root `~/code` and replayed onto
-    `web/package.json`, the wrong file. With `Edit` that surfaces as a spurious
-    rejection; with `Write`, or an `old_string` that appears in both, it
-    overwrites the wrong file silently and leaves the real one stale. Counting
-    every candidate lets the other paths in the session outvote the
-    coincidence, and a tie now prefers the deeper root, which is where a
-    checkout actually sits.
+    This is the original election, restored on 09-21 after two rewrites. The
+    first counted every candidate prefix and preferred the longer on a tie; the
+    second let only Edit paths vote and elected nothing on a tie, falling
+    through to the repository's name. Both were tested against every one of
+    the 73,549 edit calls in the corpus beside this version: this one is right
+    in every real shape but one -- a monorepo holding the same basename at its
+    root and inside a package, where the shorter prefix wins a tie and lands
+    one level too shallow (G-55). The rewrites each traded that one shape for
+    silent misplacement across the 1,321 sessions that open with a Write, or
+    rejection of the very cases named above. The one shape stays open, with
+    the better rule recorded in G-55, until a change can be tested the way the
+    rewrites were and not before.
     """
     votes: dict[tuple[str, ...], int] = {}
-    for e in edits:
-        # Only a path that must ALREADY exist is evidence. A `Write` creates
-        # its file, so the fact that some suffix of its path happens to
-        # resolve says nothing about where the checkout begins -- it says a
-        # different file is there. Counting Writes let a deeper prefix win
-        # outright, 2-1, and replay then overwrote a real unrelated file: a
-        # Write of `~/code/app/web/src/index.ts` voted for the root
-        # `.../app/web` because the tree has `src/index.ts`, and the edit that
-        # followed landed on it.
-        if not _must_already_exist(e):
-            continue
-        parts = tuple(PurePosixPath(e["args"].get("file_path", "") or "").parts)
+    for local in paths:
+        parts = tuple(PurePosixPath(local).parts)
         for i in range(len(parts)):
             if _inside(tree, str(Path(*parts[i:]))) and (tree / Path(*parts[i:])).exists():
                 votes[parts[:i]] = votes.get(parts[:i], 0) + 1
+                break
     if not votes:
         return None
-    ranked = sorted(votes.items(), key=lambda kv: -kv[1])
-    # A tie is not a vote, it is an absence of one. A path under a deeper
-    # prefix always also supports the shallower one, so the two cases this
-    # function has to separate -- a monorepo holding the same basename at its
-    # root and in a package, and a package whose config mirrors the root's --
-    # produce the identical tie and want opposite answers. Guessing either way
-    # silently edits the wrong file. So the tree is declared no help, and
-    # `_target` falls through to the repository's name, which is independent
-    # evidence and decides both correctly.
-    if len(ranked) > 1 and ranked[0][1] == ranked[1][1]:
-        return None
-    return ranked[0][0]
-
-
-def _is_repo_relative(local_path: str) -> bool:
-    """Whether this can be read as a path already relative to the repository.
-
-    A Windows path is not, and `PurePosixPath` cannot tell: it reads
-    `E:\\projects\\thing\\spec.md` as one filename with no separators, so
-    `is_absolute()` is False and the whole backslash string looks relative.
-    `_inside` then says it is contained, `Write` creates a file at the tree
-    root literally named `E:\\projects\\thing\\spec.md`, and replay reports
-    ok -- shipping a task whose tree is, in this module's own words, neither
-    the base commit nor what the agent saw. Measured on session 76f33c0e,
-    whose first eight edit calls are Writes to `E:\\projects\\...`: the old
-    code rejected the task, the fallback accepted it and created six junk
-    files. 54 sessions in the corpus record Windows edit paths and 27 open
-    with a Write.
-
-    A drive letter or a backslash means this path was written on a machine
-    whose layout we cannot reconstruct, and the task is rejected rather than
-    approximated.
-    """
-    if "\\" in local_path:
-        return False
-    if re.match(r"^[A-Za-z]:", local_path):
-        return False
-    return not PurePosixPath(local_path).is_absolute()
+    # The prefix the most paths agree on: one file living outside the checkout
+    # should not decide where the checkout is.
+    return max(votes.items(), key=lambda kv: (kv[1], -len(kv[0])))[0]
 
 
 def _target(tree: Path, local_path: str, repo_id: str,
@@ -189,29 +128,11 @@ def _target(tree: Path, local_path: str, repo_id: str,
     if root is not None:
         parts = tuple(PurePosixPath(local_path or "").parts)
         if parts[:len(root)] == root and len(parts) > len(root):
-            hit = _inside(tree, str(Path(*parts[len(root):])))
-            # A hint, not a mandate: fall through when it does not resolve. An
-            # empty root is legitimate -- it is what a path already relative to
-            # the repository elects -- but `parts[:0] == ()` is true of every
-            # path, so one relative edit in a session used to claim every
-            # absolute path in it, strip nothing, and reject the whole task
-            # with "not inside the repository". Nine sessions in the corpus
-            # have such a path and one mixes both kinds.
-            if hit is not None:
-                return hit
+            return _inside(tree, str(Path(*parts[len(root):])))
     rel = to_repo_relative(local_path or "", repo_id)
-    if rel:
-        hit = _inside(tree, rel)
-        if hit is not None:
-            return hit
-    # Already relative to the repository. `to_repo_relative` looks for the
-    # repository's name in the path and finds nothing in a bare `README.md`,
-    # and the elected root is a prefix of the absolute paths, which this has
-    # none of -- so without this a session that mixes the two kinds resolved
-    # neither.
-    if local_path and _is_repo_relative(local_path):
-        return _inside(tree, local_path)
-    return None
+    if not rel:
+        return None
+    return _inside(tree, rel)
 
 
 def _read(path: Path) -> str:
@@ -261,7 +182,7 @@ def replay(tree: Path, edits: list[dict], repo_id: str) -> Replay:
     r = Replay()
     # Where the developer's checkout began, measured from the tree rather than
     # guessed from the directory name.
-    root = _checkout_root(tree, edits)
+    root = _checkout_root(tree, [e["args"].get("file_path", "") for e in edits])
     for e in edits:
         args = e["args"]
         target = _target(tree, args.get("file_path", ""), repo_id, root)

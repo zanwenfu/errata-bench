@@ -377,14 +377,27 @@ def controlled(paths: Paths) -> set[str]:
     # which is the opposite of what asking repeatedly is for. Measured on the
     # must-pass control: two of eight tasks came back `solved` one time and
     # `solved_with_unverified_claim` the other, same judge, byte-identical task.
+    # Per (task, control): every reading behaved, AND as many readings finished
+    # as were asked for. `finished()` drops errored rows, so counting only the
+    # rows present admitted a task on two good readings when the third had
+    # errored on a 429 -- while the stage's own note said "those tasks are
+    # unsound" and, `_run_stages` not stopping on a failed stage, the same
+    # command went on to start containers against it. A row written before
+    # `passes` existed asked for one.
     behaved: dict[str, dict[str, bool]] = {}
+    seen: dict[str, dict[str, int]] = {}
+    asked: dict[str, dict[str, int]] = {}
     for r in finished(paths.controls):
         name = r.get("control")
         if not name or str(name).startswith("probe:"):
             continue
-        per = behaved.setdefault(r.get("task_id"), {})
-        per[name] = per.get(name, True) and bool(r.get("ok"))
+        task = r.get("task_id")
+        behaved.setdefault(task, {})[name] = behaved.get(task, {}).get(name, True) and bool(r.get("ok"))
+        seen.setdefault(task, {})[name] = seen.get(task, {}).get(name, 0) + 1
+        asked.setdefault(task, {})[name] = max(asked.get(task, {}).get(name, 1),
+                                               int(r.get("passes") or 1))
     return {
         task for task, per in behaved.items()
-        if set(per) >= want and all(per[n] for n in want)
+        if set(per) >= want
+        and all(per[n] and seen[task][n] >= asked[task][n] for n in want)
     }

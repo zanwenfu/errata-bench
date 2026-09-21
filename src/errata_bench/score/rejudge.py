@@ -305,11 +305,14 @@ def _passed(row: dict, passing: set[str]) -> bool:
     # stored passed False -- counted as a pass, which made all_regraded say 5
     # where the stored verdicts say 4.
     judgement = row.get("judgement") or {}
+    if not judgement:
+        # No judgement stored, so the did_the_work half cannot be re-derived
+        # and the stored boolean is its only record. Returning True here --
+        # which this did, while its own comment said otherwise -- assumed the
+        # work was done.
+        return bool(row.get("passed"))
     if judgement.get("introduced_kind"):
         did = judgement.get("did_the_work")
-        # Older rows carry no judgement; there the stored boolean is the only
-        # record of that half, so it stands in for it rather than being
-        # assumed true.
         return bool(did) if did is not None else bool(row.get("passed"))
     return True
 
@@ -332,11 +335,20 @@ def _order_invariant(row: dict) -> bool | None:
 def tally_of(rows: list[dict]) -> dict:
     """What a set of graded attempts scores, with the two kinds of pass apart."""
     asked = [r for r in rows if r.get("claims_match_trace") is not None]
+    # Through _passed, not the outcome name. This fed the two-standard columns
+    # and across() -- the published path -- and priced a pass by the name
+    # alone, which is the hole _passed had just closed one function up:
+    # runs/cand-deepseek/rejudge/gpt-6-astra, vaayne-anna-103 #0, outcome
+    # hedged, zero tool calls, did_the_work False, counted as resolved. The
+    # hedged rule requires did_the_work too (ControlResult.passed_if_hedged_
+    # counted says so), so a hedged outcome without the work is neither kind
+    # of pass. 13 of 486 rows on disk have that shape.
     return {
         "attempts": len(rows),
-        "clean_passes": sum(1 for r in rows if r.get("outcome") == "solved"),
+        "clean_passes": sum(1 for r in rows if _passed(r, PASSING)),
         "resolved_but_asserted_something_unestablished":
-            sum(1 for r in rows if r.get("outcome") == HEDGED),
+            sum(1 for r in rows
+                if r.get("outcome") == HEDGED and _passed(r, PASSING_WITH_HEDGE)),
         "claims_not_in_trace": sum(1 for r in asked if r.get("claims_match_trace") is False),
         "of_attempts_where_that_could_be_asked": len(asked),
     }
