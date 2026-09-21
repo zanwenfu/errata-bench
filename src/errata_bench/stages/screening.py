@@ -15,6 +15,39 @@ from ..store import (
 )
 
 
+def runnable(moments: list[dict]) -> tuple[list[dict], int]:
+    """The moments whose task could actually be attempted, and how many were not.
+
+    `find_moments` asks this when it collects, but nothing asked it again when
+    the rows were read -- and `can_be_sandboxed` appeared in exactly one place
+    in the tree. So every moments file written before the filter existed, and
+    every one written by an older checkout, was still read at about eight model
+    calls apiece for tasks the attempt stage then refuses to run (G-48, D-31).
+    Of the 2,199 moments on disk, 658 are in a language with no container.
+
+    Read here rather than filtered out at collection time, because the rows are
+    paid data: nothing is deleted, it is simply not read further.
+
+    Only where the language is known and has no image. `find_moments` refuses
+    on uncertainty, which is right when choosing what to spend on; here the row
+    already exists, so a repository the corpus has no row for, or records no
+    language for, is read as before. Fail-closed here dropped every moment in
+    the check suites, whose fixture repositories are not in the corpus at all
+    -- and would drop real rows the moment `load_repos` came back thin.
+    """
+    from ..construct.container import can_be_sandboxed
+    from ..corpus.sessions import load_repos
+
+    try:
+        languages = {rid: repo.language for rid, repo in load_repos().items()}
+    except Exception:  # noqa: BLE001 - no corpus is not a reason to skip work
+        return list(moments), 0
+    keep = [m for m in moments
+            if not languages.get(m.get("repo_id"))
+            or can_be_sandboxed(languages[m["repo_id"]])]
+    return keep, len(moments) - len(keep)
+
+
 async def stage_triage(paths: Paths, limit: int, concurrency: int) -> Progress:
     """Discard moments where the agent has not done anything to object to.
 
@@ -28,7 +61,11 @@ async def stage_triage(paths: Paths, limit: int, concurrency: int) -> Progress:
 
     p = Progress("triage")
     t0 = time.monotonic()
-    moments = load(paths.moments)
+    moments, unrunnable = runnable(load(paths.moments))
+    if unrunnable:
+        p.notes.append(f"{unrunnable} moments are not read: their repository's language "
+                       "has no container here, so no candidate could be run against the "
+                       "task even if one were built")
     done = already_done(paths.triaged)
     # The work, not the input. Slicing the input meant `--max-rows 3` run three
     # times did three rows and then nothing: the same three were always at the
@@ -64,7 +101,11 @@ async def stage_triage(paths: Paths, limit: int, concurrency: int) -> Progress:
 
     results = await _gather([one(m) for m in todo], concurrency)
     p.produced = sum(1 for r in results if r)
-    p.notes = [f"{len(todo) - p.produced} discarded before reading"]
+    # Appended, not assigned. The last stage that assigned over its notes threw
+    # away the one line explaining why it had done less work than asked
+    # (B-222); this one was still doing it, and swallowed the count of moments
+    # passed over for having no container.
+    p.notes.append(f"{len(todo) - p.produced} discarded before reading")
     p.took_s = time.monotonic() - t0
     return p
 
@@ -81,6 +122,10 @@ async def stage_read(paths: Paths, limit: int, concurrency: int) -> Progress:
         moments = [m for m in triaged if m.get("worth_reading")]
     else:
         moments = load(paths.moments)
+    moments, unrunnable = runnable(moments)
+    if unrunnable:
+        p.notes.append(f"{unrunnable} moments are not read: their repository's language "
+                       "has no container here")
     done = already_done(paths.readings)
     todo = p.cap([m for m in moments if key_of(m) not in done], limit, len(moments))
     if not todo:

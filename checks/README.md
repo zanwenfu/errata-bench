@@ -22,7 +22,10 @@ notes of a stage, which end with two JSON dumps in which every field name
 appears; one used a fixture a separate exclusion already caught, so it passed
 with the rule it named reverted; and one compared an elapsed time without an
 alarm, so it hung instead of failing. Assume the next one is hollow too until
-its red output exists.
+its red output exists, and revert ONE fix at a time: reverting a whole file
+tests the union of its branches, which is how half a symlink fix sat
+uncovered while the suite passed. An independent reviewer ran 48 single-fix
+reverts against the sections written that day; 4 left the suite fully green.
 
 Each exits non-zero on failure and prints one line per assertion.
 
@@ -55,7 +58,10 @@ reading required, and the same rule where the numbers are printed; the network
 screen against a table of commands and against the three shapes that used to
 take it exponential (under an alarm, because with the fix reverted it does not
 fail, it runs for ever); and the harness never following a link a candidate
-made. Its fake judge sets the task's kind the way the
+made, and the snapshot recording it as a link rather than reading through
+it. It closes by asserting it handed production back unpatched, because three
+sections restored one module attribute through a name a fourth binds to
+something else. Its fake judge sets the task's kind the way the
 real one does -- left at the default, every task here was graded by the
 present-kind rule and an attempt that did no work passed.
 

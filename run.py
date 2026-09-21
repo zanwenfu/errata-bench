@@ -153,14 +153,32 @@ def find_moments(
         and m["agent_turns_before"] >= min_agent_turns
         and can_be_sandboxed(languages.get(m["repo_id"]))
     ]
-    left_out = sum(
-        1 for m in first.values()
-        if m["repo_id"] and m["agent_turns_before"] >= min_agent_turns
+    # Counted over the same rows `fresh` considers -- moments not already
+    # collected. Counted over all of them it reported every moment any earlier
+    # run had taken, every time: 456 printed where 68 were newly withheld, a
+    # nearly sevenfold overstatement of what this run passed over.
+    #
+    # And the two reasons are said apart. `languages.get` answers None both for
+    # a repository whose language the corpus does not record and for one it has
+    # no row for at all, and "in a language we have no container for" is false
+    # of the second -- 16% of what is dropped.
+    withheld = [
+        m for m in first.values()
+        if (m["session_id"], m["turn_number"]) not in seen
+        and m["repo_id"] and m["agent_turns_before"] >= min_agent_turns
         and not can_be_sandboxed(languages.get(m["repo_id"]))
-    )
-    if left_out:
-        print(f"  {left_out} moments left out: their repository is in a language "
-              "the benchmark has no container for", flush=True)
+    ]
+    unknown = sum(1 for m in withheld if m["repo_id"] not in languages)
+    unrecorded = sum(1 for m in withheld
+                     if m["repo_id"] in languages and not languages[m["repo_id"]])
+    if withheld:
+        why = [f"{len(withheld) - unknown - unrecorded} in a language the benchmark "
+               "has no container for"]
+        if unrecorded:
+            why.append(f"{unrecorded} whose language the corpus does not record")
+        if unknown:
+            why.append(f"{unknown} whose repository the corpus has no row for")
+        print(f"  {len(withheld)} moments left out: " + ", ".join(why), flush=True)
 
     # Spread across repositories rather than taking the first N of a sorted list.
     # Sorting by repo_id and slicing gave fifty moments from a single repository,

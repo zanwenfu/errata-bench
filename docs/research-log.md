@@ -1391,6 +1391,62 @@ other sixteen are recorded in G-49.
   still refused. **11 built tasks became 14, none lost**, and the three
   recovered replay 4, 2 and 4 of the agent's own edits.
 
+- **B-224 · The reviewer that had been rate-limited came back and found four
+  fixes no assertion caught, one of them half a security fix** (fixed ·
+  09-21). It ran **48 single-fix reverts, one run of the suite each**: 44 went
+  red, **4 stayed fully green**. The skeptics confirmed one as high and
+  refuted the other three on severity or framing -- but under this project's
+  own rule a fix no assertion catches is an uncovered fix, so all four are
+  closed.
+  **(1) Half the symlink fix had no coverage.** `_snapshot`'s branch could be
+  deleted and the suite still printed ALL CHECKS PASS: the only assertion
+  touching it asked whether `"notes.txt"` was *among* the changes, which
+  `_capture`'s separate branch satisfied on its own. Reverted, `_snapshot`
+  reads the linked file to hash it -- the probe shows the planted key's hash,
+  `(37, 'daae3a3d...')` -- a link to a directory and a dangling link vanish
+  from the change list, and a tracked file swapped for a link to identical
+  bytes reads as no change at all, which is half of whether the candidate did
+  any work. **My own revert test had reverted the whole file**, so it tested
+  the union of two branches and the `_capture` half carried it. Single-fix
+  reverts from here.
+  **(2) The `_WORD` bound had no assertion that could see it.** It is purely
+  what keeps the search linear, and every absolute timing bar was far too
+  loose: reverted to a plain `\S` the worst fixture goes 0.013s to 0.19s,
+  nowhere near the two-second bar. Measured now against the same pattern on a
+  string of the same length with nothing to try, in the same run on the same
+  machine: **4.3x with the bound, 73x without.**
+  **(3) An errored control row.** Dropping `or r.get("error")` from
+  `controls_behaved` left every assertion green, because the error row's own
+  `ok: False` excluded the task by a different route. The clause does have an
+  effect, and now has a fixture for it: an error row's `passes` stamp is not
+  an ask, so two readings that behaved, asked twice, admit the task. That is
+  what `instrument.control.controlled` does through `finished()`.
+  **(4) A name three sections restored through.** Sections 30, 37 and 39
+  restored `instrument.control.check` through a module-level `_saved` that
+  section 15 binds to the judge, so inserting or reordering a section would
+  have left the control checker bound to `fake_judge` with the whole file
+  green. Renamed, and the suite now ends by asserting it handed production
+  back unpatched -- the fourth name collision in that file in one day.
+  **And three on the moments side, from the same run.** The language filter
+  was asked where moments are *collected* and nowhere they are *read*:
+  `can_be_sandboxed` appeared in exactly one place in the tree, so every
+  moments file written before it existed was still read at about eight model
+  calls apiece for tasks the attempt stage then refuses. Of the 2,199 moments
+  on disk **563 are in a language we know we cannot sandbox**; they are no
+  longer read. The reading stages fail *open* on uncertainty, unlike
+  `find_moments`: a repository the corpus has no row for, or records no
+  language for, is read as before, because the row is already paid for and a
+  thin `load_repos` should not silently stop work -- fail-closed dropped every
+  moment in the check suites, whose fixture repositories are not in the corpus
+  at all. The "N moments left out" line counted over every moment rather than
+  over the ones this run passed over, reporting what earlier runs had already
+  taken: **456 printed on the real corpus where 68 were newly withheld**,
+  nearly sevenfold. And it gave one reason for three different things, since
+  `languages.get` answers None for a language the corpus does not record and
+  for a repository it has no row for alike -- 16% of what it drops. Found
+  while writing that guard: `stage_triage` still *assigned* over `p.notes`
+  rather than appending, the same defect B-222 fixed in the control stage, and
+  it swallowed the new count.
 - **B-223 · What an independent review of one day's work found, and what my
   own account of that day was worth** (fixed · 09-21). Twenty-five agents over
   `f00ba7ac1..aacbe0b64`, eight areas, every finding handed to a separate

@@ -341,6 +341,44 @@ def main() -> int:
               and row.get("redaction_touched") == [3] and row.get("redaction_reason") == "turn 3 is a complaint",
               f"and one that still leaks afterwards says what was tried: {str(row.get('redaction_outcome'))[:60]!r}")
 
+    print("\n6. a moment whose task could never be run is not read at full price")
+    # G-48 / D-31. `find_moments` asks whether the repository's language has a
+    # container, but nothing asked again when the rows were read, and
+    # `can_be_sandboxed` appeared in exactly one place in the tree -- so every
+    # moments file written before the filter existed was still read at about
+    # eight model calls apiece for tasks the attempt stage then refuses. Of the
+    # 2,199 moments on disk, 563 are in a language we know we cannot sandbox.
+    import errata_bench.corpus.sessions as sessions_mod
+    from errata_bench.corpus.sessions import Repo
+
+    _langs = {"acme/up": "TypeScript", "acme/kt": "Kotlin", "acme/mystery": None}
+    _kept_load = sessions_mod.load_repos
+    sessions_mod.load_repos = lambda: {
+        rid: Repo(repo_id=rid, url="u", license_type="mit", language=lang)
+        for rid, lang in _langs.items()
+    }
+    try:
+        r = Paths(Path(tempfile.mkdtemp()) / "run")
+        for repo in ("acme/up", "acme/kt", "acme/mystery"):
+            append(r.moments, {"session_id": "s-1", "turn_number": 7, "repo_id": repo,
+                               "kind": "correction", "agent_turns_before": 4})
+        CALLED.clear()
+        prog = asyncio.run(stage_triage(r, 10**9, concurrency=1))
+        seen_repos = sorted({row.get("repo_id") for row in load(r.triaged)})
+        check(seen_repos == ["acme/mystery", "acme/up"] and CALLED.get("triage", 0) == 2,
+              f"the Kotlin moment is not triaged, and the one with no recorded language is: "
+              f"{seen_repos}, {CALLED.get('triage', 0)} calls")
+        check(any("no container here" in n for n in prog.notes),
+              f"and the stage says how many it passed over: {[n[:60] for n in prog.notes]}")
+        CALLED.clear()
+        asyncio.run(stage_read(r, 10**9, concurrency=1))
+        check(CALLED.get("read_pushback", 0) == 2,
+              f"and the read stage asks the same question: {CALLED.get('read_pushback', 0)} calls")
+    except Exception as e:
+        check(False, f"a stage raised: {type(e).__name__}: {e}")
+    finally:
+        sessions_mod.load_repos = _kept_load
+
     print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
     for f in FAIL:
         print("  -", f)

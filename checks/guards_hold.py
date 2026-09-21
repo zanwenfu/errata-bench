@@ -1127,14 +1127,14 @@ async def _count_check(task, control, *, model=None):
 # controls_all builds each task's transcript through attempt.transcripts_for,
 # which this file patches to raise so that no stage reads the corpus. For the
 # length of this call it returns a fixed conversation instead.
-_saved = _CM2.check
-_saved_tf = attempt_mod.transcripts_for
+_CM2_check = _CM2.check          # not `_saved`: section 15 binds that to _JM.judge,
+_saved_tf = attempt_mod.transcripts_for   # and sections 37 and 39 restore through it too
 _CM2.check = _count_check
 attempt_mod.transcripts_for = lambda tasks: {t.task_id: "conversation" for t in tasks}
 try:
     asyncio.run(_controls_all(_src, _out, "j", 1))
 finally:
-    _CM2.check = _saved
+    _CM2.check = _CM2_check
     attempt_mod.transcripts_for = _saved_tf
 check(_ran["n"] >= len(CONTROLS),
       f"a pair holding the clean line but not the hedged one still gets its controls: {_ran['n']} ran")
@@ -1157,7 +1157,7 @@ _CM2.check = _count_check
 try:
     _prog = asyncio.run(_stage_control(_q, 10**9, concurrency=1, passes=3))
 finally:
-    _CM2.check = _saved
+    _CM2.check = _CM2_check
 check(_ran["n"] == 2 * len(CONTROLS) and _ctl(_q) == {"t"},
       f"re-run at a lower --passes finishes the earlier ask: {_ran['n']} calls, admitted={_ctl(_q)}")
 check(any("earlier run" in n for n in _prog.notes), "and says so")
@@ -1379,11 +1379,16 @@ _secret32.write_text("-----BEGIN PRIVATE KEY-----\nSECRET32\n")
 _t32b = Path(tempfile.mkdtemp()) / "tree"
 (_t32b / "src").mkdir(parents=True)
 (_t32b / "src" / "a.py").write_text("x = 1\n")
+(_t32b / "elsewhere").mkdir()
+(_t32b / "elsewhere" / "b.txt").write_text("b\n")
 _before32 = _snap32(_t32b)
 os.symlink(_secret32, _t32b / "notes.txt")
+os.symlink(_t32b / "elsewhere", _t32b / "linkdir")
+os.symlink(_t32b / "nothing-here", _t32b / "dangling")
 os.symlink(_t32b / "loop", _t32b / "loop2")
 os.symlink(_t32b / "loop2", _t32b / "loop")
-_changed32 = _diff32(_before32, _snap32(_t32b))
+_after32 = _snap32(_t32b)
+_changed32 = _diff32(_before32, _after32)
 _task32 = _Task32("t", "r/r", "u", "sha", "s", 1, 2, 3, 4, "w", "r", "d", "none",
                   signature_path="src/a.py", signature_token="SECRET32")
 _cap32 = _capture32(_t32b, _task32, _changed32)
@@ -1391,8 +1396,18 @@ check(not [k for k, v in _cap32.items() if "BEGIN PRIVATE KEY" in str(v)]
       and "not followed" in _cap32.get("notes.txt", ""),
       f"what the harness stores for a link is the link, not the file it points at: "
       f"{_cap32.get('notes.txt', '')[:44]!r}")
-check("notes.txt" in _changed32 and _cap32.get("src/a.py") == "x = 1\n",
-      f"the link is still reported as a change, and real files still read: {sorted(_changed32)}")
+# On `_snapshot`'s own output and on the whole shape of the change list. Asking
+# only whether "notes.txt" was among the changes was satisfied by `_capture`'s
+# separate branch, so deleting `_snapshot`'s left the suite entirely green.
+# Reverted, `_snapshot` reads the linked file to hash it, a link to a directory
+# and a dangling link vanish from the change list, and a tracked file swapped
+# for a link to identical bytes reads as no change at all -- which is half of
+# whether the candidate did any work.
+check(str(_after32["notes.txt"][1]).startswith("symlink -> ")
+      and sorted(_changed32) == ["dangling", "linkdir", "loop", "loop2", "notes.txt"],
+      f"every link is recorded as a link, by the snapshot itself: "
+      f"{str(_after32['notes.txt'][1])[:26]!r}, changes {sorted(_changed32)}")
+check(_cap32.get("src/a.py") == "x = 1\n", "and real files still read")
 # A symlink loop raises RuntimeError from Path.resolve(), which is not an
 # OSError: uncaught, the SDK turned it into a tool result and the call was
 # stored with an empty result and `failed` unset, so a read that never
@@ -1498,6 +1513,21 @@ def _timed_search(text, ceiling=5):
     finally:
         _signal33.alarm(0)
         _signal33.signal(_signal33.SIGALRM, previous)
+
+# The `_WORD` bound has no verdict of its own -- it is purely what keeps the
+# search linear -- and every absolute bar below is far too loose to notice it:
+# reverted to a plain `\S`, the worst fixture goes from 0.013s to 0.19s,
+# nowhere near two seconds. So it is measured against the same pattern on a
+# string of the same length with nothing to try, on this machine in this run:
+# 4.5 times slower with the bound, 76 times without it.
+_plain33 = "a" * 400_000
+_dense33 = "a=1;" * 100_000
+_base33 = min((_timed_search(_plain33) or 9e9) for _ in range(5))
+_dear33 = min((_timed_search(_dense33) or 9e9) for _ in range(5))
+_ratio33 = _dear33 / max(_base33, 1e-6)
+check(_ratio33 < 20,
+      f"400,000 characters of nothing but assignments cost {_ratio33:.1f}x the same "
+      f"length with nothing to try (bar: 20x)")
 
 for _label33, _text33 in _worst33.items():
     _took33 = _timed_search(_text33)
@@ -1790,12 +1820,28 @@ try:
                                   "ok": False, "error": "RuntimeError: 429", "judge_model": "j"})
     check(_admitted(_src37b.root, _out37b, "j", _PASSING37) == set(),
           "two readings of the three asked for is not a control that behaved")
+    # And its `passes` stamp is not an ask either: two readings that behaved,
+    # asked twice, admit the task even though a third row errored carrying a
+    # larger ask. That is what `instrument.control.controlled` does through
+    # `finished()`. Dropping the `or r.get("error")` skip left every assertion
+    # above green, because an error row's own `ok: False` excluded the task by
+    # a different route.
+    _src37c, _out37c = _rejudge_dir()
+    for _c in CONTROLS:
+        for _i in range(2):
+            append(_out37c.controls, {"task_id": "t", "control": _c.name, "pass": _i,
+                                      "passes": 2, "ok": True, "judge_model": "j"})
+        append(_out37c.controls, {"task_id": "t", "control": _c.name, "pass": 2, "passes": 3,
+                                  "ok": False, "error": "RuntimeError: 429", "judge_model": "j"})
+    check(_admitted(_src37c.root, _out37c, "j", _PASSING37) == {"t"},
+          "an errored reading is neither a reading nor an ask, so two that behaved still admit")
+
     _ran["n"] = 0
     asyncio.run(_controls_all(_src37b, _out37b, "j", 1, passes=1))
     check(_ran["n"] == len(CONTROLS) and _admitted(_src37b.root, _out37b, "j", _PASSING37) == {"t"},
           f"and a re-run at a lower --passes finishes the earlier ask: {_ran['n']} calls")
 finally:
-    _CM2.check = _saved
+    _CM2.check = _CM2_check
     attempt_mod.transcripts_for = _saved_tf
 
 # And the same rule where the numbers are printed, not only where tasks are
@@ -1848,12 +1894,19 @@ check("Rust" not in _IMAGES38 and not _sandboxable("Rust") and not _sandboxable(
       "Rust has no container, by decision; Go has")
 
 _corpus38 = Path(tempfile.mkdtemp())
-_langs38 = {"s-ts": "TypeScript", "s-rust": "Rust", "s-swift": "Swift"}
+# Two shapes beyond a language we have no image for: a repository whose
+# language the corpus records as nothing, and one it has no row for at all.
+# Both come back None from `languages.get`, and the line said the same thing
+# about all three -- untrue of two of them, 16% of what it drops.
+_langs38 = {"s-ts": "TypeScript", "s-rust": "Rust", "s-swift": "Swift",
+            "s-quiet": None, "s-ghost": "Go"}
 _pq.write_table(_pa.table({"session_id": list(_langs38), "repo_id": [f"o/{k}" for k in _langs38]}),
                 _corpus38 / "sessions.parquet")
+_known38 = {k: v for k, v in _langs38.items() if k != "s-ghost"}   # s-ghost has no row
 _pq.write_table(_pa.table({
-    "repo_id": [f"o/{k}" for k in _langs38], "url": ["u"] * 3, "license_type": ["mit"] * 3,
-    "repo_github_metadata": [json.dumps({"language": v}) for v in _langs38.values()]}),
+    "repo_id": [f"o/{k}" for k in _known38], "url": ["u"] * len(_known38),
+    "license_type": ["mit"] * len(_known38),
+    "repo_github_metadata": [json.dumps({"language": v}) for v in _known38.values()]}),
     _corpus38 / "repositories.parquet")
 _turns38 = [(sid, n, kind, push) for sid in _langs38 for n, kind, push in (
     (1, "user_prompt", "non_pushback"), (2, "assistant_response", None), (3, "tool_use", None),
@@ -1865,14 +1918,35 @@ _pq.write_table(_pa.table({
 _keep_corpus = (_sessions_mod.CORPUS, _sessions_mod.load_repos)
 _sessions_mod.CORPUS = _corpus38
 _sessions_mod.load_repos = REAL_LOAD_REPOS     # this file stubs it to {} for every other section
+import contextlib as _contextlib38, io as _io38
+
+def _collect38(skip=None):
+    out = Path(tempfile.mkdtemp()) / "moments.jsonl"
+    said = _io38.StringIO()
+    with _contextlib38.redirect_stdout(said):
+        n = _run_mod.find_moments(10, out, skip_seen=skip)
+    return n, sorted(r["session_id"] for r in load(out)), " ".join(said.getvalue().split())
+
 try:
-    _out38 = Path(tempfile.mkdtemp()) / "moments.jsonl"
-    _n38 = _run_mod.find_moments(10, _out38)
+    _n38, _got38, _said38 = _collect38()
+    # Already collected once: the count must not report them again.
+    _seen38 = Path(tempfile.mkdtemp()) / "seen.jsonl"
+    append(_seen38, {"session_id": "s-rust", "turn_number": 5})
+    _n38b, _got38b, _said38b = _collect38(skip=_seen38)
 finally:
     _sessions_mod.CORPUS, _sessions_mod.load_repos = _keep_corpus
-_got38 = sorted(r["session_id"] for r in load(_out38))
 check(_n38 == 1 and _got38 == ["s-ts"],
-      f"of three sessions with the same objection, only the one that can be sandboxed is collected: {_got38}")
+      f"of five sessions with the same objection, only the one that can be sandboxed is collected: {_got38}")
+# The reasons apart, and each counted right.
+check("4 moments left out" in _said38 and "2 in a language the benchmark has no container for" in _said38
+      and "1 whose language the corpus does not record" in _said38
+      and "1 whose repository the corpus has no row for" in _said38,
+      f"and it says which of them was left out for which reason: {_said38[2:120]!r}")
+# The count is over what this run passed over, not over everything ever
+# collected: counted over all of them it printed 456 on the real corpus where
+# 68 were newly withheld, nearly sevenfold.
+check("3 moments left out" in _said38b and "1 in a language the benchmark has no container for" in _said38b,
+      f"and counts only what this run passed over, not what an earlier one took: {_said38b[2:110]!r}")
 
 print("\n39. a stage line and a report say what happened, not something near it")
 # Found by an end-to-end sweep of the pipeline at c1636c84a: three places
@@ -1923,11 +1997,20 @@ _CM2.check = _dropped
 try:
     _prog39 = asyncio.run(_stage_control(_q39, 10**9, concurrency=1, passes=1))
 finally:
-    _CM2.check = _saved
+    _CM2.check = _CM2_check
 _notes39 = " | ".join(_prog39.notes)
 check("could not run" in _notes39 and "connection reset" in _notes39 and "unsound" not in _notes39,
       f"a dropped connection is reported as one: {_notes39[-110:]!r}")
 check("earlier run" in _notes39, "and the note about the earlier, larger ask is still there")
+
+# Last, what the suite hands back. Three sections patch
+# `instrument.control.check` and restore it, and they did so through a
+# module-level `_saved` that section 15 binds to the judge -- so inserting or
+# reordering a section would have left the control checker bound to
+# `fake_judge`, with every assertion in the file still green. Nothing else here
+# can notice that, because the fakes bound at the top are meant to stay.
+check(_CM2.check is _CM2_check,
+      f"the control checker is the real one again when the suite ends: {getattr(_CM2.check, '__name__', _CM2.check)}")
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:
