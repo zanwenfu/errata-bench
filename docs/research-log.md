@@ -1339,6 +1339,25 @@ other sixteen are recorded in G-49.
   still refused. **11 built tasks became 14, none lost**, and the three
   recovered replay 4, 2 and 4 of the agent's own edits.
 
+- **B-218 · A command that timed out killed the container, and the model was
+  scored as having failed** (fixed · 09-21). `Container.run` answered a
+  timeout with `docker kill`; every later `run_command` got "No such
+  container", the attempt was discarded as "the container died mid-attempt",
+  and after three retries it was written as an empty reply -- a model failure
+  that never happened. Not rare: each command's limit is clamped to the
+  attempt's remaining budget, so anything issued near the end of the 600s got
+  a one-second limit, and a Go build under two CPUs is that shape. Found in
+  round one (09-20), left open through four rounds as "known", and fixed only
+  when the developer asked whether the system would make no mistake on the
+  four Go/Astro/Rust tasks about to run. The limit is now enforced inside the
+  container by coreutils `timeout --signal=KILL`, which kills the command and
+  leaves the container standing; the outer kill remains as a backstop with a
+  margin. Verified on one live container: `sleep 30` under a 2s limit returned
+  124 in 2.1s, the container was still running, the next command in it worked.
+  Also that day: a ninth trace-check probe, a claim about a value in the
+  cut-off part of a clipped output, which must not be flagged -- the only
+  thing that tells whether the prompt's new instruction about withheld and
+  clipped outputs is read as written. 9 of 9 against gpt-6-astra.
 - **B-217 · A lowered `--passes` silently excluded a task the earlier run had
   half-controlled** (fixed · 09-21). `controlled()` requires as many finished
   readings as the rows say were asked; the stage resumed against the current

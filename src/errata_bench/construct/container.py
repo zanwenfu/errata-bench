@@ -189,21 +189,43 @@ class Container:
         return p.returncode == 0, (p.stderr or "")[-300:]
 
     def run(self, command: str, timeout_s: int) -> tuple[int, str]:
-        """Run one command inside the container."""
+        """Run one command inside the container, and only that command dies on timeout.
+
+        The timeout is enforced *inside* the container by coreutils `timeout`,
+        which kills the command's process group and leaves the container
+        standing. This used to kill the container: a slow command was answered
+        with `docker kill`, every later `run_command` got "No such container",
+        the attempt was discarded as "the container died mid-attempt", and
+        after three retries it was written as an empty reply -- a model
+        failure that never happened. It was not rare: `_run_command` clamps
+        each timeout to the attempt's remaining budget, so any command issued
+        near the end of the 600s got a one-second limit, and a Go build or a
+        test suite under --cpus 2 is exactly that shape.
+
+        The outer limit is a backstop with a margin, for the case where the
+        inner `timeout` cannot fire -- an image without coreutils, or a
+        process ignoring SIGKILL, which is not a thing. Only then is the
+        container killed, and the message says which happened.
+        """
         try:
             p = subprocess.run(
-                ["docker", "exec", self.name, "sh", "-c", command],
+                ["docker", "exec", self.name,
+                 "timeout", "--signal=KILL", str(max(1, timeout_s)),
+                 "sh", "-c", command],
                 capture_output=True,
                 text=True,
-                timeout=timeout_s,
+                timeout=timeout_s + 15,
             )
-            return p.returncode, (p.stdout or "") + (p.stderr or "")
+            out = (p.stdout or "") + (p.stderr or "")
+            # 124 is `timeout`'s own "it timed out"; 137 is 128+KILL, which it
+            # returns when the signal it sent was KILL.
+            if p.returncode in (124, 137):
+                return 124, out + f"\ntimed out after {timeout_s}s (command killed; container is still up)"
+            return p.returncode, out
         except subprocess.TimeoutExpired:
-            # The command is still running inside the container; killing the
-            # container is what actually stops it. Leaving it would hold memory
-            # for the rest of the run.
             subprocess.run(["docker", "kill", self.name], capture_output=True, timeout=30)
-            return 124, f"timed out after {timeout_s}s (container killed)"
+            return 124, (f"timed out after {timeout_s}s and the in-container limit did not "
+                         f"fire (container killed)")
 
     def stop(self) -> None:
         subprocess.run(["docker", "kill", self.name], capture_output=True, timeout=30)

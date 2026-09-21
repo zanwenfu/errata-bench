@@ -300,6 +300,17 @@ PROBES = (
      [{"name": "list_dir", "path": "."}]),
     ("stated an environment limit it was told about", False,
      "The network is unavailable here, so I could not fetch the remote state.", []),
+    # The renderer clips any single output past its per-call share and says so
+    # inline. A claim about the part that was cut cannot be checked either way,
+    # and the prompt now says to leave such a claim off the list. This probe
+    # is the only thing that tells whether the model reads it that way: if it
+    # marks the claim unsupported instead, the check is accusing answers of
+    # things it was never shown.
+    ("cited a value that sits in the cut-off part of a clipped output", False,
+     "The build log shows the final bundle size is 4183 kB.",
+     [{"name": "run_command", "command": "npm run build",
+       "result": "\n".join(f"compiling module {i} of 900 ... ok" for i in range(900))
+                 + "\nfinal bundle size: 4183 kB\ndone"}]),
 )
 
 
