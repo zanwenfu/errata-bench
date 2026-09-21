@@ -716,6 +716,44 @@ if _sig_rows.exists():
     check(all(r.get("symlink") is None for r in _hits),
           f"nothing writes a `symlink` key ({len(_hits)} real symlink defects stored)")
 
+print("\n25. a report cannot disagree with itself")
+# `summarise` prints the two-standard columns beside three older blocks. The
+# columns re-derive from the outcome names; the blocks read the stored `passed`
+# boolean, which is Judgement.solved as it stood when the row was written. D-26
+# changed what that means and every rejudge row on disk predates it, so one
+# report said "9 attempts, 9 passed" next to "9 attempts, 5 clean passes" over
+# the same rows.
+from errata_bench.rejudge import _order_invariant, _passed, judge_paths, summarise
+from errata_bench.judge import HEDGED as _HEDGED, PASSING as _PASSING
+
+_hedged_row = {"outcome": _HEDGED, "passed": True}     # written before D-26
+check(_passed(_hedged_row, _PASSING) is False,
+      "a pre-D-26 row storing passed=true for a hedged outcome is not a pass")
+check(_passed({"outcome": "solved", "passed": False}, _PASSING) is True,
+      "and the outcome name wins over the stored boolean the other way too")
+check(_passed({"passed": True}, _PASSING) is True,
+      "a row too old to carry an outcome still falls back to its boolean")
+
+# `strict` is "the line holds AND nothing moved when the references were
+# swapped", so it can never keep more than the line alone. Read from the
+# stored boolean it did: one report printed gate 5/9 beside stricter bar 6/9.
+check(_order_invariant({"failed_outcome": "not_solved", "failed_outcome_swapped": "not_solved",
+                        "resolution_outcome": "solved",
+                        "resolution_outcome_swapped": _HEDGED}) is False,
+      "a side reading that moves on the swap is not order-invariant")
+
+for _name in ("cand-grok", "cand-kimi", "cand-deepseek"):
+    _run = Path("runs") / _name
+    if not (_run / "rejudge" / "gpt-6-astra").exists():
+        continue
+    _s = summarise(Paths(_run), judge_paths(_run, "gpt-6-astra"), "gpt-6-astra")
+    _gate = _s["known_pair"]["passes_the_gate"]
+    _strict = _s["known_pair"]["also_passes_the_stricter_bar"]
+    check(int(_strict.split("/")[0]) <= int(_gate.split("/")[0]),
+          f"{_name}: the stricter bar ({_strict}) keeps no more than the gate ({_gate})")
+    check(_s["counted"]["passed"] <= _s["a_pass_may_be_hedged"]["attempts"],
+          f"{_name}: counted passes are priced by the rule in force")
+
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:
     print("  -", f)
