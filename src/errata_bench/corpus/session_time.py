@@ -31,7 +31,7 @@ def session_starts(session_ids: set[str]) -> dict[str, int]:
     """
     import pyarrow.parquet as pq
 
-    from .corpus import CORPUS
+    from .sessions import CORPUS
 
     earliest: dict[str, int] = {}
     parquet = pq.ParquetFile(CORPUS / "conversations.parquet")

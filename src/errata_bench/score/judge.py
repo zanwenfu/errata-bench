@@ -31,8 +31,8 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, Field
 
-from .reader import MODEL, configure_client, resilient, with_field_guide
-from .spec import Task
+from ..llm import MODEL, configure_client, resilient, with_field_guide
+from ..spec import Task
 
 class Verdict(BaseModel):
     """What a candidate's answer does, as separate observations.

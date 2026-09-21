@@ -19,17 +19,24 @@ sys.path.insert(0, "src")
 os.environ["ERRATA_JUDGE_MODEL"] = "the-grader"
 os.environ["ERRATA_MODEL"] = "the-candidate"
 
-from errata_bench import attempt as attempt_mod, container as container_mod, corpus, judge as judge_mod, reader, trace as trace_mod
-from errata_bench.attempt import Attempt, ToolCall
-from errata_bench.judge import Judgement
-from errata_bench.pipeline import Paths, stage_attempt, stage_grade, stage_build, load
+from errata_bench.score import attempt as attempt_mod
+from errata_bench.construct import container as container_mod
+from errata_bench.corpus import sessions as corpus
+from errata_bench.score import judge as judge_mod
+from errata_bench import llm as reader
+from errata_bench.corpus import turns as turns_mod
+from errata_bench.score import trace as trace_mod
+from errata_bench.score.attempt import Attempt, ToolCall
+from errata_bench.score.judge import Judgement
+from errata_bench.stages import stage_attempt, stage_build, stage_grade
+from errata_bench.store import Paths, load
 # from the code, not a copy: a control added there must appear in every
 # fixture, or the fixture quietly stops admitting its tasks.
-from errata_bench.control import CONTROLS
+from errata_bench.instrument.control import CONTROLS
 CONTROL_NAMES = tuple(c.name for c in CONTROLS)
 from errata_bench.spec import Task, write
-from errata_bench.structure import Structure
-from errata_bench.trace import Claim, TraceCheck
+from errata_bench.score.structure import Structure
+from errata_bench.score.trace import Claim, TraceCheck
 
 FAIL = []
 
@@ -135,7 +142,7 @@ container_mod.image_for = lambda lang, **kw: "node:22"
 container_mod.sweep = lambda: None
 container_mod.max_containers = lambda: 2
 corpus.load_repos = lambda: {}
-reader.load_session_turns = lambda ids: {}
+turns_mod.load_session_turns = lambda ids: {}
 
 
 def fresh_run(task_ids):
@@ -184,6 +191,47 @@ for rev in revs:
         break
 else:
     raise SystemExit("no pre-split revision of pipeline.py found")
+# The old module was written against the flat layout: `from .attempt import`,
+# `from .judge import`, `from .reader import`. Those names moved into packages,
+# so they are aliased back into sys.modules for the length of this check. The
+# module objects are today's -- which is the point, since this isolates
+# pipeline.py and says so above -- they are merely reachable under the names a
+# module from before the move asks for.
+import types
+
+import errata_bench.construct.build, errata_bench.construct.container
+import errata_bench.corpus.sessions, errata_bench.corpus.turns
+import errata_bench.find.answerable, errata_bench.find.leakage
+import errata_bench.find.redact, errata_bench.find.scope
+import errata_bench.find.signature, errata_bench.find.trajectory
+import errata_bench.find.triage
+import errata_bench.instrument.control
+import errata_bench.llm
+import errata_bench.score.attempt, errata_bench.score.judge
+import errata_bench.score.structure, errata_bench.score.trace
+
+for _old, _now in (
+    ("attempt", errata_bench.score.attempt), ("judge", errata_bench.score.judge),
+    ("structure", errata_bench.score.structure), ("trace", errata_bench.score.trace),
+    ("control", errata_bench.instrument.control),
+    ("build", errata_bench.construct.build),
+    ("container", errata_bench.construct.container),
+    ("corpus", errata_bench.corpus.sessions),
+    ("answerable", errata_bench.find.answerable), ("leakage", errata_bench.find.leakage),
+    ("scope", errata_bench.find.scope), ("redact", errata_bench.find.redact),
+    ("signature", errata_bench.find.signature), ("triage", errata_bench.find.triage),
+    ("trajectory", errata_bench.find.trajectory),
+):
+    sys.modules[f"errata_bench.{_old}"] = _now
+
+# reader.py split three ways, so it is reassembled rather than aliased.
+_reader = types.ModuleType("errata_bench.reader")
+for _src in (errata_bench.llm, errata_bench.corpus.turns):
+    for _k in dir(_src):
+        if not _k.startswith("__"):
+            setattr(_reader, _k, getattr(_src, _k))
+sys.modules["errata_bench.reader"] = _reader
+
 tmp = Path(tempfile.mkdtemp()) / "pipeline_old.py"
 tmp.write_text(old_src)
 spec = importlib.util.spec_from_file_location("errata_bench.pipeline_old", tmp)

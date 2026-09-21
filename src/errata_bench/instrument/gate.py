@@ -34,8 +34,8 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from .judge import can_be_scored
-from .pipeline import Paths, Progress, _gather, append, completed, load
+from ..score.judge import can_be_scored
+from ..store import Paths, Progress, _gather, append, completed, load
 
 
 def observations(run: Path, model: str, *, passing=None) -> dict[str, list[bool]]:
@@ -91,8 +91,8 @@ async def measure(
     run: Path, model: str, *, passes: int = 10, concurrency: int = 6
 ) -> Progress:
     """Read every task's known pair `passes` times over, and record each answer."""
-    from .judge import calibrate
-    from .spec import read
+    from ..score.judge import calibrate
+    from ..spec import read
 
     paths = Paths(run)
     p = Progress("gate")

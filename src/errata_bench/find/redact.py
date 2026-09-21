@@ -38,7 +38,7 @@ from dataclasses import dataclass, field
 
 from pydantic import BaseModel, Field
 
-from .reader import MODEL, configure_client, resilient, with_field_guide
+from ..llm import MODEL, configure_client, resilient, with_field_guide
 
 # How much of each turn the surveyor is shown. A rewrite covers only this much.
 SURVEY_CHARS = 2500

@@ -27,6 +27,13 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path
 
+# Module level, not inside the functions. These were function-level imports
+# because pipeline.py imported spec.py and spec.py imported pipeline.py --
+# a cycle that only worked because every one of them was deferred. The
+# storage layer is its own package now and imports nothing from the domain,
+# so the cycle is gone and the imports can say so.
+from .store import held, load, replace
+
 # A failed answer shorter than this is not a wrong answer worth testing against.
 # Two of twenty-seven located trajectories have one of 22 and 5 characters --
 # an acknowledgement or a fragment, not a claim a candidate could repeat.
@@ -190,10 +197,9 @@ def write(tasks: list[Task], path: Path) -> None:
     # concurrent writers raised FileNotFoundError on 92 of 240 rewrites and a
     # reader saw a zero-task list four times -- and `stage_build` has no handler
     # there, so the run dies after paying for every clone and export.
-    from .pipeline import held, replace as atomically
 
     with held(path):
-        atomically(path, [t.to_json() for t in tasks])
+        replace(path, [t.to_json() for t in tasks])
 
 
 def read(path: Path) -> list[Task]:
@@ -211,7 +217,6 @@ def read(path: Path) -> list[Task]:
     # was left behind. tasks.jsonl arrives by other routes than this code:
     # candidate directories are copied in, and an interrupted copy is exactly
     # the shape that produces one.
-    from .pipeline import load
 
     out, dropped = [], 0
     for row in load(path):

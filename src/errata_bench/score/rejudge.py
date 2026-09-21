@@ -38,7 +38,7 @@ import time
 from pathlib import Path
 
 from .judge import HEDGED, PASSING, PASSING_WITH_HEDGE, can_be_scored, line_holds
-from .pipeline import (
+from ..store import (
     Paths, Progress, _gather, _succeeded, append, completed, held, load, replace,
 )
 
@@ -78,7 +78,7 @@ async def calibrate_all(src: Paths, out: Paths, model: str, concurrency: int) ->
     not to the task, which changes what those rejections mean.
     """
     from .judge import calibrate
-    from .spec import read
+    from ..spec import read
 
     p = Progress("calibrate")
     t0 = time.monotonic()
@@ -127,8 +127,8 @@ async def calibrate_all(src: Paths, out: Paths, model: str, concurrency: int) ->
 async def controls_all(src: Paths, out: Paths, model: str, concurrency: int) -> Progress:
     """Fixed answers whose grades are known, through both of this judge's readings."""
     from .attempt import INSTRUCTIONS as CANDIDATE_RULES, environment_note
-    from .control import CONTROLS, check
-    from .spec import read
+    from ..instrument.control import CONTROLS, check
+    from ..spec import read
     from .trace import check as check_trace, verify as probe_trace
 
     p = Progress("control")
@@ -246,8 +246,8 @@ def admitted(run: Path, out: Paths, model: str, passing: set[str]) -> set[str]:
     as hedged failed its control, so that column collapsed onto the strict one
     and looked like agreement between two standards that differ.
     """
-    from .control import CONTROLS
-    from .stability import stable
+    from ..instrument.control import CONTROLS
+    from ..instrument.gate import stable
 
     steady, tally = stable(run, model, passing=passing)
     # Enough readings to say anything about steadiness? A task read once is
@@ -409,7 +409,7 @@ async def regrade_all(
     """
     from .attempt import INSTRUCTIONS as CANDIDATE_RULES, environment_note
     from .judge import judge
-    from .spec import read
+    from ..spec import read
     from .structure import combine
     from .trace import check as check_trace
 
@@ -431,7 +431,7 @@ async def regrade_all(
     # was the one path by which a stale answer could still reach a judge. Rows
     # carrying no fingerprint predate the field and are read as current, which
     # is every answer collected before 09-20.
-    from .spec import fingerprint
+    from ..spec import fingerprint
 
     prints = {tid: fingerprint(t) for tid, t in tasks.items()}
     fresh = [
@@ -615,7 +615,7 @@ def summarise(src: Paths, out: Paths, model: str) -> dict:
     # `-starved` directories hold `null` and `overclaim` alone, and this let
     # four, five and three of their tasks through with no must-pass control at
     # all. `pipeline.controlled` and `admitted` both require the full set.
-    from .control import CONTROLS
+    from ..instrument.control import CONTROLS
 
     want = {c.name for c in CONTROLS}
     ran: dict[str, set] = {}
@@ -822,7 +822,7 @@ def compare(run: Path) -> str:
         # of pc035860's attempts were printed unbracketed and added to the
         # total that way, each of them an answer that resolved the defect while
         # asserting something it had not established.
-        from .control import CONTROLS
+        from ..instrument.control import CONTROLS
 
         want = {c.name for c in CONTROLS}
         ran: dict[str, set] = {}

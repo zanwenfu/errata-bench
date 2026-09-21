@@ -23,7 +23,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from .attempt import Attempt
-from .spec import Task
+from ..spec import Task
 
 
 @dataclass

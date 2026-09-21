@@ -45,7 +45,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from .attempt import Attempt
+from ..score.attempt import Attempt
+from ..store import Paths, finished
 
 
 # The original agent's tool names, as the corpus records them, against the
@@ -177,7 +178,7 @@ class Control:
         empty trace stays empty, which is the case this control exists to
         catch.
         """
-        from .attempt import ToolCall
+        from ..score.attempt import ToolCall
 
         calls = [
             ToolCall(_as_harness_tool(c.get("name") or ""),
@@ -291,8 +292,8 @@ class ControlResult:
 
 async def check(task, control: Control, *, model: str | None = None) -> ControlResult:
     """Score one control against one task, without running a candidate."""
-    from .judge import judge
-    from .structure import analyse, combine
+    from ..score.judge import judge
+    from ..score.structure import analyse, combine
 
     # Asked before paying for it: a control that cannot apply has nothing to
     # learn from the judge, and running it anyway is what produced a failure
@@ -337,3 +338,23 @@ async def check(task, control: Control, *, model: str | None = None) -> ControlR
             and (verdict.did_the_work if verdict.introduced_kind else verdict.addresses_defect)
         ),
     )
+
+
+def controlled(paths: Paths) -> set[str]:
+    """Tasks whose full control set ran and behaved.
+
+    Written as "not known-broken", the gate admitted a task whose controls had
+    never run at all -- no rows, no note, straight into the pass rate. And it
+    read `load`, which includes errored rows, so one transient API error during
+    the control stage retired a sound task under a message saying the control
+    had failed, undoing the nine-line comment in `stage_control` that exists to
+    prevent exactly that. Known-good, from rows that finished.
+    """
+    from .control import CONTROLS
+
+    want = {c.name for c in CONTROLS}
+    ran: dict[str, set] = {}
+    for r in finished(paths.controls):
+        if r.get("ok"):
+            ran.setdefault(r.get("task_id"), set()).add(r.get("control"))
+    return {task for task, names in ran.items() if names >= want}

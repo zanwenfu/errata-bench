@@ -25,7 +25,7 @@ import json
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
-from .timeline import to_repo_relative
+from ..corpus.timeline import to_repo_relative
 
 EDIT_TOOLS = {"Edit", "Write", "MultiEdit"}
 

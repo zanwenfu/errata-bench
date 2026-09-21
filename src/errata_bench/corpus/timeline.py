@@ -27,7 +27,7 @@ from dataclasses import dataclass
 
 import pyarrow.parquet as pq
 
-from .corpus import CORPUS
+from .sessions import CORPUS
 
 NS_PER_US = 1000
 

@@ -25,14 +25,14 @@ import re
 import tempfile
 from pathlib import Path
 
-from .corpus import load_repos
+from ..corpus.sessions import load_repos
 from .edits import edits_before, replay
 from .presence import check, repo_url
-from .reader import load_session_turns
-from .signature import Signature
-from .spec import MIN_ORACLE_CHARS, BuildResult, Rejection, Task
-from .session_time import session_starts
-from .timeline import load_commits_by_repo
+from ..corpus.turns import load_session_turns
+from ..find.signature import Signature
+from ..spec import MIN_ORACLE_CHARS, BuildResult, Rejection, Task
+from ..corpus.session_time import session_starts
+from ..corpus.timeline import load_commits_by_repo
 from .workspace import GitError, fetch, is_permanent
 
 

@@ -27,7 +27,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from .reader import MODEL, configure_client, resilient, with_field_guide
+from ..llm import MODEL, configure_client, resilient, with_field_guide
 
 
 class Answerable(BaseModel):

@@ -8,17 +8,26 @@ sys.path.insert(0, "src")
 os.environ["ERRATA_JUDGE_MODEL"] = "the-grader"
 os.environ["ERRATA_MODEL"] = "the-candidate"
 
-from errata_bench import attempt as A, container as C, corpus, judge as J, pipeline as P, reader, rejudge, trace as T
-from errata_bench.attempt import Attempt, ToolCall
-from errata_bench.judge import Judgement
-from errata_bench.pipeline import Paths, Progress, append, load, stage_attempt, stage_build, stage_grade
+from errata_bench.score import attempt as A
+from errata_bench.construct import container as C
+from errata_bench.corpus import sessions as corpus
+from errata_bench.score import judge as J
+from errata_bench import store as P
+from errata_bench import llm as reader
+from errata_bench.corpus import turns as turns_mod
+from errata_bench.score import rejudge
+from errata_bench.score import trace as T
+from errata_bench.score.attempt import Attempt, ToolCall
+from errata_bench.score.judge import Judgement
+from errata_bench.stages import run_stages, stage_attempt, stage_build, stage_grade
+from errata_bench.store import Paths, Progress, append, load
 # from the code, not a copy: a control added there must appear in every
 # fixture, or the fixture quietly stops admitting its tasks.
-from errata_bench.control import CONTROLS
+from errata_bench.instrument.control import CONTROLS
 CONTROL_NAMES = tuple(c.name for c in CONTROLS)
 from errata_bench.spec import Task, fingerprint, write
-from errata_bench.structure import Structure
-from errata_bench.trace import Claim, TraceCheck
+from errata_bench.score.structure import Structure
+from errata_bench.score.trace import Claim, TraceCheck
 
 RESULTS = []
 
@@ -46,7 +55,7 @@ C.image_for = lambda l, **k: None
 C.sweep = lambda: None
 C.max_containers = lambda: 2
 corpus.load_repos = lambda: {}
-reader.load_session_turns = lambda ids: {}
+turns_mod.load_session_turns = lambda ids: {}
 
 
 def mktask(tid="t", defect="a defect"):
@@ -92,13 +101,13 @@ check("B-123", "a failed grading is one error row, and the other answers still g
       and graded["b"].get("passed") is not None)
 
 # ---- B-124 -------------------------------------------------------------
-from errata_bench.container import _abandoned
+from errata_bench.construct.container import _abandoned
 check("B-124", "a sweep spares a live peer's container and takes its own",
       _abandoned(f"errata-{os.getpid()}-x", os.getpid()) and
       not _abandoned(f"errata-{os.getppid()}-x", os.getpid()))
 
 # ---- B-125 -------------------------------------------------------------
-import errata_bench.build as B
+import errata_bench.construct.build as B
 d = run_dir()
 append(d.attempts, {"task_id": "t", "run": 0, "passed": True})
 B.build = lambda rows: (_ for _ in ()).throw(AssertionError("build must not run"))
@@ -271,7 +280,7 @@ check("B-148", "the regrade tool refuses a stale answer too", judged["n"] == 0)
 import contextlib, io
 buf = io.StringIO()
 with contextlib.redirect_stdout(buf):
-    asyncio.run(P.run_stages(refuse.root, ("grade",), concurrency=2))
+    asyncio.run(run_stages(refuse.root, ("grade",), concurrency=2))
 check("B-135", "a refusal reaches the screen, not just the Progress object",
       "REFUSED" in Progress("grade", notes=["REFUSED: x"]).line()
       and "REFUSED" in buf.getvalue())
@@ -292,7 +301,7 @@ check("B-137", f"the scored row carries the kind that decided the rule, not the 
       stored_kind == "present" and load(d.attempts)[0]["kind"] == "none")
 
 # ---- B-138 -------------------------------------------------------------
-from errata_bench.pipeline import _capped, KEPT_STATE_CHARS
+from errata_bench.stages.scoring import KEPT_STATE_CHARS, _capped
 huge = {f"b/{i}.js": "z" * 50_000 for i in range(5000)}
 kept = _capped(huge, "")
 check("B-138", f"a captured tree is bounded per row at a fixed size "
@@ -325,7 +334,7 @@ import time as _t
 d = run_dir()
 append(d.answers, {"task_id": "seed", "run": 0})
 HOG = ("import sys, time; sys.path.insert(0, 'src');"
-       "from pathlib import Path; from errata_bench.pipeline import held;"
+       "from pathlib import Path; from errata_bench.store import held;"
        f"exec(\"with held(Path({str(d.answers)!r})):\\n    time.sleep(0.6)\")")
 proc = subprocess.Popen([sys.executable, "-c", HOG])
 _t.sleep(0.25)
@@ -399,33 +408,39 @@ check("B-150c", "and the note counts exactly what was removed",
 d = run_dir(("keeps", "gets-rebuilt"))
 asyncio.run(stage_attempt(d, 10**9, concurrency=2, repeats=1))
 write([mktask("keeps"), mktask("gets-rebuilt", "a different defect")], d.tasks)
-_load = P.load
+# Patched where it is looked up. `stages/scoring.py` does `from ..store
+# import load`, binding the function at import time, so replacing
+# `store.load` after that intercepts nothing -- before the split this all
+# lived in one module and patching it there worked.
+from errata_bench.stages import scoring as _scoring
+_load = _scoring.load
 def slow_load(path):
     rows = _load(path)
     if path.name == "answers.jsonl" and not getattr(slow_load, "fired", False):
         slow_load.fired = True
         subprocess.run([sys.executable, "-c",
             "import sys; sys.path.insert(0, 'src');"
-            "from pathlib import Path; from errata_bench.pipeline import append;"
+            "from pathlib import Path; from errata_bench.store import append;"
             f"append(Path({str(d.answers)!r}), {{'task_id': 'peer', 'run': 0}})"], check=True)
     return rows
-P.load = slow_load
+_scoring.load = slow_load
 asyncio.run(stage_attempt(d, 10**9, concurrency=2, repeats=1))
-P.load = _load
+_scoring.load = _load
 check("B-151", "a row appended by another process during the rewrite is still there",
       "peer" in {r.get("task_id") for r in load(d.answers)})
 
 # ---- B-152: the two gate files carry the task version -----------------
-from errata_bench.pipeline import stage_calibrate, stage_control
-from errata_bench import judge as JM, control as CM
+from errata_bench.stages import stage_calibrate, stage_control
+from errata_bench.score import judge as JM
+from errata_bench.instrument import control as CM
 d = run_dir()
 _cal, _chk = JM.calibrate, CM.check
 async def fake_cal(t, *, model=None):
-    from errata_bench.judge import Calibration
+    from errata_bench.score.judge import Calibration
     return Calibration(t.task_id, "off_target", "solved", False, True,
                        "off_target", "solved", False, True)
 async def fake_ctl(task, control, *, model=None):
-    from errata_bench.control import ControlResult
+    from errata_bench.instrument.control import ControlResult
     return ControlResult(task.task_id, control.name, False, True, False, True)
 JM.calibrate, CM.check = fake_cal, fake_ctl
 # run_dir() pre-writes both gate files so the other checks have a gate; clear
@@ -458,10 +473,18 @@ for row in ({"session_id": "s1", "repo_id": "r/r", "complaint": 7},
             {"session_id": "s2", "repo_id": "r/r", "complaint": 7}):
     tid = f"{row['repo_id'].replace('/', '-')}-{row['complaint']}"
     (dupes if tid in seen_ids else seen_ids).append(tid) if tid in seen_ids else seen_ids.add(tid)
+# Asserted by running `build`, not by searching its source for a sentence.
+# The old form passed on a comment and a line that could both survive the
+# behaviour being reverted -- and it read a path that the restructure moved,
+# which is how it was noticed.
+from errata_bench.construct.build import build as _real_build
+
+_twin = {"session_id": "s1", "repo_id": "r/r", "complaint": 7, "cut": 1,
+         "kind": "none", "defect": "d" * 40}
+_res = _real_build([dict(_twin), dict(_twin, session_id="s2")])
+_names = [t.task_id for t in _res.tasks]
 check("B-153", "two sessions cannot produce one task name",
-      "two tasks cannot share a name" in Path("src/errata_bench/build.py").read_text()
-      and "seen.add(task_id)" in Path("src/errata_bench/build.py").read_text()
-      and len(seen_ids) == 1)
+      len(_names) == len(set(_names)) and len(seen_ids) == 1)
 
 # ---- B-154: the stamp covers the conversation -------------------------
 import dataclasses
@@ -486,8 +509,8 @@ check("B-154b", "and not when a field a grade does not depend on changes",
       fingerprint(dataclasses.replace(mktask(), repo_url="elsewhere")) == base)
 
 # ---- B-156 / B-157: one gate, everywhere ------------------------------
-from errata_bench.pipeline import stage_report
-from errata_bench import rejudge as RJ
+from errata_bench.stages import stage_report
+from errata_bench.score import rejudge as RJ
 
 # ---- B-158: an unsupportable reading is not a result ------------------
 
@@ -499,8 +522,8 @@ check("B-161", "regraded rows are stamped and keyed on the stamp",
       'r.get("task_fingerprint")' in src(RJ.regrade_all))
 
 # ---- B-162: an empty capture is not a searched tree -------------------
-from errata_bench.structure import analyse
-from errata_bench.attempt import Attempt as At
+from errata_bench.score.structure import analyse
+from errata_bench.score.attempt import Attempt as At
 t = mktask(); t = dataclasses.replace(t, signature_token="2000")
 # All three answers, not two: both clauses of the old assertion were satisfied
 # by `token_removed = True` unconditionally, which reports every token task as
@@ -631,7 +654,7 @@ check("B-128", f"candidates run up to the container bound and no further: peak {
 # either control gate removed. Nothing measured them until here.
 # ======================================================================
 
-from errata_bench.judge import can_be_scored, line_holds
+from errata_bench.score.judge import can_be_scored, line_holds
 
 HOLDS = {"failed_outcome": "off_target", "failed_outcome_swapped": "off_target",
          "resolution_outcome": "solved", "resolution_outcome_swapped": "solved"}

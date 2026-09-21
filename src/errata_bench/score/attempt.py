@@ -37,12 +37,13 @@ from pathlib import Path
 from agents import Agent, Runner, function_tool
 from agents.exceptions import MaxTurnsExceeded
 from agents.run_context import RunContextWrapper
-from .reader import MODEL, build_excerpt, configure_client, load_session_turns
-from .container import Container
-from .edits import edits_before, replay
-from .redact import apply as apply_redaction
-from .spec import Task
-from .workspace import GitError, fetch
+from ..corpus.turns import build_excerpt, load_session_turns
+from ..llm import MODEL, configure_client
+from ..construct.container import Container
+from ..construct.edits import edits_before, replay
+from ..find.redact import apply as apply_redaction
+from ..spec import Task
+from ..construct.workspace import GitError, fetch
 
 # Commands that reach the network. Refused so that an attempt measures the
 # candidate's judgement rather than its package manager's availability.
@@ -128,7 +129,7 @@ def transcripts_for(tasks) -> dict[str, str]:
     both the grading stage and the regrade tool need exactly this text, and a
     second copy of it is a second thing to get wrong.
     """
-    from .reader import load_session_turns
+    from ..corpus.turns import load_session_turns
 
     turns = load_session_turns({t.session_id for t in tasks})
     return {t.task_id: transcript_for(t, turns.get(t.session_id) or []) for t in tasks}

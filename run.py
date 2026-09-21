@@ -28,7 +28,8 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent / "src"))
 
-from errata_bench.pipeline import STAGES, Paths, append, load, run_stages  # noqa: E402
+from errata_bench.stages import run_stages
+from errata_bench.store import STAGES, Paths, append, load  # noqa: E402
 
 
 # The values prompt_pushback actually takes. It is a string, not a boolean, and
@@ -71,7 +72,7 @@ def find_moments(
     """
     import pyarrow.parquet as pq
 
-    from errata_bench.corpus import CORPUS
+    from errata_bench.corpus.sessions import CORPUS
 
     # One file or many: `--exclude` names one, `--fresh` hands over every
     # moments file already on disk.
@@ -285,8 +286,8 @@ def main() -> None:
         # candidate and writes only under <run>/rejudge/<judge>/.
         if not args.judge:
             ap.error("rejudge needs --judge <model or deployment name>")
-        from errata_bench.pipeline import only_one
-        from errata_bench.rejudge import judge_paths, rejudge
+        from errata_bench.store import only_one
+        from errata_bench.score.rejudge import judge_paths, rejudge
 
         # One per judge, not one per run: two judges write different
         # directories and may run side by side, while two of the same judge
@@ -307,8 +308,8 @@ def main() -> None:
         # is taken repeatedly instead of once. No candidate runs.
         if not args.judge:
             ap.error("gate needs --judge <model or deployment name>")
-        from errata_bench.pipeline import only_one
-        from errata_bench.stability import measure, report
+        from errata_bench.store import only_one
+        from errata_bench.instrument.gate import measure, report
 
         # gate.jsonl is one file for every judge, and `completed` rewrites it,
         # so this one is per run directory rather than per judge.
@@ -321,7 +322,7 @@ def main() -> None:
         return
 
     if args.command == "judges":
-        from errata_bench.rejudge import compare
+        from errata_bench.score.rejudge import compare
 
         print(compare(root))
         return
