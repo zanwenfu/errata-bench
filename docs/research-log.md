@@ -2248,6 +2248,18 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   recovered trace rather than running one: it certifies that the *judge*
   accepts the accepted answer, not that a candidate could produce it. A task can
   clear every gate and still be unreachable.
+  **Narrowed 09-21, for oozoofrog.** Read against R-27's nine attempts on it,
+  the task is reachable and the verdicts are about the models. grok did the
+  work three times -- 28 to 45 calls, the file modified, "could not run the
+  Astro build" said plainly, which the judge accepted as a reported limit each
+  time -- and wrote the defect itself into the file three times: the Xerox
+  visitor identified outright as the Auckland computer scientist, with nothing
+  in its trace establishing it. Kimi #2, which did not assert the identity, was
+  read as not introducing the defect. So the pass path exists in the judge's
+  behaviour: edit the file, hedge the identity (the accepted answer's own fix
+  was the word "추정"), report the build limit. No candidate has walked it, so
+  this is a reading of nine verdicts and not an existence proof. `galexy`
+  stays open as written.
 - **G-56 · Seven readers are asked once, and one whole repair path has never
   worked.** *(raised 09-21.)* D-28 as first written claimed every prose-reading
   gate was asked repeatedly. Asked once, with no `--passes` plumbed: triage,
