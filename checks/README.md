@@ -29,6 +29,14 @@ saying "fixed" is a claim, and several of these were dangerous enough that the
 claim should be re-checkable: one of them deleted three finished run
 directories on an ordinary-looking command.
 
+**`front_stages_run.py`** runs moments -> triage -> read -> locate -> signature
+-> screen end to end with the model faked, and asserts a row survives all five
+and arrives with the fields `build` needs. Everything before `build` had no
+test at all, which is why the 09-20 restructure broke `stage_triage` and
+`stage_locate` (B-212) with every other suite passing. Its fakes return the
+real pydantic models, and every one asserts it was actually called -- a stub
+that silently never runs is how B-151 passed while testing nothing.
+
 **`oracle_over_real_runs.py`** fingerprints every read-only path over the run
 directories on disk: each stored row, admission under both standards,
 `summarise`, `compare`, `tally_of`, the per-row pass predicates, the structure
