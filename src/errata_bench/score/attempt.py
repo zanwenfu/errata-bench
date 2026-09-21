@@ -65,10 +65,18 @@ from ..construct.workspace import GitError, fetch
 # Where a command can begin: the start of the text or of a line, after a
 # separator, an opening parenthesis or a backtick, after a word that runs
 # another command, or inside `sh -c '...'` -- then any VAR=value prefixes.
-_AT = (r"(?:^|[\n;&|(`]\s*|\$\(\s*|"
-       r"\b(?:sudo|time|nohup|exec|xargs|then|do|else|if|while|until|timeout\s+\S+)\s+|"
+# `^\s*`, not `^`: a command that began with a space or a tab was not screened
+# at all -- " curl https://x" went through -- which my own review found the
+# day this was written, along with the cost of the prefix group below. Left
+# unbounded, `a=1;` repeated to 100,000 characters took 16 seconds to search,
+# on the event loop, with every other attempt in the process waiting; bounded
+# it takes 0.6. A brace group needs its space (`{ curl x; }`), so `${curl}`
+# and `'{ssh: true}'` are left alone. Re-run over the corpus after both
+# changes: not one command classified differently.
+_AT = (r"(?:^\s*|[\n;&|(`]\s*|\{\s+|\$\(\s*|"
+       r"\b(?:sudo|time|nohup|exec|xargs|env|command|then|do|else|if|while|until|timeout\s+\S+)\s+|"
        r"\b(?:ba|z|da)?sh\s+-l?c\s+['\"]\s*)"
-       r"(?:[A-Za-z_][A-Za-z0-9_]*=(?:\"[^\"]*\"|'[^']*'|\S*)\s+)*")
+       r"(?:[A-Za-z_][A-Za-z0-9_]*=(?:\"[^\"]{0,2000}\"|'[^']{0,2000}'|\S{0,2000})\s+)*")
 # By name or by path: /usr/bin/curl is curl.
 _NET_TOOLS = r"(?:/\S*/)?(?:curl|wget|nc|ncat|telnet|ssh|scp|sftp|rsync)\b|gh\s+[a-z]"
 _NET_PACKAGES = (
@@ -203,6 +211,18 @@ def transcripts_for(tasks) -> dict[str, str]:
     return {t.task_id: transcript_for(t, turns.get(t.session_id) or []) for t in tasks}
 
 
+class Refused(str):
+    """What a file tool answers when it could not do what was asked.
+
+    A string, so the candidate reads it like any other result, and a type, so
+    the harness knows the call failed without reading the words. The first
+    version of "a refused read is not an investigation" looked for results
+    beginning "not a file:" or "error:" -- which is also how a log file
+    begins, and a candidate that read exactly that file would have been
+    recorded as having looked at nothing.
+    """
+
+
 @dataclass
 class ToolCall:
     """One call a candidate made, and what it got back.
@@ -217,6 +237,8 @@ class ToolCall:
     name: str
     arguments: dict
     result: str = ""
+    # The tool could not do it: no such file, a path outside the working copy.
+    failed: bool = False
 
     def record(self, result: str, *, from_end: bool = True) -> str:
         """Keep what this call produced, and hand it back to the candidate.
@@ -240,8 +262,9 @@ class ToolCall:
         Either way the stored record stays inside the cap and its cut count is
         the number of characters actually dropped.
         """
+        self.failed = isinstance(result, Refused)
         if len(result) <= RESULT_CHARS:
-            self.result = result
+            self.result = str(result)
             return result
         room = RESULT_CHARS - 48          # leaves space for the marker line
         if not from_end:
@@ -266,7 +289,10 @@ class ToolCall:
         return result
 
     def to_json(self) -> dict:
-        return {"name": self.name, **self.arguments, "result": self.result}
+        row = {"name": self.name, **self.arguments, "result": self.result}
+        if self.failed:
+            row["failed"] = True
+        return row
 
 
 @dataclass
@@ -384,8 +410,12 @@ def _safe(root: Path, rel: str, mount: str | None = None, *, creating: bool = Fa
     else:
         p = legacy
         if creating and rel.startswith(("/", "~")):
-            first = rel.lstrip("/").split("/", 1)[0]
-            if not (root / first).exists():
+            # /NOTES.md is a new file at the top of the repository; /tmp/x.txt
+            # and /Users/x/... are somewhere on the developer's machine. One
+            # component cannot be anywhere else, two or more need their first
+            # to be a directory this repository has.
+            first, _, deeper = rel.lstrip("/").partition("/")
+            if rel.startswith("~") or (deeper and not (root / first).exists()):
                 raise ValueError(f"{rel}: {ELSEWHERE}")
     if not p.is_relative_to(inside):
         raise ValueError("path escapes the working copy")
@@ -401,7 +431,7 @@ def _read_file(root: Path, path: str, max_bytes: int, mount: str | None = None) 
     try:
         target = _safe(root, path, mount)
         if not target.is_file():
-            return f"not a file: {path}" + (f" -- {ELSEWHERE}" if _foreign(path, root, mount) else "")
+            return Refused(f"not a file: {path}" + (f" -- {ELSEWHERE}" if _foreign(path, root, mount) else ""))
         body = target.read_text(errors="replace")
         if len(body) <= max_bytes:
             return body
@@ -411,7 +441,7 @@ def _read_file(root: Path, path: str, max_bytes: int, mount: str | None = None) 
         return (body[:max_bytes]
                 + f"\n... [cut: {len(body) - max_bytes:,} more characters of this file]")
     except (OSError, ValueError) as e:
-        return f"error: {e}"
+        return Refused(f"error: {e}")
 
 
 @function_tool
@@ -427,7 +457,7 @@ def _list_dir(root: Path, path: str, mount: str | None = None) -> str:
     try:
         target = _safe(root, path, mount)
         if not target.is_dir():
-            return f"not a directory: {path}" + (f" -- {ELSEWHERE}" if _foreign(path, root, mount) else "")
+            return Refused(f"not a directory: {path}" + (f" -- {ELSEWHERE}" if _foreign(path, root, mount) else ""))
         rows = []
         for child in sorted(target.iterdir())[:300]:
             if child.name == ".git":
@@ -438,7 +468,7 @@ def _list_dir(root: Path, path: str, mount: str | None = None) -> str:
                 rows.append(f"  {child.name}{'/' if child.is_dir() else ''}")
         return "\n".join(rows) or "(empty)"
     except (OSError, ValueError) as e:
-        return f"error: {e}"
+        return Refused(f"error: {e}")
 
 
 @function_tool
@@ -456,7 +486,7 @@ def _write_file(root: Path, path: str, content: str, mount: str | None = None) -
         target.write_text(content)
         return f"wrote {path} ({len(content)} bytes)"
     except (OSError, ValueError) as e:
-        return f"error: {e}"
+        return Refused(f"error: {e}")
 
 
 @function_tool
@@ -471,17 +501,17 @@ def _edit_file(root: Path, path: str, old_text: str, new_text: str, mount: str |
     try:
         target = _safe(root, path, mount)
         if not target.is_file():
-            return f"not a file: {path}" + (f" -- {ELSEWHERE}" if _foreign(path, root, mount) else "")
+            return Refused(f"not a file: {path}" + (f" -- {ELSEWHERE}" if _foreign(path, root, mount) else ""))
         body = target.read_text(errors="replace")
         n = body.count(old_text)
         if n == 0:
-            return f"no match: that text does not appear in {path}"
+            return Refused(f"no match: that text does not appear in {path}")
         if n > 1:
-            return f"ambiguous: that text appears {n} times in {path}; include more context"
+            return Refused(f"ambiguous: that text appears {n} times in {path}; include more context")
         target.write_text(body.replace(old_text, new_text))
         return f"edited {path}"
     except (OSError, ValueError) as e:
-        return f"error: {e}"
+        return Refused(f"error: {e}")
 
 
 @function_tool
@@ -583,7 +613,7 @@ TOOL_CACHES = frozenset({
 })
 
 
-def _snapshot(tree: Path) -> dict[str, tuple]:
+def _snapshot(tree: Path, keep: str = "") -> dict[str, tuple]:
     """Size, contents hash and mode per file, not the modification time.
 
     On mtime alone, writing a file its own bytes back counted as a change --
@@ -617,7 +647,12 @@ def _snapshot(tree: Path) -> dict[str, tuple]:
         # compiled artefact is still counted, and is named in the row.
         inside = p.relative_to(tree).parts
         if TOOL_CACHES.intersection(inside) or p.suffix in (".pyc", ".pyo"):
-            continue
+            # Unless it is the file this task is about. None of the fifteen
+            # built tasks has its defect under one of these names, and a
+            # repository that commits its node_modules could.
+            rel = "/".join(inside)
+            if not (keep and (keep in rel or rel.endswith(keep))):
+                continue
         # The bit that matters, not the whole mode: ownership and the group
         # and other bits move for reasons no candidate caused.
         mode = "x" if p.stat().st_mode & 0o111 else "-"
@@ -736,7 +771,7 @@ async def run(
         if not rep.ok:
             return Attempt(task.task_id, model, error=f"in-session edits do not apply: {rep.reason}")
 
-        before = _snapshot(tree)
+        before = _snapshot(tree, task.signature_path or "")
         deadline = time.monotonic() + budget_s
 
         box = None
@@ -796,7 +831,7 @@ async def run(
                 # is still in `calls`, so the row carries its trace and an
                 # empty reply, and nothing invents an answer it never gave.
                 ran_out, reply = True, ""
-            changed = _diff(before, _snapshot(tree))
+            changed = _diff(before, _snapshot(tree, task.signature_path or ""))
             if context.get("container_died"):
                 # Not a result. Everything after the container went is a blank,
                 # and grading it measures the harness.
@@ -817,7 +852,7 @@ async def run(
                 environment=environment,
             )
         except Exception as e:  # a failed attempt is a data point, not a crash
-            changed = _diff(before, _snapshot(tree))
+            changed = _diff(before, _snapshot(tree, task.signature_path or ""))
             return Attempt(
                 task.task_id,
                 model,

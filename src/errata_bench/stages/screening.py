@@ -33,8 +33,7 @@ async def stage_triage(paths: Paths, limit: int, concurrency: int) -> Progress:
     # The work, not the input. Slicing the input meant `--max-rows 3` run three
     # times did three rows and then nothing: the same three were always at the
     # front and were always already done.
-    todo = [m for m in moments if key_of(m) not in done][:limit]
-    p.skipped = len(moments) - len(todo)
+    todo = p.cap([m for m in moments if key_of(m) not in done], limit, len(moments))
     if not todo:
         p.took_s = time.monotonic() - t0
         return p
@@ -83,8 +82,7 @@ async def stage_read(paths: Paths, limit: int, concurrency: int) -> Progress:
     else:
         moments = load(paths.moments)
     done = already_done(paths.readings)
-    todo = [m for m in moments if key_of(m) not in done][:limit]
-    p.skipped = len(moments) - len(todo)
+    todo = p.cap([m for m in moments if key_of(m) not in done], limit, len(moments))
     if not todo:
         p.took_s = time.monotonic() - t0
         return p
@@ -120,8 +118,7 @@ async def stage_locate(paths: Paths, limit: int, concurrency: int) -> Progress:
         if (r.get("reading") or {}).get("benchmark_viable")
     ]
     done = already_done(paths.trajectories)
-    todo = [r for r in viable if key_of(r) not in done][:limit]
-    p.skipped = len(viable) - len(todo)
+    todo = p.cap([r for r in viable if key_of(r) not in done], limit, len(viable))
     if not todo:
         p.took_s = time.monotonic() - t0
         return p
@@ -178,8 +175,7 @@ async def stage_signature(paths: Paths, limit: int, concurrency: int) -> Progres
     t0 = time.monotonic()
     usable = [r for r in load(paths.trajectories) if r.get("usable")]
     done = already_done(paths.signatures)
-    todo = [r for r in usable if key_of(r) not in done][:limit]
-    p.skipped = len(usable) - len(todo)
+    todo = p.cap([r for r in usable if key_of(r) not in done], limit, len(usable))
 
     async def one(r):
         try:
@@ -272,8 +268,7 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
     done = {
         key_of(r): r.get("screen_passes", 1) for r in completed(paths.screened)
     }
-    todo = [r for r in rows if done.get(key_of(r), 0) < passes][:limit]
-    p.skipped = len(rows) - len(todo)
+    todo = p.cap([r for r in rows if done.get(key_of(r), 0) < passes], limit, len(rows))
 
     def prune() -> None:
         """Keep one reading per row: the best one.

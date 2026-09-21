@@ -177,8 +177,7 @@ async def stage_attempt(
     # and was read by two of eleven stages. It is how anyone would smoke-test a
     # four-hundred-task directory, and on the one stage that starts containers
     # it did nothing: `--max-rows 1` ran twelve hundred of them.
-    jobs = jobs[:limit]
-    p.skipped = len(tasks) * repeats - len(jobs)
+    jobs = p.cap(jobs, limit, len(tasks) * repeats)
     if not jobs:
         p.took_s = time.monotonic() - t0
         return p
@@ -379,7 +378,8 @@ async def stage_grade(paths: Paths, limit: int, concurrency: int,
     if len(admitted) != len(answers):
         p.notes.append(
             f"{len(answers) - len(admitted)} answers belong to tasks that no longer "
-            f"pass their known-answer pair or their controls, and were not graded"
+            f"pass their known-answer pair or their controls: they are not graded "
+            f"here, and any grading they already have is not counted"
         )
     answers = admitted
     # Before anything is rewritten. The refusal below exists to keep this run
@@ -427,8 +427,8 @@ async def stage_grade(paths: Paths, limit: int, concurrency: int,
     # readings, and every rate reads the settled verdict.
     done = {(r["task_id"], r["run"], r.get("pass", 0)) for r in graded}
     todo = [(a, n) for a in answers for n in range(max(1, passes))
-            if (a["task_id"], a["run"], n) not in done][:limit]
-    p.skipped = len(answers) * max(1, passes) - len(todo)
+            if (a["task_id"], a["run"], n) not in done]
+    todo = p.cap(todo, limit, len(answers) * max(1, passes))
     p.notes.append(f"graded by {grader}")
     # Naming no grader leaves `judge_model()` falling back to the candidate's
     # own model, which is the thing B-118 was fixed to stop. It is a legitimate
@@ -660,7 +660,15 @@ def stage_report(paths: Paths) -> Progress:
     # empty one.
     answers = [a for a in load(paths.answers) if not a.get("error")]
     answer_keys = {(a.get("task_id"), a.get("run")) for a in answers}
-    graded_keys = {(a.get("task_id"), a.get("run")) for a in attempts}
+    # From every reading on disk, not from the admitted ones. Counted after the
+    # gate, an answer whose task had since left the benchmark was reported as
+    # "not yet graded" for ever -- it had been graded, no run of `grade` could
+    # clear it, and the number is there to say whether grading finished. And
+    # per reading: `settled()` folds two rows for one attempt into one verdict,
+    # so a row written twice by two processes has to be looked for before that.
+    raw_readings = [a for a in load(paths.attempts) if not a.get("error")]
+    graded_keys = {(a.get("task_id"), a.get("run")) for a in raw_readings}
+    reading_keys = [(a.get("task_id"), a.get("run"), a.get("pass", 0)) for a in raw_readings]
     moments = len(load(paths.moments))
     readings = load(paths.readings)
     viable = [r for r in readings if (r.get("reading") or {}).get("benchmark_viable")]
@@ -705,7 +713,7 @@ def stage_report(paths: Paths) -> Progress:
             # the same attempt, and every count below would include it twice.
             # Stated rather than silently deduplicated: a number that repairs
             # itself hides the fact that something ran twice.
-            "attempts_recorded_twice": len(attempts) - len(graded_keys),
+            "attempts_recorded_twice": len(reading_keys) - len(set(reading_keys)),
             # A task with no scored attempt reads exactly like a task that was
             # never built, and every silent hole found so far ended there:
             # answers deleted, a stale row blocking its own re-run, a duplicate

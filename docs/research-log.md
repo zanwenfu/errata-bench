@@ -1391,6 +1391,48 @@ other sixteen are recorded in G-49.
   still refused. **11 built tasks became 14, none lost**, and the three
   recovered replay 4, 2 and 4 of the agent's own edits.
 
+- **B-222 · Three lines that said something near what happened** (fixed ·
+  09-21). Found by an end-to-end sweep of the pipeline run at `c1636c84a` --
+  ten scenarios, 262 checks, the run directory right every time and the text
+  printed about it wrong in three places. *"Already done" meant three things*:
+  every stage counted work left by `--max-rows`, and `build` counted the rows
+  it rejected, in the number printed as already done -- a fresh directory of
+  eight moments under `--max-rows 2` said "2 produced, 6 already done", and a
+  rebuild that rejected a task and deleted its eight downstream rows said "1
+  already done". `Progress` now keeps `capped` and `rejected` apart from
+  `skipped`, through one `cap()` that all nine capping sites call. *An answer
+  whose task had left the benchmark was "not yet graded" for ever*: the report
+  subtracted gate-filtered grades from unfiltered answers, so no run of
+  `grade` could clear it; it is counted from every reading on disk. The same
+  look found `attempts_recorded_twice` had been zero by construction since
+  D-30, because `settled()` folds two rows for one attempt into one verdict
+  before anything counted them -- it is counted per reading now. *A control
+  that could not run was reported as one that behaved wrongly* -- "those tasks
+  are unsound", about a dropped connection stored as an error and retried --
+  and the message was assigned over the note saying an earlier run had asked
+  for more readings. Errors and verdicts are counted apart, and both appended.
+- **B-221 · The network screen did not screen a command that began with a
+  space** (fixed · 09-21, the day it was written). `_AT` opened with `^` where
+  it needed `^\s*`, so `" curl https://x"` and a tab-indented `curl` went
+  through; `{ curl x; }`, `env FOO=1 curl` and `command curl` did too. Found
+  by reviewing my own morning's work with the reviewer I had started killed
+  for heating the laptop -- the corpus could not have shown it, since its
+  commands are stored stripped: both directions of the comparison are
+  identical before and after. The same look timed the screen: with the
+  `VAR=value` prefix unbounded, `a=1;` repeated to 100,000 characters took
+  **16 seconds** to search, on the event loop, with every other attempt in the
+  process waiting; bounded at 2,000 characters a value it takes 0.6. Three
+  smaller things from that review, all in the morning's code. "A refused read
+  is not an investigation" had been inferred from the words of the result --
+  `not a file:`, `error:` -- which is also how a log file begins; the file
+  tools now return a `Refused` string and the call carries `failed`, so
+  nothing is read off the text. A new file at the top of the repository asked
+  for as `/NOTES.md` was refused as the developer's machine; one path
+  component cannot be anywhere else. And the snapshot's list of tool caches
+  never applies to the task's own defect file. The path handling itself held:
+  seventeen escapes tried -- `..`, symlinks out of the tree, `/work/../x`,
+  `/workspace`, the host's own absolute path to a sibling -- nothing read,
+  nothing planted.
 - **B-220 · The file tools and the shell disagreed about where the
   repository was, and the model that investigated most paid most** (fixed ·
   09-21). Commands run in the container, where the working copy is `/work`;

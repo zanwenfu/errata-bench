@@ -124,8 +124,6 @@ class Structure:
 
 
 READ_TOOLS = {"read_file", "list_dir"}
-# How `read_file` and `list_dir` say they returned nothing (score/attempt.py).
-FAILED_READ = ("not a file:", "not a directory:", "error:")
 
 
 def analyse(task: Task, attempt: Attempt, tree_after: dict[str, str] | None = None) -> Structure:
@@ -142,11 +140,12 @@ def analyse(task: Task, attempt: Attempt, tree_after: dict[str, str] | None = No
     # nothing, and counting it let an attempt that only ever asked for paths
     # that do not exist read as one that had looked (G-56). Measured before
     # changing it: 207 of 904 stored reads failed (B-220 is why), and on no
-    # stored attempt was a failed read the only thing behind `checked`. A call
-    # with no recorded result predates recording and counts, as it did.
+    # stored attempt was a failed read the only thing behind `checked`. The
+    # tool says it failed (`ToolCall.failed`); nothing is read off the words of
+    # the result, which are also how a log file begins. A call rebuilt from a
+    # stored row or a recovered trace carries no such flag and counts, as it did.
     investigated = any(
-        c.name in READ_TOOLS and not str(c.result or "").lstrip().startswith(FAILED_READ)
-        for c in attempt.tool_calls
+        c.name in READ_TOOLS and not getattr(c, "failed", False) for c in attempt.tool_calls
     )
     executed = "run_command" in names
 

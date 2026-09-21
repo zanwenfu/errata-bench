@@ -15,12 +15,35 @@ class Progress:
     produced: int = 0
     skipped: int = 0
     failed: int = 0
+    # Left for another run by --max-rows, and turned away by a gate. Both used
+    # to be counted in `skipped` and printed as "already done": a fresh
+    # directory of eight moments under --max-rows 2 said "2 produced, 6 already
+    # done", and a rebuild that rejected a task and deleted its eight
+    # downstream rows said "1 already done".
+    capped: int = 0
+    rejected: int = 0
     notes: list[str] = field(default_factory=list)
+
+    def cap(self, todo: list, limit: int, total: int) -> list:
+        """Apply --max-rows to a stage's work, and keep the two reasons apart.
+
+        `total` is everything the stage could have been asked to do; `todo` is
+        what is left of it. The difference was done already, and whatever of
+        `todo` does not fit under `limit` is over the cap.
+        """
+        kept = todo[:limit]
+        self.skipped = total - len(todo)
+        self.capped = len(todo) - len(kept)
+        return kept
 
     def line(self) -> str:
         bits = [f"{self.produced} produced"]
         if self.skipped:
             bits.append(f"{self.skipped} already done")
+        if self.capped:
+            bits.append(f"{self.capped} over --max-rows")
+        if self.rejected:
+            bits.append(f"{self.rejected} rejected")
         if self.failed:
             bits.append(f"{self.failed} failed")
         head = f"  {self.stage:10s} {self.took_s:6.0f}s  {', '.join(bits)}"

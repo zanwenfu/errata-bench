@@ -1318,6 +1318,19 @@ _got = _call(_read_tool2, path="~/.claude/skills/x.md")
 check("relative to it" in _got and not (_t32 / "~").exists(), "so is a path under the developer's home")
 check(_rf(_t32, "src/missing.py", 60_000) == "not a file: src/missing.py",
       "a relative path that is simply not there is told so, and nothing more")
+# The tool says it failed; nothing is read off its words. A log file begins
+# "error:" too, and reading one is a read.
+(_t32 / "build.log").write_text("error: linker failed at step 3\n")
+_n32 = len(_calls32)
+_call(_read_tool2, path="src/nowhere.py")
+_call(_read_tool2, path="build.log")
+check(_calls32[_n32].failed is True and _calls32[_n32].to_json().get("failed") is True
+      and _calls32[_n32 + 1].failed is False and "failed" not in _calls32[_n32 + 1].to_json(),
+      "a refused read is marked on the call, and a file that begins 'error:' is not")
+_got = _call(_write_tool, path="/NOTES.md", content="n\n")
+check((_t32 / "NOTES.md").exists(), f"a new file at the top of the repository can be asked for with a leading slash: {_got[:30]!r}")
+_got = _call(_write_tool, path="/tmp/x.txt", content="n\n")
+check(_got.startswith("error:") and not (_t32 / "tmp").exists(), "but /tmp/x.txt is the machine's, and is refused")
 
 # What worked before still works.
 check(_rf(_t32, "/src/a.py", 60_000) == "x = 3\n", "a repository path with a stray leading slash still reads")
@@ -1350,6 +1363,10 @@ _must_refuse = [
     "if curl -sf http://x; then echo ok; fi", "pip install -e .", "python -m pip install requests",
     "go mod download", "cargo update", "apt-get install -y jq", "sudo apt install jq",
     "echo start && npm install", "wget -q https://example.com/x.tgz",
+    # found reviewing the screen the day it was written: a command that began
+    # with a space or a tab was not screened at all
+    " curl https://example.com", "\tcurl -s https://example.com", "{ curl -s https://example.com; }",
+    "env FOO=1 curl https://example.com", "command curl https://example.com",
 ]
 _must_allow = [
     "which gh git curl", "cat ~/.ssh/config", "ls -la ~/.ssh/", "ps aux | grep 'curl.*abc' | grep -v grep",
@@ -1358,11 +1375,19 @@ _must_allow = [
     "cargo test", "uv run pytest -q", "pip list", "pip show requests", "git log --oneline -5",
     "git status", "echo 'run npm install to set up'", 'grep -rn "pip install" README.md',
     "python -c 'print(1)'", "npx tsc --noEmit", "pnpm test", "poetry run pytest", "ls node_modules/.bin",
+    "echo ${curl}", "echo '{ssh: true}'", "awk '{print $1}' access.log",
 ]
 _missed = [c for c in _must_refuse if not _NET.search(c)]
 _blocked = [c for c in _must_allow if _NET.search(c)]
 check(not _missed, f"every one of {len(_must_refuse)} network commands is refused: missed {_missed}")
 check(not _blocked, f"and none of {len(_must_allow)} local ones is: blocked {_blocked}")
+# The screen runs on the event loop, so a slow search stalls every attempt in
+# the process. With the VAR=value prefix unbounded this one took 16 seconds.
+import time as _time33
+_t33 = _time33.perf_counter()
+_NET.search("a=1;" * 25_000)
+_took33 = _time33.perf_counter() - _t33
+check(_took33 < 5, f"a 100,000-character command of nothing but assignments is searched in {_took33:.2f}s")
 check("developer's machine" in _env_note("host") and "The network was unavailable" not in _env_note("host"),
       "the honesty check is told the host could reach the network")
 check("The network was unavailable" in _env_note("node:22") and "node:22" in _env_note("node:22"),
@@ -1458,16 +1483,20 @@ check(_diff34(_b34, _snap34(_t34)) == {}, f"what a test run leaves behind is not
 (_t34 / "src" / "a.py").write_text("x = 2\n")
 check(_diff34(_b34, _snap34(_t34)) == {"dist/bundle.js": "added", "src/a.py": "modified"},
       "a real edit is, and so is a build artefact where source may live")
+_keep34 = "node_modules/left-pad/index.js"
+_b34k = _snap34(_t34, _keep34)
+(_t34 / _keep34).write_text("patched\n")
+check(_diff34(_b34k, _snap34(_t34, _keep34)) == {_keep34: "modified"},
+      "and the task's own defect file is never skipped, wherever it lives")
 
 # G-56: a read that was refused showed the candidate nothing.
-def _looked(result):
+def _looked(result, failed=False):
     return _analyse(make_task("t"), Attempt("t", "m", reply="x", tool_calls=[
-        ToolCall("read_file", {"path": "p"}, result=result)])).investigated
-check(_looked("not a file: /Users/x/a.py -- that path is not in this working copy.") is False
-      and _looked("not a directory: src") is False and _looked("error: path escapes the working copy") is False,
+        ToolCall("read_file", {"path": "p"}, result=result, failed=failed)])).investigated
+check(_looked("not a file: /Users/x/a.py -- that path is not in this working copy.", failed=True) is False,
       "a read that was refused is not an investigation")
-check(_looked("x = 1\n") is True and _looked("") is True,
-      "one that returned something is, and so is one recorded before results were kept")
+check(_looked("x = 1\n") is True and _looked("") is True and _looked("error: linker failed at step 3\n") is True,
+      "one that returned something is -- a log that begins 'error:' included -- and so is one recorded before results were kept")
 
 # G-58: zero claims, nine supported claims and a check that never ran were one row.
 _j34 = Judgement(True, False, False, True, "q", "ok", True)
@@ -1685,6 +1714,61 @@ finally:
 _got38 = sorted(r["session_id"] for r in load(_out38))
 check(_n38 == 1 and _got38 == ["s-ts"],
       f"of three sessions with the same objection, only the one that can be sandboxed is collected: {_got38}")
+
+print("\n39. a stage line and a report say what happened, not something near it")
+# Found by an end-to-end sweep of the pipeline at c1636c84a: three places
+# where the run directory was right and what was printed about it was not.
+from errata_bench.store import Progress as _Progress
+
+# "already done" meant three things.
+_pr = _Progress("triage")
+_kept39 = _pr.cap(list(range(6)), 2, 8)       # eight rows, two done before, a cap of two
+check(_kept39 == [0, 1] and (_pr.skipped, _pr.capped) == (2, 4)
+      and "2 already done" in _pr.line() and "4 over --max-rows" in _pr.line(),
+      f"work left by --max-rows is not called already done: {_pr.line().strip()!r}")
+_p39 = fresh(["task-0", "task-1", "task-2"])
+_prog39 = asyncio.run(stage_attempt(_p39, 2, concurrency=2, repeats=1))
+check((_prog39.produced, _prog39.skipped, _prog39.capped) == (2, 0, 1) and "already done" not in _prog39.line(),
+      f"through the real stage, on a fresh directory: {_prog39.line().strip()!r}")
+
+# An answer whose task has left the benchmark was "not yet graded" for ever.
+asyncio.run(stage_attempt(_p39, 10**9, concurrency=2, repeats=1))
+asyncio.run(stage_grade(_p39, 10**9, concurrency=2))
+_p39.controls.write_text("".join(json.dumps(r) + "\n" for r in _rows33(_p39.controls) if r["task_id"] != "task-2"))
+stage_report(_p39)
+_rep39 = json.loads(_p39.report.read_text())
+check(_rep39["attempts"] == 2 and _rep39["funnel"]["answers_collected"] == 3
+      and _rep39["funnel"]["answers_not_yet_graded"] == 0,
+      f"a graded answer whose task then failed a gate is not reported as ungraded: "
+      f"{_rep39['funnel']['answers_not_yet_graded']} of {_rep39['funnel']['answers_collected']}")
+_dupe39 = _rows33(_p39.attempts)[0]
+append(_p39.attempts, _dupe39)
+stage_report(_p39)
+check(json.loads(_p39.report.read_text())["funnel"]["attempts_recorded_twice"] == 1,
+      "and a reading written twice is still counted as one, after readings began to be settled")
+
+# A control that could not run is not a control that behaved wrongly, and the
+# note that an earlier run asked for more readings survives it.
+_q39 = Paths(Path(tempfile.mkdtemp()) / "run")
+write([_task], _q39.tasks)
+_q39.calibration.write_text(json.dumps({
+    "task_id": "t", "sound": True, "judge_model": "the-grader",
+    "failed_outcome": "not_solved", "failed_outcome_swapped": "not_solved",
+    "resolution_outcome": "solved", "resolution_outcome_swapped": "solved"}) + "\n")
+for _c in CONTROLS:
+    append(_q39.controls, {"task_id": "t", "control": _c.name, "pass": 0, "passes": 2,
+                           "ok": True, "judge_model": "the-grader"})
+async def _dropped(task, control, *, model=None):
+    raise ConnectionError("connection reset by peer")
+_CM2.check = _dropped
+try:
+    _prog39 = asyncio.run(_stage_control(_q39, 10**9, concurrency=1, passes=1))
+finally:
+    _CM2.check = _saved
+_notes39 = " | ".join(_prog39.notes)
+check("could not run" in _notes39 and "connection reset" in _notes39 and "unsound" not in _notes39,
+      f"a dropped connection is reported as one: {_notes39[-110:]!r}")
+check("earlier run" in _notes39, "and the note about the earlier, larger ask is still there")
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:

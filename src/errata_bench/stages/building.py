@@ -94,7 +94,7 @@ def stage_build(paths: Paths, limit: int) -> Progress:
             "remote or a broken git looks like. Nothing was pruned. Check the remote, "
             "then re-run."
         ]
-        p.skipped = len(result.rejected)
+        p.rejected = len(result.rejected)
         p.took_s = time.monotonic() - t0
         return p
 
@@ -145,7 +145,7 @@ def stage_build(paths: Paths, limit: int) -> Progress:
     # design -- that is the funnel, and its reasons are printed below -- but
     # counted as failures they made `run.py` exit 1 on every pass of a finished
     # run, for ever, saying "1 rows failed in: build" when nothing had failed.
-    p.skipped = len(result.rejected)
+    p.rejected = len(result.rejected)
     # extend, not assign: the loop above records what it deleted, and assigning
     # here threw that away two lines later -- so the one message saying a
     # rebuild removed graded rows and paid-for answers never survived to be
@@ -176,8 +176,7 @@ async def stage_calibrate(paths: Paths, limit: int, concurrency: int) -> Progres
         r["task_id"] for r in completed(paths.calibration)
         if r.get("judge_model", grader) == grader
     }
-    todo = [t for t in tasks if t.task_id not in done][:limit]
-    p.skipped = len(tasks) - len(todo)
+    todo = p.cap([t for t in tasks if t.task_id not in done], limit, len(tasks))
 
     async def one(t):
         try:
@@ -317,11 +316,11 @@ async def stage_control(paths: Paths, limit: int, concurrency: int,
     def need(task, control) -> int:
         return max(max(1, passes), asked.get((task.task_id, control.name), 1))
 
-    jobs = [
+    jobs = p.cap([
         (t, c, n)
         for t in tasks for c in CONTROLS
         for n in range(seen.get((t.task_id, c.name), 0), need(t, c))
-    ][:limit]
+    ], limit, sum(need(t, c) for t in tasks for c in CONTROLS))
     ratcheted = sorted({t.task_id for t, c, _ in jobs if need(t, c) > max(1, passes)})
     if ratcheted:
         p.notes.append(
@@ -329,7 +328,6 @@ async def stage_control(paths: Paths, limit: int, concurrency: int,
             f"than --passes {passes}; finishing that count: {', '.join(ratcheted[:4])}"
             + (" ..." if len(ratcheted) > 4 else "")
         )
-    p.skipped = sum(need(t, c) for t in tasks for c in CONTROLS) - len(jobs)
     if not jobs:
         p.took_s = time.monotonic() - t0
         return p
@@ -340,7 +338,7 @@ async def stage_control(paths: Paths, limit: int, concurrency: int,
             append(paths.controls, {**result.to_json(), "judge_model": grader,
                                     "pass": n, "passes": need(task, control),
                                     "task_fingerprint": fingerprint(task)})
-            return result.ok
+            return "behaved" if result.ok else "wrong"
         except Exception as e:
             append(
                 paths.controls,
@@ -349,13 +347,23 @@ async def stage_control(paths: Paths, limit: int, concurrency: int,
                  "error": f"{type(e).__name__}: {e}",
                  "detail": f"the control could not run: {type(e).__name__}"},
             )
-            return False
+            return f"{type(e).__name__}: {e}"
 
     results = await _gather([one(t, c, n) for t, c, n in jobs], concurrency)
-    p.produced = sum(1 for r in results if r)
-    p.failed = sum(1 for r in results if not r)
-    if p.failed:
-        p.notes = [f"{p.failed} control checks behaved wrongly -- those tasks are unsound"]
+    # A verdict and an error are different news. A dropped connection was
+    # printed as "behaved wrongly -- those tasks are unsound", about a reading
+    # that was stored as an error and succeeds on the next run. And both are
+    # appended: assigned, this threw away the note above saying an earlier
+    # run had asked for more readings.
+    wrong = sum(1 for r in results if r == "wrong")
+    errors = [r for r in results if r not in ("behaved", "wrong")]
+    p.produced = sum(1 for r in results if r == "behaved")
+    p.failed = wrong + len(errors)
+    if wrong:
+        p.notes.append(f"{wrong} control checks behaved wrongly -- those tasks are unsound")
+    if errors:
+        p.notes.append(f"{len(errors)} control checks could not run and will be retried: "
+                       f"{str(errors[0] or 'the job raised')[:90]}")
     p.took_s = time.monotonic() - t0
     return p
 
