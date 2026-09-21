@@ -73,6 +73,15 @@ IMAGES = {
     # developer's bandwidth and disk. Until it is present, Rust tasks fall back
     # to the host and record that they did.
     "Rust": "rust:1.83-slim",
+    # Neither had an entry, so every Shell and Astro task ran on the host --
+    # not by the policy above, by omission. Found on 09-21 while preparing
+    # to run candidates against seven tasks, four of which would have gone
+    # unsandboxed: two Shell, one Astro, one Rust. Both images are already
+    # pulled for other languages. python:3.12 carries bash, git and
+    # coreutils, which is what a shell script needs; Astro is a Node
+    # framework.
+    "Shell": "python:3.12",
+    "Astro": "node:22",
 }
 
 
