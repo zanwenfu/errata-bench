@@ -462,27 +462,80 @@ print("\n21. a screening gate is asked repeatedly and answered conservatively")
 # does not always answer the same way: five of forty-six scope rows changed
 # across five askings, and re-screening one corpus produced fourteen tasks one
 # time and thirteen the other. Asked repeatedly, a doubtful row is kept out.
+from errata_bench.answerable import Answerable
+from errata_bench.leakage import Leakage
 from errata_bench.pipeline import _agree
+from errata_bench.scope import Scope
 
-class Says:
-    def __init__(self, v): self.value = v
+# The models the three gates really return. An earlier version of this section
+# invented its own `class Says` carrying a `.value`, and `_agree` reduced each
+# answer with `bool(getattr(a, "value", a))`: against the fake that read the
+# verdict, against every real gate it read the object and came out True. All
+# three gates were constants, `build` rejected every row alive, and this
+# section printed ALL CHECKS PASS throughout. So the fixtures here are the real
+# models, and the first thing asserted is the absence of the attribute the bug
+# relied on.
+for model in (Answerable, Scope, Leakage):
+    check(not hasattr(model, "value"),
+          f"{model.__name__} has no .value -- a reader must name its field")
 
-def alternating(seq):
+ANSWERABLE = (lambda v: Answerable(asks_for_something=v, request="r", reasoning=f"said {v}"),
+              lambda x: x.asks_for_something)
+SCOPE = (lambda v: Scope(within_scope=v, reason=f"said {v}"),
+         lambda x: x.within_scope)
+LEAK = (lambda v: Leakage(signals_trouble=v, quote="", reasoning=f"said {v}"),
+        lambda x: x.signals_trouble)
+
+def alternating(make, seq):
     it = iter(seq)
-    async def ask(): return Says(next(it))
+    async def ask(): return make(next(it))
     return ask
 
-for seq, keep_on, want, label in (
-    ([True, True, True],  True,  True,  "unanimous yes is kept"),
-    ([True, False, True], True,  False, "one no among yeses is refused"),
-    ([False, False],      True,  False, "unanimous no stays no"),
-    ([False, False, False], False, False, "unanimous 'no leak' is kept"),
-    ([False, True, False], False, True,  "one reading of 'leaks' is enough to reject"),
+for (make, reading), seq, keep_on, want, label in (
+    (ANSWERABLE, [True, True, True],   True,  True,  "unanimous yes is kept"),
+    (ANSWERABLE, [True, False, True],  True,  False, "one no among yeses is refused"),
+    (ANSWERABLE, [False, False],       True,  False, "unanimous no stays no"),
+    (SCOPE,      [True, True, True],   True,  True,  "in scope every time is in scope"),
+    (SCOPE,      [True, False, True],  True,  False, "one 'out of scope' is enough to refuse"),
+    (LEAK,       [False, False, False], False, False, "unanimous 'no leak' is kept"),
+    (LEAK,       [False, True, False], False, True,  "one reading of 'leaks' is enough to reject"),
 ):
-    verdict, tally, _ = asyncio.run(_agree(alternating(seq), len(seq), keep_on=keep_on))
+    verdict, tally, _ = asyncio.run(
+        _agree(alternating(make, seq), len(seq), keep_on=keep_on, reading=reading))
     check(verdict is want, f"{label}: {tally} -> {verdict}")
 
-verdict, tally, _ = asyncio.run(_agree(alternating([True]), 1, keep_on=True))
+# The answer handed back has to be the one that explains the verdict. The leak
+# gate's repair branch reads it, so handing back the last reading meant a
+# conversation read leaking, clean, clean was filed as leaking and then never
+# repaired -- and `build` drops a row that leaks and was not repaired.
+make, reading = LEAK
+verdict, tally, deciding = asyncio.run(
+    _agree(alternating(make, [True, False, False]), 3, keep_on=False, reading=reading))
+check(verdict is True and reading(deciding) is True,
+      f"the reading handed back is the one that decided it: {tally} -> {verdict}")
+
+make, reading = ANSWERABLE
+verdict, tally, deciding = asyncio.run(
+    _agree(alternating(make, [True, False, True]), 3, keep_on=True, reading=reading))
+check(verdict is False and reading(deciding) is False,
+      "and for a gate that must hold, it is the reading that broke it")
+
+# A gate answering with the wrong shape stops the run. Without this the next
+# such mistake is silent again.
+class Wrong:
+    pass
+
+async def wrong_shape(): return Wrong()
+
+try:
+    asyncio.run(_agree(wrong_shape, 2, keep_on=True, reading=lambda x: x))
+    check(False, "a gate answering with a non-bool raises")
+except TypeError:
+    check(True, "a gate answering with a non-bool raises")
+
+make, reading = ANSWERABLE
+verdict, tally, _ = asyncio.run(
+    _agree(alternating(make, [True]), 1, keep_on=True, reading=reading))
 check(verdict is True and tally == "1/1", "asking once still works, and says it asked once")
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))

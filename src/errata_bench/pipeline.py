@@ -562,7 +562,7 @@ async def stage_signature(paths: Paths, limit: int, concurrency: int) -> Progres
     return p
 
 
-async def _agree(ask, passes: int, keep_on: bool) -> tuple[bool, str, object]:
+async def _agree(ask, passes: int, keep_on: bool, reading) -> tuple[bool, str, object]:
     """Ask a gate several times and keep only what it says every time.
 
     Every gate here is a model reading prose, and a model reading the same
@@ -579,13 +579,39 @@ async def _agree(ask, passes: int, keep_on: bool) -> tuple[bool, str, object]:
     *any* reading says so. The tally is stored beside the verdict, because a
     row that held 3 of 3 and one that held 2 of 3 are different evidence and
     only one of them should be read as settled.
+
+    `reading` pulls the answer out of whatever the gate returned, and is
+    required rather than guessed. The first version of this reduced each answer
+    with `bool(getattr(a, "value", a))`, and no gate returns anything with a
+    `.value`: every reading truth-tested as the object itself, so all three
+    gates became constants -- answerable and in-scope pinned to "keep",
+    leaking pinned to "leaks" -- and `build` then rejected every row alive
+    under "the context already signals trouble". The guard that was supposed to
+    cover this passed, because its fake gate had the `.value` field the real
+    ones lack. Hence the assertion below: a gate that hands back something
+    other than a bool now stops the run instead of quietly answering True.
     """
     answers = [await ask() for _ in range(max(1, passes))]
-    values = [bool(getattr(a, "value", a)) for a in answers]
+    values = [reading(a) for a in answers]
+    wrong = next((v for v in values if not isinstance(v, bool)), None)
+    if wrong is not None:
+        raise TypeError(
+            f"a gate answered with {type(wrong).__name__}, not a bool: {wrong!r}. "
+            "`reading` has to pull the verdict out of the model it returns."
+        )
     held = all(v is keep_on for v in values)
+    # The answer handed back is the one that explains the verdict, not simply
+    # the last one asked. Where the gate did not hold, that is the first
+    # reading that broke it -- so a caller reading `.reasoning` off it gets the
+    # reason the row was rejected, and a caller branching on its verdict field
+    # branches the same way this function did. Handing back the last reading
+    # instead meant a conversation three readings called leaking, clean, clean
+    # was recorded as leaking and then never repaired, because the repair
+    # branch asked the clean one.
+    deciding = answers[-1] if held else answers[values.index(not keep_on)]
     return (keep_on if held else not keep_on,
             f"{sum(1 for v in values if v is keep_on)}/{len(values)}",
-            answers[-1])
+            deciding)
 
 
 async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int = 1) -> Progress:
@@ -620,7 +646,8 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
             else:
                 verdict, tally, a = await _agree(
                     lambda: asks_for_something(message.get("content") or ""),
-                    passes, keep_on=True)
+                    passes, keep_on=True,
+                    reading=lambda x: x.asks_for_something)
                 out["asks_for_something"] = verdict
                 out["asks_for_something_held"] = tally
                 out["request_reason"] = a.request or a.reasoning
@@ -632,7 +659,8 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
             request = (message or {}).get("content") or ""
             if request:
                 verdict, tally, scope = await _agree(
-                    lambda: in_scope(request, r.get("defect", "")), passes, keep_on=True)
+                    lambda: in_scope(request, r.get("defect", "")), passes, keep_on=True,
+                    reading=lambda x: x.within_scope)
                 out["within_scope"] = verdict
                 out["within_scope_held"] = tally
                 out["scope_reason"] = scope.reason
@@ -642,7 +670,8 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
 
             # Leaking is the rejecting answer, so one reading saying so is enough.
             verdict, tally, leak = await _agree(
-                lambda: signals_trouble(build_excerpt(ts, r["cut"])), passes, keep_on=False)
+                lambda: signals_trouble(build_excerpt(ts, r["cut"])), passes, keep_on=False,
+                reading=lambda x: x.signals_trouble)
             out["signals_trouble"] = verdict
             out["clean_held"] = tally
             out["leak_reason"] = leak.reasoning
@@ -650,7 +679,10 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
             out["rewritten_turns"] = {}
             out["redaction_worked"] = False
 
-            if leak.signals_trouble:
+            # `verdict`, not `leak.signals_trouble`: the row is repaired when the
+            # gate as a whole says it leaks, which with more than one reading is
+            # not the same thing as what any single reading said.
+            if verdict:
                 red = await survey(ts, r["cut"])
                 out["diffuse"] = red.diffuse
                 if red.repairable:
