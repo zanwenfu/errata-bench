@@ -1262,6 +1262,69 @@ if _live.exists():
           f"on the live re-grade, {len(_s)} verdicts, 0 pass, "
           f"{sum(1 for r in _s if not r['unanimous'])} not unanimous")
 
+print("\n32. the file tools and the shell agree about where the repository is")
+# B-220. Commands run in the container, where the working copy is /work; the
+# file tools run on the host. A candidate that ran `pwd` handed /work/src/a.ts
+# to read_file and was told "not a file" about a file that was there -- 91 of
+# 904 recorded reads -- and write_file created <tree>/work/src/a.ts and said
+# "wrote /work/src/a.ts". Through the real tools, the way the runtime calls them.
+from errata_bench.construct.container import MOUNT as _MOUNT, Container as _Container
+from errata_bench.score.attempt import (INSTRUCTIONS as _RULES, _read_file as _rf, _write_file as _wf,
+                                        edit_file as _edit_tool, list_dir as _list_tool,
+                                        read_file as _read_tool2, write_file as _write_tool)
+
+_t32 = Path(tempfile.mkdtemp()) / "tree"
+(_t32 / "src").mkdir(parents=True)
+(_t32 / "src" / "a.py").write_text("x = 1\n")
+_calls32 = []
+_ctx32 = type("Ctx", (), {
+    # A real Container, never started: `_mount` asks only whether there is one.
+    "context": {"tree": _t32, "calls": _calls32, "container": _Container("errata-0-check", "node:22", _t32)},
+    "tool_name": "t", "run_config": None, "usage": None,
+})()
+
+def _call(tool, **kw):
+    return asyncio.run(tool.on_invoke_tool(_ctx32, json.dumps(kw)))
+
+_got = _call(_read_tool2, path=f"{_MOUNT}/src/a.py")
+check(_got == "x = 1\n", f"read_file reads the path `pwd` gave the candidate: {_got[:40]!r}")
+_got = _call(_write_tool, path=f"{_MOUNT}/src/new.py", content="y = 2\n")
+check((_t32 / "src" / "new.py").exists() and not (_t32 / "work").exists(),
+      f"write_file puts {_MOUNT}/src/new.py at src/new.py, not at work/src/new.py: {_got[:40]!r}")
+_got = _call(_edit_tool, path=f"{_MOUNT}/src/a.py", old_text="x = 1", new_text="x = 3")
+check((_t32 / "src" / "a.py").read_text() == "x = 3\n", f"edit_file edits it there: {_got[:40]!r}")
+_got = _call(_list_tool, path=_MOUNT)
+check("src/" in _got, f"list_dir lists the repository at {_MOUNT}: {_got[:40]!r}")
+check(_rf(_t32, str(_t32 / "src" / "a.py"), 60_000) == "x = 3\n",
+      "and on the host, the tree's own absolute path reads too")
+
+# The developer's machine, quoted from the conversation: 98 more failed reads.
+# Not translated (G-55), but explained, and a write there creates nothing.
+_dev = "/Users/someone/proj/src/a.py"
+_got = _call(_read_tool2, path=_dev)
+check(_got.startswith(f"not a file: {_dev}") and "relative to it" in _got,
+      f"a read of the developer's path says why it failed: {_got[:60]!r}")
+_got = _call(_write_tool, path=_dev, content="z\n")
+check(_got.startswith("error:") and not (_t32 / "Users").exists(),
+      f"a write there is refused and creates nothing in the tree: {_got[:50]!r}")
+_got = _call(_read_tool2, path="~/.claude/skills/x.md")
+check("relative to it" in _got and not (_t32 / "~").exists(), "so is a path under the developer's home")
+check(_rf(_t32, "src/missing.py", 60_000) == "not a file: src/missing.py",
+      "a relative path that is simply not there is told so, and nothing more")
+
+# What worked before still works.
+check(_rf(_t32, "/src/a.py", 60_000) == "x = 3\n", "a repository path with a stray leading slash still reads")
+(_t32 / "work").mkdir()
+(_t32 / "work" / "notes.txt").write_text("n\n")
+check(_rf(_t32, "work/notes.txt", 60_000, _MOUNT) == "n\n"
+      and _rf(_t32, f"{_MOUNT}/work/notes.txt", 60_000, _MOUNT) == "n\n"
+      and _rf(_t32, "/work/notes.txt", 60_000, _MOUNT) == "n\n",
+      "a repository with its own work/ folder reads under every spelling")
+check(_rf(_t32, f"{_MOUNT}/../../etc/passwd", 60_000, _MOUNT).startswith("error: path escapes"),
+      "and a path that leaves the tree through the mount is still refused")
+check("relative to it" in _RULES and "developer's machine" in _RULES,
+      "the candidate is told where the repository is before it has to find out")
+
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:
     print("  -", f)

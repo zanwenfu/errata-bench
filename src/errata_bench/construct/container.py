@@ -53,6 +53,10 @@ def max_containers() -> int:
 MAX_CONTAINERS = 2
 MEMORY = "2g"
 CPUS = "2"
+# Where the working copy appears inside the container. Named because the file
+# tools run on the host and must agree with it: a candidate that runs `pwd`
+# learns this path and hands it straight back to `read_file` (B-220).
+MOUNT = "/work"
 
 # Public images with a language toolchain already installed. Pinned, because an
 # image that drifts changes what a candidate can run and silently changes the
@@ -177,8 +181,8 @@ class Container:
                 "--env", f"UV_CONCURRENT_BUILDS={CPUS}",
                 "--env", "npm_config_jobs=" + CPUS,
                 "--network", "none",
-                "--workdir", "/work",
-                "-v", f"{self.tree.resolve()}:/work",
+                "--workdir", MOUNT,
+                "-v", f"{self.tree.resolve()}:{MOUNT}",
                 self.image,
                 "sleep", "7200",
             ],
