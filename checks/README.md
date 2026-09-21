@@ -28,7 +28,7 @@ so. It also covers resume from stored answers alone and from stored grades, the 
 directories made before the split, and what happens when a candidate or a
 grading fails.
 
-**`guards_hold.py`** is thirty-five numbered sections, one per guard: what the
+**`guards_hold.py`** is thirty-seven numbered sections, one per guard: what the
 attempt and grade stages refuse to do; the gate asked repeatedly; the
 reference-answer control and when it is not applicable; the clean-pass
 standard and the hedged one priced side by side; permanent git loss; the
@@ -43,7 +43,9 @@ and the shell agreeing about where the repository is; nothing running on the
 developer's machine without an opt-in, and the network screen against a table
 of commands drawn from the corpus; tool caches, refused reads and the trace
 check's claim counts; and the harness version, attempt limits and the counts
-a report puts behind a rate. Its fake judge sets the task's kind the way the
+a report puts behind a rate; each gate reading as much as the candidate is
+shown, the leak gate all of it; and a re-judge's controls asked repeatedly,
+every reading required. Its fake judge sets the task's kind the way the
 real one does -- left at the default, every task here was graded by the
 present-kind rule and an attempt that did no work passed.
 
@@ -60,7 +62,10 @@ and arrives with the fields `build` needs. Everything before `build` had no
 test at all, which is why the 09-20 restructure broke `stage_triage` and
 `stage_locate` (B-212) with every other suite passing. Its fakes return the
 real pydantic models, and every one asserts it was actually called -- a stub
-that silently never runs is how B-151 passed while testing nothing.
+that silently never runs is how B-151 passed while testing nothing. Its fifth
+section drives a leak carried by a tool result, one the developer typed, and
+one that survives its repair through the real screening stage, and reads what
+the row says about each.
 
 **`oracle_over_real_runs.py`** fingerprints every read-only path over the run
 directories on disk: each stored row, admission under both standards,

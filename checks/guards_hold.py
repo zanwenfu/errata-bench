@@ -1371,22 +1371,22 @@ check("The network was unavailable" in _env_note("node:22") and "node:22" in _en
 _keep = (container_mod.image_for, getattr(container_mod, "available"), os.environ.pop("ERRATA_ALLOW_HOST", None))
 container_mod.image_for = lambda lang, **kw: None
 container_mod.available = lambda: True
-_ran = []
+_ran33 = []
 async def _counting_run(task, **kw):
-    _ran.append(task.task_id)
+    _ran33.append(task.task_id)
     return await fake_run(task, **kw)
 attempt_mod.run = _counting_run
 try:
     _p33 = fresh(["task-0"])
     _prog = asyncio.run(stage_attempt(_p33, 10**9, concurrency=2, repeats=1))
-    check(not _ran and not _rows33(_p33.answers) and not _prog.failed,
-          f"with no container and no opt-in the candidate is not run: ran={_ran} failed={_prog.failed}")
+    check(not _ran33 and not _rows33(_p33.answers) and not _prog.failed,
+          f"with no container and no opt-in the candidate is not run: ran={_ran33} failed={_prog.failed}")
     check(any("task-0" in n and "ERRATA_ALLOW_HOST" in n for n in _prog.notes),
           f"and the stage names the task and the way to run it: {[n[:70] for n in _prog.notes]}")
     os.environ["ERRATA_ALLOW_HOST"] = "1"
     asyncio.run(stage_attempt(_p33, 10**9, concurrency=2, repeats=1))
-    check(_ran == ["task-0"] and _rows33(_p33.answers)[0]["environment"] == "host",
-          f"with the opt-in it runs, and the row says where: {_ran}")
+    check(_ran33 == ["task-0"] and _rows33(_p33.answers)[0]["environment"] == "host",
+          f"with the opt-in it runs, and the row says where: {_ran33}")
 finally:
     os.environ.pop("ERRATA_ALLOW_HOST", None)
     container_mod.image_for, container_mod.available = _keep[0], _keep[1]
@@ -1563,9 +1563,81 @@ finally:
 _shown36 = _bx([{"turn_number": 1, "turn_type": "user_prompt", "content": _msg36}], 1)
 check(_MC == 4000 and "early-marker" in _shown36 and "LATE-REQUEST" not in _shown36,
       f"the candidate is shown the first {_MC:,} characters of a message")
+# G-45: and the leak gate reads the whole conversation the candidate is shown,
+# not its last 14,000 characters. Nine of fourteen built tasks are longer.
+_long36 = "HEAD-OF-THE-CONVERSATION " + "work " * 6000 + " the closing stretch"
+_saved_lk = (_lk_mod.configure_client, _agents_mod.Runner)
+_lk_mod.configure_client = lambda: None
+_leak_seen = []
+class _LeakCap:
+    @staticmethod
+    async def run(agent, prompt, **kw):
+        _leak_seen.append(prompt)
+        class _Out:
+            final_output = _Lk(signals_trouble=False, quote="", reasoning="x")
+        return _Out()
+try:
+    _agents_mod.Runner = _LeakCap
+    asyncio.run(_sig(_long36))
+finally:
+    _lk_mod.configure_client, _agents_mod.Runner = _saved_lk
+check(len(_long36) > 30_000 and len(_leak_seen) == 1 and "HEAD-OF-THE-CONVERSATION" in _leak_seen[0]
+      and "the closing stretch" in _leak_seen[0],
+      f"the leak gate is shown all {len(_long36):,} characters of a conversation, head included")
 check(len(_seen36) == 2 and all("early-marker" in q and "LATE-REQUEST" not in q for q in _seen36),
       f"and the answerable and scope gates read that much and no more: "
       f"{['LATE-REQUEST' in q for q in _seen36]}")
+
+print("\n37. a re-judge's controls are asked more than once too, and one bad reading is enough")
+# G-56: the last place a control was asked once. `admitted` -- which the
+# published table is read through -- counted a control that had behaved on any
+# one reading.
+from errata_bench.score.rejudge import admitted as _admitted, PASSING as _PASSING37
+
+def _rejudge_dir():
+    src = Paths(Path(tempfile.mkdtemp()) / "src")
+    out = Paths(Path(tempfile.mkdtemp()) / "out")
+    write([_task], src.tasks)
+    append(out.calibration, {"task_id": "t", "judge_model": "j",
+                             "failed_outcome": "not_solved", "failed_outcome_swapped": "not_solved",
+                             "resolution_outcome": "solved", "resolution_outcome_swapped": "solved"})
+    return src, out
+
+def _control_rows(out):
+    return [r for r in load(out.controls) if not str(r.get("control", "")).startswith("probe:")]
+
+_src37, _out37 = _rejudge_dir()
+_ran["n"] = 0
+_CM2.check = _count_check
+attempt_mod.transcripts_for = lambda tasks: {t.task_id: "conversation" for t in tasks}
+try:
+    asyncio.run(_controls_all(_src37, _out37, "j", 1, passes=3))
+    _r37 = _control_rows(_out37)
+    check(_ran["n"] == 3 * len(CONTROLS) and sorted({r.get("pass") for r in _r37}) == [0, 1, 2]
+          and {r.get("passes") for r in _r37} == {3},
+          f"--passes 3 reads every control three times and says so on the row: {_ran['n']} calls")
+    check(_admitted(_src37.root, _out37, "j", _PASSING37) == {"t"}, "three readings that all behaved admit the task")
+    append(_out37.controls, {**_r37[0], "pass": 3, "ok": False})
+    check(_admitted(_src37.root, _out37, "j", _PASSING37) == set(),
+          "one reading that did not behave, among four, keeps it out")
+
+    # Two of three on record, the third lost to an error: not yet a control.
+    _src37b, _out37b = _rejudge_dir()
+    for _c in CONTROLS:
+        for _i in range(2):
+            append(_out37b.controls, {"task_id": "t", "control": _c.name, "pass": _i, "passes": 3,
+                                      "ok": True, "judge_model": "j"})
+        append(_out37b.controls, {"task_id": "t", "control": _c.name, "pass": 2, "passes": 3,
+                                  "ok": False, "error": "RuntimeError: 429", "judge_model": "j"})
+    check(_admitted(_src37b.root, _out37b, "j", _PASSING37) == set(),
+          "two readings of the three asked for is not a control that behaved")
+    _ran["n"] = 0
+    asyncio.run(_controls_all(_src37b, _out37b, "j", 1, passes=1))
+    check(_ran["n"] == len(CONTROLS) and _admitted(_src37b.root, _out37b, "j", _PASSING37) == {"t"},
+          f"and a re-run at a lower --passes finishes the earlier ask: {_ran['n']} calls")
+finally:
+    _CM2.check = _saved
+    attempt_mod.transcripts_for = _saved_tf
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:

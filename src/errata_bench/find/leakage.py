@@ -18,7 +18,8 @@ not read tone, and the same mistake cost four scoring bugs in a hand-built task
 and three wrong answers in a request detector before it was taken seriously
 here.
 
-So the conversation's own closing stretch is read, once, by a model.
+So the conversation is read by a model -- all of it, as the candidate reads it,
+and as many times as `--passes` says.
 """
 
 from __future__ import annotations
@@ -70,7 +71,7 @@ carries the signal so the judgement can be checked."""
 
 
 async def signals_trouble(excerpt: str, *, model: str = MODEL) -> Leakage:
-    """Read a conversation's closing stretch and say whether it leaks."""
+    """Read the conversation a candidate would be shown and say whether it leaks."""
     from agents import Agent, Runner
 
     configure_client()
@@ -80,7 +81,20 @@ async def signals_trouble(excerpt: str, *, model: str = MODEL) -> Leakage:
         model=model,
         output_type=Leakage,
     )
-    # The end of the conversation is what a candidate reads last and weighs most.
-    tail = excerpt[-14000:]
-    result = await resilient(lambda: Runner.run(agent, f"The closing stretch:\n\n{tail}", max_turns=3))
+    # All of it, because the candidate reads all of it (G-45). This read the
+    # last 14,000 characters, on the reasoning that the end is what a candidate
+    # weighs most -- and nine of the fourteen built tasks are longer than that,
+    # one with 58% of its conversation never looked at. Measured 09-21, three
+    # readings each way. On those nine, the unread part and the whole are both
+    # clean, 87 readings of 87, so no built task was hiding a leak. On the four
+    # rows the gate had called leaking, the whole conversation is the better
+    # reader, not a blunter one: one row the tail now calls clean three times
+    # of three is a leak three of three read whole -- the words are further
+    # back than the tail reaches -- a second goes from two of three to three
+    # of three, a third is a leak either way, and the fourth is clean six times
+    # of six, which makes its stored verdict one reading that did not
+    # reproduce. The instructions are left exactly as measured, "the end of a
+    # conversation" included; a prompt that reads better and was never run is
+    # not an improvement.
+    result = await resilient(lambda: Runner.run(agent, f"The conversation:\n\n{excerpt}", max_turns=3))
     return result.final_output

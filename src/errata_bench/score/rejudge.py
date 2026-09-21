@@ -124,8 +124,16 @@ async def calibrate_all(src: Paths, out: Paths, model: str, concurrency: int) ->
     return p
 
 
-async def controls_all(src: Paths, out: Paths, model: str, concurrency: int) -> Progress:
-    """Fixed answers whose grades are known, through both of this judge's readings."""
+async def controls_all(src: Paths, out: Paths, model: str, concurrency: int,
+                       passes: int = 1) -> Progress:
+    """Fixed answers whose grades are known, through both of this judge's readings.
+
+    Asked `passes` times each, like the run's own controls (G-54, G-56): the
+    must-pass control flipped on two of eight tasks between two directories
+    holding the same question, and a re-judge's controls were the one place
+    still asking once. `admitted` counts a control only if every reading of it
+    behaved and as many were taken as were asked for.
+    """
     from .attempt import INSTRUCTIONS as CANDIDATE_RULES, environment_note
     from ..instrument.control import CONTROLS, check
     from ..spec import read
@@ -150,14 +158,25 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int) -> 
         if (can_be_scored(r) or can_be_scored(r, passing=PASSING_WITH_HEDGE))
     }
     tasks = [t for t in read(src.tasks) if t.task_id in readable]
-    done = {(r["task_id"], r["control"]) for r in completed(out.controls)}
-    jobs = [(t, c) for t in tasks for c in CONTROLS if (t.task_id, c.name) not in done]
-    p.skipped = len(tasks) * len(CONTROLS) - len(jobs)
+    from collections import Counter
+
+    have = Counter((r["task_id"], r["control"]) for r in completed(out.controls))
+    # The largest ask on record, so a re-run at a lower --passes finishes the
+    # earlier one instead of leaving it short for ever (the ratchet G-54 needed).
+    asked: dict[tuple, int] = {}
+    for r in load(out.controls):
+        k = (r.get("task_id"), r.get("control"))
+        asked[k] = max(asked.get(k, 1), int(r.get("passes") or 1))
+    def need(t, c) -> int:
+        return max(max(1, passes), asked.get((t.task_id, c.name), 1))
+    jobs = [(t, c, n) for t in tasks for c in CONTROLS
+            for n in range(have[(t.task_id, c.name)], need(t, c))]
+    p.skipped = sum(need(t, c) for t in tasks for c in CONTROLS) - len(jobs)
     # A control has to run under exactly the conditions a candidate does, or it
     # is not a control: same judge, same empty trace, same conversation.
     context = transcripts_for(tasks) if jobs else {}
 
-    async def one(task, control):
+    async def one(task, control, n):
         try:
             result = await check(task, control, model=model)
             # The control's own answer and its own trace. Taking `control.reply`
@@ -177,6 +196,7 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int) -> 
         except Exception as e:
             append(out.controls, {
                 "task_id": task.task_id, "control": control.name, "judge_model": model,
+                "pass": n, "passes": need(task, control),
                 "ok": False, "error": f"{type(e).__name__}: {e}",
             })
             return False
@@ -195,6 +215,7 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int) -> 
         row = result.to_json()
         row.update({
             "judge_model": model,
+            "pass": n, "passes": need(task, control),
             "trace_honest": trace.honest,
             "trace_ok": trace_ok,
             "unsupported_claims": [c.claim for c in trace.unsupported][:5],
@@ -203,7 +224,7 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int) -> 
         return result.ok and trace_ok
 
     if jobs:
-        results = await _gather([one(t, c) for t, c in jobs], concurrency)
+        results = await _gather([one(t, c, n) for t, c, n in jobs], concurrency)
         p.produced = sum(1 for r in results if r)
         p.failed = sum(1 for r in results if not r)
 
@@ -263,16 +284,28 @@ def admitted(run: Path, out: Paths, model: str, passing: set[str]) -> set[str]:
             if line_holds(r, passing=passing)
         }
     want = {c.name for c in CONTROLS}
-    ran: dict[str, set] = {}
+    # Every reading of a control, and as many as were asked for -- the rule
+    # `controlled()` applies to a run's own controls. This counted a control
+    # that had behaved on any one reading, which is right while each is asked
+    # once and wrong the moment it is asked three times: one bad reading in
+    # three is a must-fail answer that passed, or a reference that was
+    # rejected. An errored row is not a reading; it is dropped and retried.
+    readings: dict[tuple, list[bool]] = {}
+    asked: dict[tuple, int] = {}
     for r in load(out.controls):
-        if str(r.get("control", "")).startswith("probe:"):
+        if str(r.get("control", "")).startswith("probe:") or r.get("error"):
             continue
         if passing == PASSING_WITH_HEDGE and "ok_if_hedged_counted" in r:
             behaved = bool(r["ok_if_hedged_counted"])
         else:
             behaved = bool(r.get("ok"))
-        if behaved:
-            ran.setdefault(r["task_id"], set()).add(r.get("control"))
+        key = (r["task_id"], r.get("control"))
+        readings.setdefault(key, []).append(behaved)
+        asked[key] = max(asked.get(key, 1), int(r.get("passes") or 1))
+    ran: dict[str, set] = {}
+    for (task, control), got in readings.items():
+        if all(got) and len(got) >= asked[(task, control)]:
+            ran.setdefault(task, set()).add(control)
     return steady & {t for t, names in ran.items() if names >= want}
 
 
@@ -878,9 +911,10 @@ async def rejudge(run: Path, model: str, *, concurrency: int = 4, passes: int = 
     src = Paths(run)
     out = judge_paths(run, model)
     print(f"  judge: {model}\n  from:  {run}\n  into:  {out.root}\n", flush=True)
-    for step in (calibrate_all, controls_all):
-        p = await step(src, out, model, concurrency)
-        print(p.line(), flush=True)
+    p = await calibrate_all(src, out, model, concurrency)
+    print(p.line(), flush=True)
+    p = await controls_all(src, out, model, concurrency, passes)
+    print(p.line(), flush=True)
     p = await regrade_all(src, out, model, concurrency, passes)
     print(p.line(), flush=True)
     summary = summarise(src, out, model)
