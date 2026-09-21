@@ -27,7 +27,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from .reader import MODEL, configure_client, with_field_guide
+from .reader import MODEL, configure_client, resilient, with_field_guide
 
 
 class Triage(BaseModel):
@@ -92,5 +92,5 @@ async def triage(excerpt: str, *, model: str = MODEL) -> Triage:
     # Only the tail matters: whether the agent has acted, and what the developer
     # said about it. The reader gets the whole conversation afterwards, if this
     # says it is worth having.
-    result = await Runner.run(agent, f"The conversation:\n\n{excerpt[-9000:]}", max_turns=3)
+    result = await resilient(lambda: Runner.run(agent, f"The conversation:\n\n{excerpt[-9000:]}", max_turns=3))
     return result.final_output

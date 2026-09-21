@@ -203,14 +203,26 @@ def read(path: Path) -> list[Task]:
     # traceback rather than "nothing to do".
     if not path.exists():
         return []
-    out = []
-    for line in path.read_text().splitlines():
-        if not line.strip():
-            continue
+    # Through the shared reader, which decodes per line from bytes. This used
+    # `read_text()`, which decodes the whole file in one call, so a row cut
+    # inside a UTF-8 sequence raised UnicodeDecodeError out of here and lost
+    # the entire task list rather than the torn row -- B-165, in the reader for
+    # tasks.jsonl. `write` was pulled into the shared writer by B-182 and this
+    # was left behind. tasks.jsonl arrives by other routes than this code:
+    # candidate directories are copied in, and an interrupted copy is exactly
+    # the shape that produces one.
+    from .pipeline import load
+
+    out, dropped = [], 0
+    for row in load(path):
         try:
-            out.append(Task.from_json(json.loads(line)))
-        except (ValueError, TypeError):
-            continue
+            out.append(Task.from_json(row))
+        except (ValueError, TypeError, KeyError):
+            dropped += 1
+    # Said out loud. Dropped with a bare `continue`, a task vanishing from the
+    # file shrank the benchmark with nothing on screen.
+    if dropped:
+        print(f"  note: {dropped} row(s) in {path.name} are not readable as tasks")
     return out
 
 

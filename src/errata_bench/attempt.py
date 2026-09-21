@@ -603,6 +603,13 @@ async def run(
         ran_out = False
         try:
             try:
+                # Deliberately not wrapped in `resilient`, unlike every other
+                # model call in the pipeline. A retry here would resume a
+                # session that has already written files into a live container
+                # and already spent turns of its budget, so the second run
+                # would start from a tree the first one changed. The retry for
+                # this one lives at the stage, where MAX_ATTEMPT_FAILURES
+                # discards the whole attempt and starts a fresh container.
                 result = await Runner.run(
                     agent,
                     prompt,

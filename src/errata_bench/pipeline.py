@@ -660,8 +660,15 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
     p = Progress("screen")
     t0 = time.monotonic()
     rows = [r for r in load(paths.signatures) if r.get("kind")]
-    done = already_done(paths.screened)
-    todo = [r for r in rows if key_of(r) not in done][:limit]
+    # The pass count is part of what makes a screened row done. Without it,
+    # `--only screen --passes 5` over a directory screened at one pass reported
+    # "51 already done" and changed nothing, while the user believed the
+    # stricter unanimity rule had been applied. A row screened at fewer passes
+    # than asked for is re-screened; one screened at more is left alone.
+    done = {
+        key_of(r): r.get("screen_passes", 1) for r in completed(paths.screened)
+    }
+    todo = [r for r in rows if done.get(key_of(r), 0) < passes][:limit]
     p.skipped = len(rows) - len(todo)
     if not todo:
         p.took_s = time.monotonic() - t0
@@ -728,16 +735,33 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
                             str(k): v for k, v in red.rewritten.items()
                         }
                         out["redaction_worked"] = True
+            out["screen_passes"] = passes
             append(paths.screened, out)
             return True
         except Exception as e:
             out["error"] = f"{type(e).__name__}: {e}"
+            out["screen_passes"] = passes
             append(paths.screened, out)
             return False
 
     results = await _gather([one(r) for r in todo], concurrency)
     p.produced = sum(1 for r in results if r)
     p.failed = sum(1 for r in results if not r)
+    # Re-screening appends, so the row it supersedes is still in the file and
+    # `build` would read the same conversation twice -- once at one pass and
+    # once at five. Only the most thoroughly screened reading of each row is
+    # kept, and a tie keeps the later one.
+    with held(paths.screened):
+        rows_now = load(paths.screened)
+        best: dict[tuple, dict] = {}
+        for r in rows_now:
+            k = key_of(r)
+            if k not in best or r.get("screen_passes", 1) >= best[k].get("screen_passes", 1):
+                best[k] = r
+        kept = list(best.values())
+        if len(kept) != len(rows_now):
+            replace(paths.screened, kept)
+            p.notes.append(f"dropped {len(rows_now) - len(kept)} superseded screenings")
     p.took_s = time.monotonic() - t0
     return p
 
@@ -889,10 +913,20 @@ async def stage_calibrate(paths: Paths, limit: int, concurrency: int) -> Progres
     p = Progress("calibrate")
     t0 = time.monotonic()
     tasks = read(paths.tasks)
-    done = {r["task_id"] for r in completed(paths.calibration)}
+    grader = judge_model()
+    # Keyed on the judge as well as the task. Calibration rows already store
+    # `judge_model` because "the verdict belongs to that judge and says nothing
+    # about another one", but the resume key did not read it, so pointing
+    # ERRATA_JUDGE_MODEL at a different judge reported "9 already done", took
+    # no readings, and graded against the previous judge's admission gate. A
+    # row that predates the field is treated as this judge's, which is what it
+    # was.
+    done = {
+        r["task_id"] for r in completed(paths.calibration)
+        if r.get("judge_model", grader) == grader
+    }
     todo = [t for t in tasks if t.task_id not in done][:limit]
     p.skipped = len(tasks) - len(todo)
-    grader = judge_model()
 
     async def one(t):
         try:
@@ -990,7 +1024,16 @@ async def stage_control(paths: Paths, limit: int, concurrency: int) -> Progress:
     # stage -- so one transient API error would retire a sound task permanently,
     # because resume keys on (task, control) regardless of why the row exists.
     # Errored rows are dropped and retried, exactly as errored attempts are.
-    done = {(r["task_id"], r["control"]) for r in completed(paths.controls)}
+    #
+    # Keyed on the judge too, and the rows now record it. Without it a control
+    # scored by one judge was resumed as done for the next, and unlike
+    # calibration there was no `judge_model` on the row to notice it
+    # afterwards -- the mismatch was undetectable.
+    grader = judge_model()
+    done = {
+        (r["task_id"], r["control"]) for r in completed(paths.controls)
+        if r.get("judge_model", grader) == grader
+    }
     jobs = [(t, c) for t in tasks for c in CONTROLS if (t.task_id, c.name) not in done][:limit]
     p.skipped = len(tasks) * len(CONTROLS) - len(jobs)
     if not jobs:
@@ -999,13 +1042,15 @@ async def stage_control(paths: Paths, limit: int, concurrency: int) -> Progress:
 
     async def one(task, control):
         try:
-            result = await check(task, control, model=judge_model())
-            append(paths.controls, {**result.to_json(), "task_fingerprint": fingerprint(task)})
+            result = await check(task, control, model=grader)
+            append(paths.controls, {**result.to_json(), "judge_model": grader,
+                                    "task_fingerprint": fingerprint(task)})
             return result.ok
         except Exception as e:
             append(
                 paths.controls,
                 {"task_id": task.task_id, "control": control.name, "ok": False,
+                 "judge_model": grader,
                  "error": f"{type(e).__name__}: {e}",
                  "detail": f"the control could not run: {type(e).__name__}"},
             )
@@ -1697,13 +1742,19 @@ def stage_report(paths: Paths) -> Progress:
             "counted -- check calibration.jsonl and controls.jsonl exist and are complete"
         )
     # Through an atomic writer like every other file: a kill during this left a
-    # half-written report.json, which `run.py status` then died on.
-    tmp = paths.report.with_suffix(".json.tmp")
+    # half-written report.json, which `run.py status` then died on. Named for
+    # this process, like `replace`, so two writers cannot race on one name.
+    tmp = paths.report.with_suffix(f".json.{os.getpid()}.tmp")
     tmp.write_text(json.dumps(report, indent=2))
     tmp.replace(paths.report)
     p.produced = len(scoreable)
     p.took_s = time.monotonic() - t0
-    p.notes = [json.dumps(report["funnel"]), json.dumps(report["outcomes"])]
+    # Extend, not assign -- the note appended above says why a directory full
+    # of graded work counts nothing, and assigning over it threw away the one
+    # line that distinguishes a gated-out run from an empty one. A directory
+    # holding 27 graded attempts printed an all-zero funnel and no explanation,
+    # which is the B-135 shape `stage_build` carries a comment about.
+    p.notes.extend([json.dumps(report["funnel"]), json.dumps(report["outcomes"])])
     return p
 
 

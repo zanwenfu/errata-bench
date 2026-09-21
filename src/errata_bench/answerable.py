@@ -27,7 +27,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from .reader import MODEL, configure_client, with_field_guide
+from .reader import MODEL, configure_client, resilient, with_field_guide
 
 
 class Answerable(BaseModel):
@@ -79,5 +79,5 @@ async def asks_for_something(message: str, *, model: str = MODEL) -> Answerable:
         model=model,
         output_type=Answerable,
     )
-    result = await Runner.run(agent, f"The developer's message:\n\n{message[:8000]}", max_turns=3)
+    result = await resilient(lambda: Runner.run(agent, f"The developer's message:\n\n{message[:8000]}", max_turns=3))
     return result.final_output

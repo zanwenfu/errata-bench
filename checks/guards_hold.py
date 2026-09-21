@@ -754,6 +754,71 @@ for _name in ("cand-grok", "cand-kimi", "cand-deepseek"):
     check(_s["counted"]["passed"] <= _s["a_pass_may_be_hedged"]["attempts"],
           f"{_name}: counted passes are priced by the rule in force")
 
+print("\n26. a throttled endpoint is retried, not recorded as a failure")
+# Azure answers a throttled deployment with HTTP 200 and an empty `choices`,
+# and the SDK raises ModelBehaviorError("... has no choices"). Only the two
+# grading calls were wrapped; the screening gates, triage, signature, locate,
+# redact and the read stage were not. `resilient`'s own docstring records what
+# that cost once: one regrade lost all thirty-six of its grading calls in seven
+# seconds, while the same call answered when made alone.
+#
+# Asserted by making the call fail once and checking the reader still returns,
+# rather than by looking for the word `resilient` in the source.
+import agents as _agents_mod
+
+_slept = []
+
+async def _no_sleep(s):
+    _slept.append(s)
+
+_real_sleep = asyncio.sleep
+asyncio.sleep = _no_sleep
+
+class _Throttled(Exception):
+    pass
+
+def _flaky(answer):
+    """Raises the throttle once, then answers."""
+    state = {"n": 0}
+
+    class _R:
+        @staticmethod
+        async def run(agent, prompt, **kw):
+            state["n"] += 1
+            if state["n"] == 1:
+                raise _Throttled("ChatCompletion response has no choices")
+            class _Out:
+                final_output = answer
+            return _Out()
+    return _R, state
+
+from errata_bench.answerable import Answerable as _An, asks_for_something as _asks
+from errata_bench.leakage import Leakage as _Lk, signals_trouble as _sig
+from errata_bench.scope import Scope as _Sc, in_scope as _insc
+from errata_bench.triage import Triage as _Tr, triage as _tri
+
+_saved_cc = reader.configure_client
+reader.configure_client = lambda: None
+try:
+    for _label, _fn, _args, _answer in (
+        ("answerable", _asks, ("do the thing",), _An(asks_for_something=True, request="r", reasoning="x")),
+        ("scope", _insc, ("req", "def"), _Sc(within_scope=True, reason="x")),
+        ("leakage", _sig, ("text",), _Lk(signals_trouble=False, quote="", reasoning="x")),
+    ):
+        _R, _state = _flaky(_answer)
+        _agents_mod.Runner = _R
+        try:
+            _got = asyncio.run(_fn(*_args))
+            check(_state["n"] == 2 and _got is _answer,
+                  f"{_label}: retried once and answered (called {_state['n']}x)")
+        except _Throttled:
+            check(False, f"{_label}: a throttle still reaches the caller as an error")
+finally:
+    reader.configure_client = _saved_cc
+    asyncio.sleep = _real_sleep
+
+check(bool(_slept), f"and it waits between tries rather than hammering ({len(_slept)} waits)")
+
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:
     print("  -", f)

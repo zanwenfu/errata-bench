@@ -481,7 +481,7 @@ async def read_pushback(
         f"The developer pushed back at turn {pushback_turn}. Everything below is "
         f"the conversation up to and including that moment.\n\n{excerpt}"
     )
-    result = await Runner.run(agent, prompt, max_turns=max_turns)
+    result = await resilient(lambda: Runner.run(agent, prompt, max_turns=max_turns))
     return result.final_output
 
 

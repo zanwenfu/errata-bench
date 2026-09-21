@@ -50,7 +50,7 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, Field
 
-from .reader import MODEL, configure_client, with_field_guide
+from .reader import MODEL, configure_client, resilient, with_field_guide
 
 
 class Quote(BaseModel):
@@ -279,5 +279,5 @@ async def locate(
         f"to the failure, the failing answer, and where the defect was resolved -- "
         f"or establish that it never was.\n\n{excerpt}"
     )
-    result = await Runner.run(agent, prompt, max_turns=4)
+    result = await resilient(lambda: Runner.run(agent, prompt, max_turns=4))
     return result.final_output

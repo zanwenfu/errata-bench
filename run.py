@@ -23,6 +23,7 @@ import argparse
 import asyncio
 import json
 import sys
+from collections.abc import Sequence
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent / "src"))
@@ -52,7 +53,7 @@ def find_moments(
     limit: int,
     out: Path,
     *,
-    skip_seen: Path | None = None,
+    skip_seen: Path | Sequence[Path] | None = None,
     kinds: tuple[str, ...] = PUSHBACK_KINDS,
     min_agent_turns: int = 3,
     max_per_repo: int = 0,
@@ -72,9 +73,13 @@ def find_moments(
 
     from errata_bench.corpus import CORPUS
 
-    seen = set()
-    if skip_seen and skip_seen.exists():
-        seen = {(r.get("session_id"), r.get("turn_number")) for r in load(skip_seen)}
+    # One file or many: `--exclude` names one, `--fresh` hands over every
+    # moments file already on disk.
+    sources = [skip_seen] if isinstance(skip_seen, Path) else list(skip_seen or [])
+    seen = {
+        (r.get("session_id"), r.get("turn_number"))
+        for f in sources if f.exists() for r in load(f)
+    }
 
     repo_of = {}
     table = pq.read_table(CORPUS / "sessions.parquet", columns=["session_id", "repo_id"])
@@ -322,10 +327,20 @@ def main() -> None:
         return
 
     if args.command == "moments":
-        skip = Path(args.exclude) if args.exclude else None
+        # `--fresh` was parsed and never read: two runs of `moments --limit 3`,
+        # one with it and one without, produced identical files, and two of
+        # those three moments had already been read at roughly eight model
+        # calls each. It names no file of its own, so it means every moments
+        # file already on disk, this run's included.
+        skip: list[Path] = [Path(args.exclude)] if args.exclude else []
+        if args.fresh:
+            skip += sorted(p for p in Path("runs").glob("*/moments.jsonl"))
+            skip += [Path("runs/moments.jsonl")]
         kinds = tuple(k.strip() for k in args.kinds.split(",") if k.strip())
         n = find_moments(args.limit, paths.moments, skip_seen=skip, kinds=kinds,
                          max_per_repo=args.max_per_repo)
+        if args.fresh:
+            print(f"  skipping moments already in {len([p for p in skip if p.exists()])} file(s)")
         print(f"  collected {n} moments -> {paths.moments}")
         return
 

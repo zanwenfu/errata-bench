@@ -25,7 +25,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from .reader import MODEL, configure_client, with_field_guide
+from .reader import MODEL, configure_client, resilient, with_field_guide
 
 
 class Leakage(BaseModel):
@@ -82,5 +82,5 @@ async def signals_trouble(excerpt: str, *, model: str = MODEL) -> Leakage:
     )
     # The end of the conversation is what a candidate reads last and weighs most.
     tail = excerpt[-14000:]
-    result = await Runner.run(agent, f"The closing stretch:\n\n{tail}", max_turns=3)
+    result = await resilient(lambda: Runner.run(agent, f"The closing stretch:\n\n{tail}", max_turns=3))
     return result.final_output
