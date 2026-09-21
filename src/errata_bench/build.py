@@ -271,7 +271,12 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
             kind=row["kind"],
             path=row.get("path") or "",
             token=row.get("token") or "",
-            is_symlink_defect=bool(row.get("symlink")),
+            # The field `stage_signature` writes is `is_symlink_defect`, from
+            # `Signature.model_dump()`. Reading `symlink` found nothing, so
+            # every derived True became a definite False -- B-122's shape -- and
+            # `probe_for` never reached its symlink branch, falling through to
+            # the token and path probes instead.
+            is_symlink_defect=bool(row.get("is_symlink_defect")),
             reasoning=row.get("sig_reasoning") or row.get("reasoning") or "",
         )
         task_id = f"{repo_id.replace('/', '-')}-{complaint}"

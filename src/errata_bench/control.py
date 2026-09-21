@@ -50,15 +50,64 @@ from .attempt import Attempt
 
 # The original agent's tool names, as the corpus records them, against the
 # three things `analyse` asks about: did it look, did it run, did it write.
-RAN = {"bash", "bashoutput", "run_command", "shell", "terminal"}
-WROTE = {"edit", "write", "multiedit", "notebookedit", "write_file", "edit_file", "applypatch"}
+#
+# Measured over all 355,942 tool calls in the corpus: 425 distinct names. The
+# sets below are normalised by `_plain`, so one entry covers `apply_patch`,
+# `applypatch` and `mcp__acp__apply_patch` alike.
+RAN = {
+    "bash", "bashoutput", "runcommand", "shell", "terminal",
+    # Named in the corpus and previously read as "looked at something":
+    # run_shell_command (219 calls), the context-mode plugin's execute family
+    # (652), mcp__acp__Bash (24), and a handful of exec-a-thing tools.
+    "runshellcommand", "execute", "executefile", "batchexecute",
+    "ctxexecute", "ctxexecutefile", "executecode", "execinpod",
+    "getterminaloutput",
+}
+WROTE = {
+    "edit", "write", "multiedit", "notebookedit", "writefile", "editfile",
+    # apply_patch is 2,053 calls. Only `applypatch` was listed, and the name
+    # in the corpus has the underscore, so every one of them read as a file
+    # the agent had merely looked at.
+    "applypatch", "strreplace", "strreplaceeditor", "createfile",
+    "insertbeforesymbol", "insertaftersymbol", "replacesymbolbody",
+}
+
+# Tools whose name says write or edit but whose subject is not the repository:
+# a todo list, a memory store, an issue tracker, a database. TodoWrite alone is
+# 2,433 calls, and counting it as work done would let an agent that only
+# planned read as an agent that changed the code -- the opposite of the error
+# above and a worse one, since `write_file` is half of `did_the_work`.
+NOT_THE_REPOSITORY = {
+    "todowrite", "writetodos", "todoread",
+    "writememory", "editmemory", "readmemory", "deletememory",
+    "issuewrite", "statewrite", "geteditorstate",
+    "executewritequery", "executereadquery",
+}
+
+
+def _plain(name: str) -> str:
+    """A tool name reduced to its verb.
+
+    Strips an `mcp__<server>__` or `mcp_<server>_` wrapper and every separator,
+    so the vocabularies above do not have to enumerate each host's spelling.
+    """
+    low = name.lower()
+    if low.startswith("mcp__"):
+        # mcp__<server>__<tool>, where the server part may itself hold single
+        # underscores. Split on the double underscore only: splitting on every
+        # one turns `mcp__plugin_github_github__issue_write` into `write` and
+        # files an issue tracker update as a change to the repository.
+        low = low.split("__")[-1]
+    return "".join(ch for ch in low if ch.isalnum())
 
 
 def _as_harness_tool(name: str) -> str:
-    low = name.lower()
-    if low in RAN:
+    plain = _plain(name)
+    if plain in NOT_THE_REPOSITORY:
+        return "read_file"
+    if plain in RAN:
         return "run_command"
-    if low in WROTE:
+    if plain in WROTE:
         return "write_file"
     return "read_file"
 

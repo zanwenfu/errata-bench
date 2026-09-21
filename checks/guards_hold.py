@@ -678,6 +678,44 @@ try:
 finally:
     os.chmod(_tree / "locked.bin", 0o644)
 
+print("\n23. a recovered trace is read by what the tool did, not by its spelling")
+# `analyse` sets `executed` only from a call named run_command and `wrote` only
+# from write_file, so a criterion control whose agent worked through a tool
+# this mapping misses is shown to the judge as an accepted answer that ran
+# nothing. Counts are from a full pass over all 355,942 tool calls in the
+# corpus.
+from errata_bench.control import _as_harness_tool
+
+for _name, _want, _why in (
+    ("apply_patch", "write_file", "2,053 calls, and only `applypatch` was listed"),
+    ("run_shell_command", "run_command", "219 calls"),
+    ("mcp__acp__Bash", "run_command", "an MCP host's spelling of a shell"),
+    ("mcp__acp__Edit", "write_file", "and of an edit"),
+    ("mcp__plugin_context-mode_context-mode__execute", "run_command", "652 calls"),
+    ("Bash", "run_command", "the ordinary one still works"),
+    ("Edit", "write_file", "and so does this"),
+    ("Grep", "read_file", "looking is still looking"),
+    # The other direction, and the worse one: `write_file` is half of
+    # did_the_work, so counting a todo list as a code change lets an agent that
+    # only planned read as one that fixed something.
+    ("TodoWrite", "read_file", "2,433 calls, and it writes a todo list"),
+    ("mcp__serena__write_memory", "read_file", "a memory store is not the repository"),
+    ("mcp__plugin_github_github__issue_write", "read_file", "nor is an issue tracker"),
+):
+    _got = _as_harness_tool(_name)
+    check(_got == _want, f"{_name} -> {_got} ({_why})")
+
+print("\n24. a derived signature field is read under the name it is written with")
+from errata_bench.signature import Signature as _Sig
+
+check("is_symlink_defect" in _Sig.model_fields,
+      "the field signature.py declares is is_symlink_defect")
+_sig_rows = Path("runs/signatures.jsonl")
+if _sig_rows.exists():
+    _hits = [r for r in load(_sig_rows) if r.get("is_symlink_defect")]
+    check(all(r.get("symlink") is None for r in _hits),
+          f"nothing writes a `symlink` key ({len(_hits)} real symlink defects stored)")
+
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:
     print("  -", f)
