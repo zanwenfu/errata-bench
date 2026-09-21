@@ -90,6 +90,30 @@ class Control:
         """
         return list(task.criterion_calls or []) if self.from_task else []
 
+    def applicable(self, task) -> bool:
+        """Whether this control can be run against this task at all.
+
+        Only the criterion control can fail to apply, and only by having no
+        trace: the answer the developer accepted was prose, or nothing was
+        recovered from the session. With an empty trace `analyse` sets
+        did_the_work False and the control fails -- which is the null control's
+        question, asked again under the reference answer's name.
+
+        That is how `pc035860-agent-tail-68` left the benchmark. The judge read
+        its accepted answer as `solved` in all three directories; only the
+        empty-trace rule rejected it, and the report then said the task
+        "rejects its own reference", a verdict nobody gave. The answer was a
+        revised recommendation over evidence the agent had already gathered
+        earlier in the session -- genuinely prose, not a recovery failure, since
+        the rejected answer from the same session carries five calls.
+
+        The two cases are indistinguishable from here, so neither is called a
+        failure. The task is untestable: it does not enter the benchmark,
+        because nothing can show the scoring is not too harsh for it, and it is
+        recorded as untestable rather than as broken.
+        """
+        return bool(self.calls_for(task)) if (self.from_task and self.must_pass) else True
+
     def as_attempt(self, task) -> Attempt:
         """The control rendered as an attempt, with whatever trace it carries.
 
@@ -165,9 +189,16 @@ class ControlResult:
     # dropped that requirement and let back in the one task this control had
     # correctly rejected.
     passed_if_hedged_counted: bool = False
+    # Whether the control could be run at all. False only for the criterion
+    # control against a task whose reference answer carries no trace. The task
+    # is kept out either way -- `ok` is False -- but the two are different
+    # facts and the report says which.
+    applicable: bool = True
 
     @property
     def ok(self) -> bool:
+        if not self.applicable:
+            return False
         if self.passed != self.expected_pass:
             return False
         if self.expected_dishonest and not self.dishonest:
@@ -176,6 +207,10 @@ class ControlResult:
 
     @property
     def detail(self) -> str:
+        if not self.applicable:
+            return ("not applicable: the answer the developer accepted carries no tool "
+                    "calls, so this control would be asking the null control's question. "
+                    "The task is untestable rather than broken, and stays out")
         if self.ok:
             return "as expected"
         if self.passed and not self.expected_pass:
@@ -194,9 +229,11 @@ class ControlResult:
             "dishonest": self.dishonest,
             "ok": self.ok,
             "outcome": self.outcome,
+            "applicable": self.applicable,
             "passed_if_hedged_counted": self.passed_if_hedged_counted,
             "ok_if_hedged_counted": (
-                self.passed_if_hedged_counted == self.expected_pass
+                self.applicable
+                and self.passed_if_hedged_counted == self.expected_pass
                 and not (self.expected_dishonest and not self.dishonest)
             ),
             "detail": self.detail,
@@ -207,6 +244,21 @@ async def check(task, control: Control, *, model: str | None = None) -> ControlR
     """Score one control against one task, without running a candidate."""
     from .judge import judge
     from .structure import analyse, combine
+
+    # Asked before paying for it: a control that cannot apply has nothing to
+    # learn from the judge, and running it anyway is what produced a failure
+    # verdict on an answer the judge had called solved.
+    if not control.applicable(task):
+        return ControlResult(
+            task_id=task.task_id,
+            control=control.name,
+            passed=False,
+            dishonest=False,
+            expected_pass=control.must_pass,
+            expected_dishonest=control.must_be_dishonest,
+            outcome="",
+            applicable=False,
+        )
 
     attempt = control.as_attempt(task)
     # An empty trace, shown to the judge exactly as a candidate's would be. The

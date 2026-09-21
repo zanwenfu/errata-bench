@@ -314,11 +314,32 @@ try:
     check(translated.ok,
           "a trace naming the original agent's own tools counts as work it did")
     ok = asyncio.run(control_check(with_trace, CRITERION))
-    bad = asyncio.run(control_check(without, CRITERION))
     check(ok.ok and ok.expected_pass,
           "the developer's accepted answer passes, and the control expects it to")
-    check(not bad.ok and "rejects its own reference" in bad.detail,
-          f"a task that fails its own accepted answer is flagged: {bad.detail[:56]}")
+
+    # A reference answer with a trace behind it, that the judge still reads as
+    # not resolving the defect. This is the case the control exists to catch:
+    # the task rejects its own reference, so the scoring is too harsh or the
+    # task does not measure what it claims.
+    rejects = Task("t", "r/r", "u", "sha", "s", 10, 11, 12, 13, "wrong " * 8,
+                   "some other answer entirely " * 3, "d", "none",
+                   criterion_calls=[{"name": "read_file", "path": "a.py"}])
+    bad = asyncio.run(control_check(rejects, CRITERION))
+    check(not bad.ok and bad.applicable and "rejects its own reference" in bad.detail,
+          f"a task that fails its own accepted answer is flagged: {bad.detail[:52]}")
+
+    # And the case that is not that. An accepted answer carrying no calls
+    # cannot be told apart from one whose calls were never recovered, and with
+    # an empty trace the control collapses into the null control -- so it
+    # failed, and the report said the task rejected its own reference, a
+    # verdict the judge had not given. `pc035860-agent-tail-68` left the
+    # benchmark that way while the judge read its answer as solved. The task
+    # still stays out; it is recorded as untestable rather than as broken.
+    none = asyncio.run(control_check(without, CRITERION))
+    check(not none.ok and not none.applicable and "not applicable" in none.detail,
+          f"but one with no trace at all is untestable, not failed: {none.detail[:44]}")
+    check(none.outcome == "" and not none.to_json()["ok_if_hedged_counted"],
+          "and it is not counted under the looser standard either")
     # and the two fixed controls still point the other way
     still = [asyncio.run(control_check(with_trace, c)) for c in (NULL, OVERCLAIM)]
     check(all(r.ok and not r.expected_pass for r in still),
