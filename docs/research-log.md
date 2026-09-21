@@ -2100,20 +2100,36 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
 
 ## 11b. The size of the pool, measured 09-20
 
+**A note on the word.** A **moment** is one turn in one session: a message
+where the developer objects to what the agent has just done. It is stored as a
+pointer, not as text — `{session_id, turn_number, repo_id, kind,
+agent_turns_before}` — and everything downstream is derived from it. One
+moment becomes at most one task. "Pushback", "objection" and "complaint"
+elsewhere in this log all mean the same thing; *moment* is the word the code
+uses and the one to prefer.
+
 Everything below is counted from the corpus and from every run directory on
 disk, not estimated.
 
-| | |
-|---|---|
-| sessions in SWE-chat | 5,851 across 201 repositories |
-| conversation turns | 2,692,480 |
-| sessions whose first pushback is one we collect | 4,111 (70%) |
-| **of those, with a known repository and at least 3 agent turns before the pushback** | **2,264, across 161 repositories** |
+**How 2.7 million turns become 2,264 moments**
 
-That 2,264 is the addressable pool: one moment per session, the first genuine
-pushback in it. Everything else in the corpus is either a session with no
-objection, an objection about work from before the transcript starts, or a
-repository the corpus cannot name.
+| turns | filter | why |
+|---:|---|---|
+| 2,692,480 | every turn in the corpus | |
+| 62,544 | ...a message from the developer | the rest is the agent and its tools |
+| 24,390 | ...labelled as pushing back | `failure_report`, `rejection`, `correction`, `takeover` |
+| 4,111 | ...the **first** one in its session | a later objection sits in a conversation already full of friction, which the leak gate then rejects |
+| 4,095 | ...whose repository the corpus names | without it there is no code to rebuild |
+| **2,264** | ...with **3 or more agent turns before it** | otherwise the agent has done nothing to object to |
+
+The last filter looks severe — it removes 45% — but it is not a knob worth
+turning. The distribution behind it is bimodal: **1,615 of those moments have
+*zero* agent turns before them**, session-opening complaints about work from
+before the transcript starts, and 1,479 have ten or more. Relaxing the
+threshold from 3 to 1 adds only 216 moments, worth about six tasks.
+
+So **2,264 moments across 161 repositories** is the addressable pool, and it is
+close to the true ceiling rather than an artefact of a threshold.
 
 **What has been drawn from it so far**
 
@@ -2363,3 +2379,10 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   moment in 37 becomes a task, so the corpus supports on the order of 60 and we
   have 15. D-28 extends repeated asking to the screening gates, which G-52
   showed were deciding task existence with a few per cent of noise each.
+- **09-20** — §11b given its derivation, and the word settled. A *moment* is
+  one turn: the developer's first objection in a session, stored as a pointer.
+  2,692,480 turns → 62,544 developer messages → 24,390 pushbacks → 4,111 firsts
+  → 4,095 with a named repository → **2,264 with enough agent work behind them**.
+  The last filter removes 45%, and it should: 1,615 of the removed have *zero*
+  agent turns before the objection. Relaxing it from 3 to 1 buys 216 moments,
+  about six tasks.
