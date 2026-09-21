@@ -215,8 +215,13 @@ def sweep(prefix: str = "errata-") -> int:
     stage, because the closing sweep now fires as soon as the candidates
     finish rather than after the last judge call.
     """
+    # Anchored. Docker's `name=` is a substring match, so `name=errata-`
+    # also selects the developer's own `my-errata-cache` or `team-errata-db-1`
+    # -- and `_abandoned` then answered True for them, because they are not in
+    # our `errata-<pid>-<random>` form. Between them that is `docker rm -f` on
+    # an unrelated container on someone's laptop.
     p = subprocess.run(
-        ["docker", "ps", "-a", "--filter", f"name={prefix}", "--format", "{{.ID}} {{.Names}}"],
+        ["docker", "ps", "-a", "--filter", f"name=^{prefix}", "--format", "{{.ID}} {{.Names}}"],
         capture_output=True,
         text=True,
         timeout=30,
@@ -228,7 +233,9 @@ def sweep(prefix: str = "errata-") -> int:
         if len(parts) < 2:
             continue
         container_id, name = parts[0], parts[1]
-        if not _abandoned(name, mine):
+        # Belt and braces: the filter is anchored above, but this function is
+        # the one that decides to destroy something.
+        if not name.startswith(prefix) or not _abandoned(name, mine):
             continue
         subprocess.run(["docker", "rm", "-f", container_id], capture_output=True, timeout=30)
         removed += 1
@@ -238,13 +245,18 @@ def sweep(prefix: str = "errata-") -> int:
 def _abandoned(name: str, mine: int) -> bool:
     """Whether this container is ours, or belongs to a process that has gone.
 
-    Names are `errata-<pid>-<random>`. A name in the older form carries no pid;
-    it can only come from a run that ended before this change, so it is treated
-    as abandoned.
+    Names are `errata-<pid>-<random>`, and nothing else is touched. This used
+    to answer True for any name not in that form, on the grounds that it must
+    predate the pid -- which also made `my-errata-cache`, `team-errata-db-1`
+    and a plain `errata-cache` read as abandoned runs of this benchmark and
+    handed them to `docker rm -f`. The pre-pid form is extinct, and a
+    container this cannot identify is better left alone than destroyed: the
+    cost of being wrong one way is some memory, and the other way is
+    somebody's data.
     """
     bits = name.split("-")
-    if len(bits) < 3 or not bits[1].isdigit():
-        return True
+    if len(bits) < 3 or bits[0] != "errata" or not bits[1].isdigit():
+        return False
     owner = int(bits[1])
     if owner == mine:
         return True

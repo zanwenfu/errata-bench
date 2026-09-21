@@ -104,6 +104,4 @@ def session_commits() -> dict[str, list[str]]:
     return out
 
 
-def commit_shas_in_session(session_id: str) -> list[str]:
-    """Commits attributable to one session, oldest position first."""
-    return session_commits().get(session_id, [])
+

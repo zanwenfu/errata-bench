@@ -32,6 +32,7 @@ regrade resumes, and a failed call is retried on the next invocation.
 from __future__ import annotations
 
 import json
+import os
 import re
 import time
 from pathlib import Path
@@ -771,7 +772,12 @@ async def rejudge(run: Path, model: str, *, concurrency: int = 4, passes: int = 
     p = await regrade_all(src, out, model, concurrency, passes)
     print(p.line(), flush=True)
     summary = summarise(src, out, model)
-    out.report.write_text(json.dumps(summary, indent=2))
+    # Temp and rename, like every other file this writes. B-197 fixed exactly
+    # this for `stage_report` and left the rejudge summary in place, so a kill
+    # during the write leaves half a report.json behind.
+    tmp = out.report.with_suffix(f".json.{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(summary, indent=2))
+    tmp.replace(out.report)
     return summary
 
 

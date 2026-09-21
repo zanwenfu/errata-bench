@@ -74,18 +74,6 @@ class CommitInfo:
     commit_sha: str = ""
 
 
-def load_sessions() -> dict[str, SessionInfo]:
-    t = pq.read_table(
-        CORPUS / "sessions.parquet", columns=["session_id", "repo_id", "created_at"]
-    )
-    ns = _to_ns(t.column("created_at"), t.schema.field("created_at").type)
-    return {
-        sid: SessionInfo(sid, rid, v)
-        for sid, rid, v in zip(
-            t.column("session_id").to_pylist(), t.column("repo_id").to_pylist(), ns
-        )
-    }
-
 
 def load_commits_by_repo(*, with_patches: bool = False) -> dict[str, list[CommitInfo]]:
     """Commits per repository, oldest first.
@@ -158,67 +146,5 @@ def to_repo_relative(local_path: str, repo_id: str) -> str | None:
     return match.group(1) if match else None
 
 
-def build_evidence(
-    repo_id: str,
-    repo_commits: list[CommitInfo],
-    after_ns: int,
-    deferred_files: set[str],
-    *,
-    patches: dict[str, str] | None = None,
-    max_subjects: int = 900,
-    max_patches: int = 12,
-    patch_chars: int = 6_000,
-) -> str:
-    """Later work in this repo, rendered for a reader to judge.
-
-    Broad by design: a consequence often lands in a file the agent never
-    touched, so every later commit contributes its subject line. Those are
-    cheap -- 62 characters at the median, so even 800 of them is ~50k chars --
-    and a subject like "fix: handle the case we skipped earlier" is exactly the
-    signal that a narrow file-overlap filter would miss.
-
-    Diffs are the opposite: 7.3k chars at the median and 128k at p95, enough to
-    exhaust a context on one commit. So full messages and capped diffs go only
-    to commits that touch the deferred files.
-    """
-    later = [c for c in repo_commits if c.author_ns and c.author_ns > after_ns]
-    if not later:
-        return "(no commits recorded in this repository after this session)"
-
-    overlapping = [c for c in later if c.files & deferred_files]
-    lines = [
-        f"{len(later)} commits were recorded in {repo_id} after this session.",
-        f"{len(overlapping)} of them touch the files involved in the deferral.",
-        "",
-        "--- subject line of every later commit, oldest first ---",
-    ]
-    for c in later[:max_subjects]:
-        subject = (c.message or "").split("\n", 1)[0][:120]
-        lines.append(f"  {subject}")
-    if len(later) > max_subjects:
-        lines.append(f"  [... {len(later) - max_subjects} more ...]")
-
-    if overlapping:
-        lines += ["", "--- commits touching the deferred files, in full ---"]
-        for c in overlapping[:max_patches]:
-            lines.append(f"\n=== files: {sorted(c.files & deferred_files)[:6]}")
-            lines.append((c.message or "")[:1500])
-            diff = c.patch or (patches or {}).get(c.commit_sha, "")
-            if diff:
-                lines.append(f"--- diff (capped) ---\n{diff[:patch_chars]}")
-    return "\n".join(lines)
 
 
-def commits_after(
-    repo_commits: list[CommitInfo], after_ns: int, *, touching: set[str] | None = None
-) -> list[CommitInfo]:
-    """Commits in this repo later than ``after_ns``, optionally touching files.
-
-    Note the corpus boundary: commits stop at roughly the last recorded session,
-    so a consequence landing after that window is simply not present. Absence of
-    a later commit is therefore weak evidence, not proof nothing happened.
-    """
-    later = [c for c in repo_commits if c.author_ns and c.author_ns > after_ns]
-    if touching:
-        later = [c for c in later if c.files & touching]
-    return later

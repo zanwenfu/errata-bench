@@ -120,18 +120,6 @@ def workspace(entry_id: str, *, base: Path | None = None):
         shutil.rmtree(d, ignore_errors=True)
 
 
-def sweep_orphans(base: Path | None = None) -> int:
-    """Remove directories a crashed run left behind. Call at startup."""
-    base = base or Path(tempfile.gettempdir()) / "errata-bench"
-    if not base.exists():
-        return 0
-    n = 0
-    for child in base.iterdir():
-        if child.is_dir():
-            shutil.rmtree(child, ignore_errors=True)
-            n += 1
-    return n
-
 
 def fetch(repo_url: str, child_sha: str, dest: Path) -> Checkout:
     """Fetch just enough history to have the commit and its parent.
