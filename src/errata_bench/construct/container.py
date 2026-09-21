@@ -72,12 +72,11 @@ IMAGES = {
     "TypeScript": "node:22",
     "JavaScript": "node:22",
     "Go": "golang:1.26",
-    # No Rust image is local, and rust:1.83-slim is a ~700MB download. It is
-    # listed so `docker pull rust:1.83-slim` is all that is needed, but nothing
-    # pulls it automatically: a benchmark run should not quietly consume a
-    # developer's bandwidth and disk. Until it is present, Rust tasks are not
-    # run, and the attempt stage says which image would let them.
-    "Rust": "rust:1.83-slim",
+    # No Rust (D-31, 09-21). It was listed against an image that was never
+    # pulled -- 700 MB nobody wanted to download -- so every Rust task either
+    # ran on the host or did not run. The developer's decision is to leave the
+    # language out rather than carry tasks that cannot be sandboxed: 380 of
+    # the corpus's 5,851 sessions, 6.5%.
     # Neither had an entry, so every Shell and Astro task ran on the host --
     # not by the policy above, by omission. Found on 09-21 while preparing
     # to run candidates against seven tasks, four of which would have gone
@@ -88,6 +87,18 @@ IMAGES = {
     "Shell": "python:3.12",
     "Astro": "node:22",
 }
+
+
+def can_be_sandboxed(language: str | None) -> bool:
+    """Whether this benchmark has a container for a repository's language.
+
+    A fact about the benchmark, not about this machine: whether the image has
+    been pulled is `image_for`'s question. Asked where moments are collected,
+    so that nothing is spent reading a conversation whose task could never be
+    run -- since G-48 a task with no container is not run at all, and 20% of
+    the corpus's sessions are in a language with none.
+    """
+    return (language or "") in IMAGES
 
 
 def host_allowed() -> bool:

@@ -74,6 +74,7 @@ attempt_mod.transcripts_for = no_corpus
 container_mod.image_for = lambda lang, **kw: "node:22"
 container_mod.sweep = lambda: None
 container_mod.max_containers = lambda: 2
+REAL_LOAD_REPOS = corpus.load_repos      # kept: section 38 reads a corpus written for it
 corpus.load_repos = lambda: {}
 turns_mod.load_session_turns = lambda ids: {}
 
@@ -1643,6 +1644,47 @@ try:
 finally:
     _CM2.check = _saved
     attempt_mod.transcripts_for = _saved_tf
+
+print("\n38. a moment is collected only where a candidate could be run")
+# D-31 and G-48. A task with no container is not run, and Rust was left out on
+# purpose, so reading a moment from such a repository is eight model calls
+# spent on a task that cannot be attempted. Through the real `find_moments`,
+# over a corpus of three sessions written for the purpose.
+import pyarrow as _pa, pyarrow.parquet as _pq
+sys.path.insert(0, ".")
+import run as _run_mod
+import errata_bench.corpus.sessions as _sessions_mod
+from errata_bench.construct.container import IMAGES as _IMAGES38, can_be_sandboxed as _sandboxable
+
+check("Rust" not in _IMAGES38 and not _sandboxable("Rust") and not _sandboxable(None) and _sandboxable("Go"),
+      "Rust has no container, by decision; Go has")
+
+_corpus38 = Path(tempfile.mkdtemp())
+_langs38 = {"s-ts": "TypeScript", "s-rust": "Rust", "s-swift": "Swift"}
+_pq.write_table(_pa.table({"session_id": list(_langs38), "repo_id": [f"o/{k}" for k in _langs38]}),
+                _corpus38 / "sessions.parquet")
+_pq.write_table(_pa.table({
+    "repo_id": [f"o/{k}" for k in _langs38], "url": ["u"] * 3, "license_type": ["mit"] * 3,
+    "repo_github_metadata": [json.dumps({"language": v}) for v in _langs38.values()]}),
+    _corpus38 / "repositories.parquet")
+_turns38 = [(sid, n, kind, push) for sid in _langs38 for n, kind, push in (
+    (1, "user_prompt", "non_pushback"), (2, "assistant_response", None), (3, "tool_use", None),
+    (4, "assistant_response", None), (5, "user_prompt", "correction"))]
+_pq.write_table(_pa.table({
+    "session_id": [t[0] for t in _turns38], "turn_number": [t[1] for t in _turns38],
+    "turn_type": [t[2] for t in _turns38], "prompt_pushback": [t[3] for t in _turns38]}),
+    _corpus38 / "conversations.parquet")
+_keep_corpus = (_sessions_mod.CORPUS, _sessions_mod.load_repos)
+_sessions_mod.CORPUS = _corpus38
+_sessions_mod.load_repos = REAL_LOAD_REPOS     # this file stubs it to {} for every other section
+try:
+    _out38 = Path(tempfile.mkdtemp()) / "moments.jsonl"
+    _n38 = _run_mod.find_moments(10, _out38)
+finally:
+    _sessions_mod.CORPUS, _sessions_mod.load_repos = _keep_corpus
+_got38 = sorted(r["session_id"] for r in load(_out38))
+check(_n38 == 1 and _got38 == ["s-ts"],
+      f"of three sessions with the same objection, only the one that can be sandboxed is collected: {_got38}")
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:

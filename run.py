@@ -82,6 +82,15 @@ def find_moments(
         for f in sources if f.exists() for r in load(f)
     }
 
+    # Only repositories the benchmark can run a candidate in. A moment from any
+    # other costs eight model calls to read and then cannot be attempted: a
+    # task with no container is not run (G-48), and Rust was left out on
+    # purpose (D-31). 4,669 of the corpus's 5,851 sessions pass this.
+    from errata_bench.construct.container import can_be_sandboxed
+    from errata_bench.corpus.sessions import load_repos
+
+    languages = {rid: repo.language for rid, repo in load_repos().items()}
+
     repo_of = {}
     table = pq.read_table(CORPUS / "sessions.parquet", columns=["session_id", "repo_id"])
     for session, repo in zip(
@@ -142,7 +151,16 @@ def find_moments(
         if (m["session_id"], m["turn_number"]) not in seen
         and m["repo_id"]
         and m["agent_turns_before"] >= min_agent_turns
+        and can_be_sandboxed(languages.get(m["repo_id"]))
     ]
+    left_out = sum(
+        1 for m in first.values()
+        if m["repo_id"] and m["agent_turns_before"] >= min_agent_turns
+        and not can_be_sandboxed(languages.get(m["repo_id"]))
+    )
+    if left_out:
+        print(f"  {left_out} moments left out: their repository is in a language "
+              "the benchmark has no container for", flush=True)
 
     # Spread across repositories rather than taking the first N of a sorted list.
     # Sorting by repo_id and slicing gave fifty moments from a single repository,
