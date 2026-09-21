@@ -826,6 +826,79 @@ finally:
 
 check(bool(_slept), f"and it waits between tries rather than hammering ({len(_slept)} waits)")
 
+print("\n27. a control is asked more than once, and one bad reading is enough")
+# Measured 09-20 (G-54): the must-pass control over the same nine tasks in two
+# directories -- same judge, byte-identical task fingerprints, so literally the
+# same question -- came back `solved` one time and
+# `solved_with_unverified_claim` the other on two of eight. Both tasks left the
+# benchmark on a coin toss. D-28 had already settled this for every other gate
+# that reads prose; the controls predated it.
+import errata_bench.instrument.control as _CM
+from errata_bench.instrument.control import ControlResult as _CR, controlled as _controlled
+from errata_bench.stages import stage_control as _stage_control
+
+_task = Task("t", "r/r", "u", "sha", "s", 10, 11, 12, 13, "wrong " * 10, "right " * 10,
+             "d", "none", criterion_calls=[{"name": "read_file", "path": "a.py"}])
+
+def _dir_with_task():
+    q = Paths(Path(tempfile.mkdtemp()) / "run")
+    write([_task], q.tasks)
+    q.calibration.write_text(json.dumps({
+        "task_id": "t", "sound": True, "judge_model": "the-grader",
+        "failed_outcome": "not_solved", "failed_outcome_swapped": "not_solved",
+        "resolution_outcome": "solved", "resolution_outcome_swapped": "solved"}) + "\n")
+    return q
+
+def _judge_that_flips_on(nth):
+    # Counts readings of the must-pass control only. Counting every call
+    # instead put the flip on a `null` reading, where it is a no-op, and the
+    # assertion passed while testing nothing.
+    seen = {"i": 0}
+    async def check_one(task, control, *, model=None):
+        if control.must_pass:
+            seen["i"] += 1
+        good = not (control.must_pass and seen["i"] == nth)
+        return _CR(task.task_id, control.name,
+                   passed=good if control.must_pass else False,
+                   dishonest=control.must_be_dishonest,
+                   expected_pass=control.must_pass,
+                   expected_dishonest=control.must_be_dishonest,
+                   outcome="solved" if good else _HEDGED)
+    return check_one
+
+_saved_check = _CM.check
+try:
+    # steady: every reading behaves, the task is controlled
+    _CM.check = _judge_that_flips_on(0)
+    q = _dir_with_task()
+    asyncio.run(_stage_control(q, 10**9, concurrency=1, passes=4))
+    rows = load(q.controls)
+    check(len(rows) == 4 * len(CONTROLS),
+          f"--passes 4 writes a row per control per pass: {len(rows)}")
+    check(_controlled(q) == {"t"}, "a control that behaves every time admits its task")
+
+    # one flip out of four, and the task is out
+    _CM.check = _judge_that_flips_on(3)
+    q = _dir_with_task()
+    asyncio.run(_stage_control(q, 10**9, concurrency=1, passes=4))
+    rows = load(q.controls)
+    errs = [r for r in rows if r.get("error")]
+    check(not errs, f"no reading errored (a broken fake looks like a clean run): {errs[:1]}")
+    crit = [r["ok"] for r in rows if r["control"] == "criterion"]
+    check(sorted(crit).count(False) == 1 and not _controlled(q),
+          f"one failing reading in four keeps it out: readings {crit}")
+
+    # and asking again only tops up what is missing
+    _CM.check = _judge_that_flips_on(0)
+    q = _dir_with_task()
+    asyncio.run(_stage_control(q, 10**9, concurrency=1, passes=2))
+    first = len(load(q.controls))
+    prog = asyncio.run(_stage_control(q, 10**9, concurrency=1, passes=5))
+    check(len(load(q.controls)) == 5 * len(CONTROLS) and first == 2 * len(CONTROLS),
+          f"raising --passes tops up rather than redoing: {first} -> {len(load(q.controls))}")
+finally:
+    _CM.check = _saved_check
+
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:
     print("  -", f)
