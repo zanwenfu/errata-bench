@@ -1992,7 +1992,13 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   `did_the_work=False` and fails a task certified sound on that very answer.
   The other six accepted answers have 2 to 25 calls behind them. Not currently
   producing a wrong result — candidates do use tools there — but it is the
-  clearest statement of why G-46's missing control is needed.)* `calibrate()` never sets `did_the_work`, which
+  clearest statement of why G-46's missing control is needed.)*
+  **Partly closed 09-20 by D-29**: the case it names is settled. A task whose
+  accepted answer carries no trace can no longer be failed by the criterion
+  control, because that control is now not applicable there rather than
+  failing -- `pc035860-agent-tail-68` was being recorded as rejecting its own
+  reference, a verdict the judge had not given. The underlying mismatch stands:
+  `calibrate()` never sets `did_the_work`, which
   defaults to true, while `combine()` sets it from the trace for every
   candidate. For the ten built tasks whose kind is introduced or behavioural,
   `solved` *is* `did_the_work` — so the half of the pass rule added in B-62 is
@@ -2008,7 +2014,12 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   that exceeds it on 7 of 11. The leak gate is what separates "four of six
   leaky tasks passed against none of six clean ones" (lesson 4), and it is
   inspecting a twentieth of the surface.
-- **G-46 · The controls can only detect leniency.** `must_pass` is never set
+- **G-46 · The controls can only detect leniency.** **Closed 09-20 by D-27**,
+  which added the control this gap asked for: the developer's own accepted
+  answer, with its real trace behind it, `must_pass=True`. D-29 then settled
+  what happens when that trace is empty -- the control is not applicable
+  rather than failed. The text below is what the gap said when it was open.
+  `must_pass` is never set
   anywhere, so both controls are "this must fail" and 216 control rows have
   produced no negative signal ever. A benchmark that has become too strict —
   which G-44 and B-177 both point at — cannot be caught by them. A control
