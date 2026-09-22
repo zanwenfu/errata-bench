@@ -11,6 +11,27 @@ import time
 
 from ..store import Paths, Progress, _gather, append, completed, held, key_of, load, replace
 
+#: What a rejection says when the tree could not be fetched. The row is sound
+#: and the network was not, which is a different thing from a task this corpus
+#: cannot support, and the two must not be pruned alike.
+TRANSIENT = "could not build the tree"
+
+
+def holds_paid_work(paths: Paths) -> str:
+    """What this directory would lose, named, or "" if it would lose nothing.
+
+    The refusal guards used to ask only about `tasks`, `attempts` and `answers`
+    -- and then the prune below deleted `calibration` and `controls` too, which
+    are judge calls, bought, and not in the list that decides whether to refuse.
+    A directory holding nothing but calibration and controls was wiped without
+    a refusal. `gate` is counted as well: it is not pruned, but it is paid, and
+    a guard that exists to say "there is work here" should not be blind to a
+    file just because this stage happens not to delete it.
+    """
+    counts = [(name, len(load(getattr(paths, name))))
+              for name in ("tasks", "attempts", "answers", "calibration", "controls", "gate")]
+    return ", ".join(f"{n} rows in {name}.jsonl" for name, n in counts if n)
+
 
 def stage_build(paths: Paths, limit: int) -> Progress:
     """Reconstruct each environment and verify the defect is really in it.
@@ -42,12 +63,12 @@ def stage_build(paths: Paths, limit: int) -> Progress:
     # directories of twenty-seven graded attempts each, deleted in a second by
     # a command that looks like a resume. Rebuilding from a genuinely empty
     # directory is still fine; it has nothing to lose.
-    if not rows and (load(paths.tasks) or load(paths.attempts) or load(paths.answers)):
+    if not rows and holds_paid_work(paths):
         p.failed = 1
         p.notes += [
             "refused: no screened rows to build from, but this directory already holds "
-            "tasks and results. Re-run the earlier stages first, or use --only to name "
-            "the stage you meant."
+            f"{holds_paid_work(paths)}. Re-run the earlier stages first, or use --only "
+            "to name the stage you meant."
         ]
         p.took_s = time.monotonic() - t0
         return p
@@ -83,16 +104,16 @@ def stage_build(paths: Paths, limit: int) -> Progress:
     # destroyed by a command that exits 0 and prints "0 produced, 51 already
     # done", because `skipped` renders as "already done" and a total wipe reads
     # like a no-op resume.
-    if not result.tasks and (load(paths.tasks) or load(paths.attempts) or load(paths.answers)):
-        transient = sum(1 for r in result.rejected
-                        if "could not build the tree" in (r.reason or ""))
+    held_back = {f"{r.repo_id.replace('/', '-')}-{r.complaint_turn}"
+                 for r in result.rejected if TRANSIENT in (r.reason or "")}
+    if not result.tasks and holds_paid_work(paths):
         p.failed = 1
         p.notes += [
             f"refused: built 0 tasks from {len(rows)} screened rows, and this directory "
-            f"already holds results. {transient} of {len(result.rejected)} rejections were "
-            "transient (the tree could not be fetched), which is what an unreachable "
-            "remote or a broken git looks like. Nothing was pruned. Check the remote, "
-            "then re-run."
+            f"already holds {holds_paid_work(paths)}. {len(held_back)} of "
+            f"{len(result.rejected)} rejections were transient (the tree could not be "
+            "fetched), which is what an unreachable remote or a broken git looks like. "
+            "Nothing was pruned. Check the remote, then re-run."
         ]
         p.rejected = len(result.rejected)
         p.took_s = time.monotonic() - t0
@@ -104,6 +125,19 @@ def stage_build(paths: Paths, limit: int) -> Progress:
     prints = {t.task_id: fingerprint(t) for t in result.tasks}
 
     def still_describes(row: dict) -> bool:
+        # A task that failed to build *this pass because the tree could not be
+        # fetched* keeps everything bought for it. The guard above only covers
+        # the all-or-nothing case, and the likelier accident is one repository
+        # of fifty being unreachable: that task drops out of `result.tasks`,
+        # and every calibration, control, answer and graded attempt under it
+        # was deleted as "stale" by a run that exits 0 and reads like a resume.
+        # The row is not stale. Nothing about the task changed; the network
+        # did. A task rejected for a reason of its own -- no defect signature,
+        # a replay that does not apply, two sessions claiming one name -- is
+        # pruned as before, because that rejection is a statement about the
+        # task and will not reverse itself on the next run.
+        if row.get("task_id") in held_back:
+            return True
         if row.get("task_id") not in surviving:
             return False
         # A task that kept its name and changed its content leaves rows about
@@ -128,6 +162,16 @@ def stage_build(paths: Paths, limit: int) -> Progress:
             if len(kept) != len(rows):
                 replace(downstream, kept)
                 p.notes.append(f"dropped {len(rows) - len(kept)} stale rows from {downstream.name}")
+    # Said out loud, because rows kept for a task that is not in tasks.jsonl are
+    # invisible otherwise: no stage reads them, and the only sign they are there
+    # is this line. Without it the difference between "the network was down and
+    # your work is waiting" and "your work is gone" is a silent one.
+    if held_back:
+        p.notes.append(
+            f"kept the rows of {len(held_back)} task(s) whose tree could not be fetched this "
+            f"pass, rather than pruning them: {', '.join(sorted(held_back))}. They are not in "
+            "tasks.jsonl until a build reaches their remote."
+        )
     # Kept on disk, not only printed. Forty of fifty-one located defects are
     # rejected here, and which gate each one died at is the question anyone
     # asking "where do more tasks come from?" needs answered -- but the reasons

@@ -141,6 +141,21 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
     """
     result = BuildResult()
     seen: set[str] = set()
+    # Sorted, because a task is named for its repository and the turn the
+    # developer objected at, and that name is not unique: 106 of the 922 moments
+    # in `runs/scale900` share a (repository, turn) pair with a *different*
+    # session, against 8 of 400 at the smaller size, so this gets worse as the
+    # corpus grows. The duplicate is rejected below, which is right -- but which
+    # one is the duplicate was the order of `screened.jsonl`, and that order
+    # changes whenever a row is re-screened and appended at the end. So a
+    # directory built twice could name a different session under the same
+    # task_id, giving it a new fingerprint, and `stage_build`'s prune would then
+    # delete the calibration, controls, answers and graded attempts underneath
+    # it. Sorting makes the winner a property of the rows rather than of the
+    # file, so a rebuild is a rebuild rather than a reshuffle.
+    located = sorted(located, key=lambda r: (str(r.get("repo_id") or ""),
+                                             r.get("complaint", -1),
+                                             str(r.get("session_id") or "")))
     # The session start comes from its turns, not from sessions.created_at,
     # which is a completion timestamp: across the eighteen sessions that produced
     # tasks it lands after the last turn in twelve and mid-session in six, never

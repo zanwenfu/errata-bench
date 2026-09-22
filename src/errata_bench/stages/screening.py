@@ -15,6 +15,31 @@ from ..store import (
 )
 
 
+#: The keys that mean "the stage that wrote this row did not finish". `_succeeded`
+#: reads both, and `completed()` deletes any row carrying either, so a stage that
+#: copies a previous row forward must not copy these with it.
+FAILURE_KEYS = ("error",)
+
+
+def carried_forward(row: dict) -> dict:
+    """A previous stage's row, without its verdict about its own failure.
+
+    `stage_read` wrote `{**triaged_row, "reading": ...}`. A moment whose triage
+    hit a 429 carries `error`, so the *reading* -- which succeeded, and was paid
+    for -- was written with an `error` key it had no business carrying. On the
+    next run `completed()` deleted it as failed work. Best case that is one read
+    bought twice; worst case triage answers `worth_reading=False` on the retry,
+    the reading is never rebuilt, and the paid row is simply gone with every
+    counter still reporting it as produced.
+
+    Error rows do not survive a re-run, so this cannot be counted from disk --
+    `completed()` has already removed them. It is bounded by how often the
+    reader is asked after a triage failure, which is exactly what a long run
+    against a throttling endpoint produces.
+    """
+    return {k: v for k, v in row.items() if k not in FAILURE_KEYS}
+
+
 def runnable(moments: list[dict]) -> tuple[list[dict], int]:
     """The moments whose task could actually be attempted, and how many were not.
 
@@ -166,10 +191,10 @@ async def stage_read(paths: Paths, limit: int, concurrency: int) -> Progress:
     async def one(m):
         try:
             reading = await read_pushback(turns[m["session_id"]], m["turn_number"])
-            append(paths.readings, {**m, "reading": reading.model_dump()})
+            append(paths.readings, {**carried_forward(m), "reading": reading.model_dump()})
             return True
         except Exception as e:
-            append(paths.readings, {**m, "error": f"{type(e).__name__}: {e}"})
+            append(paths.readings, {**carried_forward(m), "error": f"{type(e).__name__}: {e}"})
             return False
 
     results = await _gather([one(m) for m in todo], concurrency)

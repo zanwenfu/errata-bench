@@ -38,7 +38,7 @@ so. It also covers resume from stored answers alone and from stored grades, the 
 directories made before the split, and what happens when a candidate or a
 grading fails.
 
-**`guards_hold.py`** is forty-eight numbered sections, one per guard: what the
+**`guards_hold.py`** is forty-nine numbered sections, one per guard: what the
 attempt and grade stages refuse to do; the gate asked repeatedly; the
 reference-answer control and when it is not applicable; the clean-pass
 standard and the hedged one priced side by side; permanent git loss; the
@@ -66,7 +66,13 @@ benchmark, and re-derived wherever a stored row is read; the working copy put
 in front of the judge, each file labelled with what the candidate did to it
 and the block opening with what it changed; a stand-in reader required to
 name every argument the real one takes; and a judge's self-agreement measured
-on what it read rather than on what we renamed. It closes by asserting it handed production back unpatched, because three
+on what it read rather than on what we renamed. Its last section is what the
+850-conversation screen must not be able to do: prune the rows of a task whose
+remote was merely unreachable, wipe a directory of judge calls because the
+guard did not count them, read a file off the developer's machine because a
+model wrote an absolute path, resolve a judge's name to the run it is reading,
+accept the flag that silently buys every row at full price, or grow the judge's
+prompt without bound because a candidate ran a formatter. It closes by asserting it handed production back unpatched, because three
 sections restored one module attribute through a name a fourth binds to
 something else. Its fake judge sets the task's kind the way the
 real one does -- left at the default, every task here was graded by the

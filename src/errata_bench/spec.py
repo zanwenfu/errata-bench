@@ -24,6 +24,7 @@ which is the only definition of "right" this corpus actually contains.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -38,6 +39,33 @@ from .store import held, load, replace
 # Two of twenty-seven located trajectories have one of 22 and 5 characters --
 # an acknowledgement or a fragment, not a claim a candidate could repeat.
 MIN_ORACLE_CHARS = 40
+
+
+def within(tree: Path, rel: str) -> Path | None:
+    """The path `rel` names inside `tree`, or None if it names anything else.
+
+    For paths the *harness* joins to the tree, not the ones a candidate's tools
+    ask for -- those go through `_safe`, which has to understand the container
+    mount as well. `task.signature_path` is written by a model reading a
+    transcript (`find/signature.py` asks for the path "exactly as the text
+    gives it"), and transcripts are full of absolute paths. Joined unguarded,
+    an absolute one replaces the tree outright: a probe with
+    `signature_path="/Users/…/id_rsa"` read that file off the host and put its
+    contents in the stored answer row, and since D-32 into the judge's prompt.
+
+    The parent is resolved and the leaf is not, so a symlinked directory cannot
+    be used to step outside while a symlink *at* the path is still reported as
+    a link rather than read through, which is what `_snapshot` and `_capture`
+    both promise.
+    """
+    if not rel or os.path.isabs(rel) or rel.startswith("~"):
+        return None
+    p = tree / rel
+    try:
+        p.parent.resolve(strict=False).relative_to(tree.resolve(strict=False))
+    except (ValueError, OSError, RuntimeError):
+        return None
+    return p
 
 
 @dataclass

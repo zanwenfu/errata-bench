@@ -51,8 +51,23 @@ LEGACY_REPLY_CAP = 4000
 
 
 def judge_paths(run: Path, model: str) -> Paths:
-    """Where one judge's grades for this run are kept."""
-    return Paths(run / "rejudge" / re.sub(r"[^A-Za-z0-9._-]+", "_", model))
+    """Where one judge's grades for this run are kept.
+
+    The sanitiser keeps `.` and `-` because real deployment names have them
+    (`gpt-6-astra`, `Kimi-K2.7-Code`), and that is exactly why `.` and `..`
+    survive it whole. `--judge ..` resolved this directory to the run itself,
+    so `regrade_all` pruned the run's own attempts.jsonl and `rejudge`
+    overwrote its report.json -- the run's results deleted by a command whose
+    whole purpose is to read them again. Refused by name, after sanitising,
+    because a name that is only dots names a directory and not a model.
+    """
+    name = re.sub(r"[^A-Za-z0-9._-]+", "_", model)
+    if not name.strip(".") or "/" in name:
+        raise ValueError(
+            f"{model!r} is not usable as a judge's directory name: it resolves to "
+            f"{name!r}, which names this run rather than a place beneath it."
+        )
+    return Paths(run / "rejudge" / name)
 
 
 def transcripts_for(tasks) -> dict[str, str]:

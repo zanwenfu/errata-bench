@@ -1605,8 +1605,9 @@ other sixteen are recorded in G-49.
 
 - **B-225 · The judge was shown the files and not told which of them the
   candidate wrote** (fixed · 09-22). D-32 put the working copy in front of the
-  judge as a plain listing of paths and contents. Counted over the 28 stored
-  rows that carry captured files, **12 changed nothing at all** and were still
+  judge as a plain listing of paths and contents. Of the 28 stored answer
+  rows 24 have a non-empty capture, and **12 of those 24 changed nothing at
+  all** and were still
   shown a file -- the defect's own, included for reference -- with nothing in
   the listing saying the candidate had not written it. On a benchmark whose
   subject is agents claiming work they did not do, "it changed no files" is
@@ -1647,6 +1648,80 @@ other sixteen are recorded in G-49.
   shows the fault runs both ways -- the pair that agrees is counted as
   disagreeing, and a pair that genuinely differs is counted as agreeing,
   because both stored the same word.
+- **B-228 · Seven reviewers read the codebase before the 850-conversation
+  screen, and found four ways it could destroy or overspend the run** (fixed ·
+  09-22). Each fix below was shown red with that one fix reverted and nothing
+  else; twelve reverts, twelve red, and two of my own new assertions had to be
+  repaired first -- one crashed the suite instead of failing, the second time
+  that exact shape has been written here in two days.
+  **(1) A partial build failure deleted paid rows and exited 0.** The refusal
+  guard fires only when *zero* tasks build. One unreachable repository of fifty
+  drops that task from `result.tasks`, and `still_describes` then returned
+  False for every calibration, control, answer and graded attempt beneath it.
+  The note called them "stale", which is a statement about the task; nothing
+  about the task changed, the network did. A task rejected for a reason of its
+  own is pruned as before.
+  **(2) The same guard did not count calibration, controls or gate as
+  results** -- although the prune deletes the first two. A directory holding
+  nothing but judge calls was wiped without a refusal, which is exactly the
+  shape an interrupted `cp -R` of a run directory produces.
+  **(3) A successful reading inherited the triage row's `error`.**
+  `stage_read` wrote `{**triaged_row, "reading": ...}`, so a moment whose
+  triage hit a 429 produced a *reading* carrying `error`, which `completed()`
+  deleted on the next run. Best case the read is bought twice; if the retried
+  triage says `worth_reading=False` the row is never rebuilt and the paid
+  reading is gone, with every counter still calling it produced. Not countable
+  from disk, because error rows do not survive a re-run.
+  **(4) Two sessions can claim one task name, and which one won was the order
+  of the file.** 106 of the 922 moments in `runs/scale900` share a (repository,
+  turn) pair with a different session, against 8 of 400 at the smaller size, so
+  it worsens with the corpus. `build()` sorts its rows now, so a rebuild is a
+  rebuild rather than a reshuffle; unsorted, the second build could name a
+  different session under the same id, change its fingerprint, and have (1)
+  delete everything under it.
+
+- **B-229 · A model's output could make the harness read a file off the
+  developer's machine, and a judge's name could make a re-judge delete the run
+  it was reading** (fixed · 09-22). `task.signature_path` is written by a model
+  reading a transcript -- `find/signature.py` asks for the path "exactly as the
+  text gives it", and transcripts are full of absolute paths. `_capture` joined
+  it to the tree unguarded, so `/Users/…/id_rsa` replaced the tree: probed, the
+  file's contents landed in the stored answer row and, since D-32, in the
+  judge's prompt. The four probes in `construct/presence.py` had the same join,
+  where it is worse -- the probe reported the token present and then raised
+  `ValueError: not in the subpath` out of `build()`, after every clone of the
+  run had been paid for. One helper, `spec.within`, now answers it for both: the
+  parent is resolved and the leaf is not, so a symlinked directory cannot step
+  outside while a symlink *at* the path is still recorded as a link. Separately,
+  `judge_paths` sanitised a model name with a pattern that keeps `.` and `-`,
+  because real deployments have them -- so `--judge ..` resolved to the run
+  itself, and `regrade_all` pruned the run's own attempts.jsonl.
+
+- **B-230 · The two command-line flags that cost money quietly** (fixed ·
+  09-22). `--limit` defaults to 50 and caps the `moments` command only. Passed
+  to `stages` it was read, ignored, and never mentioned, so the obvious flag for
+  "just do a few" bought every row at full price; the cap for a stage is
+  `--max-rows`. And `--passes 2` reached `_agree`, which refuses an even count
+  (D-34), one `ValueError` per moment -- no money spent, but a directory of
+  error rows to clean up. Both are refused by the parser now. The `--passes`
+  help text also still described unanimity, which D-34 replaced for the
+  screening gates the day before.
+
+- **B-231 · The file listing D-32 gave the judge had three faults, all in what
+  it says rather than what it shows** (fixed · 09-22). A file with no captured
+  contents was described as possibly deleted whatever its label said -- so a
+  path labelled `modified` was offered to a judge that had just been told, two
+  paragraphs above, to read those labels. Contents are also absent when
+  `_capture` could not read the file and when `_capped` dropped it for size,
+  neither of which is a deletion. The "not shown" line reported the size of the
+  *truncated* copy, so a 900,000-character file and a 7,000 one both announced
+  about 6,000. And the caps bounded the file bodies only: the head names every
+  changed path and each entry adds a header, so 3,000 one-line files rendered
+  **366,000 characters**, about 90,000 tokens, appended to a prompt whose every
+  other part is sliced. The largest of the 24 stored rows that carry files is
+  19,678 characters, so this is a tail the data has not reached -- one
+  `gofmt -w .` away.
+
 - **B-223 · What an independent review of one day's work found, and what my
   own account of that day was worth** (fixed · 09-21). Twenty-five agents over
   `f00ba7ac1..aacbe0b64`, eight areas, every finding handed to a separate
@@ -3840,3 +3915,15 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   D-33's "not one rate moves" was measured current-against-current; measured
   against the commit before it, six outcome-agreement rates fall, and the fall
   is the split doing its job.
+- **09-22** — seven reviewers over the whole codebase before the 850-conversation
+  screen, each in its own copy, none permitted to edit the repository. B-228 to
+  B-231 fixed: four paths that could destroy or overspend the expensive run, two
+  containment holes, two command-line flags, and three faults in what the D-32
+  file listing tells the judge. Twelve single-fix reverts, twelve red. The same
+  reviewers found that a published re-judge report gives the trace-honesty rate
+  four ways for one judge on one directory (6/9, 4/6, 11/18, 16/27), that the
+  fold over repeated readings takes scoreability from whichever reading was
+  numbered zero, and that 36 of 39 excluded attempts leave the denominators
+  unnamed. Those are wrong numbers rather than lost data, so they are recorded
+  and not yet fixed: the screen does not make them worse, and mixing them into
+  this pass is how the last four rounds grew.

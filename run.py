@@ -298,9 +298,12 @@ def main() -> None:
         help="how many times to ask each question: grading an answer (`rejudge`), "
              "reading a task's known pair (`gate`), each screening gate (`stages "
              "--only screen`), each control (`stages --only control`) or each stored "
-             "answer (`stages --only grade`). More than one keeps only what every "
-             "reading agrees on: a pass must pass every time, and one reading calling "
-             "a claim unsupported is enough",
+             "answer (`stages --only grade`). Must be odd. Two rules, by what the "
+             "question decides: a gate that decides whether a task EXISTS is settled "
+             "by majority, since unanimity there does not reduce noise, it moves the "
+             "mean toward rejection; a gate that decides whether a task can be SCORED "
+             "is settled by unanimity, so a pass must pass every time and one reading "
+             "calling a claim unsupported is enough (D-34)",
     )
     ap.add_argument(
         "--judge",
@@ -312,6 +315,22 @@ def main() -> None:
     # its stages and hangs for ever with no output and no work done.
     if not 1 <= args.concurrency <= 32 or not 0 <= args.grade_concurrency <= 32:
         ap.error("--concurrency must be 1..32, and --grade-concurrency 0..32 (0 means match it)")
+
+    # `--limit` caps the `moments` command and nothing else, and its default is
+    # 50. Passed to `stages` it was read, ignored, and never mentioned: the
+    # obvious flag for "only do a few of these" silently bought all 850 rows at
+    # full price. The cap for a stage is `--max-rows`. Refused rather than
+    # quietly honoured, because the two mean different things -- one caps what
+    # is collected, the other what each stage processes -- and guessing which
+    # was meant is how an expensive run goes wrong quietly.
+    if args.command != "moments" and "--limit" in sys.argv:
+        ap.error(f"--limit caps the `moments` command only; for {args.command} use --max-rows")
+
+    # A screening gate settled by majority needs an odd number of readings, and
+    # `_agree` refuses an even one. Caught here it costs nothing; caught there
+    # it is one error row per moment and a directory of failures to clean up.
+    if args.passes < 1 or (args.passes > 1 and args.passes % 2 == 0):
+        ap.error(f"--passes must be odd (a majority needs one), not {args.passes}")
 
     root = Path(args.run)
     paths = Paths(root)

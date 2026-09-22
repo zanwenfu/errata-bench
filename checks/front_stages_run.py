@@ -402,6 +402,50 @@ def main() -> int:
     finally:
         sessions_mod.load_repos = _kept_load
 
+    print("\n7. a paid reading is not deleted because the triage before it failed")
+    # `stage_read` wrote `{**triaged_row, "reading": ...}`. A moment whose
+    # triage hit a 429 carries `error`, so the reading -- which succeeded, and
+    # was paid for -- inherited it, and `completed()` deleted it as failed work
+    # on the next run. The read is bought twice at best; if the retried triage
+    # answers `worth_reading=False` the row is never rebuilt and the paid
+    # reading is simply gone, with every counter still calling it produced.
+    from errata_bench.store import completed as _completed7
+
+    r7 = Paths(Path(tempfile.mkdtemp()) / "run")
+    append(r7.moments, {"session_id": "s-1", "turn_number": 7, "repo_id": "acme/up",
+                        "kind": "correction", "agent_turns_before": 4})
+    # The shape triage leaves behind when its own call raised.
+    append(r7.triaged, {"session_id": "s-1", "turn_number": 7, "repo_id": "acme/up",
+                        "kind": "correction", "agent_turns_before": 4,
+                        "worth_reading": True, "triage_reason": "error: RuntimeError: 429",
+                        "error": "RuntimeError: 429"})
+    CALLED.clear()
+    asyncio.run(stage_read(r7, 10**9, concurrency=1))
+    _rows7 = load(r7.readings)
+    check(len(_rows7) == 1 and _rows7[0].get("reading") and not _rows7[0].get("error"),
+          f"the reading is written without the triage row's error: "
+          f"keys {sorted(k for k in (_rows7[0] if _rows7 else {}))}")
+    check(len(_completed7(r7.readings)) == 1,
+          f"and it survives the next run rather than being deleted as failed work: "
+          f"{len(_completed7(r7.readings))} of {len(_rows7)} kept")
+    # The reading's own failure is still recorded as one.
+    r7b = Paths(Path(tempfile.mkdtemp()) / "run")
+    append(r7b.triaged, {"session_id": "s-boom", "turn_number": 1, "repo_id": "acme/up",
+                         "kind": "correction", "agent_turns_before": 4, "worth_reading": True})
+
+    async def _boom7(turns, turn, **kw):
+        raise RuntimeError("429 from the reader itself")
+
+    _kept7 = reading_mod.read_pushback
+    reading_mod.read_pushback = _boom7
+    try:
+        asyncio.run(stage_read(r7b, 10**9, concurrency=1))
+    finally:
+        reading_mod.read_pushback = _kept7
+    check(load(r7b.readings) and load(r7b.readings)[0].get("error")
+          and not _completed7(r7b.readings),
+          "while a reading that really failed is still written with an error and re-asked")
+
     print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
     for f in FAIL:
         print("  -", f)

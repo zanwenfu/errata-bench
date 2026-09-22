@@ -42,7 +42,7 @@ from ..llm import MODEL, configure_client
 from ..construct.container import MOUNT, Container, host_allowed
 from ..construct.edits import edits_before, replay
 from ..find.redact import apply as apply_redaction
-from ..spec import Task
+from ..spec import Task, within
 from ..construct.workspace import GitError, fetch
 
 # Commands that reach the network. Refused so that an attempt measures the
@@ -747,7 +747,9 @@ def _capture(tree: Path, task: Task, changed: dict[str, str]) -> dict[str, str]:
     if task.signature_path:
         wanted.add(task.signature_path)
     for rel in wanted:
-        p = tree / rel
+        p = within(tree, rel)
+        if p is None:
+            continue
         # Never through a link, for the reason `_snapshot` gives: what the
         # link points at is chosen by the candidate and read by the harness.
         if p.is_file() and not p.is_symlink():

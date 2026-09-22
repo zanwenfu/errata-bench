@@ -35,6 +35,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable
 
+from ..spec import within
+
 
 @dataclass
 class Presence:
@@ -112,14 +114,22 @@ def contains(path: str, token: str) -> Callable[[Path], tuple[bool, str]]:
         # it only from the repository root reported the file "not in the tree"
         # while the candidate was reading it. file_exists already searched by
         # name; this one did not, and the two disagreed about the same tree.
-        targets = [tree / path]
+        # `within`, not a bare join: `path` comes from a model reading a
+        # transcript, and an absolute one replaces the tree. Probed with
+        # `/etc/hosts` this reported the token present, then raised
+        # `ValueError: not in the subpath` out of `build()` on the very next
+        # line, after every clone of the run had been paid for.
+        here = within(tree, path)
+        if here is None:
+            return False, f"{path} is not a path inside the tree"
+        targets = [here]
         if not targets[0].is_file() and "/" not in path:
             targets = [q for q in tree.rglob(path) if q.is_file()][:20]
         for target in targets:
             if target.is_file() and token in target.read_text(errors="replace"):
                 where = target.relative_to(tree)
                 return True, f"{where} contains {token!r}"
-        target = targets[0] if targets else tree / path
+        target = targets[0] if targets else here
         # Widening the search past the named file is only safe for a token
         # distinctive enough to mean one thing. desplega-ai/agent-swarm's defect
         # is @sentry/cli pinned to 3.2.2; searching the whole tree found "3.2.2"
@@ -170,7 +180,9 @@ def file_exists(path: str) -> Callable[[Path], tuple[bool, str]]:
     """
 
     def probe(tree: Path) -> tuple[bool, str]:
-        target = tree / path
+        target = within(tree, path)
+        if target is None:
+            return False, f"{path} is not a path inside the tree"
         if target.is_file():
             return True, f"{path} is present (behavioural defect, not text-matchable)"
         # A basename can still be located when the signature gives no directory.
@@ -193,7 +205,9 @@ def symlinks_in(path: str) -> Callable[[Path], tuple[bool, str]]:
     """
 
     def probe(tree: Path) -> tuple[bool, str]:
-        target = tree / path
+        target = within(tree, path)
+        if target is None:
+            return False, f"{path} is not a path inside the tree"
         if not target.is_dir():
             return False, f"{path} is not a directory in the tree"
         links = [c.name for c in sorted(target.iterdir()) if c.is_symlink()]

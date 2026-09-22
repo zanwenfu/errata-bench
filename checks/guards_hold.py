@@ -3534,7 +3534,7 @@ check("README.md" in _one46 and "retries: 1" in _one46 and "changed no files" no
 _untouched46 = _render46(_after46(_row46, "src/a.go"))
 check(f"({_UNT46})" in _untouched46 and "(modified)" in _untouched46,
       "each file says what the candidate did to it, including the one it did not touch")
-check("it changed 1 file(s), README.md" in _untouched46,
+check("it changed 1 file(s): README.md" in _untouched46,
       f"and the listing opens with what was changed: {_untouched46.splitlines()[1]!r}")
 _nothing46 = _render46(_after46({"final_state": {"a.py": "x\n"}, "actual_changes": {}}, "a.py"))
 check("changed no files" in _nothing46 and "a.py" in _nothing46,
@@ -3549,7 +3549,7 @@ check("changed no files" in _nothing46 and "a.py" in _nothing46,
 # one yet; this is the assertion that keeps the first one from being silent.
 _gone46 = _render46(_after46({"final_state": {"a.py": "x\n"},
                               "actual_changes": {"t_spec.py": "deleted"}}, "a.py"))
-check("t_spec.py" in _gone46 and "(deleted)" in _gone46 and "nothing was captured" in _gone46,
+check("t_spec.py" in _gone46 and "(deleted)" in _gone46 and "the candidate removed it" in _gone46,
       f"a path changed with no contents captured is listed and labelled, not dropped: "
       f"{[l for l in _gone46.splitlines() if 't_spec' in l]}")
 
@@ -3685,6 +3685,182 @@ _sum48b = _summarise(_r48b, _j48b, "the-grader")
 check(_sum48b["agrees_with_itself"]["outcome"] == "0/1",
       "and a reading that really did see something different still counts as a disagreement: "
       f"{_sum48b['agrees_with_itself']['outcome']}")
+
+print("\n49. what the expensive run must not be able to destroy or overspend")
+# Everything here is a path found by review before the 850-conversation screen,
+# not by running it. Each one is cheap to hold and expensive to discover.
+
+# (a) The build guard counts every paid file, including the ones it deletes.
+# It asked about tasks, attempts and answers only -- and then pruned
+# calibration and controls, which are judge calls. A directory holding nothing
+# but those was wiped without a refusal.
+from errata_bench.stages.building import TRANSIENT as _TRANSIENT49, holds_paid_work as _paid49
+
+_p49 = Paths(Path(tempfile.mkdtemp()) / "run")
+check(_paid49(_p49) == "", "an empty directory holds nothing to lose")
+append(_p49.calibration, {"task_id": "t", "sound": True})
+append(_p49.controls, {"task_id": "t", "control": "null", "ok": True})
+_said49 = _paid49(_p49)
+check("calibration" in _said49 and "controls" in _said49,
+      f"a directory holding only calibration and controls is not empty: {_said49!r}")
+append(_p49.gate, {"task_id": "t", "pass": 0, "holds": True})
+check("gate" in _paid49(_p49), f"and the gate readings count too: {_paid49(_p49)!r}")
+
+# (b) A task whose tree could not be fetched keeps its rows. The refusal above
+# covers only the all-or-nothing case; the likelier accident is one repository
+# of fifty being unreachable, which drops that task from the build and pruned
+# everything bought for it, on a command that exits 0.
+import errata_bench.construct.build as _build49
+from errata_bench.spec import BuildResult as _BR49, Rejection as _Rej49
+from errata_bench.stages.building import stage_build as _stage_build49
+
+def _fixture49(reason):
+    p = Paths(Path(tempfile.mkdtemp()) / "run")
+    append(p.screened, {"session_id": "s1", "repo_id": "acme/up", "complaint": 7,
+                        "usable": True, "kind": "present"})
+    append(p.screened, {"session_id": "s2", "repo_id": "acme/kt", "complaint": 9,
+                        "usable": True, "kind": "present"})
+    for f in (p.calibration, p.controls, p.answers, p.attempts):
+        append(f, {"task_id": "acme-up-7"})
+        append(f, {"task_id": "acme-kt-9"})
+    kept = _build49.build
+
+    def _one_builds(rows, **kw):
+        return _BR49(tasks=[_task49("acme-kt-9")], rejected=[_Rej49("acme/up", 7, reason)])
+
+    _build49.build = _one_builds
+    try:
+        prog = _stage_build49(p, 10**9)
+    finally:
+        _build49.build = kept
+    return p, prog
+
+def _task49(tid):
+    from errata_bench.spec import Task as _T
+    return _T(task_id=tid, repo_id="acme/kt", repo_url="u", sha="s", session_id="s2",
+              cut_turn=0, failed_turn=0, complaint_turn=9, resolved_turn=0,
+              oracle="o", criterion="c", defect="d", kind="present")
+
+_pa49, _prog_a49 = _fixture49(f"{_TRANSIENT49}: Could not resolve host: github.com")
+_left49 = {f.name: sorted(r["task_id"] for r in _rows33(f))
+           for f in (_pa49.calibration, _pa49.controls, _pa49.answers, _pa49.attempts)}
+check(all(v == ["acme-kt-9", "acme-up-7"] for v in _left49.values()),
+      f"a task whose tree could not be fetched keeps every row bought for it: {_left49}")
+check(any("could not be fetched this pass" in n for n in _prog_a49.notes),
+      f"and the stage says which tasks it held back: {[n[:70] for n in _prog_a49.notes]}")
+
+# The other half: a rejection that is about the task, not the network, prunes
+# as before. Without this the fix above is "never prune anything".
+_pb49, _prog_b49 = _fixture49("no defect signature could be derived")
+_leftb49 = sorted(r["task_id"] for r in _rows33(_pb49.calibration))
+check(_leftb49 == ["acme-kt-9"],
+      f"a task rejected on its own merits is still pruned: {_leftb49}")
+
+# (c) A model-written path cannot make the harness read outside the tree.
+from errata_bench.spec import within as _within49
+
+_tree49 = Path(tempfile.mkdtemp()) / "tree"
+(_tree49 / "src").mkdir(parents=True)
+(_tree49 / "src" / "a.py").write_text("x = 1\n")
+_secret49 = Path(tempfile.mkdtemp()) / "id_rsa"
+_secret49.write_text("PRIVATE\n")
+for _bad49 in (str(_secret49), "~/.ssh/id_rsa", "../../etc/hosts", "/etc/hosts", ""):
+    check(_within49(_tree49, _bad49) is None, f"refused as a path inside the tree: {_bad49!r}")
+check(_within49(_tree49, "src/a.py") == _tree49 / "src" / "a.py",
+      "and an ordinary relative path is not")
+# Through the real capture, which is where it reached the stored row and, since
+# D-32, the judge's prompt.
+from errata_bench.score.attempt import _capture as _capture49
+
+_t49 = _task49("t")
+_t49.signature_path = str(_secret49)
+check(_capture49(_tree49, _t49, {"src/a.py": "modified"}) == {"src/a.py": "x = 1\n"},
+      "the capture reads the tree and nothing else")
+# And the presence probes, which raised out of build() on the line after.
+from errata_bench.construct.presence import contains as _contains49
+
+_probe49 = _contains49(str(_secret49), "PRIVATE")
+# Caught, not assumed. Unguarded, this probe does not merely answer wrongly --
+# it reads the file, reports the token present, and then raises `ValueError:
+# not in the subpath` out of `build()` on the next line, after every clone of
+# the run has been paid for. Written as a bare call the assertion took the
+# whole suite down with it instead of going red, which is the shape this file's
+# README warns about and the second time it has been written here.
+try:
+    _found49, _why49 = _probe49(_tree49)
+except Exception as e:  # noqa: BLE001 - not raising is half the assertion
+    _found49, _why49 = None, f"raised {type(e).__name__}: {e}"
+check(_found49 is False and "inside the tree" in _why49,
+      f"and a probe given a path outside the tree answers no, rather than raising: {_why49[:110]}")
+
+# (d) A judge cannot be named so that its directory is the run itself.
+from errata_bench.score.rejudge import judge_paths as _jp49
+
+# The invariant, rather than a list of spellings: whatever the name, the
+# directory either is refused or sits strictly beneath <run>/rejudge. Written
+# as "these five names raise" it was wrong twice -- `/` sanitises to `_` and
+# `../..` to `.._..`, both ordinary directories that escape nothing -- and a
+# test that is stricter than the rule is a test that will be relaxed by
+# whoever meets it next.
+for _name49 in ("..", ".", "...", "../..", "  ..  ", "/", "gpt-6-astra", "a/../..", "Kimi-K2.7"):
+    _run49 = Path(tempfile.mkdtemp()) / "run"
+    try:
+        _got49 = _jp49(_run49, _name49).root.resolve()
+        _below49 = _got49 != _run49.resolve() and _run49.resolve() in _got49.parents
+        check(_below49, f"a judge named {_name49!r} lands beneath the run, at {_got49}")
+    except ValueError:
+        check(True, f"a judge named {_name49!r} is refused outright")
+_ok49 = _jp49(Path(tempfile.mkdtemp()) / "run", "gpt-6-astra")
+check(_ok49.root.name == "gpt-6-astra", "and an ordinary deployment name still works")
+
+# (e) The command line refuses the two flags that cost money quietly.
+import subprocess as _sub49
+
+for _args49, _want49 in ((["--limit", "50"], "--max-rows"), (["--passes", "2"], "odd")):
+    _r49 = _sub49.run([sys.executable, "run.py", "stages", "--run",
+                       str(Path(tempfile.mkdtemp()) / "run"), *_args49],
+                      capture_output=True, text=True, cwd=str(Path(__file__).resolve().parent.parent))
+    check(_r49.returncode != 0 and _want49 in _r49.stderr,
+          f"`stages {' '.join(_args49)}` is refused: exit {_r49.returncode}, "
+          f"{_r49.stderr.strip().splitlines()[-1][:90] if _r49.stderr.strip() else 'no message'}")
+
+# (f) The listing shown to the judge is bounded by the NUMBER of files, not
+# only by their size, and says why a file has no contents without contradicting
+# its own label.
+_fmt49 = _render46({f"f{i}.go": _FA46("modified", "package main\n") for i in range(3000)})
+check(len(_fmt49) < 8000 and "further file(s), not listed" in _fmt49,
+      f"a candidate that reformatted every file does not blow up the prompt: "
+      f"{len(_fmt49):,} characters")
+_mod49 = _render46({"a.py": _FA46("modified", None)})
+_del49 = _render46({"a.py": _FA46("deleted", None)})
+check("removed it" not in _mod49 and "not evidence either way" in _mod49,
+      f"a modified file with no captured contents is not described as maybe deleted: "
+      f"{[l for l in _mod49.splitlines() if 'no contents' in l]}")
+check("the candidate removed it" in _del49,
+      f"while a deleted one is: {[l for l in _del49.splitlines() if 'no contents' in l]}")
+_big49 = _render46({f"g{i}.md": _FA46("modified", "z" * (_ONE46 - 100)) for i in range(4)}
+                   | {"huge.md": _FA46("modified", "z" * 900_000)})
+check("900,000 characters, the listing is full" in _big49,
+      f"and a file left out reports its own size, not the truncated copy's: "
+      f"{[l[-60:] for l in _big49.splitlines() if 'not shown' in l]}")
+
+# (g) Two sessions that would claim one task name resolve the same way twice,
+# whatever order the screened rows arrive in.
+_rows49 = [{"session_id": "s-b", "repo_id": "acme/up", "complaint": 7, "usable": True,
+            "kind": "present", "defect": "d", "resolution": "r"},
+           {"session_id": "s-a", "repo_id": "acme/up", "complaint": 7, "usable": True,
+            "kind": "present", "defect": "d", "resolution": "r"}]
+_order49 = []
+for _perm49 in (_rows49, list(reversed(_rows49))):
+    _seen49 = []
+    _kept_sorted49 = sorted(_perm49, key=lambda r: (str(r.get("repo_id") or ""),
+                                                    r.get("complaint", -1),
+                                                    str(r.get("session_id") or "")))
+    _order49.append([r["session_id"] for r in _kept_sorted49])
+check(_order49[0] == _order49[1] == ["s-a", "s-b"],
+      f"the same two rows are built in the same order whichever way they arrive: {_order49}")
+check("sorted(located" in Path("src/errata_bench/construct/build.py").read_text(),
+      "and build() does that sorting rather than trusting the file's order")
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:
