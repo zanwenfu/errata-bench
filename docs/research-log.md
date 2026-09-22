@@ -2300,12 +2300,23 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   tool. Grading the same answers with another judge is what `rejudge` is for,
   and it gates that judge on the known pair and the controls first. The stage
   now says this rather than reporting success having done nothing.
+  **Closed 09-21, on reading the code it describes.** `stage_grade` refuses by
+  name -- "REFUSED: N answers here were graded by <model>" -- and exits
+  non-zero, rather than reporting success having done nothing
+  (`stages/scoring.py:392`). The entry was written when the refusal was added
+  and was never marked closed.
 - **G-32 · The captured tree is stored, cut at 40,000 characters a file.** The
   files the token check read are now kept on the answer row, so a change to
   what counts as fixed can be applied without running candidates again. A file
   longer than the cut says so in its own text. Nothing scores from them — the
   reading is taken from the live tree — so a cut file cannot produce a wrong
   verdict, only an unanswerable one later.
+  **Closed 09-21.** The behaviour this describes is the behaviour in the code,
+  and it is the one we want: `_capped` writes "... [cut: file continues]" into
+  the file's own text (`stages/scoring.py:47`), so nothing later reads a
+  truncated file as one the token is simply absent from, and the live tree --
+  not these copies -- is what any verdict is taken from. It is a recorded
+  limitation, not an open defect.
 - **G-33 · Build output counts as a candidate edit.** `actual_changes` is a
   before-and-after listing of the whole working copy, which is bind-mounted
   into the container, so anything a test run writes — a cache, a lock file,
@@ -2320,6 +2331,12 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   `node_modules`, `.gradle`, `.cache`) and `.pyc` files. A compiled artefact
   under `dist/`, `build/` or `target/` is still counted, because repositories
   commit those; it is named in `files_changed`, so it can be seen.
+  **Closed 09-21** by the measurement and the change recorded above: no stored
+  attempt ever had a toolchain's cache among its changes, and `_snapshot` now
+  leaves those directories out (`score/attempt.py:659, 716`). What remains --
+  counting a compiled artefact under `dist/`, `build/` or `target/` -- is a
+  decision, not an oversight: repositories commit those, and the file is named
+  in `files_changed` where it can be seen.
 - **G-34 · Two processes grading one directory would double-count.** *(closed 09-20, B-193: a run directory takes an exclusive lock and a second run is refused by name.)* Rows are
   appended without a lock, and nothing deduplicates `(task, run)`. The report
   states how many rows are duplicates rather than quietly dropping them,
@@ -2369,6 +2386,11 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   therefore an upper bound, and most inflated on the attempts with the longest
   traces, which is grok's. Re-grading the stored answers under the fixed
   renderer costs no candidate runs and would settle it.
+  **Closed 09-20**, and the hypothesis was wrong, which is the useful part: one
+  verdict of 81 moved, in the opposite direction from the one predicted. Kept
+  as an entry because the measurement (`checks/renderer_effect.py`) is the
+  thing to re-run when the question comes back, not because anything is
+  outstanding.
 - **G-51 · The task admission gate is not stable between runs, and it moves
   the headline more than any fix has.** *(closed 09-20 by D-25 and R-22: asked
   14 times each, seven of the nine tasks held every time and two did not, one
