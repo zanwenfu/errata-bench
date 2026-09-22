@@ -47,6 +47,18 @@ class Replay:
     """What was applied, and if it stopped, why."""
 
     applied: int = 0
+    # Of the hunks that applied, how many could have failed on the wrong base
+    # commit: an old_string matched against content the checkout already had.
+    # `applied` counts calls, and a Write cannot fail -- it overwrites whatever
+    # is there, or creates it -- so a replay of nothing but Writes reports
+    # applied=4, ok=True and has examined no part of the tree. Nor can an Edit
+    # that matches what a Write earlier in the same replay just put there:
+    # dipasqualew-vibereq-162 replays 13 calls, of which 4 are Writes and 2 are
+    # Edits onto `apps/cli/src/commands/pr.ts`, a file the Write at turn 58
+    # created. Six of its 13 test nothing about the commit. That is G-37's
+    # "certifying trees it has barely examined", and this is the number that
+    # says how much was really examined.
+    verified: int = 0
     files: set[str] = field(default_factory=set)
     failed_at: int | None = None  # turn number
     reason: str = ""
@@ -54,6 +66,15 @@ class Replay:
     @property
     def ok(self) -> bool:
         return self.failed_at is None
+
+    @property
+    def tests_the_base_commit(self) -> bool:
+        """Whether this replay could have failed on the wrong commit at all.
+
+        A replay with nothing to apply is vacuously fine; one that applied
+        something and verified none of it proves only that the paths resolved.
+        """
+        return self.applied == 0 or self.verified > 0
 
 
 def edits_before(turns: list[dict], cut_turn: int) -> list[dict]:
@@ -183,6 +204,11 @@ def replay(tree: Path, edits: list[dict], repo_id: str) -> Replay:
     # Where the developer's checkout began, measured from the tree rather than
     # guessed from the directory name.
     root = _checkout_root(tree, [e["args"].get("file_path", "") for e in edits])
+    # Files this replay created or overwrote itself. An old_string that matches
+    # content a Write two turns ago put there is checking the replay, not the
+    # commit, so it is applied like any other and counted as evidence of
+    # nothing.
+    ours: set[str] = set()
     for e in edits:
         args = e["args"]
         target = _target(tree, args.get("file_path", ""), repo_id, root)
@@ -191,19 +217,31 @@ def replay(tree: Path, edits: list[dict], repo_id: str) -> Replay:
             r.reason = f"turn {e['turn']}: path {args.get('file_path','')!r} is not inside the repository"
             return r
         rel = str(target.relative_to(tree.resolve()))
+        # Read before anything is applied: from here on the file is partly ours.
+        from_base = target.is_file() and rel not in ours
         why: str | None = None
         if e["tool"] == "Write":
             target.parent.mkdir(parents=True, exist_ok=True)
             _write(target, args.get("content") or "")
+            ours.add(rel)
         elif e["tool"] == "Edit":
-            why = _edit(target, args.get("old_string") or "", args.get("new_string") or "",
+            old = args.get("old_string") or ""
+            why = _edit(target, old, args.get("new_string") or "",
                         bool(args.get("replace_all")))
+            if why is None:
+                r.verified += 1 if (old and from_base) else 0
+                if not old:
+                    ours.add(rel)
         elif e["tool"] == "MultiEdit":
             for sub in args.get("edits") or []:
-                why = _edit(target, sub.get("old_string") or "", sub.get("new_string") or "",
+                old = sub.get("old_string") or ""
+                why = _edit(target, old, sub.get("new_string") or "",
                             bool(sub.get("replace_all")))
                 if why:
                     break
+                r.verified += 1 if (old and from_base) else 0
+                if not old:
+                    ours.add(rel)
         if why:
             r.failed_at = e["turn"]
             r.reason = f"turn {e['turn']} ({e['tool']} {rel}): {why}"

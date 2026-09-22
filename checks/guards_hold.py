@@ -2801,6 +2801,373 @@ check(_given42["g50-present"][0] == "conversation for g50-present",
       f"while an answer that carries its own conversation is still checked against that: "
       f"{_given42['g50-present'][0]!r}")
 
+print("\n43. what a failed triage is, and what a replayed tree proves")
+# G-19, G-37 and G-22: the front of the pipeline. Every name below carries _43.
+# This module is one long script and three later sections have already been
+# broken by rebinding a name (`_ran`, `rows`, `_diff`), so nothing here is bare.
+from errata_bench.find import reading as _readmod43
+from errata_bench.find import triage as _triagemod43
+from errata_bench.find.reading import Reading as _Reading43
+from errata_bench.find.triage import Triage as _Triage43
+from errata_bench.stages import stage_read as _stage_read43, stage_triage as _stage_triage43
+from errata_bench.store import already_done as _already_done43
+from errata_bench.construct.edits import edits_before as _edits_before43, replay as _replay43
+from errata_bench.spec import Task as _Task43, fingerprint as _fingerprint43
+
+# --- G-19: a moment whose triage call raises --------------------------------
+# What it used to be. The except branch wrote worth_reading=True with the
+# reason under `triage_reason`, and `_succeeded` reads `error` and `reason` --
+# neither of which was set. So `already_done` counted the row finished and the
+# question was never asked again. 73 of the 922 rows in
+# runs/scale900/triaged.jsonl are that row and all 73 say the same thing --
+# "error: Error code: 429 ... You have no credits remaining", the exhaustion
+# R-15 records. 28 of them went to the reader at about eight calls each on a
+# verdict nobody reached; the other 45 sit there as a permanent
+# worth_reading=True that a resumed run steps over. `completed`'s own docstring
+# describes this accident at the read stage ("resuming after a top-up would have
+# skipped every one of them permanently"); triage was the stage it did not
+# reach, because it writes its reason under a key nothing looks at.
+_asked43 = []
+_boom_budget43 = [1]
+
+
+async def _fake_triage43(excerpt, **kw):
+    _asked43.append(excerpt)
+    if "boom" in excerpt and _boom_budget43[0] > 0:
+        _boom_budget43[0] -= 1
+        raise RuntimeError("ChatCompletion response has no choices")
+    return _Triage43(agent_has_acted=True, objects_to_that_work="objects" in excerpt,
+                     reason="read off the excerpt")
+
+
+_wasread43 = []
+
+
+async def _fake_read43(ts, turn, **kw):
+    _wasread43.append(ts[0]["content"])
+    return _Reading43(what_user_asked="a", what_agent_did="b", what_user_objected_to="c",
+                      objection_kind="real_error", benchmark_viable=True,
+                      context_sufficient=True)
+
+
+_sessions43 = {
+    "s-keep": "the agent claimed a check it skipped, and the developer objects",
+    "s-drop": "a fresh instruction, nothing has happened yet",
+    "s-boom": "boom",
+}
+_keep43 = (turns_mod.load_session_turns, turns_mod.build_excerpt,
+           _triagemod43.triage, _readmod43.read_pushback)
+turns_mod.load_session_turns = lambda ids: {
+    s: [{"turn_number": 7, "turn_type": "user_prompt", "content": _sessions43[s]}] for s in ids}
+turns_mod.build_excerpt = lambda ts, cut, **kw: " ".join(t.get("content") or "" for t in ts)
+_triagemod43.triage = _fake_triage43
+_readmod43.read_pushback = _fake_read43
+try:
+    _paths43 = Paths(Path(tempfile.mkdtemp()) / "run")
+    for _s43 in _sessions43:
+        append(_paths43.moments, {"session_id": _s43, "turn_number": 7, "repo_id": "acme/up",
+                                  "kind": "correction", "agent_turns_before": 4})
+    _prog43 = asyncio.run(_stage_triage43(_paths43, 10**9, concurrency=1))
+    _line43 = " ".join(_prog43.line().split())
+    _after43 = {r["session_id"]: r for r in load(_paths43.triaged)}
+
+    # Read before anything calls `completed`, which is what prunes the errored
+    # row: this is the run that failed, and the moment must still reach the
+    # reader in it. Failing open is the point of the except branch and is kept.
+    asyncio.run(_stage_read43(_paths43, 10**9, concurrency=1))
+    _readsaw43 = sorted(_wasread43)
+
+    # A second run over the same directory. The row that errored is work again,
+    # the two that answered are not.
+    _asked_after_first43 = len(_asked43)
+    asyncio.run(_stage_triage43(_paths43, 10**9, concurrency=1))
+    _retried43 = [e for e in _asked43[_asked_after_first43:]]
+    _final43 = {r["session_id"]: r for r in load(_paths43.triaged)}
+    _settled43 = _already_done43(_paths43.triaged)
+finally:
+    (turns_mod.load_session_turns, turns_mod.build_excerpt,
+     _triagemod43.triage, _readmod43.read_pushback) = _keep43
+
+check(len(_retried43) == 1 and "boom" in _retried43[0]
+      and _after43["s-boom"].get("error", "").startswith("RuntimeError")
+      and not _final43["s-boom"].get("error")
+      and not str(_final43["s-boom"].get("triage_reason", "")).startswith("error:")
+      and len(_final43) == 3 and ("s-boom", 7) in _settled43,
+      f"a triage that raised is asked again next run, not stored as a verdict: "
+      f"re-asked {len(_retried43)}, rows now {len(_final43)}, "
+      f"first {_after43['s-boom'].get('error', '-')[:22]!r}, "
+      f"s-boom reason {str(_final43['s-boom'].get('triage_reason', ''))[:28]!r}")
+
+check(_readsaw43 == sorted([_sessions43["s-boom"], _sessions43["s-keep"]]),
+      f"and it still reaches the reader in the run that failed it: {[t[:18] for t in _readsaw43]}")
+
+check(_prog43.failed == 1 and _prog43.produced == 1 and "1 failed" in _line43,
+      f"the stage line calls it a failure rather than a moment triaged: {_line43[:78]!r}")
+
+# Three moments in, one kept, one genuinely discarded, one never asked. Counted
+# as produced, the errored row made the note say one fewer discarded than there
+# were; counted as discarded it says one more.
+check("1 discarded before reading" in _line43,
+      f"and a moment nobody asked about is not counted as discarded: {_line43[-52:]!r}")
+
+# --- G-37 and G-22: what a replayed tree proves ------------------------------
+# `replay` applies every Edit, Write and MultiEdit before the cut and calls the
+# tree good if none of them refused. What can refuse: an Edit whose old_string
+# is not in the file. What cannot: a Write, which overwrites whatever is there
+# or creates it, and an Edit onto a file a Write in the same replay just made.
+# Across the corpus's 73,549 edit calls, 8,716 are Writes; of the 4,452
+# sessions that carry any edit call, 2,242 carry at least one Write and 277
+# carry nothing else -- for those, `ok` says only that the paths resolved.
+# So `applied` is counted beside `verified`: how many hunks matched content the
+# base commit itself supplied. Measured per file, not per hunk -- an Edit
+# chained onto an earlier Edit's output is still an Edit into a file the commit
+# had to supply, and only a file this replay created is excluded.
+
+
+def _tree43(files):
+    d = Path(tempfile.mkdtemp()) / "tree"
+    for rel, body in files.items():
+        q = d / rel
+        q.parent.mkdir(parents=True, exist_ok=True)
+        q.write_text(body)
+    return d
+
+
+def _turn43(n, tool, args):
+    return {"session_id": "636d0488", "turn_number": n, "turn_type": "tool_use",
+            "tool_name": tool, "content": json.dumps(args)}
+
+
+def _e43(n, path, old, new):
+    return _turn43(n, "Edit", {"file_path": _VIB43 + path, "old_string": old, "new_string": new})
+
+
+def _w43(n, path, body):
+    return _turn43(n, "Write", {"file_path": _VIB43 + path, "content": body})
+
+
+# The largest replay on disk. `runs/*/tasks.jsonl` holds 22 task_ids, 15 of
+# them carrying `edits_replayed`; 8 replay at least one edit -- 1, 2, 3, 3, 4,
+# 4, 4 and 13. G-22 was written when it was "1 of 6 calibrated tasks with a
+# single edit", and the largest is now dipasqualew-vibereq-162: session
+# 636d0488, cut 156, thirteen calls over eight files. The turn numbers, the
+# tools, the paths and the dependency structure below are that session's, read
+# out of the corpus; the file bodies are stand-ins, because the base tree
+# (602d3b64) cannot be fetched with no network. Note the checkout directory --
+# `vibereq-issue-4`, not the repository's name, so the election in section 19
+# is doing work here too.
+_VIB43 = "/Users/wdp/git/dipasqualew/vibereq-issue-4/"
+_BASE43 = {
+    "apps/cli/src/types.ts": "export type Req = { id: string };\n",
+    "apps/cli/src/lib/git.ts": "export function branchName() {\n  return \"main\";\n}\n",
+    "apps/cli/src/lib/github.ts": "export const api = \"v3\";\nexport function pr() { return null; }\n",
+    "apps/cli/src/index.ts": "#!/usr/bin/env node\nregister(\"status\");\n",
+}
+_PR43 = "export async function pr() {\n  const b = branchName();\n  return createPr(b);\n}\n"
+_CALLS43 = [
+    _e43(34, "apps/cli/src/types.ts", "{ id: string }", "{ id: string; branch: string }"),
+    # turn 130 below matches `const head = currentHead();` -- a string that
+    # exists in the tree only because this hunk put it there.
+    _e43(41, "apps/cli/src/lib/git.ts", "  return \"main\";",
+         "  const head = currentHead();\n  return head;"),
+    _e43(48, "apps/cli/src/lib/github.ts", "\"v3\"", "\"v4\""),
+    _e43(52, "apps/cli/src/lib/github.ts", "return null;", "return openPr();"),
+    _w43(58, "apps/cli/src/commands/pr.ts", _PR43),
+    _w43(65, "apps/cli/src/commands/address-pr.ts",
+         "export async function addressPr() { return review(); }\n"),
+    _e43(72, "apps/cli/src/index.ts", "register(\"status\");",
+         "register(\"status\");\nregister(\"pr\");"),
+    _e43(76, "apps/cli/src/index.ts", "register(\"pr\");",
+         "register(\"pr\");\nregister(\"address-pr\");"),
+    _w43(85, "plugins/vibereq/skills/vibx-pr/SKILL.md", "# vibx-pr\n"),
+    _w43(92, "plugins/vibereq/skills/vibx-address-pr/SKILL.md", "# vibx-address-pr\n"),
+    _e43(130, "apps/cli/src/lib/git.ts", "const head = currentHead();",
+         "const head = currentHead() ?? \"main\";"),
+    # Both of these match what the Write at 58 wrote. They cannot fail, and
+    # they say nothing about the commit.
+    _e43(133, "apps/cli/src/commands/pr.ts", "const b = branchName();",
+         "const b = await branchName();"),
+    _e43(136, "apps/cli/src/commands/pr.ts", "return createPr(b);", "return createPr(b, true);"),
+]
+# Stored out of order, with the traffic a real session carries between the
+# edits: a read, prose, and a tool_use whose arguments will not parse.
+_ROWS43 = list(reversed(_CALLS43)) + [
+    _turn43(35, "Read", {"file_path": _VIB43 + "apps/cli/src/lib/git.ts"}),
+    {"session_id": "636d0488", "turn_number": 36, "turn_type": "assistant_response",
+     "content": "I will add the branch to the type."},
+    _turn43(37, "Edit", {}) | {"content": "{not json"},
+    _e43(180, "apps/cli/src/index.ts", "register(\"status\");", "register(\"nothing\");"),
+]
+
+_got43 = _edits_before43(_ROWS43, 156)
+check([e["turn"] for e in _got43] == [c["turn_number"] for c in _CALLS43]
+      and [e["tool"] for e in _got43] == [c["tool_name"] for c in _CALLS43],
+      f"the session's thirteen edit calls come back in turn order from rows stored "
+      f"out of it: {[e['turn'] for e in _got43]}")
+
+_cut43 = [e["turn"] for e in _edits_before43(_ROWS43, 130)]
+check(_cut43[-1:] == [130] and len(_cut43) == 11
+      and len(_edits_before43(_ROWS43, 129)) == 10,
+      f"an edit at the cut is replayed and one past it is not: {len(_cut43)} to 130, "
+      f"{len(_edits_before43(_ROWS43, 129))} to 129, {len(_got43)} to 156")
+
+_tr43 = _tree43(_BASE43)
+_rep43 = _replay43(_tr43, _got43, "dipasqualew/vibereq")
+# Seven hunks land on content the commit supplied -- 34, 41, 48, 52, 72, 76 and
+# 130. Four Writes and the two Edits onto the file the Write at 58 created do
+# not, so the row that says `edits_replayed=13` is worth 7.
+check(_rep43.ok and _rep43.applied == 13 and _rep43.verified == 7
+      and len(_rep43.files) == 8
+      and "currentHead() ?? \"main\"" in (_tr43 / "apps/cli/src/lib/git.ts").read_text()
+      and (_tr43 / "apps/cli/src/commands/pr.ts").read_text()
+      == _PR43.replace("const b = branchName();", "const b = await branchName();")
+              .replace("return createPr(b);", "return createPr(b, true);"),
+      f"thirteen calls replay, and six of them test nothing: applied {_rep43.applied}, "
+      f"verified {_rep43.verified}, files {len(_rep43.files)}{', ' + _rep43.reason[:40] if _rep43.reason else ''}")
+
+# One of the 277 sessions whose edit calls are all Writes. Every call applies,
+# the base content of two files is overwritten unread, and `ok` is True --
+# which here means only that the paths resolved. `verified` is what separates
+# this tree from the one above; `ok` cannot.
+_wtree43 = _tree43({"src/a.ts": "BASE A\n", "README.md": "BASE README\n"})
+_writes43 = _replay43(_wtree43, _edits_before43([
+    _turn43(4, "Write", {"file_path": "/Users/d/code/proj/src/a.ts", "content": "new a\n"}),
+    _turn43(6, "Write", {"file_path": "/Users/d/code/proj/README.md", "content": "new readme\n"}),
+    _turn43(8, "Write", {"file_path": "/Users/d/code/proj/src/b.ts", "content": "new b\n"})],
+    9), "o/proj")
+check(_writes43.ok and _writes43.applied == 3 and _writes43.verified == 0
+      and not _writes43.tests_the_base_commit and _rep43.tests_the_base_commit
+      and (_wtree43 / "src/a.ts").read_text() == "new a\n",
+      f"a replay of nothing but Writes applies everything and verifies nothing: "
+      f"applied {_writes43.applied}, verified {_writes43.verified}, "
+      f"tests_the_base_commit {_writes43.tests_the_base_commit}/{_rep43.tests_the_base_commit}")
+
+# Turn 34 to elect the checkout, then the Write at 58 and the two Edits that
+# match what it wrote. Three of these four calls cannot fail; one can.
+_own43 = _replay43(_tree43(_BASE43),
+                   [e for e in _got43 if e["turn"] in (34, 58, 133, 136)],
+                   "dipasqualew/vibereq")
+check(_own43.ok and _own43.applied == 4 and _own43.verified == 1,
+      f"an Edit matching what a Write in the same replay wrote is not evidence "
+      f"about the commit: applied {_own43.applied}, verified {_own43.verified}")
+
+# The base commit is not what the agent was editing: index.ts differs, so the
+# hunk at turn 72 finds nothing. Six calls have already landed; the task is
+# rejected rather than shipped half one thing and half another.
+_wrong43 = _replay43(_tree43(dict(_BASE43, **{"apps/cli/src/index.ts":
+                                              "#!/usr/bin/env node\nregister(\"state\");\n"})),
+                     _got43, "dipasqualew/vibereq")
+check(not _wrong43.ok and _wrong43.failed_at == 72 and _wrong43.applied == 6
+      and "old_string not found" in _wrong43.reason
+      and "apps/cli/src/index.ts" in _wrong43.reason,
+      f"a hunk that will not apply stops the replay where it is: "
+      f"{_wrong43.reason[:74]!r}, applied {_wrong43.applied}")
+
+# MultiEdit is in EDIT_TOOLS, carries 134 calls over 5 sessions in the corpus,
+# and no check in this repository has ever run one.
+_multi43 = _tree43({"src/app.py": "a = 1\nb = 2\nc = 3\n"})
+_mrep43 = _replay43(_multi43, _edits_before43([_turn43(7, "MultiEdit", {
+    "file_path": "/Users/d/code/proj/src/app.py",
+    "edits": [{"old_string": "a = 1", "new_string": "a = 9"},
+              {"old_string": "b = 2", "new_string": "b = 8"},
+              {"old_string": "c = 3", "new_string": "c = 7"}]})], 20), "o/proj")
+check(_mrep43.ok and _mrep43.applied == 1 and _mrep43.verified == 3
+      and (_multi43 / "src/app.py").read_text() == "a = 9\nb = 8\nc = 7\n",
+      f"a MultiEdit applies every hunk it carries, in order: "
+      f"{(_multi43 / 'src/app.py').read_text()!r}, verified {_mrep43.verified}")
+
+# One call, and the second of its hunks is ambiguous. The Edit tool refuses
+# that, so replaying it as a single silent substitution would put the tree
+# somewhere the agent's own session never was.
+_amb43 = _tree43({"src/app.py": "x = 0\nkeep\nkeep\n"})
+_arep43 = _replay43(_amb43, _edits_before43([_turn43(9, "MultiEdit", {
+    "file_path": "/Users/d/code/proj/src/app.py",
+    "edits": [{"old_string": "x = 0", "new_string": "x = 1"},
+              {"old_string": "keep", "new_string": "gone"}]})], 20), "o/proj")
+check(not _arep43.ok and _arep43.failed_at == 9 and _arep43.applied == 0
+      and "appears 2 times" in _arep43.reason,
+      f"and a hunk matching twice without replace_all stops it: {_arep43.reason[:70]!r}")
+
+# The count has to reach the row a person reads, and must not reach the stamp
+# that decides whether a paid answer is still about its task: 272 of the 691
+# stored answer rows carry a fingerprint, and adding a field to it calls every
+# one of them stale.
+try:
+    _mk43 = lambda **kw: _Task43("dipasqualew-vibereq-162", "dipasqualew/vibereq", "u",
+                                 "602d3b64", "636d0488", 156, 150, 156, 160,
+                                 "wrong " * 10, "right " * 10, "a defect", "none", **kw)
+    _row43 = _mk43(edits_replayed=13, edits_verified=7)
+    _ok43 = (_row43.to_json()["edits_verified"] == 7
+             and _Task43.from_json(_row43.to_json()).edits_verified == 7
+             and _fingerprint43(_row43) == _fingerprint43(_mk43(edits_replayed=13, edits_verified=0))
+             and _fingerprint43(_row43) != _fingerprint43(_mk43(edits_replayed=12, edits_verified=7)))
+    _why43 = f"{_row43.to_json().get('edits_verified')!r} on the row"
+except Exception as _err43:  # noqa: BLE001 - a missing field is a FAIL, not a crash
+    _ok43, _why43 = False, f"{type(_err43).__name__}: {_err43}"
+check(_ok43, f"how much of the replay was verified is on the task row and out of "
+             f"its fingerprint: {_why43}")
+
+# And that the number actually reaches a real task row. The assertion above
+# covers the round trip and the exclusion from the fingerprint; deleting the
+# one line in `build()` that hands `rep.verified` to the Task left it, and
+# every other check, entirely green. This drives the real `build` with its
+# seven dependencies stubbed, which is the only seam that line sits behind.
+from errata_bench.construct.edits import Replay as _Replay43
+import errata_bench.construct.build as _B43w
+from errata_bench.construct.presence import Presence as _Presence43w
+from errata_bench.corpus.sessions import Repo as _Repo43w
+
+_turns43w = [
+    {"turn_number": 1, "turn_type": "user_prompt", "content": "Add retries to the uploader."},
+    {"turn_number": 2, "turn_type": "assistant_response",
+     "content": "Done, " + "the retries are in and the tests pass. " * 12},
+    {"turn_number": 3, "turn_type": "user_prompt", "content": "no, you never checked the backoff fires"},
+    {"turn_number": 4, "turn_type": "assistant_response",
+     "content": "You are right, " + "I added the sleep and verified it. " * 12},
+]
+
+class _Checkout43w:
+    def export_tree(self, sha, dest):
+        (dest / "src").mkdir(parents=True)
+        (dest / "src" / "a.py").write_text("x = 1\n")
+        return dest
+
+_kept43w = {n: getattr(_B43w, n) for n in
+            ("load_repos", "session_starts", "load_commits_by_repo", "load_session_turns",
+             "fetch", "edits_before", "replay", "check")}
+
+def _built43w(verified):
+    _B43w.load_repos = lambda: {"acme/up": _Repo43w(repo_id="acme/up", url="https://x/acme/up",
+                                                    license_type="mit", language="Python")}
+    _B43w.session_starts = lambda ids=None: {"s-43w": 1_000_000_000}
+    _B43w.load_commits_by_repo = lambda **kw: {"acme/up": [
+        type("C43w", (), {"author_ns": 1, "commit_sha": "abc123"})()]}
+    _B43w.load_session_turns = lambda ids: {"s-43w": list(_turns43w)}
+    _B43w.fetch = lambda url, sha, dest: _Checkout43w()
+    _B43w.edits_before = lambda turns, cut: []
+    _B43w.replay = lambda tree, edits, repo_id: _Replay43(applied=13, verified=verified, files={"a"})
+    _B43w.check = lambda task_id, sig, tree: _Presence43w(
+        task_id=task_id, probeable=True, present=True, detail="ok", strength="declared")
+    row = {"session_id": "s-43w", "repo_id": "acme/up", "request": 1, "failed": 2,
+           "complaint": 3, "resolved": 4, "cut": 1, "kind": "none", "path": "src/a.py",
+           "token": "", "defect": "a defect", "rounds": 1, "usable": True,
+           "asks_for_something": True, "within_scope": True, "signals_trouble": False}
+    return _B43w.build([row])
+
+try:
+    _seven43w = _built43w(7)
+    _zero43w = _built43w(0)
+    _got43w = ([t.edits_verified for t in _seven43w.tasks], [t.edits_verified for t in _zero43w.tasks])
+    _repl43w = [t.edits_replayed for t in _seven43w.tasks]
+except Exception as _e43w:  # noqa: BLE001
+    _got43w, _repl43w = f"{type(_e43w).__name__}: {_e43w}", []
+finally:
+    for _n43w, _v43w in _kept43w.items():
+        setattr(_B43w, _n43w, _v43w)
+check(_got43w == ([7], [0]) and _repl43w == [13],
+      f"and build() puts it on the task it makes, from the replay it ran: "
+      f"verified {_got43w}, replayed {_repl43w}")
+
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:
     print("  -", f)

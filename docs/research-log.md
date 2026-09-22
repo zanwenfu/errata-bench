@@ -2226,6 +2226,31 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   behavioural tasks, so no reading looks at what actually changed on disk.
 - **G-19 · Triage drops about 17% of known-good moments** (cipher-box,
   desplega-ai among them), and its errors fail open.
+  **Half closed 09-21, half withdrawn as unmeasurable from what is on disk.**
+  *The fail-open half is fixed.* A moment whose triage call raised was written
+  `worth_reading=True, triage_reason="error: ..."` and nothing could tell that
+  from a verdict: `_succeeded` looks for an `error` key or "error:" in
+  `reason`, found neither, so `already_done` counted the row finished and the
+  question was never asked again. **73 of the 922 rows in
+  runs/scale900/triaged.jsonl are that shape, every one of them the same "Error
+  code: 429 ... You have no credits remaining"** from R-15's exhaustion -- a
+  verdict nobody gave. 28 of the 73 reached the reader at about eight calls
+  each before the run halted; a resumed run would step straight over the other
+  45. Not one row in any stored `triaged.jsonl` carries an `error` key. This is
+  exactly the accident `completed`'s own docstring was written for ("resuming
+  after a top-up would have skipped every one of them permanently"), at the one
+  stage it had never reached. The row now carries `error`, so it is work again,
+  while still going to the reader in the run that failed it -- and `produced`,
+  `failed` and "discarded before reading" are three disjoint counts, because
+  folding an unjudged moment into "discarded" would say the stage turned away
+  something it never read (the shape of B-222 and B-223).
+  *The 17% is withdrawn.* It cannot be reproduced from anything on disk and
+  should not be repeated: every non-circular denominator tried gives nothing.
+  `readings.jsonl` only ever holds moments triage kept, so cross-referencing is
+  circular; of the 22 task_ids ever built, 15 appear in a triaged file and
+  **none was dropped**; the 7 viable readings in the pre-triage runs overlap no
+  triaged file at all. Whatever the figure came from, it is not in the data we
+  have. A real measurement needs known-good moments triage has not seen.
 - **G-20 · The attempt time limit is global (10 minutes), not derived from what
   each task's own commands take** — the developer's suggestion, never built.
   **Narrowed 09-21, not closed.** The limits are now settings
@@ -2240,6 +2265,13 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
 - **G-22 · Edit replay is barely exercised**: it applies to 1 of 6 calibrated
   tasks with a single edit, while 12% of screened sessions change the tree with
   git and are rejected outright (B-32).
+  **Closed 09-21 for the coverage half.** Section 43 drives the real `replay`
+  against `dipasqualew-vibereq-162`'s thirteen recorded calls -- rows stored out
+  of turn order, an edit at the cut replayed and one past it not, a hunk that
+  will not apply stopping the replay where it is, a MultiEdit applying every
+  hunk in order, and one matching twice without `replace_all` refusing -- and
+  then through the real `build()` onto a task row. The scarcity in the built
+  set is G-23's to fix, not this.
 - **G-23 · Building more tasks is now the only thing that moves the result.**
   *(raised to the top of the list 09-20 by R-24.)* Under the standard the
   developer set, the nine built tasks yield two. Six attempts per model cannot
@@ -2769,6 +2801,23 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   barely examined. Walking back through commits does not recover them: applied
   edit counts fall monotonically going back, and across the 9 rows not one
   recovered within 16 commits (X-16).
+  **The weakness half is closed 09-21; the loss itself stands.** `Replay.ok`
+  could not tell a tree whose base commit was tested from one where nothing
+  could have failed. A `Write` overwrites whatever is there or creates it, so a
+  replay of four Writes reports `applied=4, ok=True` having examined no part of
+  the commit -- and neither can an `Edit` whose `old_string` matches what a
+  Write earlier in the same replay just put there. Measured over the corpus:
+  **277 of the 4,452 edit-bearing sessions are all-Write, and 2,242 contain at
+  least one.** `dipasqualew-vibereq-162` replays 13 calls of which 6 test
+  nothing -- 4 Writes and 2 Edits onto a file its own Write at turn 58 created.
+  `Replay.verified` now counts the hunks that could have failed on the wrong
+  commit, `Replay.tests_the_base_commit` says whether any could, and
+  `Task.edits_verified` puts the number on the row a person reads. Deliberately
+  out of `fingerprint`: it changes nothing about what the candidate is asked,
+  and stamping it would call all 272 fingerprinted answer rows stale. What is
+  unchanged, on purpose: `_checkout_root` and `_target` (G-55), and every
+  existing caller's view of `applied`, `files`, `failed_at`, `reason` and `ok`.
+  The 9 tasks lost to edits that will not apply are still lost.
 - **G-35 · Lowering `--repeats` leaves the extra answers in place.** They are
   still graded and still counted, so a run's repeat count is whatever the
   highest setting ever used was.

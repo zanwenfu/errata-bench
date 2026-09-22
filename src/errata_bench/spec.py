@@ -94,6 +94,14 @@ class Task:
     # How many of the agent's own edits were replayed onto the base commit so
     # the tree matches what the transcript describes at the cut.
     edits_replayed: int = 0
+    # How many of those actually tested the commit -- an old_string matched
+    # against content the checkout already had. A Write cannot fail and neither
+    # can an Edit onto a file a Write in the same replay created, so
+    # `edits_replayed` alone reads as evidence it is not: 13 replayed and 7
+    # verified is what dipasqualew-vibereq-162's tree is really worth (G-37).
+    # Deliberately not in `fingerprint`: it changes nothing about what the
+    # candidate is asked, and stamping it would call every stored answer stale.
+    edits_verified: int = 0
 
     # provenance
     license_type: str | None = None

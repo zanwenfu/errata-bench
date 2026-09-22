@@ -367,6 +367,7 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
                 is_copyleft=repo.is_copyleft,
                 rounds=row.get("rounds", 1),
                 edits_replayed=rep.applied,
+                edits_verified=rep.verified,
             )
         )
     return result

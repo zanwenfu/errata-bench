@@ -93,19 +93,48 @@ async def stage_triage(paths: Paths, limit: int, concurrency: int) -> Progress:
             )
             return verdict.worth_reading
         except Exception as e:
-            # A moment that cannot be triaged goes to the reader rather than
-            # being dropped: the reader is the authority, and this stage exists
-            # only to save money.
-            append(paths.triaged, {**m, "worth_reading": True, "triage_reason": f"error: {e}"})
-            return True
+            # A moment that cannot be triaged still goes to the reader rather
+            # than being dropped: the reader is the authority, and this stage
+            # exists only to save money. But failing open is not the same as
+            # deciding, and with the reason under `triage_reason` alone nothing
+            # could tell them apart: `_succeeded` looks for an `error` key or
+            # "error:" in `reason`, found neither, and `already_done` counted
+            # the row finished, so the question was never asked again. That is
+            # the accident `completed` was written for, at the one stage it had
+            # not reached -- 73 of the 922 rows in runs/scale900/triaged.jsonl
+            # are `worth_reading=True` with "Error code: 429 ... no credits
+            # remaining" as their reason, a verdict nobody gave. 28 went on to
+            # the reader at about eight calls each; a resumed run would step
+            # straight over the other 45. Under `error` the row is work again
+            # (G-19).
+            append(paths.triaged, {**m, "worth_reading": True,
+                                   "error": f"{type(e).__name__}: {e}",
+                                   "triage_reason": f"error: {e}"})
+            return e
 
     results = await _gather([one(m) for m in todo], concurrency)
-    p.produced = sum(1 for r in results if r)
+    # Three outcomes, counted apart, because two of them were one number
+    # before: a moment kept for the reader, one this stage decided against, and
+    # one it could not read at all. Folding the third into "discarded before
+    # reading" would say this stage turned away a moment it never judged --
+    # the shape of B-222 and B-223, twice over in one day.
+    # Disjoint, as every other stage's pair is: produced, failed and discarded
+    # sum to the work attempted. An errored moment is counted as failed and
+    # not as produced, even though its row does go on to the reader -- the
+    # note below says so, because a number that means two things is how the
+    # last three misreporting bugs happened.
+    errored = [r for r in results if isinstance(r, BaseException)]
+    p.produced = sum(1 for r in results if r is True)
+    p.failed = len(errored)
     # Appended, not assigned. The last stage that assigned over its notes threw
     # away the one line explaining why it had done less work than asked
     # (B-222); this one was still doing it, and swallowed the count of moments
     # passed over for having no container.
-    p.notes.append(f"{len(todo) - p.produced} discarded before reading")
+    p.notes.append(f"{sum(1 for r in results if r is False)} discarded before reading")
+    if errored:
+        p.notes.append(f"{len(errored)} could not be triaged: kept as work to retry "
+                       f"rather than as a verdict, and still passed to the reader in "
+                       f"this run -- {str(errored[0])[:80]}")
     p.took_s = time.monotonic() - t0
     return p
 
