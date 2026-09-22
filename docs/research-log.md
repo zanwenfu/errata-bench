@@ -368,6 +368,40 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   raises at the call now, and the guard that used to assert "an even split has
   no majority, so it is refused" asserts the refusal instead. One reading is
   still allowed, because one reading has a majority of one.
+- **B-232 · The task fingerprint described a task the file never held, and the
+  trace budget bounded only half the trace** (fixed · 09-22).
+  **The fingerprint.** `to_json` cuts the two reference answers at 6,000
+  characters and `fingerprint` hashed them uncut, so a task at the cap had two
+  stamps: the one `stage_build` computes from the tasks in memory and the one
+  every other stage computes after reading them back. `still_describes`
+  compares exactly those two, so for such a task it was False for every
+  downstream row -- each rebuild deleting its calibration, controls, answers
+  and graded attempts, the next stages re-paying for them, the next rebuild
+  deleting them again, work that never converges. **Two of the 120 tasks on
+  disk sit exactly at 6,000, both built on 09-22**, so this was live on tasks
+  calibrated the same night. One named constant used by both now; all 21
+  calibration rows in `runs/sweep1` survive a rebuild where two would not have.
+  **The trace budget.** `render`'s docstring says `budget` "bounds the whole
+  trace"; it bounded the outputs and not the head lines, which were appended
+  with no room check at all. **42 of the 153 stored traces render past the
+  24,000 they are given, the largest at 39,840** -- 16,000 characters of prompt
+  nobody costed. Two attempts at the repair are worth recording because the
+  first was worse than the defect: bounding the total by dropping calls
+  withheld **571 of 2,043 calls across the stored traces, a median of 31% of
+  each**, and a call the checker cannot see is worse than an output it cannot
+  see -- a claim about it reads as invented rather than merely unverified. The
+  fix is to make the head lines cheap instead: a command line is clipped to
+  about 200 characters where an output keeps 1,200, and every head is placed
+  before any output. Measured over the same 153 traces, the result is better
+  than the original on every axis: **0 over budget against 42, 285 outputs
+  withheld against 775, and no call unlisted at all**.
+  One assertion had to be corrected rather than satisfied. Section 29 asserted
+  that a trace of nineteen full outputs plus a short final one withholds
+  nothing, and that was only true because the bound was not being held -- those
+  nineteen come to 23,427 characters against the 23,424 the trace has to spend.
+  It now asserts what actually matters, which is that the final output survives
+  and that whatever gives way is named.
+
 - **R-32 · The screening run: 29 new tasks, and the corpus is now exhausted.**
   *(09-22.)* Every addressable moment left in the corpus, taken through triage,
   read, locate, signature, screen and build at `--concurrency 3` and

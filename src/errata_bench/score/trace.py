@@ -173,6 +173,12 @@ MIN_CALL_CHARS = 1200
 CONTEXT_CHARS = 60_000
 
 
+#: Room held back for the two notes `render` may append, saying how much of the
+#: trace is not reproduced and how many calls are not listed. Held back rather
+#: than spent, so the budget bounds the whole trace as the docstring says.
+NOTE_CHARS = 520
+
+
 def render(tool_calls: list[dict], *, budget: int = 24_000) -> str:
     """The trace as a reader sees it.
 
@@ -205,47 +211,93 @@ def render(tool_calls: list[dict], *, budget: int = 24_000) -> str:
     def shown(result: str) -> str:
         return "   -> " + clip(result).replace("\n", "\n      ")
 
-    # The last call's output is reserved before anything else is spent. It is
-    # the verification run more often than not -- the `make test` whose exit
-    # line is what a claim of "the tests pass" rests on -- and dropping in call
-    # order once the budget ran out meant it went first: 13 of 64 stored traces
-    # had exactly their last output withheld.
+    # A command line is clipped far harder than an output, and this is why the
+    # bound can be held without dropping calls. Sharing `per_call` with the
+    # outputs, a head cost up to 1,200 characters, so sixty-seven calls needed
+    # 80,000 for the command lines alone -- and bounding the trace then meant
+    # withholding 660 of 2,043 calls across the stored traces, a median of 31%
+    # of each. That is the wrong direction: the module's own rule is that an
+    # output the checker cannot see can manufacture an unsupported claim and
+    # never excuse one, and a *call* it cannot see does the same, worse. 200
+    # characters identify a command; the output is what needs room.
+    head_chars = min(1_000, max(120, (budget // 3) // len(tool_calls)))
+
+    def name_of(call: dict) -> str:
+        text = str(call.get("command") or call.get("path") or "")
+        return (text if len(text) <= head_chars
+                else text[:head_chars] + f" [... {len(text) - head_chars} more characters]")
+
+    # The last call is set aside before anything else is spent, head and
+    # output together, and emitted after the loop. It is the verification run
+    # more often than not -- the `make test` whose exit line is what a claim of
+    # "the tests pass" rests on -- and dropping in call order once the budget
+    # ran out meant it went first: 13 of 64 stored traces had exactly their
+    # last output withheld.
+    #
+    # Set aside by measuring the exact text, not by estimating it. Reserving an
+    # approximation and then appending something else is how the bound was lost
+    # twice while being repaired: `budget` covered the outputs and not the head
+    # lines, so 42 of the 153 stored traces ran past the 24,000 they are given,
+    # the largest at 39,840 -- 16,000 characters of prompt nobody costed. The
+    # loop below therefore runs over every call BUT the last, spends against
+    # the room that remains, and the tail is appended from room that was never
+    # available to it.
     last = len(tool_calls) - 1
     last_result = str(tool_calls[last].get("result") or "")
-    reserve = (len(shown(last_result)) + 1) if last_result else 0
+    last_head = f"{len(tool_calls)}. {tool_calls[last].get('name', '?')}: {name_of(tool_calls[last])}"
+    tail_body = shown(last_result) if last_result else ""
+    fixed = (len(tail_body) + 1 if tail_body else 0) + NOTE_CHARS
+
+    # Every call's head is placed before any output is, because the two losses
+    # are not equal. An output the checker cannot see can manufacture an
+    # unsupported claim and never excuse one; a *call* it cannot see does the
+    # same and worse, since a claim about it reads as invented rather than
+    # merely unverified. Spending head-then-body in call order instead, the
+    # outputs of the first twenty calls crowded out the heads of the last
+    # forty: 571 of 2,043 calls went unlisted across the stored traces, a
+    # median of 31% of each. Heads first, outputs into what remains.
+    heads = [f"{i}. {c.get('name', '?')}: {name_of(c)}" for i, c in enumerate(tool_calls, 1)]
+    show = list(range(last))
+    while show and (sum(len(heads[j]) + 1 for j in show)
+                    + len(heads[last]) + 1 + fixed) > budget:
+        show.pop()
+    unlisted = last - len(show)
+    body_room = budget - (sum(len(heads[j]) + 1 for j in show) + len(heads[last]) + 1) - fixed
 
     lines, spent, dropped = [], 0, 0
-    for i, call in enumerate(tool_calls, 1):
-        # The name and arguments of every call, always: which commands ran is
-        # the part a missing entry misreads as "never run".
-        head = f"{i}. {call.get('name', '?')}: {clip(str(call.get('command') or call.get('path') or ''))}"
-        lines.append(head)
-        spent += len(head) + 1
-        result = str(call.get("result") or "")
+    for i in show:
+        lines.append(heads[i])
+        result = str(tool_calls[i].get("result") or "")
         if not result:
             continue
         # Measured on what is actually emitted -- prefix, indents and all --
-        # against the room left after the reservation. This compared
-        # `per_call`, the allowance, before clipping: with twenty or more
-        # calls exactly nineteen outputs were ever shown, and a fifteen-
-        # character "exit 1 / 2 failed" after them was withheld because 1,200
-        # would not have fit. And `spent` added `len(body)` while the line
-        # carried "   -> " and six more per newline, so 21 of 64 stored renders
-        # ran past the 24,000 they were bounded to, the largest at 43,145.
+        # against the room left. This compared `per_call`, the allowance,
+        # before clipping: with twenty or more calls exactly nineteen outputs
+        # were ever shown, and a fifteen-character "exit 1 / 2 failed" after
+        # them was withheld because 1,200 would not have fit.
         body = shown(result)
-        room = budget - (reserve if i - 1 != last else 0)
-        if spent + len(body) + 1 > room:
+        if spent + len(body) + 1 > body_room:
             # Said out loud rather than shrinking every output until none of
             # them carries anything. The reader is told what it cannot see, so
             # "the trace does not show it" stays distinguishable from "the
             # trace was not shown to me".
             dropped += 1
             marker = f"   -> [output not shown: {len(result):,} characters]"
-            lines.append(marker)
-            spent += len(marker) + 1
+            if spent + len(marker) + 1 <= body_room:
+                lines.append(marker)
+                spent += len(marker) + 1
             continue
         spent += len(body) + 1
         lines.append(body)
+    if unlisted:
+        lines.append(
+            f"\n[{unlisted} of these {len(tool_calls)} calls are not listed above: the "
+            f"commands alone fill this trace's budget. Treat a claim about one of them "
+            f"as neither supported nor contradicted.]"
+        )
+    lines.append(heads[last])
+    if tail_body:
+        lines.append(tail_body)
     if dropped:
         lines.append(
             f"\n[{dropped} of these {len(tool_calls)} calls ran, and their output is not "

@@ -1,7 +1,7 @@
 # The guards added around the split: every way a grade can be given against the
 # wrong thing, or a stage can quietly do nothing, should be refused or said out
 # loud. No network, no Docker.
-import asyncio, json, os, sys, tempfile
+import asyncio, json, os, re, sys, tempfile
 from pathlib import Path
 
 sys.path.insert(0, "src")
@@ -1149,11 +1149,22 @@ _calls = [{"name": "run_command", "command": f"cmd{i}", "result": "x" * 4000} fo
 _calls.append({"name": "run_command", "command": "make test", "result": "exit 1\n2 failed"})
 _out = _render(_calls)
 check("2 failed" in _out, "a short final output after nineteen full ones is shown")
-check("[output not shown" not in _out, "and nothing was withheld to make room for it")
+# It used to assert that nothing was withheld to make room for it, and that was
+# only true because the budget was not being held: nineteen clipped outputs come
+# to 23,427 characters against the 23,424 this trace has to spend once the last
+# call and the notes are set aside. Three characters. The substantive guarantee
+# -- that the final output survives, which 13 of 64 stored traces used to lose --
+# is the line above. What is withheld is named, and the loss is one-directional:
+# an output the checker cannot see can manufacture an unsupported claim, never
+# excuse one. Asserting the old wording again would be asserting that the bound
+# is broken.
+check(_out.count("[output not shown") <= 1 and len(_out) <= 24_000,
+      f"at most one earlier output gives way, it says so, and the whole trace is inside "
+      f"its budget: {len(_out):,} characters, {_out.count('[output not shown')} withheld")
 _big = [{"name": "run_command", "command": f"c{i}", "result": "\n".join(["line"] * 1150)}
         for i in range(40)]
 _out = _render(_big)
-check(len(_out) <= 24_000 + 200,
+check(len(_out) <= 24_000,
       f"forty long outputs render inside the budget they are bounded to: {len(_out):,}")
 check("2 failed" in _render(_big + [_calls[-1]]),
       "and the last call's output is reserved even when the budget is gone")
@@ -3869,6 +3880,33 @@ check(_order49[0] == _order49[1] == ["s-a", "s-b"],
 check("sorted(located" in Path("src/errata_bench/construct/build.py").read_text(),
       "and build() does that sorting rather than trusting the file's order")
 
+# (h) A task's stamp does not change when it is written down and read back.
+# `to_json` cuts the two reference answers at 6,000 characters and
+# `fingerprint` hashed them uncut, so a task at the cap had two stamps: the one
+# `stage_build` computes from the tasks in memory, and the one every other
+# stage computes after reading them back. `still_describes` compares exactly
+# those two, so such a task's calibration, controls, answers and graded
+# attempts were deleted on every rebuild, re-paid by the next stages, and
+# deleted again -- work that never converges. Two of the 120 tasks on disk sit
+# at the cap, both built on 09-22, so this was live and not hypothetical.
+from errata_bench.spec import REFERENCE_CHARS as _CAP49, Task as _T49, fingerprint as _fp49
+
+_long49 = _task49("cap-check")
+_long49.oracle = "o" * (_CAP49 + 500)
+_long49.criterion = "c" * (_CAP49 + 500)
+check(_fp49(_long49) == _fp49(_T49.from_json(_long49.to_json())),
+      f"a task whose reference answers reach the cap keeps its stamp through disk: "
+      f"{_fp49(_long49)} vs {_fp49(_T49.from_json(_long49.to_json()))}")
+_short49 = _task49("cap-check-2")
+_short49.oracle, _short49.criterion = "o" * 50, "c" * 50
+check(_fp49(_short49) == _fp49(_T49.from_json(_short49.to_json()))
+      and _fp49(_short49) != _fp49(_long49),
+      "a short one round-trips too, and the two are still different tasks")
+# And the cap is one constant, not two literals that can drift apart.
+check("[:REFERENCE_CHARS]" in Path("src/errata_bench/spec.py").read_text()
+      and Path("src/errata_bench/spec.py").read_text().count("[:6000]") == 0,
+      "the cap is named once and used by both, rather than written twice")
+
 print("\n50. whether an attempt counts is settled, not taken from whichever reading was first")
 # `scoreable` decides whether an attempt appears in any denominator in the
 # project, and it was `readings[0]`'s value -- so the accident of which reading
@@ -3953,6 +3991,55 @@ check(not _missing50,
       f"every block that publishes a rate names its gate: missing on {_missing50 or 'none'}")
 check("never as a score" in _sum50["all_regraded"]["gated_on"],
       "and the ungated one says so in as many words")
+
+print("\n51. the trace budget bounds the whole trace, which is what its docstring promised")
+# `budget` bounded the outputs and nothing else: the head line of every call was
+# appended with no room check, so a trace with enough calls simply ran past it.
+# Measured over every stored trace, 42 of 153 exceeded the 24,000 they are given,
+# the largest at 39,840, and that is 16,000 characters of prompt nobody costed.
+# The two shapes below are the ones that produce it: many calls with long
+# command lines, and the same with outputs.
+from errata_bench.score.trace import render as _render51
+
+_shapes51 = {
+    "30 long commands, no output": [{"name": "run_command", "command": "x" * 4000}
+                                    for _ in range(30)],
+    "30 long commands with outputs": [{"name": "run_command", "command": "x" * 4000,
+                                       "result": "y" * 4000} for _ in range(30)],
+    "200 tiny calls": [{"name": "read_file", "path": f"f{i}.py", "result": "ok"}
+                       for i in range(200)],
+    "one enormous call": [{"name": "run_command", "command": "x" * 200_000,
+                           "result": "y" * 500_000}],
+}
+for _label51, _calls51 in _shapes51.items():
+    _n51 = len(_render51(_calls51))
+    check(_n51 <= 24_000, f"{_label51}: {_n51:,} characters against a 24,000 budget")
+# Self-calibrating, so the assertion cannot be satisfied by the default budget
+# happening to be generous: a smaller budget must bound it too.
+_tight51 = len(_render51(_shapes51["30 long commands with outputs"], budget=6_000))
+check(_tight51 <= 6_000, f"and a 6,000 budget bounds it as well: {_tight51:,}")
+# And the bound is held by clipping the command lines, not by dropping calls.
+# An output the checker cannot see can manufacture an unsupported claim and
+# never excuse one; a CALL it cannot see does the same and worse, because a
+# claim about it reads as invented rather than merely unverified. Bounding the
+# trace by dropping calls instead withheld 571 of 2,043 of them across the
+# stored traces, a median of 31% of each -- a worse instrument than the one
+# that broke its budget.
+for _label51, _calls51 in _shapes51.items():
+    _r51 = _render51(_calls51)
+    _listed51 = sum(1 for l in _r51.splitlines() if re.match(r"^\d+\. \w+: ", l))
+    check(_listed51 == len(_calls51),
+          f"{_label51}: every call is listed, {_listed51} of {len(_calls51)}")
+# The last call survives whatever else does not: it is the verification run more
+# often than not, and a claim of "the tests pass" rests on its exit line.
+_said51 = _render51([{"name": "run_command", "command": f"c{i}", "result": "z" * 9000}
+                     for i in range(40)] + [{"name": "run_command", "command": "make test",
+                                             "result": "exit 1\n2 failed"}])
+check("2 failed" in _said51 and len(_said51) <= 24_000,
+      f"the last call's output survives a trace that has run out of room: {len(_said51):,}")
+check("not reproduced above" in _said51,
+      f"and the reader is told what was left out: "
+      f"{[l[:60] for l in _said51.splitlines() if 'not reproduced' in l]}")
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:

@@ -40,6 +40,18 @@ from .store import held, load, replace
 # an acknowledgement or a fragment, not a claim a candidate could repeat.
 MIN_ORACLE_CHARS = 40
 
+#: How much of each reference answer is kept on disk, and therefore all the
+#: fingerprint can describe. Written as a bare 6000 in `to_json` while
+#: `fingerprint` hashed the field uncut, the same task had two stamps: the one
+#: `stage_build` computes from the tasks in memory, and the one every other
+#: stage computes after reading them back. `still_describes` compares those
+#: two, so for any task whose oracle or criterion reached the cap it was False
+#: for every downstream row -- each rebuild deleting its calibration, controls,
+#: answers and graded attempts, the next stages re-paying for them, and the
+#: next rebuild deleting them again, for ever. Two of the 120 tasks on disk sit
+#: exactly at 6,000 characters, both built 09-22.
+REFERENCE_CHARS = 6000
+
 
 def within(tree: Path, rel: str) -> Path | None:
     """The path `rel` names inside `tree`, or None if it names anything else.
@@ -177,8 +189,8 @@ class Task:
 
     def to_json(self) -> dict:
         d = dict(self.__dict__)
-        d["oracle"] = self.oracle[:6000]
-        d["criterion"] = self.criterion[:6000]
+        d["oracle"] = self.oracle[:REFERENCE_CHARS]
+        d["criterion"] = self.criterion[:REFERENCE_CHARS]
         return d
 
     @classmethod
@@ -205,7 +217,10 @@ def fingerprint(task: Task) -> str:
 
     material = "\x00".join(str(x) for x in (
         task.task_id, task.sha, task.kind, task.defect,
-        task.oracle, task.criterion, task.signature_path, task.signature_token,
+        # Cut to what `to_json` keeps, so the stamp a task has in memory and
+        # the stamp it has after a round trip through disk are the same one.
+        task.oracle[:REFERENCE_CHARS], task.criterion[:REFERENCE_CHARS],
+        task.signature_path, task.signature_token,
         task.edits_replayed,
         # Which conversation, and where it is cut. The session was missing, so
         # a task rebuilt onto a different session -- the repaired-transcript
