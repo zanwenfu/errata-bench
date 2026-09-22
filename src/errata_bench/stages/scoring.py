@@ -348,7 +348,7 @@ async def stage_grade(paths: Paths, limit: int, concurrency: int,
     from ..score.attempt import INSTRUCTIONS as CANDIDATE_RULES
     from ..score.attempt import environment_note, transcripts_for
     from ..project import code_version
-    from ..score.judge import can_be_scored, judge
+    from ..score.judge import can_be_scored, files_after, judge
     from ..llm import judge_model, model_name
     from ..spec import fingerprint, read
     from ..score.structure import Structure, combine
@@ -582,9 +582,15 @@ async def stage_grade(paths: Paths, limit: int, concurrency: int,
             return True
         try:
             # The judge is shown what the candidate did, because "did it claim
-            # something it had not established" cannot be read off the prose.
+            # something it had not established" cannot be read off the prose --
+            # and what it left behind, because "is the defect still there"
+            # cannot be read off the prose either. Only 3 of the 15 tasks ever
+            # built carry a literal defect string, so the reading that looks at
+            # the files could answer at all on 18 of 172 stored gradings; on
+            # the other 154 nothing had looked at them (D-32).
             verdict = await judge(
-                task, row["reply"], tool_calls=row["tool_calls"], model=grader
+                task, row["reply"], tool_calls=row["tool_calls"], model=grader,
+                changed=files_after(a, task.signature_path),
             )
             # A third reading, independent of both: does the answer's account of
             # its own work match the recorded trace and the conversation it was

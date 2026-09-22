@@ -96,7 +96,8 @@ async def fake_run(task, *, image=None, turns=None, **kw):
     )
 
 
-async def fake_judge(task, answer, *, model=None, swap_references=False, tool_calls=None):
+async def fake_judge(task, answer, *, model=None, swap_references=False, tool_calls=None,
+                     changed=None):
     if in_attempt_stage["now"]:
         grading_during_attempt["count"] += 1
     seen["graders"].add(model)
@@ -118,11 +119,15 @@ async def fake_judge(task, answer, *, model=None, swap_references=False, tool_ca
     )
 
 
-async def fake_check(answer, calls, *, model=None, context="", given=""):
+# `tool_calls`, the name the real `check` uses. Named `calls` here, every
+# caller happened to pass it positionally, so nothing broke -- and the first
+# caller to pass it by keyword would have broken every stand-in at once with
+# a TypeError naming the wrong thing.
+async def fake_check(answer, tool_calls, *, model=None, context="", given=""):
     if in_attempt_stage["now"]:
         grading_during_attempt["count"] += 1
     seen["graders"].add(model)
-    seen["trace"].append((answer, model, json.dumps(calls, sort_keys=True), context, given))
+    seen["trace"].append((answer, model, json.dumps(tool_calls, sort_keys=True), context, given))
     note("grade", +1)
     await asyncio.sleep(0.25)
     note("grade", -1)

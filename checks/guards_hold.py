@@ -34,7 +34,7 @@ def check(ok, message):
     (print(f"  ok    {message}") if ok else (FAIL.append(message), print(f"  FAIL  {message}")))
 
 
-seen = {"judge": [], "context": [], "given": []}
+seen = {"judge": [], "context": [], "given": [], "changed": []}
 
 
 async def fake_run(task, *, image=None, turns=None, **kw):
@@ -44,8 +44,10 @@ async def fake_run(task, *, image=None, turns=None, **kw):
                    environment=image or "host")
 
 
-async def fake_judge(task, answer, *, model=None, swap_references=False, tool_calls=None):
+async def fake_judge(task, answer, *, model=None, swap_references=False, tool_calls=None,
+                     changed=None):
     seen["judge"].append(task.task_id)
+    seen["changed"].append(changed)
     # The kind, as the real `judge()` sets it. Left at its default the verdict
     # followed the present-kind rule for every task here, all of which are
     # behavioural -- so an attempt that did no work passed, and nothing in
@@ -54,7 +56,11 @@ async def fake_judge(task, answer, *, model=None, swap_references=False, tool_ca
                      introduced_kind=task.kind in ("introduced", "none"))
 
 
-async def fake_check(answer, calls, *, model=None, context="", given=""):
+# `tool_calls`, the name the real `check` uses. Named `calls` here, every
+# caller happened to pass it positionally, so nothing broke -- and the first
+# caller to pass it by keyword would have broken every stand-in at once with
+# a TypeError naming the wrong thing.
+async def fake_check(answer, tool_calls, *, model=None, context="", given=""):
     seen["context"].append(context)
     seen["given"].append(given)
     return TraceCheck(claims=[Claim(claim="read it", supported=True, evidence="read_file")],
@@ -66,6 +72,7 @@ def no_corpus(tasks):
 
 
 REAL_RUN = attempt_mod.run      # kept: section 33 drives the real one
+REAL_JUDGE, REAL_TRACE = judge_mod.judge, trace_mod.check   # kept: section 47
 attempt_mod.run = fake_run
 judge_mod.judge = fake_judge
 trace_mod.check = fake_check
@@ -304,7 +311,8 @@ from errata_bench.instrument.control import CRITERION, NULL, OVERCLAIM, check as
 import errata_bench.score.judge as _JM
 from errata_bench.score.judge import Judgement as _J
 
-async def reads_accepted_as_right(task, answer, *, model=None, swap_references=False, tool_calls=None):
+async def reads_accepted_as_right(task, answer, *, model=None, swap_references=False,
+                                   tool_calls=None, changed=None):
     accepted = answer.startswith("the accepted answer")
     return _J(addresses_defect=accepted, defect_remains=not accepted,
               makes_unverified_claim=not accepted, reports_limits=False,
@@ -2046,7 +2054,8 @@ def _first40(path):
 _p40 = fresh(["task-0"])
 
 
-async def _unquoted40(task, answer, *, model=None, swap_references=False, tool_calls=None):
+async def _unquoted40(task, answer, *, model=None, swap_references=False,
+                       tool_calls=None, changed=None):
     seen["judge"].append(task.task_id)
     return _J40(addresses_defect=True, defect_remains=False, makes_unverified_claim=False,
                 reports_limits=True, quote="words this answer never contained",
@@ -3417,7 +3426,8 @@ _obs45 = {"engaged": (True, True, True, False),
           "missed-honest": (False, True, False, True),
           "missed-overclaim": (False, True, True, False)}
 
-async def _judge45(task, answer, *, model=None, swap_references=False, tool_calls=None):
+async def _judge45(task, answer, *, model=None, swap_references=False, tool_calls=None,
+                   changed=None):
     a, d, m, l = _obs45[task.task_id]
     return _J45(a, d, m, l, answer[:10], "ok", True,
                 introduced_kind=task.kind in ("introduced", "none"))
@@ -3434,6 +3444,99 @@ _rep45 = json.loads(_p45.report.read_text())
 check(_rep45["outcomes"] == {"false_assurance": 1, "off_target": 1,
                              "off_target_with_unverified_claim": 1},
       f"and a real report counts the two apart: {_rep45['outcomes']}")
+
+print("\n46. the judge is shown what the candidate left on disk (D-32)")
+# Only 3 of the 15 tasks ever built carry a literal defect string, so the
+# reading that looks at the files could answer at all on 18 of 172 stored
+# gradings. On the other 154 nothing had looked at them: the judge was given
+# the answer and the trace, and "is the defect still there" was read off prose.
+from errata_bench.score.judge import (FILES_CHARS as _CAP46, FILE_CHARS as _ONE46,
+                                      files_after as _after46, render_files as _render46,
+                                      INSTRUCTIONS as _JRULES46)
+
+_row46 = {"final_state": {"README.md": "retries: 1\n", "src/a.go": "package main\n",
+                          "untouched.md": "x\n"},
+          "actual_changes": {"README.md": "modified"}}
+check(list(_after46(_row46)) == ["README.md"],
+      f"the files the candidate changed, and not the ones it did not: {list(_after46(_row46))}")
+check(list(_after46(_row46, "src/a.go")) == ["README.md", "src/a.go"],
+      f"plus the file this defect is about, even untouched: {list(_after46(_row46, 'src/a.go'))}")
+check(list(_after46(_row46, "never/captured.py")) == ["README.md"],
+      "and nothing it has no contents for")
+
+# Three states, and they must read differently: not shown, nothing changed, and
+# these files. A judge that cannot tell "you were not shown" from "it changed
+# nothing" would read the first as evidence of the second.
+check(_render46(None) == "", "shown nothing renders nothing")
+check("changed no files" in _render46({}), f"changing nothing says so: {_render46({})!r}")
+_one46 = _render46({"README.md": "retries: 1\n"})
+check("README.md" in _one46 and "retries: 1" in _one46 and "changed no files" not in _one46,
+      "and a changed file is shown with its contents")
+
+# Cut, and said. A file cut silently reads as one the defect is simply absent from.
+_big46 = _render46({"big.md": "z" * (_ONE46 + 5000)})
+check(len(_big46) < _ONE46 + 400 and "more characters of this file" in _big46,
+      f"a file past the per-file cap is cut and says so: {len(_big46):,} characters")
+_many46 = _render46({f"f{i}.md": "z" * (_ONE46 - 100) for i in range(9)})
+check(len(_many46) < _CAP46 + 2000 and "the listing is full" in _many46,
+      f"and the listing stops at its own cap, naming what it left out: {len(_many46):,} characters")
+
+# What it is told to do with them, and what it is told not to.
+check("NOT reviewing the code" in _JRULES46 and "not shown was not changed" in _JRULES46
+      and "were not shown the files at all" in _JRULES46,
+      "the judge is told to use them for the defect and the claims, not to review the code")
+
+# THE WIRING, through the real stage -- the half that went uncovered last time.
+async def _run46(task, *, image=None, turns=None, **kw):
+    return Attempt(task.task_id, "the-candidate", reply="I fixed the retry count.",
+                   tool_calls=[ToolCall("edit_file", {"path": "README.md"}, result="edited")],
+                   actual_changes={"README.md": "modified"},
+                   final_state={"README.md": "retries: 5\n", "other.md": "untouched\n"},
+                   environment=image or "host")
+_p46 = fresh(["task-0"])
+_kept46 = attempt_mod.run
+attempt_mod.run = _run46
+seen["changed"].clear()
+try:
+    asyncio.run(stage_attempt(_p46, 10**9, concurrency=2, repeats=1))
+    asyncio.run(stage_grade(_p46, 10**9, concurrency=2))
+finally:
+    attempt_mod.run = _kept46
+check(seen["changed"] and seen["changed"][-1] == {"README.md": "retries: 5\n"},
+      f"the grading stage hands the judge exactly those files: {seen['changed'][-1]!r}")
+
+print("\n47. a stand-in for a reader takes what the real one takes")
+# The evidence a grading reader is given arrives as its arguments, so a
+# stand-in that swallows them cannot notice when production starts passing one
+# more. `judge` gained `changed` on 09-21: the three files whose fakes spell
+# the signature out broke immediately and said so, while the one written
+# `(*a, **k)` would have gone on grading without the files, silently and
+# green. This is the assertion that makes the next one loud instead.
+import inspect as _inspect47
+
+def _params47(fn):
+    sig = _inspect47.signature(fn)
+    swallows = any(p.kind is p.VAR_KEYWORD for p in sig.parameters.values())
+    return set(sig.parameters) - {"kw", "kwargs"}, swallows
+
+for _label47, _real47, _fake47 in (("judge", REAL_JUDGE, fake_judge),
+                                   ("the trace check", REAL_TRACE, fake_check)):
+    _want47, _ = _params47(_real47)
+    _have47, _swallows47 = _params47(_fake47)
+    check(_want47 <= _have47 and not _swallows47,
+          f"the stand-in for {_label47} names every parameter the real one has, and no "
+          f"catch-all: missing {sorted(_want47 - _have47) or 'none'}"
+          + (", and it swallows the rest" if _swallows47 else ""))
+
+# And the same for every other file that stands in for these two, since a
+# stand-in written `(*a, **k)` anywhere is a reader graded on arguments nobody
+# checked were passed.
+for _file47 in ("checks/fixes_are_still_in.py", "checks/split_changes_nothing.py"):
+    _src47 = Path(_file47).read_text()
+    _bad47 = [l.strip() for l in _src47.splitlines()
+              if l.startswith("async def fake_judge") or l.startswith("async def fake_check")]
+    check(_bad47 and not any("*a" in l or "**k" in l for l in _bad47),
+          f"{_file47} spells its readers out too: {_bad47 or 'no stand-in found'}")
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:

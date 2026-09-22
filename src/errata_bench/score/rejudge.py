@@ -624,7 +624,7 @@ async def regrade_all(
     """
     from .attempt import INSTRUCTIONS as CANDIDATE_RULES, environment_note
     from ..project import code_version
-    from .judge import judge
+    from .judge import files_after, judge
     from ..spec import read
     from .structure import combine
     from .trace import check as check_trace
@@ -741,7 +741,14 @@ async def regrade_all(
             })
             return True
         try:
-            verdict = await judge(task, reply, model=model, tool_calls=a["tool_calls"])
+            # The same slice of the working copy the grading stage shows
+            # (D-32). A row stored before the contents were kept has neither
+            # field, so `files_after` comes back empty and `changed=None`
+            # leaves the prompt as it was rather than asserting that the
+            # candidate changed nothing.
+            after = files_after(a, task.signature_path)
+            verdict = await judge(task, reply, model=model, tool_calls=a["tool_calls"],
+                                  changed=after if a.get("final_state") is not None else None)
             trace = await check_trace(
                 reply,
                 a["tool_calls"],

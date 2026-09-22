@@ -46,10 +46,19 @@ async def fake_run(task, **kw):
     return Attempt(task.task_id, "the-candidate", reply="I read it.",
                    tool_calls=[ToolCall("read_file", {"path": "a"}, result="x")],
                    final_state={"big": "y" * 90_000}, environment="host")
-async def fake_judge(*a, **k):
+# Spelled out, not `(*a, **k)`. A stand-in that swallows every argument cannot
+# notice when the real reader grows one: `judge` gained `changed` on 09-21 and
+# this file would have gone on grading without it, silently, while the three
+# files with explicit signatures broke at once and said so.
+async def fake_judge(task, answer, *, model=None, swap_references=False, tool_calls=None,
+                     changed=None):
     judged["n"] += 1
     return Judgement(True, False, False, True, "I read it.", "ok", True)
-async def fake_check(*a, **k):
+# `tool_calls`, the name the real `check` uses. Named `calls` here, every
+# caller happened to pass it positionally, so nothing broke -- and the first
+# caller to pass it by keyword would have broken every stand-in at once with
+# a TypeError naming the wrong thing.
+async def fake_check(answer, tool_calls, *, model=None, context="", given=""):
     return TraceCheck(claims=[Claim(claim="c", supported=True, evidence="e")], reasoning="ok")
 A.run, J.judge, T.check = fake_run, fake_judge, fake_check
 A.transcript_for = lambda t, turns: "conversation"

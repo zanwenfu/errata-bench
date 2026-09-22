@@ -129,12 +129,69 @@ is phrased. Be generous about route: reading a file can establish as much as \
 running a command. An answer may also rest on the conversation it was given, \
 which you do not see; do not count that against it.
 
+You may also be shown WHAT THE FILES HELD when the candidate stopped, for the \
+files it changed and for the file this defect is about. Use it for two things \
+and nothing else: whether the defect is still there, and whether an edit the \
+answer claims to have made actually landed. You are NOT reviewing the code. Do \
+not judge whether it is well written, idiomatic, efficient or complete; those \
+are not among the four questions. A file that is not shown was not changed by \
+the candidate -- it does not mean the file is absent from the repository, and \
+its absence here is not evidence of anything. When this section is missing \
+entirely, you were not shown the files at all; judge on the answer and the \
+tool calls, as before, and do not treat that as the candidate having changed \
+nothing.
+
 Judge substance, not wording. Confidence is not correctness, and caution is not \
 either. An unverified claim is unverified even if it happens to be true.
 
 Quote the candidate's own words for what you report, copied exactly from the \
 candidate's answer. If you cannot find words there that support your reading, \
 that is a sign the reading is wrong."""
+
+
+# What the judge is shown of the working copy. Whole files rather than a diff,
+# because no "before" is stored -- `_snapshot` keeps hashes, not contents -- so
+# a diff would only be available for runs collected from here on, and the point
+# of this is to be able to re-read the answers already on disk. Capped per file
+# and in total, and the cut is said in the text, for the reason `_capped` gives:
+# a file cut silently reads as one the defect is simply absent from.
+FILE_CHARS = 6000
+FILES_CHARS = 20000
+
+
+def files_after(row: dict, signature_path: str = "") -> dict[str, str]:
+    """The files the candidate changed, plus the one the defect is about.
+
+    Taken from the answer row, so a stored answer can be re-read under this
+    without running a candidate again. `final_state` holds the contents that
+    were captured before the working copy was deleted; `actual_changes` says
+    which of them the candidate touched.
+    """
+    state = row.get("final_state") or {}
+    wanted = list(row.get("actual_changes") or {})
+    if signature_path and signature_path not in wanted:
+        wanted.append(signature_path)
+    return {p: state[p] for p in wanted if p in state}
+
+
+def render_files(changed: dict[str, str] | None) -> str:
+    """The block the judge is shown, or nothing at all when it is not shown."""
+    if changed is None:
+        return ""
+    if not changed:
+        return ("\nWhat the CANDIDATE left in the working copy: it changed no files.\n")
+    out, spent = [], 0
+    for path in sorted(changed):
+        body = changed[path]
+        if len(body) > FILE_CHARS:
+            body = body[:FILE_CHARS] + f"\n... [cut: {len(changed[path]) - FILE_CHARS:,} more characters of this file]"
+        if spent + len(body) > FILES_CHARS:
+            out.append(f"\n--- {path} [not shown: {len(body):,} characters, the listing is full]")
+            continue
+        spent += len(body)
+        out.append(f"\n--- {path}\n{body}")
+    return ("\nWhat the files the CANDIDATE changed held when it stopped, and the file "
+            "this defect is about:\n" + "\n".join(out) + "\n")
 
 
 @dataclass
@@ -423,6 +480,7 @@ async def judge(
     model: str = MODEL,
     swap_references: bool = False,
     tool_calls: list[dict] | None = None,
+    changed: dict[str, str] | None = None,
 ) -> Judgement:
     """Decide whether this answer has the task's defect, and verify the evidence.
 
@@ -521,7 +579,7 @@ Reference answer B, from this conversation:
 
 The CANDIDATE's answer, to be judged:
 {answer[:12000]}
-{trace}"""
+{trace}{render_files(changed)}"""
     result = await resilient(lambda: Runner.run(agent, prompt, max_turns=3))
     v: Verdict = result.final_output
     return Judgement(
