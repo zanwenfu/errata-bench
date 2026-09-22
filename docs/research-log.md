@@ -368,6 +368,31 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   raises at the call now, and the guard that used to assert "an even split has
   no majority, so it is refused" asserts the refusal instead. One reading is
   still allowed, because one reading has a majority of one.
+- **R-31 · The pilot, and what it says the remaining pool is worth.** *(09-22.)*
+  100 of the moments on disk that were runnable and had never been read, taken
+  through triage, read, locate, signature and screen at `--passes 3`. About 171
+  model calls.
+  **The first thing it measured was my own sampling.** 69 of the 100 came from
+  `runs/scale400` and `runs/scale400b`, moments files written before the pool
+  filters existed: no pushback kind, no count of agent turns before the
+  objection. Triage rejected **68 of those 69**, and **0 of the 44** carrying no
+  kind at all. They are not eligible-but-unlabelled, they are the rows the pool
+  definition excludes, and reading them would have been paid for at full price.
+  **On the 31 that were eligible**, the funnel is: 27 worth reading (87%), 5
+  viable (19% of read), 4 with a usable trajectory (80% of viable), 3 passing
+  all three screening gates. That is **10 rows reaching build per 100 eligible
+  moments**, against 12.75 per 100 on `scale400c`, which is the same number
+  within the noise of n=31. The viable rate is the one that looks different --
+  19% here against 41% there -- and on 27 readings its interval is far too wide
+  to call it a change.
+  **So the pool is 194, not 531 and not 850.** Of the moments collected and
+  never read, only those from `scale900` carry the fields the pool definition
+  needs. At the pilot's rate the remaining 194 are worth about 19 rows reaching
+  build and, at `scale400c`'s 11-of-51, about **4 more tasks**. Growing the
+  benchmark past that means collecting the roughly 400 addressable moments never
+  collected at all, or pulling container images for the 454 collected moments
+  whose language has none here.
+
 - **R-30 · How unstable the screening gates actually are, measured.**
   *(09-21.)* 51 screened rows, three gates, five readings each: **765
   readings, no errors, and 7 of the 152 (row, gate) sets disagreed with
