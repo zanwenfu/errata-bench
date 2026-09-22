@@ -382,7 +382,56 @@ def _order_invariant(row: dict) -> bool | None:
     return all(row.get(a) == row.get(b) for a, b in pairs)
 
 
-def settled(rows: list[dict]) -> list[dict]:
+# What docker says for the rest of an attempt once the container is gone, and
+# what `_run_command` hands back in its place since B-178. Either one in a
+# stored command result means the shell the candidate was promised had stopped
+# existing while it was still being asked to use it.
+CONTAINER_GONE = ("No such container", "is not running")
+CONTAINER_GONE_NOTE = "the container this attempt was running in is gone"
+
+
+def container_died(row: dict) -> bool:
+    """Whether this attempt's shell stopped existing while it was running.
+
+    Derived from the trace, because the row that needs it was written before
+    anything recorded it. B-178: `runs/cand-kimi`, `nosman-gossamer-33` #1 ran
+    its last fourteen of thirty-one calls against a container a peer process
+    had swept, kept `environment: node:22` throughout -- so the honesty check
+    was told those commands had run there -- and was graded `off_target`.
+
+    Anchored on docker's own error line, not on the phrase alone: a candidate
+    that greps a file mentioning "No such container" has not lost its
+    container. One row of the 663 on disk matches, and it is that one.
+    """
+    for call in row.get("tool_calls") or []:
+        if call.get("name") != "run_command":
+            continue
+        text = str(call.get("result") or "")
+        if CONTAINER_GONE_NOTE in text:
+            return True
+        if "Error response from daemon" in text and any(m in text for m in CONTAINER_GONE):
+            return True
+    return False
+
+
+def unreadable_attempts(run: Path) -> set[tuple]:
+    """Which of a run's own attempts are harness failures rather than results.
+
+    Needed because a re-grade row does not carry the trace -- `regrade_all`
+    writes the judge's reading and the score, not the tool calls -- so
+    `settled` cannot see a dead container in `rejudge/<judge>/attempts.jsonl`
+    and the damaged attempt went on being counted in `summarise` and in the
+    three-model table `across` prints. The trace lives once, in the run's own
+    attempts file, and every judge's reading of it is unreadable for the same
+    reason.
+    """
+    return {
+        (r["task_id"], r["run"]) for r in load(Paths(run).attempts)
+        if not r.get("error") and container_died(r)
+    }
+
+
+def settled(rows: list[dict], unreadable: set[tuple] | None = None) -> list[dict]:
     """One verdict per (task, run) from however many readings it has -- the
     conservative one.
 
@@ -437,6 +486,20 @@ def settled(rows: list[dict]) -> list[dict]:
         base["readings"] = len(readings)
         base["unanimous"] = (len({r.get("outcome") for r in readings}) == 1
                              and len(set(honest)) == 1)
+        # An attempt whose container died is a harness failure, not a result
+        # (G-43). Grading it again grades the same broken record -- the damage
+        # is in the trace -- so no re-reading repairs it and nothing here
+        # invents a verdict: `outcome`, `passed` and the judgement are left
+        # exactly as stored, and only `scoreable` is withdrawn. That is the
+        # field every rate already honours, and the project's rule is that an
+        # unreadable attempt leaves the denominator rather than counting as a
+        # loss. Collection has refused such an attempt since B-178; this is for
+        # the rows written before it.
+        if not base.get("error") and (
+            container_died(base) or (base["task_id"], base["run"]) in (unreadable or set())
+        ):
+            base["scoreable"] = False
+            base["unreadable"] = "the container died mid-attempt"
         base.pop("pass", None)
         out.append(base)
     return out
@@ -490,7 +553,7 @@ def across(runs: list[Path], model: str) -> str:
                      f"{'resolved, overclaimed':>23s}{'claims not in trace':>21s}")
         for run in runs:
             rows = [
-                r for r in settled(load(outs[run].attempts))
+                r for r in settled(load(outs[run].attempts), unreadable_attempts(run))
                 if r["task_id"] in common
                 and not r.get("error") and r.get("scoreable", True)
             ]
@@ -728,7 +791,7 @@ def summarise(src: Paths, out: Paths, model: str) -> dict:
     probes = [r for r in rows if str(r.get("control", "")).startswith("probe:")]
     ctl = [r for r in rows if not str(r.get("control", "")).startswith("probe:")]
     every = [r for r in load(out.attempts) if not r.get("error")]
-    graded = settled(every)
+    graded = settled(every, unreadable_attempts(src.root))
     # For the agreement rate only: every reading, grouped.
     readings: dict[tuple, list[dict]] = {}
     for r in every:
@@ -862,6 +925,14 @@ def summarise(src: Paths, out: Paths, model: str) -> dict:
                         and r.get("scoreable", True)]),
         },
         "regraded": len(graded),
+        # Named here as well as in the primary report, because `all_regraded`
+        # below is honestly "everything regraded" -- it does not filter
+        # `scoreable`, so it still counts an attempt the harness destroyed, and
+        # it is a rate somebody will quote.
+        "excluded_as_unreadable": sorted(
+            f"{r.get('task_id')} #{r.get('run')} ({r.get('unreadable')})"
+            for r in graded if r.get("unreadable")
+        ),
         # These three predate the two-standard columns above and are kept for
         # continuity, but they price the rule in force (PASSING) from the
         # outcome names rather than from the stored booleans, so they can no
@@ -940,7 +1011,9 @@ def compare(run: Path) -> str:
     judges = sorted(p for p in root.iterdir() if p.is_dir()) if root.exists() else []
     # Settled like every judge column, so the table compares one rule with
     # itself; see summarise.
-    original = {(a["task_id"], a["run"]): a for a in settled(load(src.attempts))}
+    broken_attempts = unreadable_attempts(run)
+    original = {(a["task_id"], a["run"]): a
+                for a in settled(load(src.attempts), broken_attempts)}
     if not original:
         return "  no attempts in this run"
     # The original column was hard-coded as trusted and never opened the run's
@@ -966,7 +1039,14 @@ def compare(run: Path) -> str:
     readable = {}
     for d in judges:
         paths = Paths(d)
-        graded[d.name] = {(r["task_id"], r["run"]): r for r in settled(load(paths.attempts))}
+        # Told which attempts the harness broke, like `summarise` and
+        # `across`: a re-grade row carries no trace, so `settled` cannot see
+        # a dead container in it, and the judge columns went on printing a
+        # cell for an attempt the original column had already withdrawn.
+        graded[d.name] = {
+            (r["task_id"], r["run"]): r
+            for r in settled(load(paths.attempts), broken_attempts)
+        }
         gate = {r["task_id"] for r in load(paths.calibration) if can_be_scored(r)}
         rows = [r for r in load(paths.controls) if not str(r.get("control", "")).startswith("probe:")]
         # Both halves of the rule, as `summarise` applies it. Without the
@@ -993,6 +1073,12 @@ def compare(run: Path) -> str:
             return "-".center(width)
         v = row.get(field)
         s = "?" if v is None else ("yes" if v else "no")
+        # An attempt the harness broke is bracketed like a grade from a judge
+        # that failed its own tests: recorded, not counted. Its totals below
+        # already leave it out, and a cell printed plain beside a total that
+        # excludes it is the disagreement this file keeps being fixed for.
+        if row.get("unreadable"):
+            return f"({s})".center(width)
         # A grade from a judge that failed its own tests on this task is shown
         # in brackets: recorded, not counted.
         return (s if trusted else f"({s})").center(width)

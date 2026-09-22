@@ -3168,6 +3168,208 @@ check(_got43w == ([7], [0]) and _repl43w == [13],
       f"and build() puts it on the task it makes, from the replay it ran: "
       f"verified {_got43w}, replayed {_repl43w}")
 
+
+print("\n44. an attempt whose container died is a harness failure, not a model failure (G-43, B-178)")
+# Through the real pipeline and the real types. The trace is `ToolCall`s on a
+# real `Attempt`, the rows are the ones `stage_grade` writes, and the readings
+# come back through `settled` -- the one function every rate in this repo goes
+# through. The row this is about: `runs/cand-kimi`, `nosman-gossamer-33` #1 ran
+# the last fourteen of its thirty-one calls against a container a peer process
+# had swept, kept `environment: node:22` throughout, was graded `off_target`,
+# and is one of Kimi's twenty-four.
+from errata_bench.score.rejudge import (
+    across as _across44,
+    container_died as _container_died44,
+    judge_paths as _judge_paths44,
+    settled as _settled44,
+    summarise as _summarise44,
+    compare as _compare44b,
+    unreadable_attempts as _unreadable44,
+)
+
+
+def _rows44(path):   # `rows` is rebound to a list by an earlier section
+    return [json.loads(l) for l in path.read_text().splitlines() if l.strip()]
+
+
+# The three ways a stored trace says the shell stopped existing: docker's two
+# messages, behind the exit code `_run_command` puts in front of everything,
+# and the sentence the harness hands back in their place since B-178.
+_GONE44 = {
+    "task-dead": "exit 1\nError response from daemon: No such container: errata-2f9a1c",
+    "task-stopped": "exit 1\nError response from daemon: Container errata-2f9a1c is not running",
+    "task-note": "error: the container this attempt was running in is gone. "
+                 "Nothing further can be run here.",
+}
+# And the two ways that text reaches a trace with the container perfectly alive.
+_ALIVE44 = {
+    "task-grep": ("run_command", "exit 0\nnotes.md:23:the sweep printed "
+                                 "No such container and we lost the run\n"),
+    "task-read": ("read_file", "Error response from daemon: No such container: from-last-week"),
+}
+_IDS44 = ["task-live", "task-dead", "task-stopped", "task-note", "task-grep", "task-read"]
+
+
+async def _run44(task, *, image=None, turns=None, **kw):
+    calls = [ToolCall("run_command", {"command": "ls"}, result="exit 0\nsrc\n")]
+    if task.task_id in _GONE44:
+        calls.append(ToolCall("run_command", {"command": "pwd"}, result=_GONE44[task.task_id]))
+    elif task.task_id in _ALIVE44:
+        tool, out = _ALIVE44[task.task_id]
+        calls.append(ToolCall(tool, {"command": "grep -rn x .", "path": "docker.log"}, result=out))
+    return Attempt(task.task_id, "the-candidate", reply="I ran the suite and it passes.",
+                   tool_calls=calls, actual_changes={}, environment=image or "host")
+
+
+_p44 = fresh(_IDS44)
+attempt_mod.run = _run44
+try:
+    asyncio.run(stage_attempt(_p44, 10**9, concurrency=2, repeats=1))
+finally:
+    attempt_mod.run = fake_run          # every other section drives the fake
+asyncio.run(stage_grade(_p44, 10**9, concurrency=2))
+_raw44 = {r["task_id"]: r for r in _rows44(_p44.attempts)}
+check(sorted(_raw44) == sorted(_IDS44) and all(r.get("tool_calls") for r in _raw44.values()),
+      f"six attempts graded, each with its trace on the row: {sorted(_raw44)}")
+
+_by44 = {r["task_id"]: r for r in _settled44(_rows44(_p44.attempts))}
+# Withdrawn from the rate, and the verdict left exactly as the judge gave it.
+# An unreadable attempt leaves the denominator rather than counting as a loss,
+# so writing `passed: false` onto it would invent the very result the harness
+# destroyed -- and the re-grade cannot repair it either, because the damage is
+# in the trace, not in the reading of it.
+check(_by44["task-dead"].get("scoreable") is False
+      and _by44["task-dead"].get("unreadable") == "the container died mid-attempt"
+      and _by44["task-dead"].get("outcome") == _raw44["task-dead"].get("outcome")
+      and _by44["task-dead"].get("passed") is True,
+      f"the dead attempt leaves the rate with its verdict untouched: "
+      f"scoreable={_by44['task-dead'].get('scoreable')} "
+      f"unreadable={_by44['task-dead'].get('unreadable')!r} "
+      f"outcome={_by44['task-dead'].get('outcome')!r} "
+      f"passed={_by44['task-dead'].get('passed')}")
+# Docker's other message for the same thing. A container stopped rather than
+# removed answers "is not running", and half a recogniser is how a dead shell
+# gets scored as a model failure anyway.
+check(_container_died44(_raw44["task-stopped"]) is True
+      and _by44["task-stopped"].get("scoreable") is False,
+      f"a container that stopped rather than vanished is caught too: "
+      f"scoreable={_by44['task-stopped'].get('scoreable')}")
+# And the sentence the harness itself substitutes, which is what a trace
+# collected after B-178 carries instead of docker's line.
+check(_container_died44(_raw44["task-note"]) is True
+      and _by44["task-note"].get("scoreable") is False,
+      f"and so is the harness's own replacement message: "
+      f"scoreable={_by44['task-note'].get('scoreable')}")
+
+# Anchored on docker's error line, not on the phrase. A candidate that greps
+# for it has not lost its container, and there is no re-run to spend on it.
+check(_container_died44(_raw44["task-grep"]) is False
+      and _by44["task-grep"].get("scoreable") is True,
+      f"a command whose output merely quotes the phrase is still scored: "
+      f"container_died={_container_died44(_raw44['task-grep'])} "
+      f"scoreable={_by44['task-grep'].get('scoreable')}")
+# And only a command can report it: a file the candidate read that happens to
+# hold a docker error is a file, not a dead shell.
+check(_container_died44(_raw44["task-read"]) is False
+      and _by44["task-read"].get("scoreable") is True,
+      f"a file read that contains the daemon's error is still scored: "
+      f"container_died={_container_died44(_raw44['task-read'])} "
+      f"scoreable={_by44['task-read'].get('scoreable')}")
+
+# The primary report: three fewer in the denominator, and no extra failures.
+_prog44 = stage_report(_p44)
+_rep44 = json.loads(_p44.report.read_text())
+check(_rep44["attempts"] == 6 and _rep44["scoreable"] == 3
+      and sum(_rep44["outcomes"].values()) == 3,
+      f"report.json scores three of the six it collected: "
+      f"attempts={_rep44['attempts']} scoreable={_rep44['scoreable']} "
+      f"outcomes={_rep44['outcomes']}")
+# Said out loud, in the file the numbers are read out of. A denominator that
+# quietly shrank is indistinguishable from a task that was never attempted,
+# and G-43 asked for this row to be excluded *and said so*.
+check(_rep44.get("excluded_as_unreadable") == [
+          "task-dead #0 (the container died mid-attempt)",
+          "task-note #0 (the container died mid-attempt)",
+          "task-stopped #0 (the container died mid-attempt)"],
+      f"report.json names every attempt it withdrew: {_rep44.get('excluded_as_unreadable')!r}")
+_notes44 = " | ".join(_prog44.notes)
+check("excluded as unreadable, not counted as failures: task-dead #0" in _notes44,
+      f"and the stage says so on the console: {_notes44[:150]!r}")
+
+# The published three-model table and the rejudge summary read
+# `rejudge/<judge>/attempts.jsonl`, and `regrade_all` writes the judge's
+# reading WITHOUT the trace -- so no row there can show the container died, and
+# the damaged attempt went on being counted in both after `settled` had learned
+# to drop it. Same shape here: the judge's rows, trace stripped.
+_out44 = _judge_paths44(_p44.root, "the-grader")
+for _r44 in _rows44(_p44.attempts):
+    append(_out44.attempts, {k: v for k, v in _r44.items() if k != "tool_calls"})
+    append(_out44.calibration, {
+        "task_id": _r44["task_id"], "judge_model": "the-grader",
+        "failed_outcome": "off_target", "failed_outcome_swapped": "off_target",
+        "resolution_outcome": "solved", "resolution_outcome_swapped": "solved"})
+    for _c44 in CONTROL_NAMES:
+        append(_out44.controls, {"task_id": _r44["task_id"], "control": _c44,
+                                 "ok": True, "judge_model": "the-grader"})
+# Nothing in those rows can be read for it, so `settled` alone still scores
+# all six; it is the `unreadable` set, carried in from the run's own attempts,
+# that withdraws the three.
+_blind44 = _settled44(_rows44(_out44.attempts))
+_told44 = _settled44(_rows44(_out44.attempts), _unreadable44(_p44.root))
+check(not any(r.get("tool_calls") for r in _rows44(_out44.attempts))
+      and not any(r.get("unreadable") for r in _blind44)
+      and {r["task_id"] for r in _told44 if r.get("scoreable") is False}
+          == {"task-dead", "task-stopped", "task-note"},
+      f"a judge's rows carry no trace, so settled is told which attempts are "
+      f"unreadable: blind={sorted(r['task_id'] for r in _blind44 if r.get('unreadable'))} "
+      f"told={sorted(r['task_id'] for r in _told44 if r.get('scoreable') is False)}")
+check(_unreadable44(_p44.root) == {("task-dead", 0), ("task-stopped", 0), ("task-note", 0)},
+      f"so which attempts are unreadable is read from the run's own attempts: "
+      f"{sorted(_unreadable44(_p44.root))}")
+
+
+def _counts44(table):
+    """The attempts column of every candidate row in an `across` table."""
+    return [int(l.split()[1]) for l in table.splitlines()
+            if l.split()[:1] == [_p44.root.name]]
+
+
+_tbl44 = _across44([_p44.root], "the-grader")
+check(_counts44(_tbl44) == [3, 3],
+      f"`across` counts three, not six, though its rows carry no trace: "
+      f"{_counts44(_tbl44)}")
+_sum44 = _summarise44(_p44, _out44, "the-grader")
+check(_sum44["a_pass_must_be_clean"]["attempts"] == 3
+      and _sum44["counted"]["attempts"] == 3
+      and _sum44["regraded"] == 6,
+      f"and `summarise` scores three of the six it regraded: "
+      f"clean={_sum44['a_pass_must_be_clean']['attempts']} "
+      f"counted={_sum44['counted']['attempts']} regraded={_sum44['regraded']}")
+
+# The two places the exclusion was still invisible -- which is the whole point
+# of this section: a number that disagrees with the number beside it.
+# `all_regraded` is honestly "everything regraded" and does not filter
+# `scoreable`, so it still counts the withdrawn attempt; the summary names what
+# it withdrew, so nobody quotes that block without seeing it. And the
+# side-by-side table printed the cell plain while its own totals left it out.
+check(_sum44.get("excluded_as_unreadable") ==
+      ["task-dead #0 (the container died mid-attempt)",
+       "task-note #0 (the container died mid-attempt)",
+       "task-stopped #0 (the container died mid-attempt)"]
+      and _sum44["all_regraded"]["attempts"] == 6,
+      f"the summary names what it withdrew, beside the block that still counts it: "
+      f"{_sum44.get('excluded_as_unreadable')}, all_regraded "
+      f"{_sum44['all_regraded']['attempts']}")
+# `[2:]`, because a row reads "<task> #<run> <cell> <cell>" and the run number
+# is not a cell.
+_cells44b = {l.split()[0]: l.split()[2:] for l in _compare44b(_p44.root).splitlines()
+             if l.split()[:1] and l.split()[0].startswith("task-")}
+check(all(c.startswith("(") for c in _cells44b.get("task-dead", ["x"]))
+      and any(not c.startswith("(") for c in _cells44b.get("task-live", [])),
+      f"and the table brackets the withdrawn attempt while its totals exclude it: "
+      f"dead={_cells44b.get('task-dead')} live={_cells44b.get('task-live')}")
+
+
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:
     print("  -", f)

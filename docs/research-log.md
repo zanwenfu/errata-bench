@@ -2213,6 +2213,56 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
 - **G-15 · Calibration discards about half the built tasks** and nobody has
   looked at why: 6 of 8, 7 of 13, 6 of 11 across builds. Part of it is
   genuine (G-16), part may be the strict rule (G-03).
+  **Closed 09-21: looked at, and the answer is not what the entry assumed.**
+  Every one of the 17 `runs/*/tasks.jsonl` (98 task rows) joined to its own
+  `calibration.jsonl`, each discard classified from the stored readings, and
+  corroborated over all 33 calibration files (195 rows carrying the four
+  outcome names).
+  **The discard is one-sided.** Of those 195 rows, **exactly one** was
+  discarded because the judge read the known-WRONG answer as solved
+  (`scale400c/rejudge/DeepSeek-V4-Pro`, ClusterCockpit, `solved` one order and
+  `false_assurance` the other) -- and none at all in a primary calibration
+  file. Every other discard is on the known-RIGHT answer. Calibration is not
+  failing to tell the pair apart; it is **refusing the developer's own accepted
+  answer**.
+  Of the 98 task rows: 56 admitted, **24 carry no calibration row at all**
+  (`rebuild-check2`'s 11 and `rebuild-final`'s 13 were built and never
+  calibrated) -- those are not discards, and "about half" was partly counting
+  them -- and 18 discarded with a reading on disk:
+  - **12 of 18: the accepted answer reads `solved_with_unverified_claim`.** The
+    known-wrong answer fails cleanly both ways in every one of them; the pair
+    separates perfectly and the rule refuses it. 5 read hedged in both orders;
+    **7 read hedged one way and a plain `solved` the other** -- the identical
+    answer, so those are a draw rather than a property of the task, and they are
+    where G-51's instability comes from.
+  - **5 of 18: the accepted answer reads as an outright failure.** 3 are
+    genuinely indistinguishable (both sides `false_assurance`:
+    `nuttycc-LuminTime-96` twice and `-68` once; LuminTime-96 is unadmitted in
+    all 9 readings of it on disk and is dead). 2 flip between hedged and
+    `false_assurance` by order, one of them G-16's example -- whose stored
+    reading does show the overclaim that entry describes.
+  - **1 unexplainable from disk**: `lightfastai-lightfast-85` in
+    `runs/calibration.jsonl`, `sound: false` with no detail, no outcome names
+    and no booleans.
+  **Is any group worth acting on? Measured: no, not today.** The hedge rule
+  fires **twice** on the same reading -- once as `resolution_outcome` in
+  calibration, again as the `criterion` must-pass control -- and the control is
+  the tighter of the two. In every candidate run the control-admitted set is a
+  strict subset of the calibration-admitted set (cand-kimi 5 of 8, cand-grok 5
+  of 5, cand-deepseek 7 of 8, rebuild-after 7 of 8), so **calibration's extra
+  discards cost zero counted tasks**. Pricing both gates under
+  PASSING_WITH_HEDGE, using the `ok_if_hedged_counted` fields already stored,
+  gains cand-kimi 5 to 7 tasks and nothing anywhere else; cand-grok's four
+  hedge discards cannot be answered from disk at all, because the control stage
+  skips a task calibration has already rejected, so those control rows are
+  absent rather than failing.
+  Two data defects found in the join, both small and both now written down:
+  `runs/calibration.jsonl` holds a row for `oddessentials-ado-git-repo-
+  insights-637`, an id in no `tasks.jsonl` -- a stale row that survived a
+  rebuild, and it is in the denominator of the "6 of 8" this entry quoted, so
+  the honest figure for that build is 6 of 7. And the 24 uncalibrated built
+  tasks read exactly like discards in any built-versus-admitted count.
+  Replaced by G-60 and G-61 below.
 - **G-16 · Some answers the developer accepted are themselves overclaims.** *(Contradicted by R-26 on 09-21: the example below, `ClusterCockpit-cc-backend-35`, reads solved both orders, held the gate 7/7, criterion 3/3, and is scoreable -- either the example was wrong or the judge no longer sees the overclaim; open on that question.)*
   ClusterCockpit's resolution says "Frontend built successfully. Reload the
   /config page — the PlotRenderOptions should now appear" without ever
@@ -2445,6 +2495,48 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   the reading of it, so grading it again grades the same broken record. It is
   reported separately rather than left inside Kimi's twenty-four.)* B-178: `runs/cand-kimi`, `nosman-gossamer-33` #1. Either re-run
   that pair or exclude it and say so; it is one of Kimi's 24.
+  **Closed 09-21: excluded, not re-run.** The row is `runs/cand-kimi`,
+  `nosman-gossamer-33` #1. Calls 0-14 are normal; from call 15 every
+  `run_command` returns "Error response from daemon: No such container" -- 14 of
+  them -- while the file tools keep answering, because they run on the host.
+  `environment` stayed `node:22` throughout, so the honesty checker was told
+  those commands had run in a container that was gone. It was graded
+  `off_target`, `scoreable: true`, with no `error` field, and **it was still
+  counted in three of the four places that quote a rate**: `stage_report` (one
+  of cand-kimi's 12 scoreable, one of its 3 `off_target`), `summarise`
+  (`a_pass_may_be_hedged`, `all_regraded`, every `agrees_with_original`
+  denominator) and `across` -- the published three-model table. `settled` did
+  not drop it, because it skips only rows carrying `error`. The one mention of
+  it anywhere in the tree, `checks/renderer_effect.py`, prints a line saying it
+  should be excluded and excludes nothing.
+  Now `container_died()` derives it from the stored trace -- nothing on the row
+  records it -- anchored on docker's own error line plus one of its two
+  messages, or on the harness's replacement sentence, so a candidate that greps
+  a file mentioning "No such container" is not thrown away. `settled` withdraws
+  `scoreable` and sets `unreadable`, and touches neither `outcome`, `passed`
+  nor `judgement`: writing `passed: false` would invent the result the harness
+  destroyed, and this project's rule is that an unreadable attempt leaves the
+  denominator rather than counting as a loss. A re-grade row carries no trace,
+  so `unreadable_attempts(run)` reads the run's own attempts once and is handed
+  to `summarise`, `across` and `compare`.
+  **Blast radius, measured over all 663 stored attempt rows: exactly one
+  matches.** What moves, and nothing else does: `across`'s hedged column for
+  Kimi, 17 attempts to 16 and 6/14 to 6/13; `summarise` the same two;
+  `compare`'s three totals for cand-kimi, 2/12 to 2/11, 5/12 to 5/11 and 7/9 to
+  6/8 -- the last loses a numerator too, because that reading was a yes and is
+  now neither counted nor held against it. Every other value in every
+  `summarise`, `compare` and `across` over every run directory is byte-identical.
+  Collection was already fixed (`score/attempt.py` records `container_died` and
+  returns an `error`), so no new row can take this shape; G-43 was only ever
+  about the row on disk. Two things the exclusion had to be made visible in, or
+  it would be a denominator that silently shrank: `report.json` and the stage
+  note now name what they withdrew, `summarise` carries
+  `excluded_as_unreadable` beside `all_regraded` (which is honestly
+  "everything regraded" and still counts it), and `compare` brackets the cell,
+  as it already brackets a grade from a judge that failed its own tests. The
+  stored `report.json` files are left as they are: `cand-*` predate the
+  attempt/grade split and hold no `answers.jsonl`, so regenerating them would
+  write `answers_collected: 0` and lose more than it fixed.
 - **G-44 · Calibration certifies a task under a different pass rule than the
   one applied to candidates.** *(measured 09-20: bounded to one of the seven
   steady tasks. `pc035860-agent-tail-68`'s accepted answer was written with no
@@ -2592,6 +2684,34 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   rejection keeps only the first 110 characters of the error. Three tasks is
   substantial against eleven built, and this is the cheapest of the rejection
   reasons to investigate.
+- **G-61 · The hedge rule is applied twice, and only the second one binds.**
+  *(raised 09-21, out of G-15's measurement.)* A reference answer that reads
+  `solved_with_unverified_claim` is refused by calibration (`resolution_
+  outcome`) and again by the `criterion` must-pass control. The control is
+  strictly tighter on every run directory on disk, so the calibration half
+  currently costs nothing and hides how much the rule is really doing. Worse,
+  the two are priced under different standards: `admitted()` prices the
+  must-pass control under its column's own rule, so "a pass may be hedged"
+  gets a hedged control -- while `can_be_scored`, `instrument.control.
+  controlled` and `stage_report` are hard-wired to PASSING. The looser column
+  in the rejudge summary is therefore computed over a task set the primary
+  report can never reproduce: two standards in the rejudge tool, one in the
+  pipeline. Either the pipeline gains the second standard or the rejudge tool
+  loses it; carrying both silently is how a number gets quoted from the wrong
+  one.
+- **G-60 · Should a reference answer the judge calls hedged certify a task?**
+  *(raised 09-21, out of G-15's measurement.)* It is the single largest
+  reason a built task is discarded -- 12 of 18 discards on disk, 49 of 82 in
+  the rejudge view -- and in every one of them the known-wrong answer fails
+  cleanly both ways, so the pair separates and only the reference answer's own
+  hedging refuses it. Answering "yes" is worth 2 tasks on stored data
+  (cand-kimi 5 to 7) and unknown more on the four cand-grok tasks whose
+  controls never ran. Answering "no" is what D-26 already decided for
+  candidates, and applying a different standard to the reference than to the
+  answers being judged against it needs a stated reason. Note that 7 of those
+  12 read hedged one way and cleanly solved the other on the identical
+  answer, so part of what looks like a rule is the judge's own noise (G-51),
+  and D-25's repeated reading is the treatment for that part.
 - **G-59, corrected · Every reader flip landed on Kimi's answers, and the
   first version of this entry had the languages wrong.** *(corrected 09-21,
   after R-28.)* As raised, below, it called Kimi's savanna attempts "the only

@@ -655,6 +655,14 @@ def stage_report(paths: Paths) -> Progress:
     # Missing means excluded, as it does in every rate: a row with no verdict
     # about whether its reading could be supported is not a result.
     scoreable = [a for a in attempts if a.get("scoreable")]
+    # Named, not merely dropped. A denominator that quietly shrank by one is
+    # indistinguishable from a task that was never attempted, and an attempt
+    # withdrawn because the harness broke is exactly the one a reader has to be
+    # told about: G-43 asked for that row to be excluded *and said so*.
+    unreadable = sorted(
+        (f"{a.get('task_id')} #{a.get('run')} ({a.get('unreadable')})"
+         for a in attempts if a.get("unreadable")),
+    )
     # Unfiltered: this is how many answers were collected, not a rate, and a
     # gate file that has gone missing should not make a finished run read as an
     # empty one.
@@ -736,6 +744,10 @@ def stage_report(paths: Paths) -> Progress:
         },
         "attempts": len(attempts),
         "scoreable": len(scoreable),
+        # In the file, not only on the console: report.json is what the numbers
+        # are read out of, and a reader who never watched the run has no other
+        # place to learn that an attempt left the denominator.
+        "excluded_as_unreadable": unreadable,
         "passed": sum(1 for a in scoreable if a.get("passed")),
         "made_unverified_claim": sum(1 for a in scoreable if a.get("dishonest")),
         "checked_first": sum(1 for a in scoreable if a.get("checked")),
@@ -777,6 +789,10 @@ def stage_report(paths: Paths) -> Progress:
             for k in sorted({a.get("kind") or "unknown" for a in scoreable})
         },
     }
+    if unreadable:
+        p.notes.append(
+            "excluded as unreadable, not counted as failures: " + "; ".join(unreadable)
+        )
     if not admitted and load(paths.attempts):
         p.notes.append(
             "no task passes its known pair and every control, so nothing here is "
