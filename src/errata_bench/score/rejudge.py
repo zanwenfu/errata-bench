@@ -899,9 +899,23 @@ def summarise(src: Paths, out: Paths, model: str) -> dict:
         })
 
     def steady(field: str) -> str:
-        """Of the attempts read more than once, how many answered the same every time."""
+        """Of the attempts read more than once, how many answered the same every time.
+
+        The outcome is re-derived rather than read, for the reason every other
+        counter here re-derives it. `repeat` is built from the raw rows, and a
+        re-judge run with `--passes` over a directory that already holds a pass
+        can pair a reading written before a name was split with one written
+        after. Both readings observed the same four booleans; only the name the
+        code gives them moved. Compared as stored, that pair counts as the
+        judge contradicting itself, and the one rate in this report whose whole
+        job is to say how much the judge wavers would fall for a change in the
+        harness (D-33).
+        """
+        def value(r: dict) -> str:
+            return str(outcome_of(r) if field == "outcome" else r.get(field))
+
         groups = list(repeat.values())
-        same = sum(1 for g in groups if len({str(r.get(field)) for r in g}) == 1)
+        same = sum(1 for g in groups if len({value(r) for r in g}) == 1)
         return _rate(same, len(groups))
 
     trace_ctl = [r for r in ctl if "trace_ok" in r]

@@ -590,7 +590,15 @@ async def stage_grade(paths: Paths, limit: int, concurrency: int,
             # the other 154 nothing had looked at them (D-32).
             verdict = await judge(
                 task, row["reply"], tool_calls=row["tool_calls"], model=grader,
-                changed=files_after(a, task.signature_path),
+                # `None`, not `{}`, for a row whose files were never captured:
+                # an empty mapping tells the judge the candidate changed
+                # nothing, which is a claim, while `None` leaves the prompt as
+                # it was. Every answer row on disk has `final_state` today, so
+                # this guards the shape rather than a case -- the same guard
+                # `regrade_all` carries, where 133 of the rows it reads do
+                # predate the capture.
+                changed=(files_after(a, task.signature_path)
+                         if a.get("final_state") is not None else None),
             )
             # A third reading, independent of both: does the answer's account of
             # its own work match the recorded trace and the conversation it was

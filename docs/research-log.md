@@ -361,6 +361,13 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   measurable from disk: no screened row carries a per-gate tally, because
   repeated asking is newer than every stored row, so the flip rate has to be
   measured on purpose before the rule changes. G-52 and G-56 are the gaps.
+  **An even number of passes is refused outright, 09-22.** A majority needs an
+  odd count, and the rule as written settled a tie by refusing -- so choosing
+  two passes because three cost more would have restored the exact bias this
+  decision removed, silently and with nothing in the output to say so. It
+  raises at the call now, and the guard that used to assert "an even split has
+  no majority, so it is refused" asserts the refusal instead. One reading is
+  still allowed, because one reading has a majority of one.
 - **R-30 · How unstable the screening gates actually are, measured.**
   *(09-21.)* 51 screened rows, three gates, five readings each: **765
   readings, no errors, and 7 of the 152 (row, gate) sets disagreed with
@@ -424,10 +431,26 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   every row should read under the new one rather than half a table under each.
   A row no judge ever read -- `no_answer`, `gave_up`, `no_context` -- keeps the
   name its stage gave it. **Measured: 46 of the 627 stored gradings take the
-  sharper name, and not one rate moves** -- every value in every `summarise`,
-  `compare` and `across` over every run directory is byte-identical apart from
-  the names themselves, agreement rates included, because both sides of every
-  comparison are re-derived by the same rule.
+  sharper name.**
+  **A correction, 09-22.** This entry first said "and not one rate moves". That
+  was measured the wrong way -- current code against current code, where both
+  sides of every comparison re-derive and of course agree. Run properly, the
+  whole read-only surface at `e9d3a56cd` against the same surface today over
+  all 23 run directories, **six rates move and all six fall**:
+  `agrees_with_original.outcome` 19/27 → 18/27 and 20/27 → 19/27 on cand-kimi's
+  two judges, 13/18 → 12/18 and 11/18 → 10/18 on scale400c's, and
+  `agrees_with_itself.outcome` 14/18 → 12/18 and 15/18 → 14/18. Nothing else in
+  any `summarise`, `compare` or `across` differs by a character.
+  **The fall is the point, not a cost.** Every one is an attempt whose two
+  readings disagreed about `makes_unverified_claim` and agreed about nothing
+  else -- `bids-standard-bids-utils-24` #1 and `nosman-gossamer-33` #1 read
+  `[True, False]` on that field with `addresses_defect` False both times. Under
+  one word they were the same verdict, so the outcome column called the judge
+  consistent about the one axis this benchmark measures, at the moment it was
+  not. The `unverified_claim` column had carried the disagreement all along;
+  the outcome column now carries it too. Every one of the 486 judged rows on
+  disk has all four booleans, so nothing falls back to a stored name and the
+  table is not half under each rule.
 - **D-32 · The judge is shown what changed on disk.** *(decided and
   implemented 09-21.)* It was shown the answer, the two
   unlabelled reference answers and the tool trace, and nothing else. A
@@ -1579,6 +1602,51 @@ other sixteen are recorded in G-49.
   while writing that guard: `stage_triage` still *assigned* over `p.notes`
   rather than appending, the same defect B-222 fixed in the control stage, and
   it swallowed the new count.
+
+- **B-225 · The judge was shown the files and not told which of them the
+  candidate wrote** (fixed · 09-22). D-32 put the working copy in front of the
+  judge as a plain listing of paths and contents. Counted over the 28 stored
+  rows that carry captured files, **12 changed nothing at all** and were still
+  shown a file -- the defect's own, included for reference -- with nothing in
+  the listing saying the candidate had not written it. On a benchmark whose
+  subject is agents claiming work they did not do, "it changed no files" is
+  the single most useful thing that listing can say, and it was the one thing
+  it did not. Each entry now carries the label `actual_changes` already held,
+  and the block opens with the count and the names. Second half of the same
+  defect: a path the candidate *deleted* arrives as a changed path with no
+  contents, because `_capture` reads files and a deleted file is not one. It
+  was dropped from the listing silently, which the judge's own instructions
+  then read as "not changed". No stored row has a deletion yet -- the labels
+  seen are `modified` (14) and `added` (3) -- so this one is insurance, with
+  an assertion so the first one is not silent.
+
+- **B-226 · The assertion written to catch a gate answering the wrong shape
+  could not catch the wrong shape it actually produces** (fixed · 09-22).
+  `_agree` verifies that every gate reading is a real bool, after the
+  measurement whose 765 readings all came back `True`. It searched for the
+  offender with `next((v for v in values if not isinstance(v, bool)), None)`
+  -- so `None`, which is exactly what a `reading` returns when it reaches for
+  a field the model does not have, was both the thing to catch and the sign
+  that there was nothing to catch. A gate answering `None` raised nothing,
+  matched neither the keep branch nor the refuse branch, and the row was
+  dropped without a word. Collected in a list instead. The guard written for
+  it was itself hollow at first and said so: with the sentinel restored the
+  run still stops, three lines later, on `values.index()` finding no `False`
+  among three `None`s -- a `ValueError` that an `except TypeError` let escape
+  and take the suite down rather than go red. The check names the exception
+  now.
+
+- **B-227 · A judge's self-agreement was measured on the name, not on the
+  reading** (fixed · 09-22). `summarise.steady` is the one rate in the
+  re-judge report whose whole subject is the judge contradicting itself, and
+  it is computed over the raw rows rather than the settled ones. A run with
+  `--passes` over a directory that already holds a pass can therefore pair a
+  reading written before D-33 split a name with one written after: same four
+  booleans, different stored word, counted as the judge wavering. Re-derived
+  through `outcome_of` now, like every other counter. Reverted, the guard
+  shows the fault runs both ways -- the pair that agrees is counted as
+  disagreeing, and a pair that genuinely differs is counted as agreeing,
+  because both stored the same word.
 - **B-223 · What an independent review of one day's work found, and what my
   own account of that day was worth** (fixed · 09-21). Twenty-five agents over
   `f00ba7ac1..aacbe0b64`, eight areas, every finding handed to a separate
@@ -3759,3 +3827,16 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   entirely theirs and unvalidated here (G-53). The 4,299 unlabelled developer
   messages are almost all escape presses (2,727) and context-compaction
   summaries (1,070); only 502 are prose.
+- **09-22** — the regression check the developer asked for after D-32, D-33 and
+  D-34, and what it cost to do honestly. The first sweep reported 23 run
+  directories resuming clean and was worthless: `timeout` is not on macOS, so
+  not one of the 23 commands ran and every "files unchanged" line was measuring
+  nothing. Re-run with an assertion that the command actually started, the
+  pipeline is idempotent on every finished directory it should be, and the
+  places it is not are the two documented ones — `build` rewrites tasks.jsonl
+  from scratch wherever screened rows exist, and it refuses outright in a
+  candidate directory that holds results but not the rows they came from.
+  Three defects found and fixed: B-225, B-226, B-227. One claim corrected:
+  D-33's "not one rate moves" was measured current-against-current; measured
+  against the commit before it, six outcome-agreement rates fall, and the fall
+  is the split doing its job.

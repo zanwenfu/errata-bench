@@ -271,7 +271,7 @@ async def stage_signature(paths: Paths, limit: int, concurrency: int) -> Progres
 
 
 async def _agree(ask, passes: int, keep_on: bool, reading) -> tuple[bool, str, object]:
-    """Ask a gate several times and keep only what it says every time.
+    """Ask a gate an odd number of times and keep what most of the readings say.
 
     Every gate here is a model reading prose, and a model reading the same
     prose twice does not always answer the same way. Measured on the scope
@@ -300,12 +300,31 @@ async def _agree(ask, passes: int, keep_on: bool, reading) -> tuple[bool, str, o
     ones lack. Hence the assertion below: a gate that hands back something
     other than a bool now stops the run instead of quietly answering True.
     """
+    # An even number of readings has no majority to settle a tie with, and the
+    # rule below resolves one by refusing. That is the bias D-34 removed --
+    # asking more times could then only ever remove rows, never add one --
+    # reintroduced by nothing more than someone choosing two passes because
+    # three cost more. Refused here rather than documented, because a silent
+    # return to the old behaviour is exactly what this is about.
+    if passes > 1 and passes % 2 == 0:
+        raise ValueError(
+            f"a gate asked {passes} times has no majority to settle a tie, and a tie "
+            "resolved by refusing is the rejection bias D-34 removed. Ask an odd "
+            "number of times."
+        )
     answers = [await ask() for _ in range(max(1, passes))]
     values = [reading(a) for a in answers]
-    wrong = next((v for v in values if not isinstance(v, bool)), None)
-    if wrong is not None:
+    # Collected, not sought with a default: written `next(..., None)` this let
+    # through the one wrong answer most worth catching. `None` is what a
+    # `reading` returns when it reaches for a field the model does not have,
+    # and it was also the sentinel for "nothing wrong", so a gate answering
+    # `None` every time raised nothing, matched neither branch below, and
+    # silently rejected the row -- the same silent-constant failure the
+    # docstring above is about, one layer up.
+    wrong = [v for v in values if not isinstance(v, bool)]
+    if wrong:
         raise TypeError(
-            f"a gate answered with {type(wrong).__name__}, not a bool: {wrong!r}. "
+            f"a gate answered with {type(wrong[0]).__name__}, not a bool: {wrong[0]!r}. "
             "`reading` has to pull the verdict out of the model it returns."
         )
     # Most of them, not all of them. Unanimity does not reduce a gate's noise;
