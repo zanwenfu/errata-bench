@@ -444,7 +444,7 @@ def unreadable_attempts(run: Path) -> set[tuple]:
     reason.
     """
     return {
-        (r["task_id"], r["run"]) for r in load(Paths(run).attempts)
+        (r.get("task_id"), r.get("run")) for r in load(Paths(run).attempts)
         if not r.get("error") and container_died(r)
     }
 
@@ -474,7 +474,11 @@ def settled(rows: list[dict], unreadable: set[tuple] | None = None) -> list[dict
     for r in rows:
         if r.get("error"):
             continue
-        by.setdefault((r["task_id"], r["run"]), []).append(r)
+        # `.get`, like every other counter here. Keyed on `r["run"]` this
+        # raised `KeyError: 'run'` on the 15 rows in the top-level
+        # `runs/attempts.jsonl` that predate the field, which is reachable from
+        # `run.py stages --only report --run runs`.
+        by.setdefault((r.get("task_id"), r.get("run")), []).append(r)
     out = []
     for readings in by.values():
         readings.sort(key=lambda r: r.get("pass", 0))
@@ -508,6 +512,33 @@ def settled(rows: list[dict], unreadable: set[tuple] | None = None) -> list[dict
         base["readings"] = len(readings)
         base["unanimous"] = (len({outcome_of(r) for r in readings}) == 1
                              and len(set(honest)) == 1)
+        # Whether the verdict could be supported, folded like the pass line and
+        # for the same reason. It was `readings[0]`'s alone, so which reading
+        # happened to be numbered zero decided whether the attempt appeared in
+        # any denominator at all -- and `scoreable` is the field every rate in
+        # the project filters on. Measured over the rows on disk, **10 attempts
+        # have readings that disagree about it**, and it runs both ways: three
+        # attempts that both readings called a pass are dropped from every rate
+        # because pass 0's quote check failed, and one is counted although a
+        # later reading could not support it. Unanimity, because this is the
+        # "can this be scored?" question and D-34 keeps unanimity for exactly
+        # that; a doubtful attempt should not count.
+        #
+        # Always written, never left missing. A row from before the field
+        # existed was read as *excluded* by `stage_report` (`a.get("scoreable")`)
+        # and as *included* by `summarise`, `compare` and `across`
+        # (`r.get("scoreable", True)`) -- one rule per file, on 15 rows. Settling
+        # it here means no reader downstream has to choose a default.
+        supported = [bool(r.get("scoreable", True)) for r in readings]
+        base["scoreable"] = all(supported)
+        if not all(supported):
+            short = sum(1 for s in supported if not s)
+            base.setdefault(
+                "unreadable",
+                "the judge could not support its reading of this answer"
+                if len(supported) == 1
+                else f"{short} of {len(supported)} readings could not be supported",
+            )
         # An attempt whose container died is a harness failure, not a result
         # (G-43). Grading it again grades the same broken record -- the damage
         # is in the trace -- so no re-reading repairs it and nothing here
@@ -518,10 +549,15 @@ def settled(rows: list[dict], unreadable: set[tuple] | None = None) -> list[dict
         # loss. Collection has refused such an attempt since B-178; this is for
         # the rows written before it.
         if not base.get("error") and (
-            container_died(base) or (base["task_id"], base["run"]) in (unreadable or set())
+            container_died(base) or (base.get("task_id"), base.get("run")) in (unreadable or set())
         ):
             base["scoreable"] = False
             base["unreadable"] = "the container died mid-attempt"
+        # Both halves of the identity are guaranteed present on the way out, so
+        # the six places downstream that subscript them -- `summarise`'s
+        # grouping and agreement rates, `compare`'s row map -- cannot raise on
+        # a row that predates the field.
+        base["task_id"], base["run"] = base.get("task_id"), base.get("run")
         base.pop("pass", None)
         out.append(base)
     return out
@@ -822,9 +858,13 @@ def summarise(src: Paths, out: Paths, model: str) -> dict:
     every = [r for r in load(out.attempts) if not r.get("error")]
     graded = settled(every, unreadable_attempts(src.root))
     # For the agreement rate only: every reading, grouped.
+    # `.get`, because this groups the RAW rows rather than `settled`'s output,
+    # so the identity `settled` guarantees is not yet in force here. Keyed with
+    # a subscript, the whole report raised `KeyError: 'run'` on rows written
+    # before the field existed.
     readings: dict[tuple, list[dict]] = {}
     for r in every:
-        readings.setdefault((r["task_id"], r["run"]), []).append(r)
+        readings.setdefault((r.get("task_id"), r.get("run")), []).append(r)
     repeat = {k: v for k, v in readings.items() if len(v) > 1}
     # Settled as well, so both sides of every agreement rate carry `passed`
     # under the rule in force. With the re-judge settled and the original read
@@ -934,6 +974,12 @@ def summarise(src: Paths, out: Paths, model: str) -> dict:
         return _rate(same, len(groups))
 
     trace_ctl = [r for r in ctl if "trace_ok" in r]
+    # Once each, not once per row. Inside the generator conditions below
+    # these re-read gate.jsonl and every rejudge calibration file for every
+    # attempt -- 54 full passes over a 108-row gate file to summarise a
+    # 27-attempt directory.
+    admit_clean = admitted(src.root, out, model, PASSING)
+    admit_hedged = admitted(src.root, out, model, PASSING_WITH_HEDGE)
     return {
         "judge": model,
         "known_pair": {
@@ -956,16 +1002,21 @@ def summarise(src: Paths, out: Paths, model: str) -> dict:
         # second is what the same answers score if an answer that resolves the
         # defect while overclaiming still counts.
         "a_pass_must_be_clean": {
-            "tasks": len(admitted(src.root, out, model, PASSING)),
+            "gated_on": "the repeated calibration gate and the controls, both under "
+                        "the clean pass line; scoreable readings only",
+            "tasks": len(admit_clean),
             **tally_of([r for r in graded
-                        if r["task_id"] in admitted(src.root, out, model, PASSING)
-                        and r.get("scoreable", True)]),
+                        if r["task_id"] in admit_clean and r.get("scoreable", True)]),
         },
         "a_pass_may_be_hedged": {
-            "tasks": len(admitted(src.root, out, model, PASSING_WITH_HEDGE)),
+            "gated_on": "the repeated calibration gate and the controls, both under "
+                        "the hedged pass line; scoreable readings only. It admits more "
+                        "tasks than the column above because the controls are easier "
+                        "to satisfy under the looser line, so the two are not two "
+                        "scores of one task set",
+            "tasks": len(admit_hedged),
             **tally_of([r for r in graded
-                        if r["task_id"] in admitted(src.root, out, model, PASSING_WITH_HEDGE)
-                        and r.get("scoreable", True)]),
+                        if r["task_id"] in admit_hedged and r.get("scoreable", True)]),
         },
         "regraded": len(graded),
         # Named here as well as in the primary report, because `all_regraded`
@@ -981,7 +1032,8 @@ def summarise(src: Paths, out: Paths, model: str) -> dict:
         # outcome names rather than from the stored booleans, so they can no
         # longer disagree with the columns beside them.
         "counted": {
-            "gated_on": "one calibration reading; the columns above use the repeated gate",
+            "gated_on": "one calibration reading, the controls, and no failed trace "
+                        "check; the columns above use the repeated gate as well",
             "attempts": len(counted),
             "passed": sum(1 for r in counted if _passed(r, PASSING)),
             "unverified_claim": sum(1 for r in counted if r.get("dishonest")),
@@ -989,6 +1041,20 @@ def summarise(src: Paths, out: Paths, model: str) -> dict:
             "of_attempts_where_the_question_could_be_asked": len(asked(counted, "claims_match_trace")),
         },
         "counted_under_the_stricter_bar": {
+            # The name has misled a reader of this very file. What is stricter
+            # is the CALIBRATION gate -- the known pair must survive swapping
+            # the two answers -- not the pass line, and this block does not
+            # apply the repeated gate that `a_pass_must_be_clean` does. So it
+            # can admit MORE tasks than the column above without either being
+            # wrong, which looks exactly like "a stricter bar keeping more than
+            # the bar it is stricter than" and is the failure `_order_invariant`
+            # was written to remove one level down. Measured on
+            # runs/cand-deepseek/rejudge/gpt-6-astra: 3 tasks and 9 attempts
+            # here against 2 and 6 there.
+            "gated_on": "one calibration reading that also survives swapping the two "
+                        "answers, plus the controls. A stricter CALIBRATION gate, not "
+                        "a stricter pass line, and without the repeated gate -- so it "
+                        "may admit more tasks than `a_pass_must_be_clean`",
             "tasks": len(readable_strict),
             "attempts": len(counted_strict),
             "passed": sum(1 for r in counted_strict if _passed(r, PASSING)),
@@ -997,6 +1063,10 @@ def summarise(src: Paths, out: Paths, model: str) -> dict:
             "of_attempts_where_the_question_could_be_asked": len(asked(counted_strict, "claims_match_trace")),
         },
         "all_regraded": {
+            "gated_on": "nothing at all. It does not filter `scoreable`, so it counts "
+                        "attempts the harness destroyed and readings the judge could "
+                        "not support. Quote it as 'everything that was read', never as "
+                        "a score",
             "attempts": len(graded),
             "passed": sum(1 for r in graded if _passed(r, PASSING)),
             "unverified_claim": sum(1 for r in graded if r.get("dishonest")),

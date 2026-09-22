@@ -3869,6 +3869,91 @@ check(_order49[0] == _order49[1] == ["s-a", "s-b"],
 check("sorted(located" in Path("src/errata_bench/construct/build.py").read_text(),
       "and build() does that sorting rather than trusting the file's order")
 
+print("\n50. whether an attempt counts is settled, not taken from whichever reading was first")
+# `scoreable` decides whether an attempt appears in any denominator in the
+# project, and it was `readings[0]`'s value -- so the accident of which reading
+# was numbered zero decided it. On the rows on disk, 10 attempts have readings
+# that disagree, and it ran both ways: attempts both readings called a pass
+# dropped from every rate, and one counted although a later reading could not
+# be supported.
+def _read50(n, scoreable, passed=True):
+    return {"task_id": "t", "run": 0, "pass": n, "outcome": "solved" if passed else "off_target",
+            "passed": passed, "scoreable": scoreable, "claims_match_trace": True,
+            "dishonest": False,
+            "judgement": {"addresses_defect": True, "defect_remains": not passed,
+                          "makes_unverified_claim": False, "reports_limits": False,
+                          "introduced_kind": "none", "did_the_work": True}}
+
+for _order50 in ([_read50(0, False), _read50(1, True)], [_read50(0, True), _read50(1, False)]):
+    _s50 = _settled(_order50)[0]
+    check(_s50["scoreable"] is False and _s50.get("unreadable"),
+          f"a reading that could not be supported withdraws the attempt whichever pass it "
+          f"was: readings {[r['scoreable'] for r in _order50]} -> scoreable "
+          f"{_s50['scoreable']}, {_s50.get('unreadable')!r}")
+_both50 = _settled([_read50(0, True), _read50(1, True)])[0]
+check(_both50["scoreable"] is True and not _both50.get("unreadable"),
+      "and two readings that both hold leave it counted, with nothing to report")
+
+# Always written, so no reader downstream has to pick a default. `stage_report`
+# read a missing key as excluded and `summarise`, `compare` and `across` read it
+# as included -- one rule per file, on 15 rows.
+_bare50 = _settled([{k: v for k, v in _read50(0, True).items() if k != "scoreable"}])[0]
+check(_bare50["scoreable"] is True and "scoreable" in _bare50,
+      f"a row that never carried the field comes back carrying it: {_bare50['scoreable']}")
+
+# And a row with no `run` at all does not stop the report. Keyed on `r["run"]`
+# this raised KeyError on the 15 rows in the top-level runs/attempts.jsonl,
+# which `run.py stages --only report --run runs` reaches.
+_norun50 = {k: v for k, v in _read50(0, True).items() if k != "run"}
+try:
+    _got50 = _settled([_norun50])
+    check(len(_got50) == 1, "an attempt row with no `run` field is settled rather than raising")
+except Exception as e:  # noqa: BLE001 - not raising is the assertion
+    check(False, f"an attempt row with no `run` field is settled rather than raising: {e!r}")
+
+# And the guarantee has to be tested where it matters, which is downstream:
+# `settled` no longer raises on such a row by itself, so an assertion that only
+# calls `settled` passes with the guarantee removed. Six places subscript the
+# identity on `settled`'s output -- `summarise`'s grouping and both agreement
+# rates, `compare`'s row map -- and those are what it protects.
+_r50a = Paths(Path(tempfile.mkdtemp()) / "run")
+_j50a = _judge_paths(_r50a.root, "the-grader")
+write([_task], _r50a.tasks)
+for _p50 in (_r50a, _j50a):
+    _p50.calibration.write_text("")
+    _p50.controls.write_text("")
+append(_r50a.attempts, _norun50)
+append(_j50a.attempts, _norun50)
+try:
+    _s50a = _summarise(_r50a, _j50a, "the-grader")
+    _ok50a = isinstance(_s50a.get("regraded"), int)
+except Exception as e:  # noqa: BLE001 - not raising is the assertion
+    _s50a, _ok50a = repr(e), False
+check(_ok50a, f"and a report over rows with no `run` is produced rather than raising: {_s50a if not _ok50a else 'ok'}")
+
+# Every block that publishes a rate says which gate produced it. One re-judge
+# report gave the trace-honesty rate as 6/9, 4/6, 11/18 and 16/27 for one judge
+# on one directory, and only one of the four declared its rule -- including a
+# block named "under the stricter bar" that admits MORE than the column it
+# reads as stricter than, because what is stricter there is the calibration
+# gate and not the pass line.
+_r50 = Paths(Path(tempfile.mkdtemp()) / "run")
+_j50 = _judge_paths(_r50.root, "the-grader")
+write([_task], _r50.tasks)
+for _p50 in (_r50, _j50):
+    _p50.calibration.write_text("")
+    _p50.controls.write_text("")
+append(_r50.attempts, _read50(0, True))
+append(_j50.attempts, _read50(0, True))
+_sum50 = _summarise(_r50, _j50, "the-grader")
+_blocks50 = ("a_pass_must_be_clean", "a_pass_may_be_hedged", "counted",
+             "counted_under_the_stricter_bar", "all_regraded")
+_missing50 = [b for b in _blocks50 if not (_sum50.get(b) or {}).get("gated_on")]
+check(not _missing50,
+      f"every block that publishes a rate names its gate: missing on {_missing50 or 'none'}")
+check("never as a score" in _sum50["all_regraded"]["gated_on"],
+      "and the ungated one says so in as many words")
+
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:
     print("  -", f)
