@@ -329,6 +329,70 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   only definition of "right" this corpus contains. A task that rejects its own
   reference is broken, and whether the rule or the task is at fault, its scores
   cannot be trusted. It catches G-44 by itself.
+- **D-34 · A gate that decides whether a task EXISTS is settled by majority; a
+  gate that decides whether a task can be SCORED is settled by unanimity.**
+  *(decided 09-21, with the developer, not yet implemented.)* D-28 and D-25
+  made every repeated reading conservative in the rejecting direction: a row
+  is answerable only if every reading says so, in scope only if every reading
+  says so, leaking if any reading says so. That is right for the second kind
+  of gate and wrong for the first, and the reason is structural rather than a
+  matter of taste. **Unanimity does not reduce noise; it reduces variance by
+  moving the mean toward rejection.** Asking a screening gate more times can
+  only ever remove tasks, never add them, so the task set shrinks
+  monotonically with `--passes` and its limit as passes grows is the empty
+  set. Majority of an odd number of readings reduces variance without moving
+  the mean, which is what "is this a real task?" needs. Unanimity stays where
+  the question is "can this task be scored?" -- calibration and the controls
+  -- because there a doubtful task genuinely should not count.
+  Four causes were separated before deciding, since "the model is
+  nondeterministic" was not an acceptable answer: **(1) the input is not the
+  cause** -- the same moment renders to a byte-identical prompt in three
+  separate processes under randomised hash seeds, so there is no hidden
+  ordering or drifting truncation; **(2) sampling cannot be pinned** -- the
+  deployment rejects `temperature` as an unsupported parameter, so every call
+  is a draw, measured at roughly one row in nine on the scope gate; **(3)
+  seven readings in series** -- triage, read, locate, signature and three
+  screening gates, over a funnel that rejects four rows in five, so at 95%
+  self-consistency each the chain is about 70%, which is most of the observed
+  instability and is arithmetic rather than mystery; **(4) the conservative
+  rule compounds it**, and the one measurement on record says the flips
+  themselves leaned toward rejection, so unanimity is compounding a bias
+  rather than cancelling a symmetric one. Only (4) is ours. Not yet
+  measurable from disk: no screened row carries a per-gate tally, because
+  repeated asking is newer than every stored row, so the flip rate has to be
+  measured on purpose before the rule changes. G-52 and G-56 are the gaps.
+- **D-33 · The outcome name is split where it hides the thing being
+  measured.** *(decided 09-21, with the developer, not yet implemented.)* The
+  judge makes four observations -- addresses_defect, defect_remains,
+  makes_unverified_claim, reports_limits -- and a name is derived from them,
+  collapsing sixteen combinations into six names. `off_target` covers 28
+  stored gradings and four different behaviours: 10 did not engage and
+  overclaimed, 6 did not engage, overclaimed and named their limits, 6 did not
+  engage and were honest about it, 6 did not engage and said nothing. **16 of
+  the 28 overclaimed and 12 did not, under one word** -- on a benchmark whose
+  subject is agents asserting what they have not checked, that is the
+  distinction being merged away. The same shape appears under `solved`: 12 of
+  31 have addresses_defect False, which is correct for an introduced-kind task
+  and still worth seeing. Costs nothing: the four booleans are stored on every
+  row, so every result on disk can be re-cut without a model call, which is
+  what the `outcome` docstring promised when it said the name is "a
+  convenience for reading tables".
+- **D-32 · The judge is shown what changed on disk.** *(decided 09-21, with
+  the developer, not yet implemented.)* It was shown the answer, the two
+  unlabelled reference answers and the tool trace, and nothing else. A
+  separate structural reading looks at the tree, but only by searching for a
+  literal defect string, and **only 3 of the 15 tasks ever built have one** --
+  the rest are behavioural, with nothing to grep. Measured over the 172
+  stored gradings: **the tree-based reading could answer at all on 18 of
+  them.** On the other 154 nothing has looked at the files. The trace still
+  catches an edit that never happened, because there is no write call to show
+  for it; what is missing is what landed. So the judge is given the files the
+  candidate changed plus the file the task names -- a slice, not the tree, for
+  two reasons: a repository would swamp the answer in the prompt, and the
+  risk of showing everything is that the judge drifts into grading whether the
+  code is correct instead of whether the agent was honest, which is a
+  different benchmark. Re-grading the stored answers under it costs model
+  calls and no containers.
 - **D-31 · Rust is left out.** The one fresh Rust task,
   `Lightprotocol-light-protocol-32`, had been held since R-27 for an image
   nobody pulled (`rust:1.83-slim`, 700 MB), and since G-48 a task with no
@@ -2971,6 +3035,18 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   accuracy unchanged. Sessions whose edits were never committed have no answer
   key and are skipped. The election is scored; whether `old_string` still
   matches at the elected path is G-37's question, not this one.
+  **Decided 09-21, with the developer: adopt the measured variant, not the
+  recorded rule.** `proposed-then-name` -- let the edits that landed on files
+  the checkout already had vote, preferring the longer root on a tie; where
+  nothing votes, elect nothing only when the repository's own name maps every
+  recorded path, and otherwise keep the original election. 3552 clean / 28
+  stray / 3 overwrote / 37 rejected against the original's 3550 / 27 / 5 / 38,
+  ahead on every column with no clean-to-rejected move. To be re-run through
+  `checks/checkout_election_over_corpus.py` after the change, and each part
+  shown red by a single revert, before it is called done. The three overwrites
+  it cannot fix are the ones only the commit record can separate, and that
+  option stays open here because the harness cannot score it without using its
+  own answer key.
 - **G-54 · The controls were asked once, and they do not answer the same way
   twice.** *(raised and acted on 09-20.)* Running the must-pass control over
   the nine tasks of `cand-kimi` and `cand-deepseek` -- the same judge,
