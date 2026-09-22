@@ -392,15 +392,29 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   see -- a claim about it reads as invented rather than merely unverified. The
   fix is to make the head lines cheap instead: a command line is clipped to
   about 200 characters where an output keeps 1,200, and every head is placed
-  before any output. Measured over the same 153 traces, the result is better
-  than the original on every axis: **0 over budget against 42, 285 outputs
-  withheld against 775, and no call unlisted at all**.
+  before any output. ~~Measured over the same 153 traces, the result is better
+  than the original on every axis: 0 over budget against 42, 285 outputs
+  withheld against 775, and no call unlisted at all.~~
+  **Correction, 09-22, found by the readiness review and re-measured by me:
+  that sentence is false, and the renderer half of this entry is a
+  regression.** "285 against 775" counted withheld *markers*, not withheld
+  outputs. Counted per call over 94 distinct stored traces, the change shows
+  1,230 outputs against 1,222 before -- no improvement -- and moves outputs from
+  "withheld, and said so" to **withheld with no marker at all: 325 against
+  120**, because the marker is now appended only if it fits. The trace-check
+  prompt reads a call with no output line as "no output recorded", so a silent
+  drop is not neutral. It also newly cuts **164 command lines**, most of them
+  grok's, many of them scripts -- the exact shape `CALL_CHARS`'s comment records
+  as having produced a false accusation -- and the judge's instructions say
+  nothing about reading a cut. The only real gain is the budget, which cost
+  prompt tokens and not correctness. The fingerprint half of this entry
+  stands. The renderer half should be reverted before any candidate runs.
   One assertion had to be corrected rather than satisfied. Section 29 asserted
   that a trace of nineteen full outputs plus a short final one withholds
   nothing, and that was only true because the bound was not being held -- those
   nineteen come to 23,427 characters against the 23,424 the trace has to spend.
   It now asserts what actually matters, which is that the final output survives
-  and that whatever gives way is named.
+  and that whatever gives way is named. (That too goes with the revert.)
 
 - **R-32 · The screening run: 29 new tasks, and the corpus is now exhausted.**
   *(09-22.)* Every addressable moment left in the corpus, taken through triage,
@@ -3773,6 +3787,70 @@ five gaps marked closed; D-28 narrowed to what it covers.
 -- that is a call budget the developer should set, not a bug fix. The surveyor
 was not rewritten. G-57 is a design question about what a control can certify,
 not a patch.
+
+## 11g. The readiness review — 09-22
+
+Six independent reviewers, one lens each (research validity, the evidence on
+disk, production engineering, the code the next runs depend on, release and
+licensing, documentation), each blocker or high finding then handed to a
+separate skeptic told to refute it. 62 findings; of the 31 checked by a
+skeptic, 12 were confirmed at their stated severity, 19 were real but
+overstated, and none was refuted outright. Run at three agents at a time after
+six at once overheated the laptop.
+
+**The central verdict, from four of the six independently: publication is now
+blocked by missing experiments and missing validation, not by bugs.** Further
+passes over the scorer will not change that, and the fix-review loop of the
+last four days should stop.
+
+**Two things I had reported that were wrong.**
+- The 09-22 trace renderer (B-232) is a regression, not an improvement; see the
+  correction in that entry. Re-measured by me on 94 traces: silent withholding
+  325 against 120, 164 command lines newly cut, outputs shown unchanged.
+- "30 admitted" was a union across three judges. Under the benchmark's own
+  judge, gpt-6-astra, **25** are admitted; the other 5 were admitted only by
+  candidate models acting as judge (grok-4.6, Kimi) in the cand-* directories,
+  and gpt-6-astra rejects them. Two of the 25 are Rust, which has no image, and
+  two new tasks have no recorded language and so no image either: **about 22
+  can run.** And the 18 new ones rest on a single calibration reading -- the
+  repeated gate the README describes has not been run on them.
+
+**Must be fixed before any candidate runs** (all small, offline, verified):
+1. Revert the renderer half of 3b66c2dfc; keep the fingerprint half.
+2. Run the repeated gate on runs/sweep1 and runs/sweep3 (judge calls only),
+   and make the attempt stage honour gate.jsonl.
+3. With `ERRATA_JUDGE_MODEL` unset the candidate grades itself; refuse that.
+4. A second candidate model in a directory that holds another's answers runs
+   nothing and exits 0; refuse that, and use one directory per candidate.
+5. The two no-language tasks: map them to an image or drop them.
+6. `regrade_all` reads graded rows rather than answers, so at `--passes 3` it
+   reads every attempt three times per pass and never shows the file listing.
+7. runs/ is the only copy of the benchmark and has no backup at all
+   (`tmutil`: no destinations configured). 15 MB.
+
+**Blocks publication** (experiments and artefacts, not code): no frozen,
+committed task set; no candidate results on the current set -- all 126 stored
+answers predate the B-220 harness fix, 36 of them ran on the host, and none
+carries a code version; no human agreement study on the judge; power -- with
+about 24 tasks and a measured intra-task correlation of 0.67, only pass-rate
+gaps of roughly 30 points are detectable, honesty-rate gaps of about 40; the
+scoring rules were tuned on the tasks they score, so the 18 new tasks are the
+only clean held-out set and must be frozen before a candidate touches them;
+R-18's "pass/fail is judge-independent, 18/18" does not reproduce under current
+code; no LICENSE or ODC-By attribution; rendered transcripts of 26 of the 30
+tasks never scanned for secrets; no contamination statement; 2026 related work
+(OverclaimBench and false-success studies) to position against.
+
+**Safe to ignore for readiness**, per the reviewers: G-55; the hedged-control
+fallback and line_holds vs can_be_scored, if v1 reports the clean standard from
+one admission path; admitted()'s global stability test, once every task is
+gated; tests being scripts rather than pytest; the size of guards_hold.py;
+archive/; gold/, which no code reads.
+
+**The stopping rule from here.** After the seven fixes above, the scoring code
+is frozen at a tagged commit. Nothing is changed during the paid grid except a
+defect that would corrupt its rows, and that only with a guard shown red by a
+single-fix revert. No further whole-codebase reviews before the grid has run.
 
 ## 12. Corpus facts worth knowing
 
