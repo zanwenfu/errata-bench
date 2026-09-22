@@ -3816,7 +3816,14 @@ check(_ok49.root.name == "gpt-6-astra", "and an ordinary deployment name still w
 # (e) The command line refuses the two flags that cost money quietly.
 import subprocess as _sub49
 
-for _args49, _want49 in ((["--limit", "50"], "--max-rows"), (["--passes", "2"], "odd")):
+# Both spellings. Written as `"--limit" in sys.argv` the refusal missed
+# `--limit=50`, which argparse accepts and which is therefore the one that got
+# through -- the accident the refusal exists to stop, let through by the test
+# written for it. It asks the parser now, and this asks it both ways.
+for _args49, _want49 in ((["--limit", "50"], "--max-rows"),
+                         (["--limit=50"], "--max-rows"),
+                         (["--passes", "2"], "odd"),
+                         (["--passes=2"], "odd")):
     _r49 = _sub49.run([sys.executable, "run.py", "stages", "--run",
                        str(Path(tempfile.mkdtemp()) / "run"), *_args49],
                       capture_output=True, text=True, cwd=str(Path(__file__).resolve().parent.parent))

@@ -250,11 +250,16 @@ def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("command", choices=["moments", "stages", "status", "rejudge", "judges", "gate"])
     ap.add_argument("--run", default="runs/current", help="directory for this run's files")
+    # `default=None`, so the parser itself says whether this was passed. Asked
+    # as `"--limit" in sys.argv` the refusal below missed `--limit=50`, which
+    # argparse accepts and which is the spelling that then bought every row at
+    # full price in silence -- the exact accident the refusal exists to stop,
+    # let through by the test written for it.
     ap.add_argument(
         "--limit",
         type=int,
-        default=50,
-        help="how many moments to collect (the `moments` command only)",
+        default=None,
+        help="how many moments to collect (the `moments` command only; default 50)",
     )
     ap.add_argument(
         "--max-rows",
@@ -323,7 +328,7 @@ def main() -> None:
     # quietly honoured, because the two mean different things -- one caps what
     # is collected, the other what each stage processes -- and guessing which
     # was meant is how an expensive run goes wrong quietly.
-    if args.command != "moments" and "--limit" in sys.argv:
+    if args.command != "moments" and args.limit is not None:
         ap.error(f"--limit caps the `moments` command only; for {args.command} use --max-rows")
 
     # A screening gate settled by majority needs an odd number of readings, and
@@ -396,7 +401,8 @@ def main() -> None:
             skip += sorted(p for p in Path("runs").glob("*/moments.jsonl"))
             skip += [Path("runs/moments.jsonl")]
         kinds = tuple(k.strip() for k in args.kinds.split(",") if k.strip())
-        n = find_moments(args.limit, paths.moments, skip_seen=skip, kinds=kinds,
+        n = find_moments(50 if args.limit is None else args.limit,
+                         paths.moments, skip_seen=skip, kinds=kinds,
                          max_per_repo=args.max_per_repo)
         if args.fresh:
             print(f"  skipping moments already in {len([p for p in skip if p.exists()])} file(s)")

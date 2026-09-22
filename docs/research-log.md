@@ -1701,7 +1701,12 @@ other sixteen are recorded in G-49.
   09-22). `--limit` defaults to 50 and caps the `moments` command only. Passed
   to `stages` it was read, ignored, and never mentioned, so the obvious flag for
   "just do a few" bought every row at full price; the cap for a stage is
-  `--max-rows`. And `--passes 2` reached `_agree`, which refuses an even count
+  `--max-rows`. **The first fix for this was itself wrong and is the reason the
+  entry says both spellings:** it asked `"--limit" in sys.argv`, which does not
+  match `--limit=50` -- a spelling argparse accepts, so the one accident the
+  refusal exists to stop walked straight past the test written for it. It asks
+  the parser now, through a `None` default. And `--passes 2` reached `_agree`,
+  which refuses an even count
   (D-34), one `ValueError` per moment -- no money spent, but a directory of
   error rows to clean up. Both are refused by the parser now. The `--passes`
   help text also still described unanimity, which D-34 replaced for the
