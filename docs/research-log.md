@@ -2436,6 +2436,23 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   report's ungraded count set to zero; and three of the notes. Each is a fix
   already made and recorded in this log, and each could be undone without
   anything noticing.
+  **Closed 09-21.** Sections 40 and 41 of `checks/guards_hold.py`, thirty-five
+  assertions, every one shown red by reverting the single production behaviour
+  it names. Two of the sixteen turned out to be covered already, though not by
+  name -- reverting `structure.checked` reddens a control assertion, and
+  `combine`'s `did_the_work` reddens the tool-use rate -- and both now have an
+  assertion that says what it is testing. Two were half-covered in the way this
+  project keeps finding: `completed` both filters errored rows and rewrites the
+  file without them, and only the filter was catchable, so each half has its
+  own assertion now; and `--max-rows` was asserted at one repeat, where capping
+  the task list and capping the work are numerically identical, so it is asked
+  at three. One of the sixteen -- the report's ungraded count -- had an
+  assertion that passed in a case where the number is legitimately zero, so a
+  constant of zero left it green; it now caps grading at one of three answers.
+  Three of G-49's unnamed "three notes" are covered in section 40 and one more
+  in 41; `build`'s "dropped N stale rows" is still unasserted and needs
+  `construct.build.build` stubbed to reach, which belongs with whoever takes
+  the build stage next.
 - **G-50 · The fakes are unlike the data in three ways that hide code.** Every
   task in every check has `kind="none"` and no defect signature, so
   `token_removed` and `touched_defect_file` are always null in a
@@ -2449,6 +2466,18 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   the present-kind rule and an attempt that did no work passed. It now sets the
   kind as production does; all thirty-five sections still hold, and an attempt
   with no tool calls fails there as it does in a real run.
+  **Closed 09-21.** Section 42, twenty-three assertions. A present-kind and an
+  introduced-kind task, each with a real `signature_path` and `signature_token`,
+  driven end to end through the real `stage_attempt` and `stage_grade`, so
+  `token_removed` and `touched_defect_file` come out non-null in a
+  stage-produced reading and the pass rule visibly differs between the kinds --
+  the same four observations pass an introduced-kind answer and fail a
+  present-kind one. The declared-versus-actual branch, dead in every fixture
+  until now, is exercised in all three of its states. And an answer row with no
+  stored transcript drives the grading stage's rebuild path, the one that reads
+  the corpus, with the loader asserted to have been called. One of the
+  twenty-three is a guard on the fixture rather than on a fix, and its author
+  said so rather than inventing a revert for it.
 - **G-42 · R-20's honesty column was measured through a starved renderer.**
   *(settled 09-20, and the hypothesis was wrong. Re-graded under the fixed
   renderer, exactly one of the 81 honesty verdicts changed —
