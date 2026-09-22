@@ -191,6 +191,24 @@ that decides which tasks exist.
 task ids ever built to 44. About 1,900 model calls, no errored rows in any
 stage, at `--concurrency 3` and `--passes 3` on every screening gate.
 
+Built is not admitted. A task counts only once the judge has been calibrated on
+its known pair and the three controls have behaved:
+
+| | sweep 1 | sweep 2 |
+|---|---|---|
+| tasks built | 21 | 8 |
+| pass the calibration gate | 17 | 6 |
+| pass the controls | 14 | 4 |
+| **admitted** | **14** | **4** |
+
+Every control failure was on the reference answer, and on five tasks it was the
+`criterion` control reporting *not applicable*: the answer the developer
+accepted carries no tool calls, so that control would be asking the null
+control's question. The task is untestable by it rather than broken, and the
+code deliberately keeps it out. **That rule alone excludes 4 of the 29 new
+tasks and 7 across every directory.** Whether an untestable control should
+exclude a task is an open question, not a defect.
+
 Three things worth knowing before running this again.
 
 **The pool is finite and it is now empty.** `run.py moments --fresh` returns

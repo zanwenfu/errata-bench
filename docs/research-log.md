@@ -4037,3 +4037,21 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   never exit. None of the guarded scripts was running. This is the likeliest
   cause of the laptop running hot for days, and it is a shape to avoid wherever
   a shell loop waits on a process by name.
+- **09-22** — the new tasks calibrated and controlled: **18 of the 29 are
+  admitted** (14 of 21 in sweep1, 4 of 8 in sweep3). Every control failure is
+  on the reference answer, and on five tasks it is the `criterion` control
+  reporting *not applicable*, because the answer the developer accepted carries
+  no tool calls and the control would then be asking the null control's
+  question. `ControlResult.ok` is False for those, so the task is excluded.
+  **G-62 opened**: that rule costs 4 of the 29 new tasks and 7 across every run
+  directory. The code is deliberate and says so in its own detail string -- the
+  task is untestable rather than broken -- but whether an untestable control
+  should exclude a task, as against being recorded and skipped, is a decision
+  nobody has taken on the evidence. It is worth 7 tasks out of 44.
+  Also fixed this pass: B-232 (the task fingerprint and the trace budget) and
+  the scoring folds in c243c16fd. Still open and recorded, not fixed: the
+  hedged control fallback on the 208 rows that predate `ok_if_hedged_counted`,
+  `line_holds` against `can_be_scored` on the 8 calibration rows where they
+  disagree, `admitted()`'s stability test being global rather than per task,
+  and `stage_grade` not carrying the transcript and rules onto the graded row
+  so a re-judge rebuilds them.
