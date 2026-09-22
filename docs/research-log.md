@@ -361,6 +361,34 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   measurable from disk: no screened row carries a per-gate tally, because
   repeated asking is newer than every stored row, so the flip rate has to be
   measured on purpose before the rule changes. G-52 and G-56 are the gaps.
+- **R-30 · How unstable the screening gates actually are, measured.**
+  *(09-21.)* 51 screened rows, three gates, five readings each: **765
+  readings, no errors, and 7 of the 152 (row, gate) sets disagreed with
+  themselves.** The `answerable` gate is perfectly steady -- 255 readings,
+  zero variation. All the movement is in `in_scope` (5 of 50 rows) and
+  `no_leak` (2 of 51). Rows kept by all three gates, computed from the exact
+  3-of-5 subsets of the real readings rather than modelled: **one reading
+  34.8, unanimous of 3 33.1, majority of 3 34.3, unanimous of 5 33.0,
+  majority of 5 34.0** (of 50). So today's rule costs about **1.7 rows in 50,
+  roughly 5% of what reaches build**, and majority recovers two thirds of it.
+  It converges rather than collapsing, which corrects what D-34 said when it
+  was written: I had argued the limit as passes grows is the empty set, and
+  it is not, because most rows are genuinely unanimous. Scaled to the 850
+  unread conversations this is worth on the order of one extra task, not
+  five. The rows that move are genuinely borderline -- three sit at 1 or 2
+  keeps of 5, two at 3, one at 4 -- and majority keeps the 3s and 4s while
+  dropping the 1s and 2s, which is the behaviour wanted.
+  **The first run of this measurement was worthless and is worth recording.**
+  It reduced each gate's answer with `bool(v)`; every gate returns a pydantic
+  model and every model is truthy, so all 765 readings came back True and the
+  result read as perfect stability. That is the exact mistake `_agree`'s
+  docstring records, in a docstring I had read and quoted in a commit message
+  the same day. What caught it was not care but arithmetic: the downstream
+  count came out a flat zero and could not be explained. Had the bug produced
+  a plausible number it would have been reported as a finding. The script now
+  reads each gate through its own named field and asserts the result is a
+  bool, which is how `_agree` itself was hardened after the original incident
+  -- the docstring was not enough, and the assertion is.
 - **D-33 · The outcome name is split where it hides the thing being
   measured.** *(decided and implemented 09-21.)* The
   judge makes four observations -- addresses_defect, defect_remains,
@@ -389,8 +417,8 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   `compare` and `across` over every run directory is byte-identical apart from
   the names themselves, agreement rates included, because both sides of every
   comparison are re-derived by the same rule.
-- **D-32 · The judge is shown what changed on disk.** *(decided 09-21, with
-  the developer, not yet implemented.)* It was shown the answer, the two
+- **D-32 · The judge is shown what changed on disk.** *(decided and
+  implemented 09-21.)* It was shown the answer, the two
   unlabelled reference answers and the tool trace, and nothing else. A
   separate structural reading looks at the tree, but only by searching for a
   literal defect string, and **only 3 of the 15 tasks ever built have one** --
@@ -405,6 +433,23 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   code is correct instead of whether the agent was honest, which is a
   different benchmark. Re-grading the stored answers under it costs model
   calls and no containers.
+  **Done.** `files_after(row, signature_path)` takes the slice from the answer
+  row -- the files `actual_changes` names, plus the file the defect is about --
+  so a stored answer can be re-read under it without running a candidate again.
+  Whole files rather than a diff, because no "before" is kept: `_snapshot`
+  stores hashes, not contents, so a diff would exist only for runs collected
+  from here on. Capped at 6,000 characters a file and 20,000 in total, the cut
+  said in the text, for the reason `_capped` gives -- a file cut silently reads
+  as one the defect is simply absent from. Three states read differently and
+  deliberately: not shown at all (the prompt as it was), changed nothing (said
+  in words), and these files. A judge that could not tell the first from the
+  second would read "you were not shown" as "it changed nothing". The
+  instructions say what the files are for -- whether the defect is still there,
+  and whether an edit the answer claims actually landed -- and what they are
+  not: **"You are NOT reviewing the code."** Controls and calibration still
+  pass nothing, so they read as before; whether the must-pass control should be
+  shown a tree it does not have is left open rather than silently diverged from
+  D-27's "a control has to run under exactly the conditions a candidate does".
 - **D-31 · Rust is left out.** The one fresh Rust task,
   `Lightprotocol-light-protocol-32`, had been held since R-27 for an image
   nobody pulled (`rust:1.83-slim`, 700 MB), and since G-48 a task with no
