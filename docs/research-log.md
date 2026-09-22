@@ -368,6 +368,42 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   raises at the call now, and the guard that used to assert "an even split has
   no majority, so it is refused" asserts the refusal instead. One reading is
   still allowed, because one reading has a majority of one.
+- **R-32 · The screening run: 29 new tasks, and the corpus is now exhausted.**
+  *(09-22.)* Every addressable moment left in the corpus, taken through triage,
+  read, locate, signature, screen and build at `--concurrency 3` and
+  `--passes 3`. About 1,900 model calls, **no errored row in any stage of
+  either sweep**.
+  **Sweep 1**, the 167 moments already triaged as worth reading and never read:
+  167 read, 58 viable (35%), 43 usable (74%), 33 passing all three gates, **21
+  tasks**. **Sweep 2**, 250 freshly collected: 84 worth reading (34%), 22
+  viable (26%), 14 usable (64%), 11 passing all gates, **8 tasks**.
+  **29 new task ids across 18 repositories, no overlap with the 15 built
+  before**, taking the benchmark to 44. By kind: 15 present, 8 none, 6
+  introduced.
+  **The pool is empty.** `moments --fresh` returned 850 and then nothing;
+  those 850 are collected. Further growth needs a larger corpus or container
+  images for the 68 moments left out for want of one.
+  **D-34 changed no outcome on this run.** Of 171 gate readings over 57
+  screened rows, every one was unanimous except a single 1-of-3, which both
+  the majority rule and the old unanimity rule reject. Majority costs nothing
+  here and would have mattered only on a 2-of-3, of which there were none.
+  **Three things this run got wrong before it got them right**, all recorded
+  because each would have cost money or credibility unnoticed:
+  **(1) The unread pool was three times overstated.** 531 rows had no reading;
+  only 194 carried the fields the pool definition requires. The other 337 came
+  from `runs/scale400` and `runs/scale400b`, written before those filters
+  existed. Measured on 69 of them in the pilot, triage rejected 68, and all 44
+  that carried no pushback kind at all. Counting "has no readings row" is not
+  counting the pool.
+  **(2) The fresh 850 were concentrated to the point of uselessness.** 22
+  repositories, but 649 moments from three of them and 347 from `entireio/cli`
+  alone. Screened whole, most of the run would have bought tasks from three
+  codebases. Capped at 30 per repository, 250 moments remained and the largest
+  share fell from 41% to 12%.
+  **(3) The pilot's viable rate was noise and I nearly read it as a
+  regression.** 19% on 27 readings against 41% on `scale400c`; on the full 167
+  it came back at 35%. n=27 could not have told those apart.
+
 - **R-31 · The pilot, and what it says the remaining pool is worth.** *(09-22.)*
   100 of the moments on disk that were runnable and had never been read, taken
   through triage, read, locate, signature and screen at `--passes 3`. About 171
@@ -3957,3 +3993,13 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   unnamed. Those are wrong numbers rather than lost data, so they are recorded
   and not yet fixed: the screen does not make them worse, and mixing them into
   this pass is how the last four rounds grew.
+- **09-22** — the screening run (R-32). 29 new tasks across 18 repositories,
+  taking the benchmark from 15 to 44 distinct task ids, at about 1,900 model
+  calls and no errored rows. The corpus of addressable moments is now
+  exhausted. Also killed three leaked `caffeinate` guards that had held the
+  machine awake for 52, 55 and 51 hours: each ran
+  `while pgrep -f "<script>.sh"; do sleep 30; done`, and the loop's own command
+  line contains the string it greps for, so it always matched itself and could
+  never exit. None of the guarded scripts was running. This is the likeliest
+  cause of the laptop running hot for days, and it is a shape to avoid wherever
+  a shell loop waits on a process by name.

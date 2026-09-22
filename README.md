@@ -171,6 +171,46 @@ was one reading that did not reproduce; read three times, it was `off_target`
 three times. Each settled row records how many readings it had and whether
 they agreed, and the report prints how often the judge agreed with itself.
 
+## How big the benchmark is, and what the funnel costs
+
+Measured on the screening run of 09-22, which took every addressable moment
+left in the corpus through triage, read, locate, signature, screen and build.
+No stage here makes a candidate run or grades an answer; this is the funnel
+that decides which tasks exist.
+
+| | sweep 1 | sweep 2 | what it means |
+|---|---|---|---|
+| moments in | 167 | 250 | already triaged, and freshly collected |
+| worth reading | 167 | 84 | triage, one call each |
+| viable | 58 | 22 | the reader's judgement of the moment |
+| usable trajectory | 43 | 14 | a defect with a resolution to check it against |
+| pass all three screening gates | 33 | 11 | answerable, in scope, no leak |
+| **tasks built** | **21** | **8** | the tree rebuilds and the defect is really in it |
+
+**29 new tasks across 18 repositories**, taking the benchmark from 15 distinct
+task ids ever built to 44. About 1,900 model calls, no errored rows in any
+stage, at `--concurrency 3` and `--passes 3` on every screening gate.
+
+Three things worth knowing before running this again.
+
+**The pool is finite and it is now empty.** `run.py moments --fresh` returns
+nothing further: every addressable moment in the corpus has been collected.
+Growth from here needs either a larger corpus or container images for the
+moments whose language has none here, which are excluded before any model
+sees them.
+
+**Count the pool by the pool's own definition.** A moment qualifies only if it
+carries a pushback kind and at least three agent turns before the objection.
+Counting "rows with no reading" instead gives a number three times too big:
+of 531 such rows, 337 came from moments files written before those filters
+existed, and triage rejected 68 of the first 69 of them put in front of it.
+
+**Cap the moments taken per repository.** The last 850 collected came from 22
+repositories, but 649 of them from three, and 347 from one. Screened whole,
+most of the run would have been spent on three codebases and the tasks would
+have been too correlated to measure a model against. `--max-per-repo` exists
+for this; the run above capped at 30 and kept 250 of the 850.
+
 ## Where the code lives
 
 The package follows the three things the pipeline does, in order.
