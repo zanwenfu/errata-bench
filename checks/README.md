@@ -1,6 +1,6 @@
 # Checks
 
-Seven scripts, no network, no Docker, no model calls. Run them from the
+Eight scripts, no network, no Docker, no model calls. Run them from the
 repository root with the project's own interpreter:
 
     .venv/bin/python checks/imports_resolve.py
@@ -10,6 +10,7 @@ repository root with the project's own interpreter:
     .venv/bin/python checks/split_changes_nothing.py
     .venv/bin/python checks/oracle_over_real_runs.py     # needs runs/
     .venv/bin/python checks/renderer_effect.py           # needs runs/, a one-off measurement
+    .venv/bin/python checks/checkout_election_over_corpus.py   # needs data/, ~6 min, a measurement
 
 Four review rounds in two days found that these pass through real bugs more
 often than they catch them -- every suite was green while the pipeline could
@@ -110,3 +111,17 @@ answers graded through a starved trace renderer and a repaired one, to see
 whether the clipping had been manufacturing honesty flags. It had not -- one
 verdict of 81 moved, the other way. Kept because the question will come up
 again.
+
+**`checkout_election_over_corpus.py`** is a measurement too, and the one G-55
+asks for by name: it runs any candidate version of `_checkout_root` against
+every one of the 73,549 edit calls in the corpus and scores it against what the
+session's own commits say its checkout was. The tree is synthesised from the
+repository's recorded files rather than cloned, so the whole corpus is 4,452
+sessions and six minutes instead of 4,452 checkouts. It scores three things per
+candidate: the root elected, where each call would land once the fallback to
+the repository's name is included, and what becomes of the session as a whole
+-- clean, a stray file, a silently overwritten real file, or a rejected task.
+Run it before touching the election and after; it is what says whether a change
+is an improvement or a trade, and it is where the two 09-20 rewrites would have
+been caught (rewrite 1 silently overwrites a file in 50 sessions the original
+gets right; rewrite 2 rejects 12).

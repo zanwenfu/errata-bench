@@ -2870,6 +2870,78 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   *a Write to a file that already exists in the tree is evidence (the tool
   result says "updated"); a Write that creates one is not.* It is not to be
   implemented without the corpus harness the rewrites were judged by.
+  **The harness exists (09-21), and it says do not implement the rule.**
+  `checks/checkout_election_over_corpus.py` runs any candidate election through
+  production's own `_checkout_root` and `_target` against all **73,549 edit
+  calls in 4,452 sessions**, without cloning a repository: the paths come from
+  `conversations.parquet` (parsed out of `content` as JSON, as `edits_before`
+  does -- the `file_path` column is null on all 134 MultiEdit rows), the base
+  tree is synthesised from each repository's own recorded file universe minus
+  what the session created, and the answer key is `sessions.files_touched`, the
+  repo-relative paths the session's commits touched. 3,620 sessions get a
+  single consistent answer that way; the other 832 are skipped and named. Its
+  own calibration is a differential test against history rather than an
+  assertion: run the two 09-20 rewrites beside the restored original and their
+  recorded failures light up -- rewrite1 turns 50 clean sessions into silently
+  overwritten trees, rewrite2 turns 12 clean sessions into rejections. It is a
+  measurement, like the oracle: no assertions, exits 0 whatever it finds.
+  **The recorded rule is a trade, not an improvement, and is not being
+  implemented.** Rolled up per session -- clean / stray file / silently
+  overwrote a real file / rejected -- the original scores **3550 / 27 / 5 /
+  38** and the rule as written scores **3544 / 29 / 3 / 44**. It does what this
+  entry claimed: 2 of the 5 silent overwrites stop. But electing nothing when
+  no evidence remains sends those sessions to the repository's name, whose
+  leftmost match then fails them, so it costs 6 sessions clean-to-rejected. Six
+  visible losses for two invisible corruptions. On the benchmark's own stated
+  preference -- reject rather than ship a half-and-half tree -- that is
+  defensible; on the numbers it is not an improvement, and the gap's
+  instruction was to judge it on the numbers.
+  **What the harness found instead**, recorded and *not* implemented: let the
+  evidence calls vote, preferring the longer root on a tie; if nothing votes,
+  elect nothing only when the repository's name maps every recorded path --
+  checkable before the fact -- and otherwise keep the original election. That
+  is `proposed-then-name` in the script, **3552 / 28 / 3 / 37**, ahead of the
+  original on every column at once, with no clean-to-rejected move at all. It
+  is a recommendation. It should go through this harness again and the
+  48-single-revert standard before anything moves in `edits.py`.
+  **Three of this entry's own numbers were wrong, and are corrected here.**
+  73,549 edit calls is exact (Edit 64,699 / Write 8,716 / MultiEdit 134). 1,321
+  sessions opening with a Write is **1,320**, under either definition. **675
+  disagreements is not reproducible**: of the 3,653 sessions with a committed
+  path the leftmost-match fallback maps a path to the wrong place in **718**,
+  cannot map one at all in **668**, and does one or the other in **1,368** --
+  675 matches none of them, and the distinction is the whole point, since one
+  is a silently misplaced file and the other a rejected task. **9
+  repository-relative sessions is not reproducible either**: corpus-wide there
+  are **4** genuinely relative sessions (39 calls), plus 52 carrying the
+  redaction placeholder `REDACTED.md` and 53 with Windows drive-letter paths
+  that both `PurePosixPath` and `to_repo_relative` already handle. And the path
+  rejections actually on disk are not relative paths at all -- they are files
+  genuinely outside the repository (`~/Library/LaunchAgents/...`).
+  **And "one shape" is two.** The creating-Write shape is real and the rule
+  does fix it (`marcus-sa/brain`: a lone Write creating a nested `AGENTS.md`
+  whose basename matches the repository's own root `AGENTS.md`, so the original
+  elects one level too deep and the replay overwrites the real one). But **3 of
+  the 5 overwrites survive every candidate**, including both 09-20 rewrites --
+  `sintezcs/jetcodesync`, a duckdb-data-agent worktree, and `osabiohq/osabio`
+  -- and in all three the vote comes from a legitimate "has been updated" Edit
+  onto a file that genuinely exists at both depths. No rule that reads only the
+  tree can separate them; only the commit record can, and
+  `sessions.files_touched` is in the corpus and reachable from `build.py`. The
+  harness cannot score that option, because it is the harness's own answer key.
+  Also worth correcting: the misplacement is mostly produced by the
+  longest-suffix-first break in the original's inner loop, not by the
+  shorter-prefix tie-break this entry names.
+  **One number worth keeping**: 5,589 of the 8,716 Writes created their file
+  and 2,548 overwrote an existing one, so the proposed rule silences 64% of
+  Writes.
+  **Limits the harness states about itself**: the file universe is a union over
+  each repository's whole recorded history, so a file created after the base
+  commit can appear in a synthetic base tree -- re-scoring a 324-session sample
+  with commits dropped moves 3 elections for the original and 2 for the rule,
+  accuracy unchanged. Sessions whose edits were never committed have no answer
+  key and are skipped. The election is scored; whether `old_string` still
+  matches at the elected path is G-37's question, not this one.
 - **G-54 · The controls were asked once, and they do not answer the same way
   twice.** *(raised and acted on 09-20.)* Running the must-pass control over
   the nine tasks of `cand-kimi` and `cand-deepseek` -- the same judge,
