@@ -281,12 +281,13 @@ async def _agree(ask, passes: int, keep_on: bool, reading) -> tuple[bool, str, o
     appearing in only one. The gates decide which tasks exist, so their noise
     is the task set's noise.
 
-    So each is asked repeatedly and answered conservatively, in whichever
-    direction keeps a doubtful row out: a row is answerable only if every
-    reading says so, in scope only if every reading says so, and leaking if
-    *any* reading says so. The tally is stored beside the verdict, because a
-    row that held 3 of 3 and one that held 2 of 3 are different evidence and
-    only one of them should be read as settled.
+    So each is asked repeatedly and settled by majority: a row is answerable
+    if most readings say so, in scope if most say so, and leaking if most say
+    so. Majority rather than unanimity because these three decide whether a
+    task exists at all, and an estimator for that should be unbiased -- see
+    the note at the count below, and D-34. The tally is stored beside the
+    verdict, because a row that held 3 of 3 and one that held 2 of 3 are
+    different evidence and only one of them should be read as settled.
 
     `reading` pulls the answer out of whatever the gate returned, and is
     required rather than guessed. The first version of this reduced each answer
@@ -307,7 +308,27 @@ async def _agree(ask, passes: int, keep_on: bool, reading) -> tuple[bool, str, o
             f"a gate answered with {type(wrong).__name__}, not a bool: {wrong!r}. "
             "`reading` has to pull the verdict out of the model it returns."
         )
-    held = all(v is keep_on for v in values)
+    # Most of them, not all of them. Unanimity does not reduce a gate's noise;
+    # it reduces variance by moving the mean toward rejection, so asking a
+    # screening gate more times could only ever remove rows and never add one.
+    # These three gates decide whether a task EXISTS, and for that question the
+    # estimator should be unbiased. Measured over 765 readings (R-30): 7 of 152
+    # (row, gate) sets disagree with themselves, and of 50 rows the rule keeps
+    # 34.8 asked once, 33.1 unanimous of three, 34.3 by majority -- so
+    # unanimity was costing about 5% of everything reaching `build` and
+    # majority recovers two thirds of that. The rows it moves are genuinely
+    # borderline: three sat at one or two keeps of five, two at three, one at
+    # four, and majority keeps the last three while dropping the first three.
+    #
+    # Unanimity is still right where the question is whether a task can be
+    # SCORED -- calibration and the controls -- because there a task we cannot
+    # prove is measurable should not count. `stable()` and `controlled()` keep
+    # it (D-34).
+    #
+    # An even number of readings that ties has no majority, and ties the
+    # conservative way: half is not most.
+    kept = sum(1 for v in values if v is keep_on)
+    held = kept * 2 > len(values)
     # The answer handed back is the one that explains the verdict, not simply
     # the last one asked. Where the gate did not hold, that is the first
     # reading that broke it -- so a caller reading `.reasoning` off it gets the
@@ -316,7 +337,10 @@ async def _agree(ask, passes: int, keep_on: bool, reading) -> tuple[bool, str, o
     # instead meant a conversation three readings called leaking, clean, clean
     # was recorded as leaking and then never repaired, because the repair
     # branch asked the clean one.
-    deciding = answers[-1] if held else answers[values.index(not keep_on)]
+    # The answer handed back is one that voted with the verdict, so a caller
+    # reading `.reasoning` off it gets a reason for the decision that was
+    # actually made rather than for the minority's.
+    deciding = answers[values.index(keep_on if held else not keep_on)]
     return (keep_on if held else not keep_on,
             f"{sum(1 for v in values if v is keep_on)}/{len(values)}",
             deciding)

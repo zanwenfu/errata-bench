@@ -331,7 +331,7 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   cannot be trusted. It catches G-44 by itself.
 - **D-34 · A gate that decides whether a task EXISTS is settled by majority; a
   gate that decides whether a task can be SCORED is settled by unanimity.**
-  *(decided 09-21, with the developer, not yet implemented.)* D-28 and D-25
+  *(decided and implemented 09-21.)* D-28 and D-25
   made every repeated reading conservative in the rejecting direction: a row
   is answerable only if every reading says so, in scope only if every reading
   says so, leaking if any reading says so. That is right for the second kind
@@ -389,6 +389,17 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   reads each gate through its own named field and asserts the result is a
   bool, which is how `_agree` itself was hardened after the original incident
   -- the docstring was not enough, and the assertion is.
+  **Done, and one claim in this entry was wrong.** `_agree` now keeps a row when
+  most readings keep it, and an even split has no majority, so it ties the
+  conservative way. `stable()` and `controlled()` are untouched: unanimity is
+  right where the question is whether a task can be scored. What was wrong above
+  is the sentence saying the task set's limit as passes grows is the empty set.
+  R-30 measured it: most rows are genuinely unanimous, so it converges --
+  unanimous of three keeps 33.1 rows of 50 and unanimous of five 33.0, against
+  34.8 asked once. The cost is real but bounded at about 5% of what reaches
+  build, and majority recovers two thirds of it. Over the 850 unread
+  conversations that is worth on the order of one extra task, not five, which
+  is why this sits below reading more conversations in any ordering by yield.
 - **D-33 · The outcome name is split where it hides the thing being
   measured.** *(decided and implemented 09-21.)* The
   judge makes four observations -- addresses_defect, defect_remains,

@@ -239,15 +239,24 @@ def main() -> int:
           and row["signals_trouble"] is False,
           "and the three gate verdicts are the ones the fakes gave")
 
-    print("\n4. the gates are asked --passes times and answer conservatively")
-    # A gate that changes its mind keeps the row out. This is the behaviour
-    # `_agree` exists for, exercised through the real stage rather than alone.
+    print("\n4. the gates are asked --passes times and settled by majority")
+    # A gate that changes its mind is settled by what most of its readings say,
+    # not by whichever way is more cautious. This is the behaviour `_agree`
+    # exists for, exercised through the real stage rather than alone. It used
+    # to require unanimity, which does not reduce a gate's noise -- it moves
+    # the mean toward rejection, so asking more times could only remove rows
+    # (D-34, measured in R-30).
     flips = {"n": 0}
 
-    async def sometimes_out_of_scope(request, defect, **kw):
+    async def out_of_scope_once(request, defect, **kw):
         records("in_scope")
         flips["n"] += 1
         return Scope(within_scope=flips["n"] != 2, reason="changed its mind")
+
+    async def out_of_scope_twice(request, defect, **kw):
+        records("in_scope")
+        flips["n"] += 1
+        return Scope(within_scope=flips["n"] == 1, reason="changed its mind")
 
     q = Paths(Path(tempfile.mkdtemp()) / "run")
     append(q.moments, {"session_id": "s-1", "turn_number": 7, "repo_id": "acme/up",
@@ -255,7 +264,7 @@ def main() -> int:
     try:
         for stage in (stage_triage, stage_read, stage_locate, stage_signature):
             asyncio.run(stage(q, 10**9, concurrency=1))
-        scope_mod.in_scope = sometimes_out_of_scope
+        scope_mod.in_scope = out_of_scope_once
         asyncio.run(stage_screen(q, 10**9, concurrency=1, passes=3))
     except Exception as e:
         # Caught for the same reason section 1 catches: the stage failure this
@@ -270,9 +279,23 @@ def main() -> int:
     check(len(rows) == 1 and not rows[0].get("error"),
           f"the row screened without error: {rows[0].get('error') if rows else 'no rows'}")
     row = rows[0]
-    check(row["within_scope"] is False and row.get("within_scope_held") == "2/3",
-          f"one 'out of scope' in three keeps the row out: "
-          f"{row.get('within_scope')} held {row.get('within_scope_held')}")
+    check(row["within_scope"] is True and row.get("within_scope_held") == "2/3",
+          f"one 'out of scope' in three does not keep the row out, and the tally says "
+          f"it was not unanimous: {row.get('within_scope')} held {row.get('within_scope_held')}")
+
+    # Two of three does.
+    flips["n"] = 0
+    q2 = Paths(Path(tempfile.mkdtemp()) / "run")
+    append(q2.moments, {"session_id": "s-1", "turn_number": 7, "repo_id": "acme/up",
+                        "kind": "correction", "agent_turns_before": 4})
+    for stage in (stage_triage, stage_read, stage_locate, stage_signature):
+        asyncio.run(stage(q2, 10**9, concurrency=1))
+    scope_mod.in_scope = out_of_scope_twice
+    asyncio.run(stage_screen(q2, 10**9, concurrency=1, passes=3))
+    scope_mod.in_scope = fake_in_scope
+    row2 = load(q2.screened)[0]
+    check(row2["within_scope"] is False and row2.get("within_scope_held") == "1/3",
+          f"but two of three does: {row2.get('within_scope')} held {row2.get('within_scope_held')}")
 
     print("\n5. a leak says where it is carried, and a repair says how it ended")
     # G-56 / G-45. Fourteen rows leaked across the stored runs, none was

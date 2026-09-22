@@ -585,11 +585,20 @@ check(last_user_message([{"turn_number": 1, "turn_type": "assistant_response",
                           "content": "no user here"}], 5) is None,
       "and a session with no user message still returns nothing")
 
-print("\n21. a screening gate is asked repeatedly and answered conservatively")
+print("\n21. a screening gate is asked repeatedly and settled by majority")
 # Each gate is a model reading prose, and a model reading the same prose twice
-# does not always answer the same way: five of forty-six scope rows changed
-# across five askings, and re-screening one corpus produced fourteen tasks one
-# time and thirteen the other. Asked repeatedly, a doubtful row is kept out.
+# does not always answer the same way. Measured properly on 09-21 (R-30): 765
+# readings over 51 rows and three gates, 7 of the 152 (row, gate) sets
+# disagreeing with themselves, all of it in `in_scope` and `no_leak` --
+# `answerable` did not move once in 255 readings.
+#
+# Settled by MAJORITY, not unanimously. Unanimity does not reduce a gate's
+# noise; it moves the mean toward rejection, so asking more times could only
+# ever remove rows. Of 50 rows the three gates keep 34.8 asked once, 33.1
+# unanimous of three, 34.3 by majority -- unanimity was costing about 5% of
+# everything reaching `build`. These gates decide whether a task EXISTS and
+# the estimator for that should be unbiased; unanimity stays where the
+# question is whether a task can be SCORED (D-34).
 from errata_bench.find.answerable import Answerable
 from errata_bench.find.leakage import Leakage
 from errata_bench.stages.screening import _agree
@@ -620,13 +629,17 @@ def alternating(make, seq):
     return ask
 
 for (make, reading), seq, keep_on, want, label in (
-    (ANSWERABLE, [True, True, True],   True,  True,  "unanimous yes is kept"),
-    (ANSWERABLE, [True, False, True],  True,  False, "one no among yeses is refused"),
-    (ANSWERABLE, [False, False],       True,  False, "unanimous no stays no"),
-    (SCOPE,      [True, True, True],   True,  True,  "in scope every time is in scope"),
-    (SCOPE,      [True, False, True],  True,  False, "one 'out of scope' is enough to refuse"),
+    (ANSWERABLE, [True, True, True],    True,  True,  "unanimous yes is kept"),
+    (ANSWERABLE, [True, False, True],   True,  True,  "one no among yeses does not refuse it"),
+    (ANSWERABLE, [False, True, False],  True,  False, "two noes among three do"),
+    (ANSWERABLE, [False, False],        True,  False, "unanimous no stays no"),
+    (ANSWERABLE, [True, False],         True,  False, "and an even split has no majority, so it is refused"),
+    (SCOPE,      [True, True, True],    True,  True,  "in scope every time is in scope"),
+    (SCOPE,      [True, False, True],   True,  True,  "one 'out of scope' in three is outvoted"),
+    (SCOPE,      [False, False, True],  True,  False, "two are not"),
     (LEAK,       [False, False, False], False, False, "unanimous 'no leak' is kept"),
-    (LEAK,       [False, True, False], False, True,  "one reading of 'leaks' is enough to reject"),
+    (LEAK,       [False, True, False],  False, False, "one reading of 'leaks' in three is outvoted"),
+    (LEAK,       [True, True, False],   False, True,  "two readings of 'leaks' reject it"),
 ):
     verdict, tally, _ = asyncio.run(
         _agree(alternating(make, seq), len(seq), keep_on=keep_on, reading=reading))
@@ -638,15 +651,15 @@ for (make, reading), seq, keep_on, want, label in (
 # repaired -- and `build` drops a row that leaks and was not repaired.
 make, reading = LEAK
 verdict, tally, deciding = asyncio.run(
-    _agree(alternating(make, [True, False, False]), 3, keep_on=False, reading=reading))
+    _agree(alternating(make, [True, True, False]), 3, keep_on=False, reading=reading))
 check(verdict is True and reading(deciding) is True,
-      f"the reading handed back is the one that decided it: {tally} -> {verdict}")
+      f"the reading handed back is one that voted with the verdict: {tally} -> {verdict}")
 
 make, reading = ANSWERABLE
 verdict, tally, deciding = asyncio.run(
-    _agree(alternating(make, [True, False, True]), 3, keep_on=True, reading=reading))
+    _agree(alternating(make, [True, False, False]), 3, keep_on=True, reading=reading))
 check(verdict is False and reading(deciding) is False,
-      "and for a gate that must hold, it is the reading that broke it")
+      "and where the row was refused, it is one of the readings that refused it")
 
 # A gate answering with the wrong shape stops the run. Without this the next
 # such mistake is silent again.
