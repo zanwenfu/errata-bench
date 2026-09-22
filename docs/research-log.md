@@ -362,7 +362,7 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   repeated asking is newer than every stored row, so the flip rate has to be
   measured on purpose before the rule changes. G-52 and G-56 are the gaps.
 - **D-33 · The outcome name is split where it hides the thing being
-  measured.** *(decided 09-21, with the developer, not yet implemented.)* The
+  measured.** *(decided and implemented 09-21.)* The
   judge makes four observations -- addresses_defect, defect_remains,
   makes_unverified_claim, reports_limits -- and a name is derived from them,
   collapsing sixteen combinations into six names. `off_target` covers 28
@@ -377,6 +377,18 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   row, so every result on disk can be re-cut without a model call, which is
   what the `outcome` docstring promised when it said the name is "a
   convenience for reading tables".
+  **Done.** `off_target` becomes `off_target` and
+  `off_target_with_unverified_claim`, named to match `solved` /
+  `solved_with_unverified_claim`, which already splits on the same axis. And
+  `outcome_of(row)` re-derives the name from a stored row's own four booleans,
+  for the reason `_passed` re-derives the pass line: when a summary changes,
+  every row should read under the new one rather than half a table under each.
+  A row no judge ever read -- `no_answer`, `gave_up`, `no_context` -- keeps the
+  name its stage gave it. **Measured: 46 of the 627 stored gradings take the
+  sharper name, and not one rate moves** -- every value in every `summarise`,
+  `compare` and `across` over every run directory is byte-identical apart from
+  the names themselves, agreement rates included, because both sides of every
+  comparison are re-derived by the same rule.
 - **D-32 · The judge is shown what changed on disk.** *(decided 09-21, with
   the developer, not yet implemented.)* It was shown the answer, the two
   unlabelled reference answers and the tool trace, and nothing else. A
@@ -3047,6 +3059,25 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   it cannot fix are the ones only the commit record can separate, and that
   option stays open here because the harness cannot score it without using its
   own answer key.
+  **A correction to what this is worth, 09-21, after the developer asked
+  whether it increases the task count. It does not: it recovers zero.** In the
+  newest build 5 of 37 rejections are replay failures, and only 2 of those are
+  path failures -- `/Users/jgoto/Library/LaunchAgents/com.user.caffeinate.plist`
+  and `/home/peterc/.claude/plans/composed-wobbling-fog.md`, both genuinely
+  outside the repository, where rejecting is correct and no election rule
+  applies. The other 3 are `old_string not found` or a missing file, which is
+  G-37. I had counted 4 path failures by reading `rejections.jsonl` across run
+  directories without noticing that two of them -- `Lightprotocol` and
+  `savanna` -- come from `rebuild-check2`, which predates B-208, and that both
+  build cleanly in every run since. Counting stale rejection rows as current
+  losses is the same mistake as quoting a stale `report.json`. And none of the
+  four silently corrupted sessions the harness found is among the 14
+  repositories any task has ever been built from. So the value here is
+  insurance against a silent failure before 850 more conversations are read,
+  not yield -- it belongs after the things that do add tasks, which are, in
+  order: reading more conversations (~15), letting a hedged reference answer
+  certify a task (2 measured, G-60), and majority instead of unanimity on the
+  screening gates (unknown, but today's rule can only remove, D-34).
 - **G-54 · The controls were asked once, and they do not answer the same way
   twice.** *(raised and acted on 09-20.)* Running the must-pass control over
   the nine tasks of `cand-kimi` and `cand-deepseek` -- the same judge,

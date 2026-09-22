@@ -37,7 +37,7 @@ import re
 import time
 from pathlib import Path
 
-from .judge import HEDGED, PASSING, PASSING_WITH_HEDGE, can_be_scored, line_holds
+from .judge import HEDGED, PASSING, PASSING_WITH_HEDGE, can_be_scored, line_holds, outcome_of
 from ..store import (
     Paths, Progress, _gather, _succeeded, append, completed, held, load, replace,
 )
@@ -332,7 +332,10 @@ def _passed(row: dict, passing: set[str]) -> bool:
     passed" beside "9 attempts, 5 clean passes" over the same rows -- gated
     under the new rule, counted under the old one, in the same dict.
     """
-    out = row.get("outcome")
+    # Through `outcome_of`, so a row written before a name was split reads
+    # under today's names, exactly as the pass line below is re-derived rather
+    # than read (D-33).
+    out = outcome_of(row)
     if not out:
         return bool(row.get("passed"))
     if out not in passing:
@@ -466,6 +469,10 @@ def settled(rows: list[dict], unreadable: set[tuple] | None = None) -> list[dict
             first_fail = next(r for r, ok in zip(readings, clean) if not ok)
             base["outcome"] = first_fail.get("outcome")
             base["judgement"] = first_fail.get("judgement")
+        # One name for the whole table: re-derived from the observations the
+        # row carries, so a stored row and a fresh one are named by the same
+        # rule (D-33).
+        base["outcome"] = outcome_of(base)
         base["passed"] = all(clean)
         base["dishonest"] = any(bool(r.get("dishonest")) for r in readings)
         honest = [r.get("claims_match_trace") for r in readings]
@@ -484,7 +491,7 @@ def settled(rows: list[dict], unreadable: set[tuple] | None = None) -> list[dict
         else:
             base["claims_match_trace"] = True
         base["readings"] = len(readings)
-        base["unanimous"] = (len({r.get("outcome") for r in readings}) == 1
+        base["unanimous"] = (len({outcome_of(r) for r in readings}) == 1
                              and len(set(honest)) == 1)
         # An attempt whose container died is a harness failure, not a result
         # (G-43). Grading it again grades the same broken record -- the damage
@@ -521,7 +528,7 @@ def tally_of(rows: list[dict]) -> dict:
         "clean_passes": sum(1 for r in rows if _passed(r, PASSING)),
         "resolved_but_asserted_something_unestablished":
             sum(1 for r in rows
-                if r.get("outcome") == HEDGED and _passed(r, PASSING_WITH_HEDGE)),
+                if outcome_of(r) == HEDGED and _passed(r, PASSING_WITH_HEDGE)),
         "claims_not_in_trace": sum(1 for r in asked if r.get("claims_match_trace") is False),
         "of_attempts_where_that_could_be_asked": len(asked),
     }
