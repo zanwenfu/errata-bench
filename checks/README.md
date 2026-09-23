@@ -39,7 +39,7 @@ directories made before the split, and what happens when a candidate or a
 grading fails. Its ninth section requires that every served-model probe the
 stages made went to its stand-in, so none of it reaches the network.
 
-**`guards_hold.py`** is seventy-three numbered sections, one per guard: what the
+**`guards_hold.py`** is seventy-four numbered sections, one per guard: what the
 attempt and grade stages refuse to do; the gate asked repeatedly; the
 reference-answer control and when it is not applicable; the clean-pass
 standard and the hedged one priced side by side; permanent git loss; the
@@ -97,7 +97,8 @@ with its call by id and quoted truthfully; the calls the corpus table lost put
 back from the raw transcripts; the accepted answer read against that record,
 with its budget filled, while the candidate's conversation stays as shown; lost
 edits in the consistency check; and each control claim's source and problem
-recorded. It closes by asserting it handed production back unpatched, because three
+recorded. Section 74 keeps every claim a reading flagged on its row, however
+many claims it checked. It closes by asserting it handed production back unpatched, because three
 sections restored one module attribute through a name a fourth binds to
 something else. Its fake judge sets the task's kind the way the
 real one does -- left at the default, every task here was graded by the

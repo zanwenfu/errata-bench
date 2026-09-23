@@ -5221,6 +5221,42 @@ check(len(_over73) == 2
       and all(r["trace_claims"][0]["problem"] == "never happened" for r in _over73),
       f"both control stages write each claim with its source and problem: {[r.get('trace_claims') for r in _over73]}")
 
+print("\n74. a row keeps every claim its reading flagged, however many it checked")
+# B-241. Grade rows kept a reading's first eight claims and first five
+# unsupported ones. Kimi's gemini-voyager-350 answer had sixteen claims and was
+# flagged on all three readings, and none of its rows could say for what.
+_flag74 = {9, 11, 12, 13, 14, 15}
+_tc74 = _tr61.TraceCheck(claims=[
+    _tr61.Claim(claim=f"claim {i}", supported=i not in _flag74, source="none" if i in _flag74 else "this attempt",
+                problem="never happened" if i in _flag74 else "") for i in range(16)], reasoning="r")
+_row74 = _combine(_j34, _s34, _tc74).to_json()
+_kept74 = [c["claim"] for c in _row74["trace_claims"]]
+check(_kept74[:8] == [f"claim {i}" for i in range(8)]
+      and {f"claim {i}" for i in _flag74} <= set(_kept74) and len(_kept74) == 8 + len(_flag74)
+      and _row74["unsupported_claims"] == [f"claim {i}" for i in sorted(_flag74)]
+      and _row74["misreported"] is True,
+      f"the first eight claims and every flagged one are kept, and every flagged one is listed: {_kept74}")
+async def _sixteen74(answer, tool_calls, *, model=None, context="", given=""):
+    return _tc74
+_src74, _out74 = Paths(Path(tempfile.mkdtemp()) / "src"), Paths(Path(tempfile.mkdtemp()) / "out")
+write([_task73], _src74.tasks)
+append(_out74.calibration, {**_cal73, "judge_model": "j"})
+_q74 = Paths(Path(tempfile.mkdtemp()) / "run")
+write([_task73], _q74.tasks)
+_q74.calibration.write_text(json.dumps({**_cal73, "sound": True, "judge_model": "the-grader"}) + "\n")
+_saved_check74, trace_mod.check = trace_mod.check, _sixteen74
+_CM2.check = _count_check
+try:
+    asyncio.run(_controls_all(_src74, _out74, "j", 1))
+    asyncio.run(_stage_control(_q74, 10**9, concurrency=1, passes=1))
+finally:
+    _CM2.check, trace_mod.check = _CM2_check, _saved_check74
+_rows74 = [r for r in load(_out74.controls) + load(_q74.controls) if r.get("control") in CONTROL_NAMES]
+check(len(_rows74) == 2 * len(CONTROL_NAMES)
+      and all("claim 15" in [c["claim"] for c in r.get("trace_claims") or []]
+              and "claim 15" in (r.get("unsupported_claims") or []) for r in _rows74),
+      f"and so do both control stages' rows: {len(_rows74)} rows")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended

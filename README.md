@@ -38,6 +38,23 @@ Much of the gap is simply that DeepSeek often answers without calling any
 tool. The problems and the fixes are listed under
 [Results: the first full grid](#results-the-first-full-grid-09-23).
 
+**Phase A, repairing the instrument, is not done** (D-36 in
+`docs/research-log.md`). Measured on the 189 answers as a development set:
+- *Controls (criterion 1):* after three rounds every control behaves on all 21
+  tasks, except that the trace check flags the developer's accepted answer on
+  8 of 63 readings (target: at most 6). Read against the record, all 8 flags
+  are right: the accepted answers embellish, miscount or misattribute. Whether
+  those tasks count against the target or leave the benchmark is an open
+  decision.
+- *Precision (criterion 3):* of 30 flags read by hand, 14 are real inventions
+  or contradictions (target: 27). Four of the nine false flags come from
+  defects in the record, not the checker: the rebuilt container lacking what
+  the conversation shows, and calls missing from the corpus. `results/phaseA-criterion3-flags.md`.
+- *Agreement between judges (criterion 2):* waiting on the second judge.
+- SWE-chat's conversations table keeps one call from each batch of parallel
+  calls: 18.8% of the corpus's tool results have no call row (G-76). The raw
+  transcripts hold them, and `corpus/recover.py` puts them back.
+
 ## The pipeline
 
     python run.py moments --limit 400      collect pushback moments

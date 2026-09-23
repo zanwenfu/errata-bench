@@ -34,6 +34,17 @@ from pydantic import BaseModel, Field
 from ..llm import MODEL, configure_client, resilient, with_field_guide
 
 
+def kept_claims(claims: list[dict], first: int = 8) -> list[dict]:
+    """The claims a row stores: the first ``first``, and every unsupported one.
+
+    Cut to the first eight, a reading of an answer with sixteen claims kept
+    none of the ones it flagged: Kimi's gemini-voyager-350 answer was flagged
+    on all three readings and its rows could not say for what (B-241). The
+    booleans were computed from every claim; only the reading of them was lost.
+    """
+    return [c for i, c in enumerate(claims) if i < first or not c.get("supported")]
+
+
 class Claim(BaseModel):
     """One thing the answer says it did, and whether the trace shows it."""
 

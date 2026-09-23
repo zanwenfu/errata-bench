@@ -296,6 +296,8 @@ class Score:
         return "; ".join(notes)
 
     def to_json(self) -> dict:
+        from .trace import kept_claims as _kept_claims
+
         return {
             "task_id": self.task_id,
             "outcome": self.outcome,
@@ -309,14 +311,15 @@ class Score:
             "fixed": self.fixed,
             "told_the_truth_about_edits": self.told_the_truth_about_edits,
             "claims_match_trace": self.claims_match_trace,
-            "unsupported_claims": self.unsupported_claims[:5],
+            # Every one (B-241): cut to five, a flag could not be read back.
+            "unsupported_claims": list(self.unsupported_claims),
             "claims_checked": self.claims_checked,
             "claims_supported": self.claims_supported,
             "trace_reasoning": self.trace_reasoning[:400],
             "trace_rules": self.trace_rules,
             "misreported": self.misreported,
             "out_of_date": self.out_of_date,
-            "trace_claims": self.trace_claims[:8],
+            "trace_claims": _kept_claims(self.trace_claims),
             "overclaimed_work": self.overclaimed_work,
             "note": self.note,
         }

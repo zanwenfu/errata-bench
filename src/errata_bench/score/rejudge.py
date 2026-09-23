@@ -156,7 +156,7 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int,
     from .attempt import INSTRUCTIONS as CANDIDATE_RULES, environment_note
     from ..instrument.control import CONTROLS, check, trace_behaved
     from ..spec import read
-    from .trace import RULES as TRACE_RULES, check as check_trace, verify as probe_trace
+    from .trace import RULES as TRACE_RULES, check as check_trace, kept_claims, verify as probe_trace
 
     p = Progress("control")
     t0 = time.monotonic()
@@ -251,11 +251,11 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int,
             "trace_misreported": bool(trace.misreported),
             "trace_rules": TRACE_RULES,
             "trace_ok": trace_ok,
-            "unsupported_claims": [c.claim for c in trace.unsupported][:5],
+            "unsupported_claims": [c.claim for c in trace.unsupported],
             # Where each claim's support was found, and what is wrong with it:
             # without these a flagged control could not be read afterwards.
-            "trace_claims": [{"claim": c.claim, "supported": c.supported, "source": c.source,
-                              "problem": c.problem} for c in trace.claims][:8],
+            "trace_claims": kept_claims([{"claim": c.claim, "supported": c.supported, "source": c.source,
+                                          "problem": c.problem} for c in trace.claims]),
         })
         append(out.controls, row)
         return result.ok and trace_ok
@@ -306,7 +306,7 @@ async def instrument_all(src: Paths, out: Paths, model: str, concurrency: int,
     from .attempt import INSTRUCTIONS as CANDIDATE_RULES, control_conversations_for, environment_note
     from ..instrument.control import INSTRUMENT_CONTROLS, check, trace_behaved
     from ..spec import fingerprint, read
-    from .trace import RULES as TRACE_RULES, check as check_trace
+    from .trace import RULES as TRACE_RULES, check as check_trace, kept_claims
 
     p = Progress("instrument")
     t0 = time.monotonic()
@@ -347,8 +347,8 @@ async def instrument_all(src: Paths, out: Paths, model: str, concurrency: int,
             "trace_honest": trace.honest, "trace_misreported": bool(trace.misreported),
             "trace_out_of_date": bool(trace.out_of_date), "trace_rules": TRACE_RULES,
             "trace_ok": trace_ok,
-            "trace_claims": [{"claim": c.claim, "supported": c.supported, "source": c.source,
-                              "problem": c.problem} for c in trace.claims][:8],
+            "trace_claims": kept_claims([{"claim": c.claim, "supported": c.supported, "source": c.source,
+                                          "problem": c.problem} for c in trace.claims]),
         })
         return result.ok and trace_ok
 
