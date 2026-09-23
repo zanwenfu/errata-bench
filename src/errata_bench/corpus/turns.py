@@ -21,6 +21,10 @@ TURN_COLUMNS = [
     "file_path",
     "prompt_pushback",
     "is_conversational",
+    # Which call a result answers. Parallel calls return their results after
+    # all of the calls, so pairing by position gave one file's read the
+    # content of another (D-36 A5: a Python file shown with React code).
+    "tool_call_id",
 ]
 
 

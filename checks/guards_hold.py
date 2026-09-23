@@ -4920,6 +4920,29 @@ check(max(_cs66.observed_lines([_T66(1, "tool_use", tool_name="Read", file_path=
       "a read the corpus cut short loses its last line, and a developer's path maps into the tree")
 check(_cs66.MUTATING.search("npm test > /dev/null 2>&1") is None and _cs66.MUTATING.search("echo x > out.txt"),
       "output thrown away is not a change of state; output written to a file is")
+# Parallel reads return their results after all the calls, in any order. Paired
+# by position, one file was "shown" holding another's content -- a Python file
+# with React code -- and 5 of 5 files of a consistent task read as differing.
+(_tree66 / "src" / "b.py").write_text("import os\n")
+_par66 = [_T66(1, "tool_use", tool_name="Read", file_path="/d/src/app.ts", tool_call_id="A", content=""),
+          _T66(2, "tool_use", tool_name="Read", file_path="/d/src/b.py", tool_call_id="B", content=""),
+          _T66(3, "tool_result", tool_call_id="B", content="     1→import os"),
+          _T66(4, "tool_result", tool_call_id="A", content="     1→line one\n     2→const PORT = 8080")]
+_noid66 = [{k: v for k, v in t.items() if k != "tool_call_id"} for t in _par66[:2]] + [
+          _T66(3, "tool_result", content="     1→line one"), _T66(4, "tool_result", content="     1→import os")]
+_pr66, _ni66 = _cs66.check(_tree66, _par66, 4, "x"), _cs66.check(_tree66, _noid66, 4, "x")
+check(_pr66["consistent"] and _pr66["files_compared"] == 2 and _ni66["consistent"] and _ni66["files_compared"] == 2,
+      f"parallel reads are paired with their own results, by id, or by order within the batch: "
+      f"{_pr66['files_differing']} and {_ni66['files_differing']} files differing")
+# A Read shows the empty line after a file's final newline.
+_nl66 = [_T66(1, "tool_use", tool_name="Read", file_path="/d/src/b.py", content=""),
+         _T66(2, "tool_result", content="     1→import os\n     2→")]
+check(_cs66.check(_tree66, _nl66, 2, "x")["consistent"],
+      "and the empty line after a final newline is part of the file, not past its end")
+# The ids have to be loaded for any of that to happen on real turns. The loader
+# reads a 1.3 GB file that CI does not have, so its column list is checked here.
+check("tool_call_id" in turns_mod.TURN_COLUMNS,
+      "the turn loader reads each call's id, which pairing results to calls needs")
 
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every

@@ -56,14 +56,31 @@ def _turns_until(turns: list[dict], cut: int) -> list[dict]:
     return sorted(kept, key=lambda t: t["turn_number"])
 
 
-def _result_after(turns: list[dict], i: int) -> str:
-    """The content of the first tool result after position i, or ''."""
-    for t in turns[i + 1:]:
-        if t.get("turn_type") == "tool_result":
-            return str(t.get("content") or "")
-        if t.get("turn_type") == "tool_use":
-            return ""
-    return ""
+def _results_by_call(turns: list[dict]) -> dict[int, str]:
+    """Each tool call's result, keyed by the call's position in `turns`.
+
+    By `tool_call_id` where both sides carry one. Parallel calls return their
+    results after all of the calls, so pairing a call with the next result gave
+    one file's read the content of another: a Python file "shown" holding React
+    code. Without ids, the k-th call of a run of calls is paired with the k-th
+    result of the run of results that follows it.
+    """
+    by_id = {str(t["tool_call_id"]): str(t.get("content") or "") for t in turns
+             if t.get("turn_type") == "tool_result" and t.get("tool_call_id")}
+    out: dict[int, str] = {}
+    pending: list[int] = []
+    for i, t in enumerate(turns):
+        kind = t.get("turn_type")
+        if kind == "tool_use":
+            if t.get("tool_call_id") and str(t["tool_call_id"]) in by_id:
+                out[i] = by_id[str(t["tool_call_id"])]
+            elif not t.get("tool_call_id"):
+                pending.append(i)
+        elif kind == "tool_result" and not t.get("tool_call_id") and pending:
+            out[pending.pop(0)] = str(t.get("content") or "")
+        elif kind not in ("tool_use", "tool_result"):
+            pending = []
+    return out
 
 
 def relative(path: str, tree: Path) -> str | None:
@@ -83,6 +100,7 @@ def observed_lines(turns: list[dict], cut: int) -> dict[str, dict[int, str]]:
     edit, so the difference would be the agent's own work, not a fault.
     """
     shown = _turns_until(turns, cut)
+    results = _results_by_call(shown)
     last_read: dict[str, tuple[int, dict[int, str]]] = {}
     last_edit: dict[str, int] = {}
     for i, t in enumerate(shown):
@@ -94,7 +112,7 @@ def observed_lines(turns: list[dict], cut: int) -> dict[str, dict[int, str]]:
         if tool in EDIT_TOOLS:
             last_edit[path] = t["turn_number"]
         elif tool in READ_TOOLS:
-            result = _result_after(shown, i)
+            result = results.get(i, "")
             lines = {}
             for raw in result.splitlines():
                 m = LINE.match(raw)
@@ -131,6 +149,7 @@ def _prints_head(cmd: str) -> bool:
 def printed_heads(turns: list[dict], cut: int) -> list[str]:
     """Commits that `git log` or `git rev-parse` printed first, before the cut."""
     shown = _turns_until(turns, cut)
+    results = _results_by_call(shown)
     heads = []
     for i, t in enumerate(shown):
         cmd = str(t.get("command") or "")
@@ -138,7 +157,7 @@ def printed_heads(turns: list[dict], cut: int) -> list[str]:
             continue
         if not _prints_head(cmd):
             continue
-        m = SHA.search(_result_after(shown, i))
+        m = SHA.search(results.get(i, ""))
         if m:
             heads.append(m.group(1))
     return heads
@@ -158,7 +177,9 @@ def check(tree: Path, turns: list[dict], cut: int, base_sha: str) -> dict:
         if rel is None:
             files.append({"path": path, "found": False})
             continue
-        body = (tree / rel).read_text(errors="replace").splitlines()
+        # Split, not splitlines: a Read shows the empty line after a final
+        # newline, and dropping it reported every such file as differing.
+        body = (tree / rel).read_text(errors="replace").split("\n")
         differing = [n for n, text in lines.items()
                      if n > len(body) or body[n - 1].rstrip() != text.rstrip()]
         files.append({"path": rel, "found": True, "lines_checked": len(lines),

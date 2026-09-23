@@ -3469,6 +3469,25 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   rejection keeps only the first 110 characters of the error. Three tasks is
   substantial against eleven built, and this is the cheapest of the rejection
   reasons to investigate.
+- **B-240 · The first consistency measurement compared the wrong text** (fixed
+  · 09-23, before any number from it was reported). Its first run said 12 of
+  21 tasks were consistent. Reading the differing lines showed two faults of
+  mine.
+  - Parallel reads return their results after all of the calls, and pairing
+    each call with the next result gave one file another's content:
+    duckdb-131's `database.py` "held" React code. rudel-47, dotfiles-25 and
+    probably bids-24 and bmad-306 were the same.
+  - A Read shows the empty line after a file's final newline, and
+    `splitlines()` dropped it, so five files "differed" only past their end.
+
+  Fixed: the turn loader reads `tool_call_id`, and each call is paired with
+  its own result (or, without ids, by order within its batch). Files are
+  split so the final empty line is kept. The one difference that survived
+  the reading was real: cipher-box-43's `docker-compose.yml` has
+  `kubo:v0.40.0` in the conversation and `v0.34.0` in the tree. Section 66
+  extended; each fix reverted alone goes red. The lesson is the one B-236
+  taught this morning, and it applies to my own tools as much as to the
+  checker's verdicts.
 - **B-239 · A documented safeguard that nothing implements** (open · 09-23).
   `construct/edits.py` says tasks whose git commands mutated the tree "are
   rejected rather than approximated". Nothing in the codebase inspects the
