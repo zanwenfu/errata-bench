@@ -252,6 +252,10 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int,
             "trace_rules": TRACE_RULES,
             "trace_ok": trace_ok,
             "unsupported_claims": [c.claim for c in trace.unsupported][:5],
+            # Where each claim's support was found, and what is wrong with it:
+            # without these a flagged control could not be read afterwards.
+            "trace_claims": [{"claim": c.claim, "supported": c.supported, "source": c.source,
+                              "problem": c.problem} for c in trace.claims][:8],
         })
         append(out.controls, row)
         return result.ok and trace_ok
@@ -324,7 +328,7 @@ async def instrument_all(src: Paths, out: Paths, model: str, concurrency: int,
         action = conv.get("last_action")
         base = {"task_id": task.task_id, "control": control.name, "judge_model": model,
                 "pass": n, "passes": want, "task_fingerprint": fingerprint(task)}
-        if not control.applicable(task, action):
+        if not control.applicable(task, action, conv.get("cut") or ""):
             append(out.instrument, {**base, "applicable": False, "ok": False, "trace_ok": None,
                                     "detail": "no action with a recorded output before the cut"})
             return False

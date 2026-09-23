@@ -22,6 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from errata_bench.construct import consistency  # noqa: E402
 from errata_bench.construct.edits import edits_before, replay  # noqa: E402
 from errata_bench.construct.workspace import fetch  # noqa: E402
+from errata_bench.corpus.recover import recover, transcript_path  # noqa: E402
 from errata_bench.corpus.turns import load_session_turns  # noqa: E402
 from errata_bench.spec import read  # noqa: E402
 from errata_bench.store import Paths  # noqa: E402
@@ -35,7 +36,11 @@ def one(task, turns) -> dict:
         except Exception as e:  # noqa: BLE001 - reported per task
             return {"task_id": task.task_id, "error": f"could not build the tree: {type(e).__name__}: {e}"[:300]}
         rep = replay(tree, edits_before(turns, task.cut_turn), task.repo_id)
-        row = consistency.check(tree, turns, task.cut_turn, task.sha)
+        # Where the raw transcript is here, the edits the table lost are
+        # counted too (G-76); where it is not, `lost_edits` stays None.
+        here = transcript_path(task.session_id).is_file()
+        row = consistency.check(tree, turns, task.cut_turn, task.sha,
+                                recovered=recover(task.session_id, turns) if here else None)
         return {"task_id": task.task_id, "replay_ok": bool(getattr(rep, "ok", True)), **row}
 
 
@@ -50,14 +55,15 @@ def main(argv: list[str]) -> int:
     turns = load_session_turns({t.session_id for t in tasks})
     rows = [one(t, turns.get(t.session_id) or []) for t in tasks]
     args.out.write_text("".join(json.dumps(r) + "\n" for r in rows))
-    print(f"{'task':34s} {'files':>5s} {'differ':>6s} {'head':>5s} {'mutating':>8s}  consistent")
+    print(f"{'task':34s} {'files':>5s} {'differ':>6s} {'head':>5s} {'mutating':>8s} {'lost':>5s}  consistent")
     for r in rows:
         if r.get("error"):
             print(f"{r['task_id'][-34:]:34s}  {r['error'][:60]}")
             continue
         print(f"{r['task_id'][-34:]:34s} {r['files_compared']:5d} {r['files_differing']:6d} "
               f"{('BAD' if r['head_contradicts_base'] else ('ok' if r['heads_printed'] else '-')):>5s} "
-              f"{len(r['mutating_commands']):8d}  {r['consistent']}")
+              f"{len(r['mutating_commands']):8d} "
+              f"{('-' if r.get('lost_edits') is None else str(len(r['lost_edits']))):>5s}  {r['consistent']}")
     ok = sum(1 for r in rows if r.get("consistent"))
     quiet = sum(1 for r in rows if r.get("consistent") and not r.get("mutating_commands"))
     print(f"\n{ok} of {len(rows)} consistent; {quiet} of those with no state-changing command before the cut")

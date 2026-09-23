@@ -291,8 +291,13 @@ def resolution_transcript_for(task: Task, turns: list[dict]) -> str:
     5 of the 21 grid tasks. Not redacted -- the redactions hide from a
     candidate what the agent was later told, which is exactly what this answer
     was written knowing.
+
+    It is the record the accepted answer's author had, and it is read to decide
+    whether that answer is supported, so ``turns`` should carry the calls the
+    corpus table lost (``corpus.recover``, G-76) and the result budget is
+    filled rather than spread (G-77).
     """
-    return build_excerpt(turns, (task.resolved_turn or task.cut_turn + 1) - 1)
+    return build_excerpt(turns, (task.resolved_turn or task.cut_turn + 1) - 1, fill=True)
 
 
 # The agent's own tools whose calls are work on the repository, for the
@@ -300,6 +305,26 @@ def resolution_transcript_for(task: Task, turns: list[dict]) -> str:
 SUMMARY_TOOLS = frozenset({"Bash", "Read", "Grep", "Glob", "Edit", "Write", "MultiEdit",
                            "LS", "NotebookEdit", "run_command", "read_file", "list_dir",
                            "write_file", "edit_file"})
+
+
+# How much of a command or an output the accurate summary quotes.
+QUOTE_CHARS = 160
+_LINE_NUMBER = re.compile(r"^\s*\d+(?:→|\t)")
+
+
+def _quoted(text: str) -> str:
+    """At most QUOTE_CHARS of ``text``, cut between words and marked where cut.
+
+    Cut mid-word, rudel-47's summary quoted an output path as ".../tasks/bf4e2"
+    for ".../tasks/bf4e20a.output" -- a path the record does not hold -- and the
+    trace check called the summary false, which it was.
+    """
+    if len(text) <= QUOTE_CHARS:
+        return text
+    cut = text[:QUOTE_CHARS]
+    if " " in cut.strip():
+        cut = cut[:cut.rstrip().rfind(" ")]
+    return cut.rstrip(" ,;:") + " …"
 
 
 def last_recorded_action(task: Task, turns: list[dict]) -> dict | None:
@@ -310,29 +335,51 @@ def last_recorded_action(task: Task, turns: list[dict]) -> dict | None:
     supports word for word. Built from the turns, with no model involved, so
     the control means the same thing on every task and in every run. None when
     no call before the cut has a recorded output.
+
+    A result is paired with its own call, by id: paired with the nearest call
+    before it, the result of a call the corpus table lost (G-76) is credited to
+    the surviving call of its batch -- in gemini-voyager-17, one README's edit
+    would be reported as another's. A result whose call the conversation does
+    not show is passed over: there is no call to give an account of.
+
+    A call can still have such a stray result between it and its own, and then
+    the conversation, read in order, gives it the wrong one. On edgar-27 a Glob
+    returned a path at turn 22 and a lost Grep's "No files found" sat at turn
+    20; the summary was true and the trace check called it false. That is not
+    avoided here: on three of the 21 grid tasks every call is shown that way,
+    candidates' answers are read against the same conversations, and whether
+    the checker believes a true account of them is what this control measures.
     """
     shown = [t for t in candidate_turns(task, turns)
              if t.get("turn_number") is not None and t["turn_number"] <= task.cut_turn]
     shown.sort(key=lambda t: t["turn_number"])
+    calls = {t["tool_call_id"]: t for t in shown
+             if t.get("turn_type") == "tool_use" and t.get("tool_call_id")}
     for i in range(len(shown) - 1, 0, -1):
         result = shown[i]
         if result.get("turn_type") != "tool_result":
             continue
-        # The first line with content, without the line number a Read puts in
-        # front of each line ("1→package cli", "1\t[build-system]").
-        output = next((re.sub(r"^\s*\d+(?:→|\t)", "", line).strip()
-                       for line in str(result.get("content") or "").splitlines()
-                       if re.sub(r"^\s*\d+(?:→|\t)", "", line).strip()), "")
-        call = next((t for t in reversed(shown[:i]) if t.get("turn_type") == "tool_use"), None)
+        # The lines with content, without the line number a Read puts in front
+        # of each line ("1→package cli", "1\t[build-system]").
+        lines = [_LINE_NUMBER.sub("", line).strip() for line in str(result.get("content") or "").splitlines()]
+        lines = [line for line in lines if line]
+        output = lines[0] if lines else ""
+        if result.get("tool_call_id"):
+            call = calls.get(result["tool_call_id"])
+        else:
+            call = next((t for t in reversed(shown[:i]) if t.get("turn_type") == "tool_use"), None)
         # Work on the repository only. Claude Code's own bookkeeping -- a task
         # list updated, a background job polled -- is the last recorded call
         # on several tasks, and a summary of "Updated task #3 status" tests
         # nothing about whether the agent's account of its work is believed.
         if output and call and (call.get("tool_name") or "") in SUMMARY_TOOLS:
             detail = call.get("command") or call.get("file_path") or str(call.get("content") or "")
+            # `output_whole` says whether the quote is all the call returned,
+            # which decides whether the summary may say "it returned".
             return {"tool": call.get("tool_name") or "a tool",
-                    "detail": " ".join(str(detail).split())[:160],
-                    "output": output[:160]}
+                    "detail": _quoted(" ".join(str(detail).split())),
+                    "output": _quoted(output),
+                    "output_whole": len(lines) == 1 and len(output) <= QUOTE_CHARS}
     return None
 
 
@@ -343,12 +390,17 @@ def control_conversations_for(tasks) -> dict[str, dict]:
     answer was written after; ``last_action`` the agent's last recorded call
     before the cut, for the accurate-summary control.
     """
+    from ..corpus.recover import recover
+
     turns = load_session_turns({t.session_id for t in tasks})
     out = {}
     for t in tasks:
         mine = turns.get(t.session_id) or []
+        # The calls the table lost are put back only in the accepted answer's
+        # record: the cut is what the candidate was shown, and the summary is
+        # read against the cut.
         out[t.task_id] = {"cut": transcript_for(t, mine),
-                          "resolution": resolution_transcript_for(t, mine),
+                          "resolution": resolution_transcript_for(t, recover(t.session_id, mine)),
                           "last_action": last_recorded_action(t, mine)}
     return out
 

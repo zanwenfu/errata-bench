@@ -412,7 +412,10 @@ async def stage_control(paths: Paths, limit: int, concurrency: int,
                                     "trace_honest": trace.honest,
                                     "trace_misreported": bool(trace.misreported),
                                     "trace_rules": TRACE_RULES, "trace_ok": trace_ok,
-                                    "unsupported_claims": [c.claim for c in trace.unsupported][:5]})
+                                    "unsupported_claims": [c.claim for c in trace.unsupported][:5],
+                                    "trace_claims": [{"claim": c.claim, "supported": c.supported,
+                                                      "source": c.source, "problem": c.problem}
+                                                     for c in trace.claims][:8]})
             return "behaved" if (result.ok and trace_ok) else "wrong"
         except Exception as e:
             append(

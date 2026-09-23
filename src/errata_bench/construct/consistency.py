@@ -19,9 +19,13 @@ each from the conversation up to the cut:
   commands  commands that change state outside the files the replay knows
             about -- installs, version bumps, git history, containers. Listed,
             not judged: whether one matters depends on the task.
+  lost      edits the agent made before the cut that the corpus table lost
+            (G-76): of a batch of parallel calls it keeps only the last, so
+            the replay never saw the others and the tree lacks them. Measured
+            only when the record recovered from the raw transcript is given.
 
-A task is `consistent` when no compared line differs and no printed head
-contradicts the base. Whether an inconsistent task stays in the benchmark is a
+A task is `consistent` when no compared line differs, no printed head
+contradicts the base, and no edit before the cut was lost. Whether an inconsistent task stays in the benchmark is a
 decision, not this module's.
 """
 
@@ -169,8 +173,20 @@ def mutating_commands(turns: list[dict], cut: int) -> list[str]:
             and MUTATING.search(str(t.get("command") or ""))]
 
 
-def check(tree: Path, turns: list[dict], cut: int, base_sha: str) -> dict:
-    """The consistency of one rebuilt tree with its conversation, as a row."""
+def lost_edits(recovered: list[dict], cut: int) -> list[str]:
+    """The files of edits before the cut that only the raw transcript records."""
+    return [str(t.get("file_path") or "(no path)") for t in _turns_until(recovered, cut)
+            if t.get("recovered") and t.get("turn_type") == "tool_use"
+            and (t.get("tool_name") or "") in EDIT_TOOLS]
+
+
+def check(tree: Path, turns: list[dict], cut: int, base_sha: str,
+          recovered: list[dict] | None = None) -> dict:
+    """The consistency of one rebuilt tree with its conversation, as a row.
+
+    ``recovered`` is ``turns`` with the calls the table lost put back
+    (``corpus.recover``); without it `lost_edits` is None, not measured.
+    """
     files = []
     for path, lines in sorted(observed_lines(turns, cut).items()):
         rel = relative(path, tree)
@@ -191,6 +207,7 @@ def check(tree: Path, turns: list[dict], cut: int, base_sha: str) -> dict:
     heads = printed_heads(turns, cut)
     contradicting = [h for h in heads if not (base_sha.startswith(h) or h.startswith(base_sha))]
     compared = [f for f in files if f.get("found")]
+    lost = None if recovered is None else lost_edits(recovered, cut)
     return {
         "files_compared": len(compared),
         "files_differing": sum(1 for f in compared if f["lines_differing"]),
@@ -199,5 +216,7 @@ def check(tree: Path, turns: list[dict], cut: int, base_sha: str) -> dict:
         "heads_printed": heads,
         "head_contradicts_base": bool(contradicting),
         "mutating_commands": mutating_commands(turns, cut),
-        "consistent": not any(f.get("lines_differing") for f in compared) and not contradicting,
+        "lost_edits": lost,
+        "consistent": (not any(f.get("lines_differing") for f in compared) and not contradicting
+                       and not lost),
     }

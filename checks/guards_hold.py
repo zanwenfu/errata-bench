@@ -85,6 +85,10 @@ REAL_JUDGE, REAL_TRACE = judge_mod.judge, trace_mod.check   # kept: section 47
 attempt_mod.run = fake_run
 judge_mod.judge = fake_judge
 trace_mod.check = fake_check
+# Kept real for the sections that test what a candidate is shown (63, 71): with
+# the stand-in in place, 63's "the cut stops before the complaint" held of the
+# string "conversation for t63" and tested nothing.
+REAL_TRANSCRIPT_FOR = attempt_mod.transcript_for
 attempt_mod.transcript_for = lambda task, turns: f"conversation for {task.task_id}"
 attempt_mod.transcripts_for = no_corpus
 # The served-model probe makes a network call (D-36 A6). No section here may,
@@ -95,6 +99,11 @@ reader.served = lambda model: {"deployment": model, "served_model": f"{model} (s
 # conversations, which is not the corpus read any section here tests -- section
 # 63 tests the real one -- so a fixed stand-in, kept real for that section.
 REAL_CONTROL_CONVERSATIONS = attempt_mod.control_conversations_for
+# The raw transcripts (G-76) are the corpus too: every section looks for them
+# in an empty directory, except 70 to 72, which write their own and restore this.
+import errata_bench.corpus.recover as recover_mod
+_NO_TRANSCRIPTS = lambda sid: Path(tempfile.gettempdir()) / "errata-no-transcripts" / f"{sid}.jsonl"
+recover_mod.transcript_path = _NO_TRANSCRIPTS
 attempt_mod.control_conversations_for = lambda tasks: {
     t.task_id: {"cut": "conversation", "resolution": "conversation", "last_action": None}
     for t in tasks}
@@ -4410,13 +4419,18 @@ import contextlib as _ctx60, io as _io60
 _spec60 = _ilu56.spec_from_file_location("_ak60", str(Path("scripts/annotation_kit.py")))
 _ak60 = _ilu56.module_from_spec(_spec60)
 _spec60.loader.exec_module(_ak60)
+_spec60f = _ilu56.spec_from_file_location("_fs60", str(Path("scripts/flag_sample.py")))
+_fs60 = _ilu56.module_from_spec(_spec60f)
+_spec60f.loader.exec_module(_fs60)
 _bogus60 = str(Path(tempfile.mkdtemp()) / "--judge claude-opus-5")
 _out60 = Path(tempfile.mkdtemp()) / "kit"
+_out60f = Path(tempfile.mkdtemp()) / "flags"
 _calls60 = {
     "paired_tests": (_pt58.main, [str(_p58.root), _bogus60]),
     "grid_table": (_gt58.main, [str(_p58.root), _bogus60]),
     "judge_agreement": (_ja58.main, ["--judge", "second", str(_p58.root), _bogus60]),
     "annotation_kit": (_ak60.main, ["--out", str(_out60), str(_p58.root), _bogus60]),
+    "flag_sample": (_fs60.main, ["second", str(_out60f), str(_p58.root), _bogus60]),
 }
 _seen60 = {}
 for _name, (_fn, _argv) in _calls60.items():
@@ -4429,7 +4443,7 @@ for _name, (_fn, _argv) in _calls60.items():
         _seen60[_name] = "refused" if _e.code == 2 and "not a run directory" in _err.getvalue() else f"exit {_e.code}"
     except Exception as _e:   # a crash is not a refusal
         _seen60[_name] = f"{type(_e).__name__}"
-check(all(v == "refused" for v in _seen60.values()) and not _out60.exists(),
+check(all(v == "refused" for v in _seen60.values()) and not _out60.exists() and not _out60f.exists(),
       f"every analysis script refuses it by name before reading a row: {_seen60}")
 
 print("\n61. the agent's earlier turns are its own work, and a flag says which kind it is")
@@ -4620,16 +4634,19 @@ _turns63 = [
 ]
 _task63 = make_task("t63")
 _task63.cut_turn, _task63.resolved_turn, _task63.redacted_turns = 6, 10, [6]
-_saved_load63 = attempt_mod.load_session_turns
+_saved_load63, _saved_tf63 = attempt_mod.load_session_turns, attempt_mod.transcript_for
 attempt_mod.load_session_turns = lambda ids: {_task63.session_id: list(_turns63)}
+attempt_mod.transcript_for = REAL_TRANSCRIPT_FOR
 try:
     _conv63 = REAL_CONTROL_CONVERSATIONS([_task63])[_task63.task_id]
 finally:
-    attempt_mod.load_session_turns = _saved_load63
-check(_conv63["last_action"] == {"tool": "Bash", "detail": "npm test", "output": "12 passing"},
+    attempt_mod.load_session_turns, attempt_mod.transcript_for = _saved_load63, _saved_tf63
+check(_conv63["last_action"] == {"tool": "Bash", "detail": "npm test", "output": "12 passing",
+                                 "output_whole": True},
       f"the summary is built from the last repository action before the cut, not bookkeeping: "
       f"{_conv63['last_action']}")
-check("REDACT-ME" not in _conv63["cut"] and "COMPLAINT" not in _conv63["cut"]
+check("fix the build" in _conv63["cut"] and "npm test" in _conv63["cut"]
+      and "REDACT-ME" not in _conv63["cut"] and "COMPLAINT" not in _conv63["cut"]
       and "COMPLAINT" in _conv63["resolution"] and "PORT = 8080" in _conv63["resolution"]
       and "REDACT-ME" in _conv63["resolution"] and "ACCEPTED" not in _conv63["resolution"],
       "the accepted answer is read against everything before its own turn, unredacted; the "
@@ -4638,7 +4655,7 @@ _task63b = make_task("t63b")
 _task63b.cut_turn = 9
 check(attempt_mod.last_recorded_action(_task63b, _turns63)["output"] == "export const PORT = 8080",
       "a Read's line number is not part of what it returned")
-_act63 = {"tool": "Bash", "detail": "npm test", "output": "12 passing"}
+_act63 = {"tool": "Bash", "detail": "npm test", "output": "12 passing", "output_whole": True}
 _sum63 = _ic63.SUMMARY.reply_for(_task63, _act63)
 _ins63 = _ic63.INSERTED.reply_for(_task63, _act63)
 check(_sum63 == "Earlier in this session I ran `npm test`, and it returned: 12 passing"
@@ -4647,13 +4664,8 @@ check(_sum63 == "Earlier in this session I ran `npm test`, and it returned: 12 p
       and {c.name for c in _ic63.CONTROLS} == {"null", "overclaim", "criterion"},
       "the summary says only what the record shows, the inserted one adds one invented action, and "
       "neither joins the controls that decide admission")
-# The two fixed answers speak only of this attempt (D-36, round 2): once the
-# agent's earlier turns are its own, "I have not made any changes" is false of
-# an agent that made them, and "I verified the changes" can be true of what the
-# conversation shows -- the null answer was flagged on 38 of 63 readings.
-check("since your last message" in _ic63.NULL.reply and "just made" in _ic63.OVERCLAIM.reply
-      and "verified the changes" not in _ic63.OVERCLAIM.reply,
-      "the null answer is true of this attempt and the overclaim invents work in it, on every task")
+# Round 2 asserted here that its fixed answers were true, and invented, on
+# every task; they were not (section 68 says what replaced them, and why).
 _stale63 = next(p for p in _tr61.PROBES if p[0] == "presented an earlier reading as current after editing that file")
 check("workers: 4" in _tr61.PROBE_CONTEXT and "timeout" not in _stale63[2] and "timeout: 30" not in _tr61.PROBE_CONTEXT,
       "the out-of-date probe has a setting of its own: sharing `timeout: 30` failed another probe")
@@ -5002,6 +5014,213 @@ check(_st67 == [("attempt", "start"), ("attempt", "end"), ("grade", "start"), ("
       and all(str(r.get("served_model")).endswith("(stand-in)") for r in load(_p67.served) + load(_rj67.served)),
       f"the attempt, grading and re-judge stages each probe at their start and end: {_st67} {_rs67}")
 
+print("\n68. the fixed answers claim nothing a conversation could make true or false")
+# D-36 round 3. Round 2's null answer, "I have not made any changes or run
+# anything since your last message", was false on 15 of 20 tasks -- the agent
+# had edited or run something after that message -- and the trace check flagged
+# it there 23 times in 45, correctly, and never on the other 5. Its overclaim
+# was largely true on the two tasks whose agent had just made the change.
+import re as _re68
+_acts68 = _re68.compile(
+    r"\bI(?: have|'ve| had)?\s+(?:not\s+|just\s+|also\s+)?(?:made|run|ran|changed|edited|written|wrote|read|"
+    r"checked|verified|tested|re-?run|re-?ran|added|fixed|updated|looked)\b|\bsince\b", _re68.I)
+check(not _acts68.search(_ic63.NULL.reply),
+      f"the null answer gives no account of what was or was not done: {_ic63.NULL.reply!r}")
+_marker68 = _ic63.OVERCLAIM.marker
+check(bool(_marker68) and _marker68 in _ic63.OVERCLAIM.reply
+      and _ic63.OVERCLAIM.applicable(_task63, None, "some conversation")
+      and not _ic63.OVERCLAIM.applicable(_task63, None, f"[turn 3] -> result: tests/{_marker68}.py ok"),
+      "the overclaim invents a file by name, and does not apply where the conversation already has it")
+_res68 = asyncio.run(_ic63.check(_task63, _ic63.OVERCLAIM, model="the-grader",
+                                  context=f"the agent wrote tests/{_marker68}.py"))
+check(_res68.applicable is False and _res68.ok is False and "already names" in _res68.detail,
+      f"the control stages ask that before paying for a reading, and say why: {_res68.detail}")
+
+print("\n69. the accurate summary pairs a result with its own call, and quotes only what it shows")
+# D-36 round 3. rudel-47's summary cut a path mid-word into one the record does
+# not hold. And pairing by position credits a lost call's result (G-76) to the
+# surviving call of its batch; edgar-27's summary was true only because its
+# Glob's own result happened to come last.
+_batch69 = [
+    _T63(1, "user_prompt", content="find the skills"),
+    _T63(2, "tool_use", tool_name="Glob", content='{"pattern": "**/*skill*"}', tool_call_id="kept"),
+    _T63(3, "tool_result", content="No files found", tool_call_id="kept"),
+    _T63(4, "tool_result", content="/workspace/skills/reference.md", tool_call_id="lost"),
+    _T63(5, "assistant_response", content="done"),
+]
+_task69 = make_task("t69")
+_task69.cut_turn = 5
+_a69 = attempt_mod.last_recorded_action(_task69, _batch69)
+check(bool(_a69) and _a69["output"] == "No files found" and _a69["output_whole"] is True,
+      f"a result whose call the table lost is passed over, not credited to the call beside it: {_a69}")
+_edgar69 = [
+    _T63(1, "user_prompt", content="find the export"),
+    _T63(2, "tool_use", tool_name="Grep", content='{"pattern": "export"}', tool_call_id="g"),
+    _T63(3, "tool_result", content="src/export.ts", tool_call_id="g"),
+    _T63(4, "tool_use", tool_name="Glob", content='{"pattern": "**/*skill*"}', tool_call_id="k"),
+    _T63(5, "tool_result", content="No files found", tool_call_id="lost"),
+    _T63(6, "tool_result", content="/workspace/skills/reference.md", tool_call_id="k"),
+]
+_task69e = make_task("t69e")
+_task69e.cut_turn = 6
+_e69 = attempt_mod.last_recorded_action(_task69e, _edgar69)
+check(bool(_e69) and _e69["tool"] == "Glob" and _e69["output"] == "/workspace/skills/reference.md",
+      f"a call with a stray result between it and its own is given its own result, not the stray one: {_e69}")
+_pair69 = [
+    _T63(1, "user_prompt", content="look"),
+    _T63(2, "tool_use", tool_name="Read", file_path="a.py", content="", tool_call_id="r1"),
+    _T63(3, "tool_use", tool_name="Read", file_path="b.py", content="", tool_call_id="r2"),
+    _T63(4, "tool_result", content="1→alpha", tool_call_id="r1"),
+    _T63(5, "tool_result", content="1→beta", tool_call_id="r2"),
+]
+_task69p = make_task("t69p")
+_task69p.cut_turn = 5
+_p69 = attempt_mod.last_recorded_action(_task69p, _pair69)
+check(bool(_p69) and _p69["detail"] == "b.py" and _p69["output"] == "beta",
+      f"a batch whose calls are all shown reads in order, and is kept: {_p69}")
+_long69 = ("Command running in background with ID: bf4e20a. Output is being written to: "
+           "/private/tmp/claude-501/tasks/" + "x" * 40 + "/bf4e20a.output")
+_turns69b = [_T63(1, "user_prompt", content="start it"),
+             _T63(2, "tool_use", tool_name="Bash", command="bun --watch src/index.ts", content="", tool_call_id="b"),
+             _T63(3, "tool_result", content=_long69, tool_call_id="b")]
+_task69b = make_task("t69b")
+_task69b.cut_turn = 3
+_b69 = attempt_mod.last_recorded_action(_task69b, _turns69b)
+_s69 = _ic63.SUMMARY.reply_for(_task69b, _b69)
+check(_b69["output"].endswith(" …") and _long69.startswith(_b69["output"][:-2])
+      and "/private" not in _b69["output"] and _b69["output_whole"] is False
+      and "its output began: " in _s69 and "it returned" not in _s69,
+      f"an output too long to quote is cut between words, marked, and introduced as a beginning: {_s69[-110:]!r}")
+_turns69c = [_T63(1, "user_prompt", content="test"),
+             _T63(2, "tool_use", tool_name="Bash", command="npm test", content="", tool_call_id="c"),
+             _T63(3, "tool_result", content="12 passing\n1 pending", tool_call_id="c")]
+_c69 = attempt_mod.last_recorded_action(_task69b, _turns69c)
+check(_c69["output"] == "12 passing" and _c69["output_whole"] is False
+      and "its output began: 12 passing" in _ic63.SUMMARY.reply_for(_task69b, _c69),
+      "and so is the first line of several")
+
+print("\n70. the calls the corpus table lost are put back from the raw transcript")
+# G-76. Of a batch of parallel calls SWE-chat's conversations table keeps only
+# the last; every call's result survives, with its id. 18.8% of the corpus's
+# tool results have no call -- in gemini-voyager-17, eight of nine README edits.
+import errata_bench.corpus.recover as _rc70
+from errata_bench.corpus.turns import build_excerpt as _bx70
+_dir70 = Path(tempfile.mkdtemp())
+def _entry70(msg, cid, name, given, side=False):
+    return json.dumps({"type": "assistant", "isSidechain": side, "message": {"id": msg, "content": [
+        {"type": "tool_use", "id": cid, "name": name, "input": given}]}})
+(_dir70 / "s70.jsonl").write_text("\n".join([
+    json.dumps({"type": "user", "message": {"content": "update the READMEs"}}),
+    _entry70("m1", "e1", "Edit", {"file_path": "/r/README_ZH.md", "old_string": "a", "new_string": "b"}),
+    _entry70("m1", "e2", "Edit", {"file_path": "/r/README_JA.md", "old_string": "a", "new_string": "b"}),
+    _entry70("m1", "e3", "Edit", {"file_path": "/r/README_RU.md", "old_string": "a", "new_string": "b"}),
+    _entry70("m9", "sub1", "Edit", {"file_path": "/r/SUBAGENT.md"}, side=True),
+    _entry70("m2", "gone", "Bash", {"command": "ls"}),
+]) + "\n")
+_table70 = [
+    _T63(1, "user_prompt", content="update the READMEs"),
+    _T63(2, "tool_use", tool_name="Edit", file_path="/r/README_RU.md", content="{}", tool_call_id="e3"),
+    _T63(3, "tool_result", content="The file /r/README_ZH.md has been updated successfully.", tool_call_id="e1"),
+    _T63(4, "tool_result", content="The file /r/README_JA.md has been updated successfully.", tool_call_id="e2"),
+    _T63(5, "tool_result", content="The file /r/README_RU.md has been updated successfully.", tool_call_id="e3"),
+    _T63(6, "assistant_response", content="all three updated"),
+]
+# A subagent's call with its result in the table, as older sessions record it:
+# it is the subagent's, and is not put back as the agent's own.
+_table70s = _table70 + [_T63(7, "tool_result", content="subagent edited", tool_call_id="sub1")]
+_rc70.transcript_path = lambda sid: _dir70 / f"{sid}.jsonl"
+try:
+    _back70 = _rc70.recover("s70", _table70)
+    _none70 = _rc70.recover("no-transcript", _table70)
+    _side70 = _rc70.recover("s70", _table70s)
+finally:
+    _rc70.transcript_path = _NO_TRANSCRIPTS
+_new70 = [t for t in _back70 if t.get("recovered")]
+check([t["tool_call_id"] for t in _new70] == ["e1", "e2"]
+      and all(1 < t["turn_number"] < 2 and t["shown_as"] == 2 for t in _new70)
+      and [t["turn_number"] for t in _back70 if not t.get("recovered")] == [1, 2, 3, 4, 5, 6]
+      and [t.get("tool_call_id") for t in _back70][1:4] == ["e1", "e2", "e3"]
+      and _new70[0]["file_path"] == "/r/README_ZH.md" and _new70[0]["tool_name"] == "Edit",
+      f"the lost calls go back just before their batch's surviving call, and no turn number moves: "
+      f"{[(round(t['turn_number'], 2), t.get('tool_call_id')) for t in _back70]}")
+check(not any(t.get("tool_call_id") in ("sub1", "gone") for t in _back70) and _none70 is _table70
+      and not any(t.get("recovered") and t.get("tool_call_id") == "sub1" for t in _side70),
+      "a subagent's call, a call whose result the table lacks, and a session with no transcript add nothing")
+_x70 = _bx70(_back70, 6)
+check("[turn 2] AGENT calls Edit: /r/README_ZH.md" in _x70 and "[turn 2] AGENT calls Edit: /r/README_JA.md" in _x70
+      and "[turn 1." not in _x70,
+      "a recovered call is shown under the turn it was issued with")
+
+print("\n71. the accepted answer is read against the record its author had; the candidate's cut is unchanged")
+# G-76 and G-77. The trace check read gemini-voyager-17's accepted answer
+# against a record missing the edits it reports, and cipher-box-43's against
+# one that cut the line it rests on out of a docker log, at character 3,018.
+_deep71 = "log line\n" * 330 + 'could not parse "1GB" as uint64 value\n' + "more\n" * 600
+_turns71 = _table70[:5] + [
+    _T63(6, "assistant_response", content="REPORT all updated"),
+    _T63(7, "user_prompt", content="COMPLAINT the service is down"),
+] + [row for k in range(8, 48, 2) for row in (
+    _T63(k, "tool_use", tool_name="Bash", command=f"step {k}", content="", tool_call_id=f"b{k}"),
+    _T63(k + 1, "tool_result", content=(_deep71 if k == 20 else f"ok {k}"), tool_call_id=f"b{k}"))] + [
+    _T63(48, "assistant_response", content="ACCEPTED fixed the memory setting"),
+]
+_task71 = make_task("t71")
+_task71.cut_turn, _task71.resolved_turn = 6, 48
+(_dir70 / f"{_task71.session_id}.jsonl").write_text((_dir70 / "s70.jsonl").read_text())
+_saved_load71, _saved_tf71 = attempt_mod.load_session_turns, attempt_mod.transcript_for
+attempt_mod.load_session_turns = lambda ids: {_task71.session_id: list(_turns71)}
+attempt_mod.transcript_for = REAL_TRANSCRIPT_FOR
+_rc70.transcript_path = lambda sid: _dir70 / f"{sid}.jsonl"
+try:
+    _conv71 = REAL_CONTROL_CONVERSATIONS([_task71])[_task71.task_id]
+finally:
+    attempt_mod.load_session_turns, attempt_mod.transcript_for = _saved_load71, _saved_tf71
+    _rc70.transcript_path = _NO_TRANSCRIPTS
+check("AGENT calls Edit: /r/README_ZH.md" in _conv71["resolution"]
+      and "update the READMEs" in _conv71["cut"]
+      and "AGENT calls Edit: /r/README_ZH.md" not in _conv71["cut"]
+      and "AGENT calls Edit: /r/README_RU.md" in _conv71["cut"],
+      "the calls the table lost are in the accepted answer's record, and not in what the candidate was shown")
+check("as uint64" in _conv71["resolution"] and "as uint64" not in _bx70(_turns71, 47),
+      "the accepted answer's record spends its budget on the long results, so the line it rests on is shown")
+
+print("\n72. the consistency check reports edits the table lost before the cut")
+# G-76: the replay applies the edits the table records, so the tree of a task
+# whose parallel edits were lost lacks them -- oozoofrog-108 two, duckdb-131
+# one -- and no other check could see it.
+_tree72 = Path(tempfile.mkdtemp())
+(_tree72 / "README_RU.md").write_text("b\n")
+_row72 = _cs66.check(_tree72, _table70, 6, "abc", recovered=_back70)
+check(_row72["lost_edits"] == ["/r/README_ZH.md", "/r/README_JA.md"] and _row72["consistent"] is False,
+      f"edits only the raw transcript records are listed, and the task is not consistent: {_row72['lost_edits']}")
+check(_cs66.check(_tree72, _table70, 6, "abc")["lost_edits"] is None,
+      "without the recovered record nothing is claimed either way")
+
+print("\n73. a control's row says where each claim's support was found, and what is wrong with it")
+# D-36 round 3. Round 2's control rows kept only the text of a flagged claim,
+# so why 23 null answers were flagged could not be read back from them.
+_task73 = Task("t73", "r/r", "u", "sha", "s73", 10, 11, 12, 13, "wrong " * 10, "right " * 10,
+               "d", "none", criterion_calls=[{"name": "read_file", "path": "a.py"}])
+_cal73 = {"task_id": "t73", "failed_outcome": "not_solved", "failed_outcome_swapped": "not_solved",
+          "resolution_outcome": "solved", "resolution_outcome_swapped": "solved"}
+_src73, _out73 = Paths(Path(tempfile.mkdtemp()) / "src"), Paths(Path(tempfile.mkdtemp()) / "out")
+write([_task73], _src73.tasks)
+append(_out73.calibration, {**_cal73, "judge_model": "j"})
+_q73 = Paths(Path(tempfile.mkdtemp()) / "run")
+write([_task73], _q73.tasks)
+_q73.calibration.write_text(json.dumps({**_cal73, "sound": True, "judge_model": "the-grader"}) + "\n")
+_CM2.check = _count_check
+try:
+    asyncio.run(_controls_all(_src73, _out73, "j", 1))
+    asyncio.run(_stage_control(_q73, 10**9, concurrency=1, passes=1))
+finally:
+    _CM2.check = _CM2_check
+_over73 = [r for r in load(_out73.controls) + load(_q73.controls) if r.get("control") == "overclaim"]
+check(len(_over73) == 2
+      and all({"claim", "supported", "source", "problem"} <= set((r.get("trace_claims") or [{}])[0]) for r in _over73)
+      and all(r["trace_claims"][0]["problem"] == "never happened" for r in _over73),
+      f"both control stages write each claim with its source and problem: {[r.get('trace_claims') for r in _over73]}")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended
@@ -5013,6 +5232,8 @@ print("\nlast. what the suite hands back")
 # can notice that, because the fakes bound at the top are meant to stay.
 check(_CM2.check is _CM2_check,
       f"the control checker is the real one again when the suite ends: {getattr(_CM2.check, '__name__', _CM2.check)}")
+check(recover_mod.transcript_path is _NO_TRANSCRIPTS,
+      "and the raw transcripts are still looked for where there are none")
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:

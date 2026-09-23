@@ -62,7 +62,12 @@ def load_session_turns(session_ids: set[str]) -> dict[str, list[dict]]:
 MESSAGE_CHARS = 4000
 
 
-def _fit_result_budget(turns: list[dict], cut_turn: int, max_chars: int) -> int:
+# The most of one tool result the corpus keeps, near enough: longer results
+# were cut to about 10 KB when conversations.parquet was built.
+FILL_CAP = 10_000
+
+
+def _fit_result_budget(turns: list[dict], cut_turn: int, max_chars: int, fill: bool = False) -> int:
     """How many characters each tool result may keep, given the space available.
 
     Early moments are where this matters. A flat 400-character cap showed only
@@ -75,6 +80,15 @@ def _fit_result_budget(turns: list[dict], cut_turn: int, max_chars: int) -> int:
     So the budget is fitted rather than fixed: measure what the conversation
     costs, then spend what is left on tool output. A short session gets generous
     results, a long one falls back to the tight cap that keeps it in bounds.
+
+    ``fill`` spends what short results leave on the long ones: the largest cap,
+    up to what the corpus kept of a result, whose total still fits. Spread
+    evenly, the cap on cipher-box-43's accepted-answer conversation was under
+    3,000 characters while the excerpt used 27,600 of its 60,000, and the one
+    line its accepted answer rests on -- "could not parse "1GB" as uint64" --
+    sat at character 3,018 of a docker log, so the trace check was shown a
+    record without it (G-77). Only the accepted answer's conversation fills;
+    what a candidate is shown is unchanged.
     """
     fixed = 0
     results = []
@@ -99,6 +113,17 @@ def _fit_result_budget(turns: list[dict], cut_turn: int, max_chars: int) -> int:
     remaining = max_chars - fixed - 40 * len(results)
     if remaining <= 0:
         return 400
+    if fill:
+        if sum(min(r, FILL_CAP) for r in results) <= remaining:
+            return FILL_CAP
+        lo, hi = 400, FILL_CAP
+        while lo < hi:
+            mid = (lo + hi + 1) // 2
+            if sum(min(r, mid) for r in results) <= remaining:
+                lo = mid
+            else:
+                hi = mid - 1
+        return lo
     # Spread what is left evenly, then clamp: never below the old cap, and not
     # so high that one enormous result swamps the rest.
     return max(400, min(4000, remaining // len(results)))
@@ -110,6 +135,7 @@ def build_excerpt(
     *,
     max_chars: int = 60_000,
     mark_pushback: bool = False,
+    fill: bool = False,
 ) -> str:
     """Render the turns leading up to a pushback into something readable.
 
@@ -118,7 +144,7 @@ def build_excerpt(
     agent that checked and one that asserted -- so they are kept in compressed
     form, while progress and file-snapshot noise is dropped.
     """
-    result_budget = _fit_result_budget(turns, cut_turn, max_chars)
+    result_budget = _fit_result_budget(turns, cut_turn, max_chars, fill=fill)
     lines: list[str] = []
     for t in turns:
         n = t.get("turn_number")
@@ -141,7 +167,9 @@ def build_excerpt(
         elif kind == "tool_use":
             tool = t.get("tool_name") or "?"
             detail = t.get("command") or t.get("file_path") or content[:200]
-            lines.append(f"[turn {n}] AGENT calls {tool}: {str(detail)[:220]}")
+            # A call recovered from the raw transcript (G-76) is shown under the
+            # turn it was issued with, not its fractional place in the order.
+            lines.append(f"[turn {t.get('shown_as', n)}] AGENT calls {tool}: {str(detail)[:220]}")
         elif kind == "tool_result":
             lines.append(f"[turn {n}] -> result: {content[:result_budget]}")
 
@@ -174,7 +202,7 @@ def build_excerpt(
             elif kind == "tool_use":
                 tool = t.get("tool_name") or "?"
                 detail = t.get("command") or t.get("file_path") or content[:150]
-                squeezed.append(f"[turn {n}] AGENT calls {tool}: {str(detail)[:tool_budget]}")
+                squeezed.append(f"[turn {t.get('shown_as', n)}] AGENT calls {tool}: {str(detail)[:tool_budget]}")
             elif kind == "tool_result" and content:
                 # A result announcing a background task carries its id and
                 # output path, and both are load-bearing: without them a model
