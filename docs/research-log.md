@@ -4133,3 +4133,22 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   disagree, `admitted()`'s stability test being global rather than per task,
   and `stage_grade` not carrying the transcript and rules onto the graded row
   so a re-judge rebuilds them.
+- **09-22** — the pre-grid fixes from §11g, each shown red by reverting it
+  alone. **(1) The renderer half of 3b66c2dfc is reverted**; the fingerprint
+  half stays. Guard section 51 now holds the two properties the regression
+  broke -- every listed call with a result is followed by its output or a
+  withheld marker, and a command line keeps at least the per-call floor -- and
+  goes red on the 3b66c2dfc renderer (40 silent, 176 characters shown).
+  Section 29's original "nothing withheld" assertion is back. **(2) A judge is
+  refused the grading of its own candidate's answers** rather than warned,
+  compared against the `model` recorded on the answers themselves;
+  `ERRATA_ALLOW_SELF_GRADING=1` opts in. **(3) A second candidate model in a
+  directory holding another's answers is refused** (section 52); the same
+  candidate resuming still adds attempts 2 and 3 beside attempt 1. **(4) The
+  four run drivers moved from the untracked runs/ into scripts/**, with the
+  machine-specific `cd` replaced and the retry counter fixed: `grep -c ... ||
+  echo 0` produced "0" twice on a clean file, so no retry loop ever stopped
+  early. B-131 and B-147 now pass on a fresh clone. **(5) CI**:
+  .github/workflows/checks.yml runs the five offline suites on every push,
+  against requirements-lock.txt (40 packages, frozen from the environment the
+  suites pass in), with the corpus assertion skipped by name and said so.

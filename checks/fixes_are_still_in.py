@@ -244,13 +244,13 @@ check("B-143", "a stage that refuses or fails exits non-zero, and says so",
 
 # ---- B-131 / B-147 -----------------------------------------------------
 import re as _re
-sh = Path("runs/attempt-rounds.sh").read_text() if Path("runs/attempt-rounds.sh").exists() else ""
+sh = Path("scripts/attempt-rounds.sh").read_text() if Path("scripts/attempt-rounds.sh").exists() else ""
 attempt_half = sh.split("--only grade")[0]
 check("B-131", "the retry driver counts candidate errors in the file that holds them",
       bool(_re.search(r"--only attempt[\s\S]{0,400}?answers\.jsonl", sh))
       and "attempts.jsonl" not in attempt_half.split("# ")[-1]
       and "--only grade" in sh)
-rg = Path("runs/regrade-all.sh").read_text() if Path("runs/regrade-all.sh").exists() else ""
+rg = Path("scripts/regrade-all.sh").read_text() if Path("scripts/regrade-all.sh").exists() else ""
 log_line = next((l.strip() for l in rg.splitlines() if l.strip().startswith("log=")), "")
 named = subprocess.run(["bash", "-c", f'judge=my-judge; {log_line}; printf %s "$log"'],
                        capture_output=True, text=True).stdout

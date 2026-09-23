@@ -1,0 +1,54 @@
+name: checks
+
+# The offline suites: no network calls to any model, no Docker, no corpus.
+# Each script exits non-zero on failure and prints one line per assertion.
+# The corpus assertion in imports_resolve is skipped here by name
+# (ERRATA_NO_CORPUS=1) and says so in its output; SWE-chat is gated data.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-suites:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    env:
+      ERRATA_NO_CORPUS: "1"
+      PYTHONUNBUFFERED: "1"
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # split_changes_nothing loads a revision of pipeline.py from history,
+          # and the harness stamps rows with the commit it ran at.
+          fetch-depth: 0
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements-lock.txt
+
+      - name: Install the locked dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements-lock.txt
+          pip install --no-deps -e .
+
+      - name: imports_resolve
+        run: python checks/imports_resolve.py
+      - name: front_stages_run
+        run: python checks/front_stages_run.py
+      - name: guards_hold
+        run: python checks/guards_hold.py
+      - name: split_changes_nothing
+        run: python checks/split_changes_nothing.py
+      - name: fixes_are_still_in
+        run: python checks/fixes_are_still_in.py
+
+      - name: The driver scripts parse
+        run: bash -n scripts/*.sh

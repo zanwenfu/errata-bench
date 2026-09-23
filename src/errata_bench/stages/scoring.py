@@ -149,6 +149,23 @@ async def stage_attempt(
         finished(paths.attempts), prints, unstamped_is_stale=False
     )
     done |= {(r["task_id"], r["run"]) for r in graded_fresh}
+    # One candidate per directory, refused rather than assumed. The resume key
+    # is (task, run) with no model in it, so pointing a second candidate at a
+    # directory that already holds the first one's answers found every pair
+    # "done", ran nothing, and exited 0 -- a whole model's slice of the grid
+    # silently missing, discovered only when its column came out empty. The
+    # judge has had the equivalent refusal for a long time.
+    from ..llm import model_name
+    here = {r.get("model") for r in list(fresh) + list(graded_fresh) if r.get("model")}
+    if here and here != {model_name()}:
+        p.failed = 1
+        p.notes.append(
+            f"refused: this directory holds answers from {', '.join(sorted(here))}, and the "
+            f"candidate is {model_name()}. Give each candidate its own run directory, with "
+            f"the tasks, calibration and controls copied in."
+        )
+        p.took_s = time.monotonic() - t0
+        return p
     repos = load_repos()
     images = {
         t.task_id: image_for(getattr(repos.get(t.repo_id), "language", None))
@@ -435,11 +452,24 @@ async def stage_grade(paths: Paths, limit: int, concurrency: int,
     # configuration -- the first eighteen scored answers were graded that way --
     # but it is never what someone wants by accident, and this stage is now run
     # by itself, where the setting is easiest to forget.
-    if grader == model_name():
+    #
+    # Refused rather than warned, since 09-22: the grid about to run puts three
+    # candidates through one judge, and a warning in the middle of a long log is
+    # the kind of thing read after the paid calls are spent. Compared against
+    # the model recorded on the answers, not against ERRATA_MODEL, because the
+    # grading stage is run on its own and the environment then describes
+    # whatever was set last, not who wrote these answers.
+    import os as _os
+    writers = {a.get("model") for a in answers if a.get("model")}
+    if grader in (writers or {model_name()}) and not _os.environ.get("ERRATA_ALLOW_SELF_GRADING"):
+        p.failed = 1
         p.notes.append(
-            f"warning: {grader} is grading its own answers; set ERRATA_JUDGE_MODEL "
-            f"to have a different model read them"
+            f"refused: {grader} would grade answers written by {grader}. Set "
+            f"ERRATA_JUDGE_MODEL to a different model, or ERRATA_ALLOW_SELF_GRADING=1 "
+            f"if self-grading is what you mean to measure."
         )
+        p.took_s = time.monotonic() - t0
+        return p
     if orphaned:
         p.notes.append(f"{len(orphaned)} answers belong to tasks that no longer exist")
     if stale:

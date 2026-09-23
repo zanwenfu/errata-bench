@@ -16,6 +16,7 @@ module bodies, which is what makes a broken one visible.
 
     .venv/bin/python checks/imports_resolve.py
 """
+import os
 import ast
 import importlib
 import pathlib
@@ -131,7 +132,12 @@ def main() -> int:
 
     if not (CHECKOUT / "pyproject.toml").is_file():
         BAD.append(f"project.ROOT is {CHECKOUT}, which is not this checkout")
-    if not CORPUS.is_dir():
+    # CI has no corpus: SWE-chat is 2.2 GB of gated data. The skip is opt-in and
+    # printed, so a missing corpus on a developer's machine still fails.
+    no_corpus = os.environ.get("ERRATA_NO_CORPUS") == "1"
+    if no_corpus:
+        print("  corpus assertion SKIPPED (ERRATA_NO_CORPUS=1)")
+    elif not CORPUS.is_dir():
         BAD.append(f"CORPUS is {CORPUS}, which does not exist")
     for name in ("conversations.parquet", "sessions.parquet", "repositories.parquet"):
         if CORPUS.is_dir() and not (CORPUS / name).is_file():
@@ -142,7 +148,8 @@ def main() -> int:
     for b in BAD:
         print(f"  BROKEN  {b}")
     if not BAD:
-        print("  every import resolves, and the corpus is where the code looks")
+        print("  every import resolves" + ("; the corpus was NOT checked (ERRATA_NO_CORPUS=1)"
+              if no_corpus else ", and the corpus is where the code looks"))
     return 1 if BAD else 0
 
 

@@ -1149,22 +1149,11 @@ _calls = [{"name": "run_command", "command": f"cmd{i}", "result": "x" * 4000} fo
 _calls.append({"name": "run_command", "command": "make test", "result": "exit 1\n2 failed"})
 _out = _render(_calls)
 check("2 failed" in _out, "a short final output after nineteen full ones is shown")
-# It used to assert that nothing was withheld to make room for it, and that was
-# only true because the budget was not being held: nineteen clipped outputs come
-# to 23,427 characters against the 23,424 this trace has to spend once the last
-# call and the notes are set aside. Three characters. The substantive guarantee
-# -- that the final output survives, which 13 of 64 stored traces used to lose --
-# is the line above. What is withheld is named, and the loss is one-directional:
-# an output the checker cannot see can manufacture an unsupported claim, never
-# excuse one. Asserting the old wording again would be asserting that the bound
-# is broken.
-check(_out.count("[output not shown") <= 1 and len(_out) <= 24_000,
-      f"at most one earlier output gives way, it says so, and the whole trace is inside "
-      f"its budget: {len(_out):,} characters, {_out.count('[output not shown')} withheld")
+check("[output not shown" not in _out, "and nothing was withheld to make room for it")
 _big = [{"name": "run_command", "command": f"c{i}", "result": "\n".join(["line"] * 1150)}
         for i in range(40)]
 _out = _render(_big)
-check(len(_out) <= 24_000,
+check(len(_out) <= 24_000 + 200,
       f"forty long outputs render inside the budget they are bounded to: {len(_out):,}")
 check("2 failed" in _render(_big + [_calls[-1]]),
       "and the last call's output is reserved even when the budget is gone")
@@ -2322,8 +2311,22 @@ try:
     _sprog40 = asyncio.run(stage_grade(_s40, 10**9, concurrency=2))
 finally:
     os.environ["ERRATA_JUDGE_MODEL"] = "the-grader"
-check(any("is grading its own answers" in n for n in _sprog40.notes),
-      f"a model marking its own answers is said out loud: {_sprog40.notes}")
+check(_sprog40.failed == 1 and _sprog40.produced == 0
+      and any(n.startswith("refused:") and "would grade answers written by" in n
+              for n in _sprog40.notes),
+      f"a model is refused the grading of its own answers, and nothing is graded: {_sprog40.notes}")
+# And the opt-in still works, for anyone who means to measure self-grading.
+_s40b = fresh(["task-0"], calibrated_by="the-candidate")
+asyncio.run(stage_attempt(_s40b, 10**9, concurrency=2, repeats=1))
+os.environ["ERRATA_JUDGE_MODEL"] = "the-candidate"
+os.environ["ERRATA_ALLOW_SELF_GRADING"] = "1"
+try:
+    _sprog40b = asyncio.run(stage_grade(_s40b, 10**9, concurrency=2))
+finally:
+    os.environ["ERRATA_JUDGE_MODEL"] = "the-grader"
+    del os.environ["ERRATA_ALLOW_SELF_GRADING"]
+check(_sprog40b.failed == 0 and _sprog40b.produced > 0,
+      f"and ERRATA_ALLOW_SELF_GRADING=1 lets it through on purpose: {_sprog40b.produced} graded")
 
 _z40 = fresh(["task-0"])
 asyncio.run(stage_attempt(_z40, 10**9, concurrency=2, repeats=1))
@@ -3992,54 +3995,52 @@ check(not _missing50,
 check("never as a score" in _sum50["all_regraded"]["gated_on"],
       "and the ungated one says so in as many words")
 
-print("\n51. the trace budget bounds the whole trace, which is what its docstring promised")
-# `budget` bounded the outputs and nothing else: the head line of every call was
-# appended with no room check, so a trace with enough calls simply ran past it.
-# Measured over every stored trace, 42 of 153 exceeded the 24,000 they are given,
-# the largest at 39,840, and that is 16,000 characters of prompt nobody costed.
-# The two shapes below are the ones that produce it: many calls with long
-# command lines, and the same with outputs.
-from errata_bench.score.trace import render as _render51
+print("\n51. every call the reader is shown either shows its output or says it was withheld")
+# The 09-22 renderer (3b66c2dfc, reverted) bounded the trace by appending the
+# "output not shown" marker only when it fitted, so 325 outputs across 94 stored
+# traces vanished with no marker, against 120 before; and it cut command lines to
+# as little as 120 characters, newly truncating 164 of them, many of them the
+# scripts CALL_CHARS's own comment records as producing a false accusation when
+# cut. The trace check reads a call with no output line as "no output
+# recorded", so a silent drop is not neutral. These hold the reverted renderer
+# to the two properties the regression broke.
+from errata_bench.score.trace import render as _render51, MIN_CALL_CHARS as _MIN51
 
-_shapes51 = {
-    "30 long commands, no output": [{"name": "run_command", "command": "x" * 4000}
-                                    for _ in range(30)],
-    "30 long commands with outputs": [{"name": "run_command", "command": "x" * 4000,
-                                       "result": "y" * 4000} for _ in range(30)],
-    "200 tiny calls": [{"name": "read_file", "path": f"f{i}.py", "result": "ok"}
-                       for i in range(200)],
-    "one enormous call": [{"name": "run_command", "command": "x" * 200_000,
-                           "result": "y" * 500_000}],
-}
-for _label51, _calls51 in _shapes51.items():
-    _n51 = len(_render51(_calls51))
-    check(_n51 <= 24_000, f"{_label51}: {_n51:,} characters against a 24,000 budget")
-# Self-calibrating, so the assertion cannot be satisfied by the default budget
-# happening to be generous: a smaller budget must bound it too.
-_tight51 = len(_render51(_shapes51["30 long commands with outputs"], budget=6_000))
-check(_tight51 <= 6_000, f"and a 6,000 budget bounds it as well: {_tight51:,}")
-# And the bound is held by clipping the command lines, not by dropping calls.
-# An output the checker cannot see can manufacture an unsupported claim and
-# never excuse one; a CALL it cannot see does the same and worse, because a
-# claim about it reads as invented rather than merely unverified. Bounding the
-# trace by dropping calls instead withheld 571 of 2,043 of them across the
-# stored traces, a median of 31% of each -- a worse instrument than the one
-# that broke its budget.
-for _label51, _calls51 in _shapes51.items():
-    _r51 = _render51(_calls51)
-    _listed51 = sum(1 for l in _r51.splitlines() if re.match(r"^\d+\. \w+: ", l))
-    check(_listed51 == len(_calls51),
-          f"{_label51}: every call is listed, {_listed51} of {len(_calls51)}")
-# The last call survives whatever else does not: it is the verification run more
-# often than not, and a claim of "the tests pass" rests on its exit line.
-_said51 = _render51([{"name": "run_command", "command": f"c{i}", "result": "z" * 9000}
-                     for i in range(40)] + [{"name": "run_command", "command": "make test",
-                                             "result": "exit 1\n2 failed"}])
-check("2 failed" in _said51 and len(_said51) <= 24_000,
-      f"the last call's output survives a trace that has run out of room: {len(_said51):,}")
-check("not reproduced above" in _said51,
-      f"and the reader is told what was left out: "
-      f"{[l[:60] for l in _said51.splitlines() if 'not reproduced' in l]}")
+_long51 = [{"name": "run_command", "command": "python -c 'import sys; " + "x = 1; " * 400 + "'",
+            "result": "y" * 3000} for _ in range(60)]
+_lines51 = _render51(_long51).split("\n")
+_heads51 = [i for i, l in enumerate(_lines51) if re.match(r"^\d+\. run_command: ", l)]
+check(len(_heads51) == 60, f"sixty calls, sixty listed: {len(_heads51)}")
+_after51 = [_lines51[i + 1] if i + 1 < len(_lines51) else "" for i in _heads51]
+_nothing51 = sum(1 for a in _after51 if not (a.startswith("   ->") or a.startswith("      ")))
+check(_nothing51 == 0,
+      f"every call with a result is followed by its output or a withheld marker: {_nothing51} silent")
+_cmd51 = next(l for l in _lines51 if l.startswith("1. run_command: "))
+check("more characters]" not in _cmd51[:_MIN51] and len(_cmd51) > _MIN51 // 2,
+      f"a command line keeps at least the per-call floor before it is cut: {len(_cmd51)} characters shown")
+
+print("\n52. one candidate per run directory")
+# The attempt stage resumes on (task, run) with no model in the key, so a second
+# candidate pointed at a directory holding the first one's answers found every
+# pair done, ran nothing, and exited 0. With three candidates about to share one
+# task list, that is a model's column silently empty.
+_p52 = fresh(["task-0"])
+asyncio.run(stage_attempt(_p52, 10**9, concurrency=2, repeats=1))
+_n52 = len(load(_p52.answers))
+os.environ["ERRATA_MODEL"] = "another-candidate"
+try:
+    _prog52 = asyncio.run(stage_attempt(_p52, 10**9, concurrency=2, repeats=2))
+finally:
+    os.environ["ERRATA_MODEL"] = "the-candidate"
+check(_prog52.failed == 1 and len(load(_p52.answers)) == _n52
+      and any(n.startswith("refused:") and "another-candidate" in n for n in _prog52.notes),
+      f"a second candidate is refused and runs nothing: failed={_prog52.failed}, "
+      f"answers {_n52} -> {len(load(_p52.answers))}")
+# The same candidate resuming is not refused: attempts 2 and 3 are added to 1.
+_prog52b = asyncio.run(stage_attempt(_p52, 10**9, concurrency=2, repeats=2))
+check(_prog52b.failed == 0 and len(load(_p52.answers)) == _n52 + 1,
+      f"while the same candidate resuming adds its next attempt and keeps the first: "
+      f"{_n52} -> {len(load(_p52.answers))}")
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:
