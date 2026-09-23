@@ -175,7 +175,9 @@ they agreed, and the report prints how often the judge agreed with itself.
 
 Three candidate models on the frozen list of 21 tasks, **one attempt per
 task**, each answer read three times by gpt-6-astra, a model from none of the
-candidates' families, and settled conservatively. Code at `fd18cf3`; rows in
+candidates' families, and settled conservatively. Rows are stamped `fd18cf3` or `fb2a535` -- the grading of two candidates ran
+after the VPS moved to the later commit -- and the harness code is identical at
+both (`git diff fd18cf3 fb2a535 -- src run.py` is empty); rows in
 `runs/grid1-<model>`; the table is `scripts/grid_table.py` and the tests are
 `scripts/paired_tests.py`, both over those rows. Wilson 95% intervals.
 
