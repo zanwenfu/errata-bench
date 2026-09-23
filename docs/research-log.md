@@ -416,6 +416,44 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   It now asserts what actually matters, which is that the final output survives
   and that whatever gives way is named. (That too goes with the revert.)
 
+- **R-33 · The frozen task list for the first grid, and where it runs.**
+  *(09-22.)* **The gate** (`run.py gate --passes 7`, gpt-6-astra, 203 readings
+  over the 29 new tasks, none errored) held all 14 admitted tasks in sweep1 and
+  3 of the 4 in sweep3; `entireio-cli-64` held 6 of 7 and is out. The six
+  older tasks admitted under gpt-6-astra all held 7 of 7 in rebuild-after.
+  **The frozen list is 21 tasks**: 12 from sweep1, 3 from sweep3, 6 from
+  rebuild-after. Excluded: Lightprotocol (Rust, no image) and the two tasks
+  whose repository records no language (`135yshr-documents-53`,
+  `wanshicheng-duckdb-data-agent-71`), rather than adding per-repository image
+  overrides with the code frozen. By language: TypeScript 11, Go 4, Shell 3,
+  JavaScript, Python and Astro one each. The list is `runs/grid1-TASKS.json`;
+  each candidate has its own directory, `runs/grid1-<model>`, holding exactly
+  those tasks with their gpt-6-astra calibration, controls and gate rows. The
+  pipeline's own admission admits 21 of 21 in each, with no fingerprint
+  mismatch.
+  **Where it runs**: a Hetzner CPX52 (12 vCPU, 22 GB), shared with another
+  project whose containers are named `taste-*` and which this harness cannot
+  remove. Everything lives in `/root/errata-bench`, a clone of fd18cf3 with a
+  contained Python 3.12 (uv, in `.tools/`) and the locked dependencies. Images,
+  pulled there only:
+  `python:3.12` at `sha256:4d1caded1f729ae443eb803f26ffde7b61e696aeaef62f099abb6dd6b14257c7`
+  `node:22` at `sha256:dd5847a04b0deee391fa145f1f4c6d214196668b6bcc7988ebed67249f226844`
+  `golang:1.26` at `sha256:6c2a5538f964f1c82f97ad14988bf05de100d922d159d0e398b54c7b0ca0c6c9`
+  **The corpus there is filtered.** The candidate and grading stages read only
+  the repository table and the conversation turns of the sessions attempted,
+  and the laptop's upstream runs at about 240 KB/s, so the full 1.3 GB turns
+  table would have taken over two hours. The VPS holds a `conversations.parquet`
+  of only the 21 sessions' 7,597 turns, same schema and row order, and
+  `load_session_turns` over it hashes identically to the full corpus on the
+  laptop (`ba773d67d3a146f6`). `data/swe-chat/FILTERED.md` says so; it cannot
+  triage, read, screen or build.
+  **Smoke test** before launch: one DeepSeek attempt on a Go task ran in
+  `golang:1.26`, made 25 tool calls, stamped `b87ab5f94`, left no container and
+  no scratch directory, and graded cleanly under gpt-6-astra; the seven
+  `taste-*` containers were untouched. **The first slice** -- 3 candidates x 21
+  tasks x 1 attempt, graded 3 times each -- was launched at 00:57 UTC, grok
+  with 3 containers and Kimi and DeepSeek with one each.
+
 - **R-32 · The screening run: 29 new tasks, and the corpus is now exhausted.**
   *(09-22.)* Every addressable moment left in the corpus, taken through triage,
   read, locate, signature, screen and build at `--concurrency 3` and
