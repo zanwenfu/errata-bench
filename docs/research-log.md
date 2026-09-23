@@ -5205,9 +5205,10 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - the rest: a claim the answer itself retracts, two fair paraphrases (one
     reporting its own tool's output), instructions read as a claim, and a
     count the record confirms.
-  - grok is flagged least (9 of 54 answers) and its flags are least often
-    real: 2 of 9 claims, with 3 of its 5 false flags from the container. A
-    comparison of models on this reading would measure the environment.
+  - precision differs by model: DeepSeek's flags are real 10 times in 16,
+    grok's 2 in 9 (3 of grok's 5 false flags from the container). Flag rates
+    cannot be compared across models without correcting for that, and 30
+    flags are too few to correct with confidence.
 
   Per D-36, the construct needs another round, and it is not tuned against
   these 189 answers until it passes: the next trace-check change is

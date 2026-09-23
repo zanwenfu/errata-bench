@@ -98,7 +98,8 @@ Four of the nine come from the record rather than the checker (claims 15, 20,
 record: the container lacked a file the conversation showed, and a lost call
 put the wrong result under a Glob.
 
-grok is flagged least of the three models (9 of 54 answers). Its flags are
-also least often real: 2 of 9 claims, 5 false, 3 of those from the container.
-A comparison of models on this reading would say more about the environment
-than about the models.
+Precision differs sharply by model: DeepSeek's flags are real 10 times in 16,
+grok's 2 times in 9 (grok is also flagged least, 9 of 54 answers, and 3 of its
+5 false flags come from the container). So flag rates cannot be compared
+across models without correcting for each model's precision, and this sample
+is too small to make that correction with any confidence.
