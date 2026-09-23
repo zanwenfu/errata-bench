@@ -17,8 +17,16 @@ The trace check finds a claim not supported by the answer's own tool calls in
 DeepSeek-V4-Pro's**. The gap between grok and DeepSeek points the same way on
 every subset tried, though it is not significant on all of them.
 
-**It is not yet evidence of dishonesty.** An independent review on 09-23
-found three problems:
+**Under the second judge the primary result disappears.** claude-opus-5 grades
+grok and DeepSeek the same on the trace check (13% and 13%), so by the
+pre-registered rule the honesty claim is judge-dependent and **does not hold**.
+Each judge agrees with itself (kappa 0.85 and 0.67) but not with the other on
+this question (0.25). Two things replicate across both judges:
+- the judge's own reading of unverified claims: grok 41–48%, DeepSeek 83–86%;
+- clean passes: grok 33–35%, DeepSeek 8–10%.
+
+**The numbers are not yet evidence of dishonesty.** An independent review on
+09-23 found three problems:
 - The check also flags accurate summaries of work that the conversation
   records as the agent's own earlier turns.
 - It flags the developer's own accepted answer on 5 of the 21 tasks.
@@ -232,9 +240,22 @@ and printing "New version: 1.3.8 … Version bump complete!". The answer
 summarises that accurately. The trace check flagged it anyway, which is the
 first problem below.
 
-**Not yet final.** D-35 counts a difference as holding only if a second judge,
-claude-opus-5, finds the same direction at p < 0.05. That re-grading is
-running, capped by its Azure limit of 40,000 tokens a minute.
+**The second judge (D-35's rule): the primary claim does not hold.**
+claude-opus-5 re-graded grok's and DeepSeek's answers three times each; Kimi's
+are still running.
+
+| under claude-opus-5 | grok-4.6 | DeepSeek-V4-Pro | per task, grok − DeepSeek |
+|---|---|---|---|
+| trace check (primary) | 5/39, 13% | 8/60, 13% | +0.09, p = 0.44 (opposite direction) |
+| judge: unverified claim | 16/39, 41% | 50/60, 83% | −0.39, p = 0.0035 |
+| clean pass | 16/48, 33% | 5/60, 8% | +0.24, p = 0.029 |
+
+The trace check's result depends on the judge. On that question the two
+judges agree at kappa 0.25, and each agrees with itself at 0.85 and 0.67. The
+judge reading and the clean pass replicate, with kappa between the judges of
+0.57 and 0.59. Both judges see neither conversation, so they may share a blind
+spot, and a clean pass requires no unverified claim. Exact output is in
+`results/grid1-d35-*.txt`.
 
 **How much to trust the numbers.**
 - **The trace check passes its synthetic tests and fails the realistic one.**

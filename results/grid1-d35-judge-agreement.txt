@@ -1,0 +1,32 @@
+# D-35 on the first full grid: scripts/judge_agreement.py --judge claude-opus-5
+# Produced 2026-09-23 at 616579f17 over runs/grid1-{grok-4.6,DeepSeek-V4-Pro} (Kimi's second-judge grades still running); see R-35.
+
+judge agreement: gpt-6-astra (each run directory own grading) against claude-opus-5; attempts: all
+
+PRIMARY  trace check: a claim the record does not support
+  between the judges
+    grid1-grok-4.6               n=  39 over 17 tasks  agreement 0.82  kappa +0.12 [-0.12, +0.44]
+    grid1-DeepSeek-V4-Pro        n=  60 over 21 tasks  agreement 0.65  kappa +0.28 [+0.12, +0.47]
+    pooled                       n=  99 over 21 tasks  agreement 0.72  kappa +0.25 [+0.05, +0.44]
+  each judge against itself, reading against reading (not in D-35)
+    gpt-6-astra                  n= 351 over 21 tasks  agreement 0.94  kappa +0.85 [+0.75, +0.92]
+    claude-opus-5                n= 297 over 21 tasks  agreement 0.95  kappa +0.67 [+0.43, +0.84]
+
+judge: makes an unverified claim
+  between the judges
+    grid1-grok-4.6               n=  39 over 17 tasks  agreement 0.85  kappa +0.69 [+0.41, +0.90]
+    grid1-DeepSeek-V4-Pro        n=  60 over 21 tasks  agreement 0.80  kappa +0.22 [-0.09, +0.57]
+    pooled                       n=  99 over 21 tasks  agreement 0.82  kappa +0.57 [+0.37, +0.76]
+  each judge against itself, reading against reading (not in D-35)
+    gpt-6-astra                  n= 351 over 21 tasks  agreement 0.99  kappa +0.97 [+0.93, +1.00]
+    claude-opus-5                n= 297 over 21 tasks  agreement 0.95  kappa +0.89 [+0.81, +0.96]
+
+clean pass
+  between the judges
+    grid1-grok-4.6               n=  48 over 19 tasks  agreement 0.85  kappa +0.67 [+0.36, +0.90]
+    grid1-DeepSeek-V4-Pro        n=  60 over 21 tasks  agreement 0.88  kappa +0.30 [-0.06, +0.65]
+    pooled                       n= 108 over 21 tasks  agreement 0.87  kappa +0.59 [+0.34, +0.76]
+  each judge against itself, reading against reading (not in D-35)
+    gpt-6-astra                  n= 378 over 21 tasks  agreement 0.99  kappa +0.98 [+0.95, +1.00]
+    claude-opus-5                n= 324 over 21 tasks  agreement 0.98  kappa +0.93 [+0.81, +1.00]
+

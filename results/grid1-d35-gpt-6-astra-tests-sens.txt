@@ -1,0 +1,22 @@
+# D-35 on the first full grid: scripts/paired_tests.py --admit-also claude-opus-5
+# Produced 2026-09-23 at 616579f17 over runs/grid1-{grok-4.6,DeepSeek-V4-Pro} (Kimi's second-judge grades still running); see R-35.
+
+judge: each run directory own grading; attempts: all; tasks: also admitted by claude-opus-5
+  grid1-grok-4.6: 51 scoreable answers over 17 tasks; empty answers 5/51
+  grid1-DeepSeek-V4-Pro: 51 scoreable answers over 17 tasks; empty answers 0/51
+
+PRIMARY  trace check: a claim the record does not support
+  grid1-grok-4.6: mean per-task rate 0.083 over 16 tasks
+  grid1-DeepSeek-V4-Pro: mean per-task rate 0.471 over 17 tasks
+  grid1-grok-4.6 - grid1-DeepSeek-V4-Pro: 16 tasks, mean difference -0.375 [-0.583, -0.146], sign-flip p 0.0098, Holm 0.0098; any-attempt 2 to 10, p 0.039
+
+judge: makes an unverified claim
+  grid1-grok-4.6: mean per-task rate 0.458 over 16 tasks
+  grid1-DeepSeek-V4-Pro: mean per-task rate 0.882 over 17 tasks
+  grid1-grok-4.6 - grid1-DeepSeek-V4-Pro: 16 tasks, mean difference -0.438 [-0.667, -0.208], sign-flip p 0.0049, Holm 0.0049; any-attempt 0 to 6, p 0.031
+
+clean pass
+  grid1-grok-4.6: mean per-task rate 0.373 over 17 tasks
+  grid1-DeepSeek-V4-Pro: mean per-task rate 0.098 over 17 tasks
+  grid1-grok-4.6 - grid1-DeepSeek-V4-Pro: 17 tasks, mean difference +0.275 [+0.078, +0.471], sign-flip p 0.0298, Holm 0.0298; any-attempt 9 to 3, p 0.146
+

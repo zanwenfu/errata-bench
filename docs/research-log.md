@@ -486,6 +486,40 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   grok − Kimi +0.222 [+0.063, +0.381], **Holm 0.049**; grok − DeepSeek +0.254
   [+0.095, +0.413], **Holm 0.039**; Kimi − DeepSeek 0.77. The R-34
   any-attempt test agrees on the primary comparison (2 to 12, p = 0.013).
+  **D-35's verdict, 09-23: the registered claim does not hold. It is
+  judge-dependent.** claude-opus-5 graded grok's and DeepSeek's 126 answers
+  three times each: 378 readings, no errors. Kimi's are still running.
+  - **Primary endpoint under Claude:** grok 5/39 (13%), DeepSeek 8/60 (13%).
+    Per task, grok − DeepSeek is **+0.088** [−0.078, +0.275], p = 0.44: the
+    opposite direction. D-35 names that outcome in advance: "judge-dependent".
+  - **Replicated under Claude, same direction, p < 0.05:**
+    - the judge's unverified claim: grok 41% against DeepSeek 83%,
+      −0.392, p = 0.0035;
+    - clean passes: 33% against 8%, +0.237, p = 0.029.
+  - **Agreement, kappa with a task-clustered 95% interval:**
+    | | between the judges | gpt-6-astra with itself | claude-opus-5 with itself |
+    |---|---|---|---|
+    | trace check | **0.25** [0.05, 0.44] | 0.85 | 0.67 |
+    | judge, unverified claim | 0.57 [0.37, 0.76] | 0.97 | 0.89 |
+    | clean pass | 0.59 [0.34, 0.76] | 0.98 | 0.93 |
+
+    Each judge is steady, but the two do not read "supported by the record"
+    the same way. gpt-6-astra flags DeepSeek's accounts of work the
+    conversation records (48%); Claude does not (13%). That is G-70 seen from
+    a second model family.
+  - **Sensitivity**, on the tasks both judges admit: 14 tasks under Claude,
+    16 under gpt-6-astra. Nothing changes: under Claude the primary is
+    +0.060 (p = 0.63) and the judge reading −0.405 (p = 0.0071); under
+    gpt-6-astra the primary is −0.375 (p = 0.0098).
+  - **Caveats on what replicated.** Both judges see neither conversation, so
+    they could share a blind spot on in-role summaries (G-70). A clean pass
+    requires no unverified claim, so the two replicated results are not
+    independent. Claude could not support its reading on 15 of grok's
+    answers, against 3 of DeepSeek's.
+  - Outputs: `results/grid1-d35-claude-opus-5-*.txt`,
+    `results/grid1-d35-judge-agreement.txt`,
+    `results/grid1-d35-gpt-6-astra-tests-sens.txt`.
+
   **Corrected the same day, after an independent review.**
   - *"Passes its first half" overstates it.* D-35 was written after R-34 had
     shown the gap on attempt 0, and it tests attempt 0 again. On attempts 1
@@ -3364,6 +3398,11 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   rejection keeps only the first 110 characters of the error. Three tasks is
   substantial against eleven built, and this is the cheapest of the rejection
   reasons to investigate.
+- **B-237 · A re-grade of an empty answer carries no code stamp** (open ·
+  09-23 · minor). `regrade_all` writes a `no_answer` row for an empty reply
+  without calling a judge, and that path skips `code_version`. It covers 27 of
+  grok's 189 claude-opus-5 rows (9 empty answers × 3 readings). No verdict is
+  affected; the provenance is incomplete.
 - **G-70 · The trace check counts the agent's own earlier work, recorded in
   the conversation, as unsupported.** *(opened 09-23, from an independent
   review, verified on the rows.)*
