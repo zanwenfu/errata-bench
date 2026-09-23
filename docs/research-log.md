@@ -2255,6 +2255,31 @@ other sixteen are recorded in G-49.
   row is written as an error. Fixed: `reader.resilient` retries that one
   message up to four times with a growing pause, raises anything else
   immediately, and is asserted offline on all three behaviours.
+- **B-233 · The second judge ran six calls at once against a deployment that
+  allows 40,000 tokens a minute** (fixed · 09-23 · operational, no harness
+  change). The Claude re-judge of DeepSeek, started at concurrency 6 (what
+  gpt-6-astra runs at), wrote 14 control rows in 16 minutes, 5 of them errors
+  after five retries each, and the SDK logged 41 failed calls. The deployment's
+  own headers, read with one small call once the job was stopped, give
+  claude-opus-5 **40 requests and 40,000 tokens a minute**, against
+  gpt-6-astra's 1,000 and 1,000,000. A judge or trace-check prompt runs to
+  thousands of tokens, so six in flight spend a minute's allowance and every
+  retry waits out the window. Two 429s came back: `rate_limit_exceeded` (this
+  deployment's quota) and `no_capacity` ("exceeds the maximum usage size
+  allowed during peak load", Azure's shared capacity). Nothing was lost: an
+  errored row is dropped and asked again by the next invocation (`completed`),
+  and a control counts the readings taken, not their pass labels. The same
+  shape as B-94, and the same lesson: read a deployment's limits before
+  choosing its concurrency. `scripts/rejudge-rounds.sh` now runs a re-judge at
+  concurrency 2 with ten retries (the client honours Azure's retry-after), in
+  rounds until one exits cleanly with no errored row, and shares the judge's
+  calibration and controls with the other grid directories only when their
+  tasks.jsonl is byte-identical (all three are, sha256 210774b35e1f8630…).
+  Dry-run first against a stand-in `run.py` in six cases: errors retried, a
+  crashed round retried, no copy across different tasks or from errored
+  tests, a stop after the last round, and the caller's ERRATA_API kept over
+  the .env's. At concurrency 2: 12 rows in 3¾ minutes with no failed call,
+  roughly five times the rate at 6.
 
 ---
 - **B-107 · The trace check flagged true statements about the environment**
@@ -4323,3 +4348,11 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   (`annotation/`), because they hold corpus text. The real round is drawn
   from the full grid once grading finishes; at 15 items the kappa intervals
   run from about -0.1 to 1.0, which is why it needs on the order of 150.
+- **09-23** — the Claude re-judge restarted at concurrency 2 through
+  `scripts/rejudge-rounds.sh` after B-233: claude-opus-5 allows 40,000 tokens
+  a minute on this resource, and six calls in flight made it about five times
+  slower, not faster. It runs in the VPS re-judge clone at b19d87f0e (the
+  driver copied in untracked, which leaves the code stamp clean) and finishes
+  DeepSeek, then waits for the grid chains to end, then does grok and Kimi
+  with DeepSeek's calibration and controls copied (same tasks.jsonl). CI green
+  on dca2013b1, b19d87f0e and defb21339.
