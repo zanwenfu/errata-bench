@@ -457,6 +457,55 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   It now asserts what actually matters, which is that the final output survives
   and that whatever gives way is named. (That too goes with the revert.)
 
+- **R-35 · The first full grid under the benchmark judge: grok's honesty lead
+  over DeepSeek survives three attempts, and clean passes now separate grok
+  from both.** *(09-23. The second judge's half is still running, and under
+  D-35 nothing here "holds" until it is in.)* The frozen 21 tasks (R-33),
+  three candidates, three attempts each: 189 answers and 567 gradings by
+  gpt-6-astra at `--passes 3`, settled. **No errored, duplicate or stale row,
+  and no excluded attempt**; every answer ran in a container and stored its
+  transcript, and no container died. The analysis is exactly what D-35 fixed,
+  run at `f776f9925`: the scripts were completed (B-235) before any of these
+  numbers was read.
+  | | grok | Kimi | DeepSeek |
+  |---|---|---|---|
+  | trace, claim not in record (**primary**) | 4/54 = 7% [3–18] | 18/59 = 31% [20–43] | 30/63 = 48% [36–60] |
+  | judge, unverified claim | 26/54 = 48% [35–61] | 39/59 = 66% [53–77] | 54/63 = 86% [75–92] |
+  | clean pass | 22/63 = 35% [24–47] | 8/63 = 13% [7–23] | 6/63 = 10% [4–19] |
+  | empty answer | 9/63 = 14% [8–25] | 4/63 = 6% [2–15] | 0/63 = 0% [0–6] |
+  | used a tool | 61/63 | 49/63 | 33/63 |
+  **Paired on per-task rates** (exact sign-flip test, task-bootstrap 95%
+  interval, Holm over the three pairs). Primary, mean per-task rate grok
+  0.070 over 19 tasks, Kimi 0.294, DeepSeek 0.476:
+  - grok − DeepSeek −0.368 [−0.561, −0.175], p = 0.0033, **Holm 0.0099**;
+  - grok − Kimi −0.149 [−0.342, +0.035], p = 0.195;
+  - Kimi − DeepSeek −0.183 [−0.365, −0.000], p = 0.089, Holm 0.18.
+
+  The judge's unverified claim: grok − DeepSeek −0.395 [−0.588, −0.202],
+  **Holm 0.0077**; Kimi − DeepSeek Holm 0.11; grok − Kimi 0.12. Clean pass:
+  grok − Kimi +0.222 [+0.063, +0.381], **Holm 0.049**; grok − DeepSeek +0.254
+  [+0.095, +0.413], **Holm 0.039**; Kimi − DeepSeek 0.77. The R-34
+  any-attempt test agrees on the primary comparison (2 to 12, p = 0.013).
+  **What it shows.** The one claim D-35 registered, that grok is more honest
+  than DeepSeek on the trace check, passes its first half. It holds only if
+  claude-opus-5 finds the same direction at p < 0.05. Clean passes now
+  separate grok from both others, which the first slice could not (p =
+  0.125); under D-35 that is claimable on the same terms, not before. Kimi
+  sits between the other two on every honesty reading, but no Kimi
+  comparison meets the bar.
+  **Caveats that travel with it.**
+  - grok's 9 empty answers, all out of time, leave 2 of its 21 tasks with no
+    trace reading, so its primary comparisons run on 19 tasks. An empty
+    answer makes no claim, so this can flatter it.
+  - By kind: grok's clean passes are 1/12 on introduced tasks, against 10/18
+    none and 11/33 present, and 4 of its 9 empty answers are on introduced
+    tasks.
+  - The three readings agree on both the outcome and the trace check for
+    57, 54 and 52 of the 63 answers.
+  - The trace check has not been shown a control on these tasks under
+    gpt-6-astra (G-63; now running).
+  - No human has validated a label (G-13).
+
 - **R-34 · The first slice: an honesty difference that holds on the same
   tasks, and no pass-rate ranking.** *(09-22.)* grok-4.6, Kimi-K2.7-Code and
   DeepSeek-V4-Pro on the frozen 21 tasks (R-33), one attempt each, 63 answers,

@@ -1,0 +1,32 @@
+# D-35 on the first full grid, judge gpt-6-astra (the run directories' own grading).
+# Produced 2026-09-23 by scripts/paired_tests.py at f776f9925 over runs/grid1-{grok-4.6,Kimi-K2.7-Code,DeepSeek-V4-Pro}; see R-35.
+
+judge: each run directory own grading; attempts: all; tasks: the run directory own admission
+  grid1-grok-4.6: 63 scoreable answers over 21 tasks; empty answers 9/63
+  grid1-Kimi-K2.7-Code: 63 scoreable answers over 21 tasks; empty answers 4/63
+  grid1-DeepSeek-V4-Pro: 63 scoreable answers over 21 tasks; empty answers 0/63
+
+PRIMARY  trace check: a claim the record does not support
+  grid1-grok-4.6: mean per-task rate 0.070 over 19 tasks
+  grid1-Kimi-K2.7-Code: mean per-task rate 0.294 over 21 tasks
+  grid1-DeepSeek-V4-Pro: mean per-task rate 0.476 over 21 tasks
+  grid1-grok-4.6 - grid1-Kimi-K2.7-Code: 19 tasks, mean difference -0.149 [-0.342, +0.035], sign-flip p 0.1953, Holm 0.1953; any-attempt 3 to 6, p 0.508
+  grid1-grok-4.6 - grid1-DeepSeek-V4-Pro: 19 tasks, mean difference -0.368 [-0.561, -0.175], sign-flip p 0.0033, Holm 0.0099; any-attempt 2 to 12, p 0.013
+  grid1-Kimi-K2.7-Code - grid1-DeepSeek-V4-Pro: 21 tasks, mean difference -0.183 [-0.365, -0.000], sign-flip p 0.0887, Holm 0.1775; any-attempt 0 to 7, p 0.016
+
+judge: makes an unverified claim
+  grid1-grok-4.6: mean per-task rate 0.465 over 19 tasks
+  grid1-Kimi-K2.7-Code: mean per-task rate 0.667 over 21 tasks
+  grid1-DeepSeek-V4-Pro: mean per-task rate 0.857 over 21 tasks
+  grid1-grok-4.6 - grid1-Kimi-K2.7-Code: 19 tasks, mean difference -0.167 [-0.342, +0.009], sign-flip p 0.1230, Holm 0.1230; any-attempt 0 to 6, p 0.031
+  grid1-grok-4.6 - grid1-DeepSeek-V4-Pro: 19 tasks, mean difference -0.395 [-0.588, -0.202], sign-flip p 0.0026, Holm 0.0077; any-attempt 0 to 6, p 0.031
+  grid1-Kimi-K2.7-Code - grid1-DeepSeek-V4-Pro: 21 tasks, mean difference -0.190 [-0.349, -0.032], sign-flip p 0.0557, Holm 0.1113; any-attempt 1 to 1, p 1.000
+
+clean pass
+  grid1-grok-4.6: mean per-task rate 0.349 over 21 tasks
+  grid1-Kimi-K2.7-Code: mean per-task rate 0.127 over 21 tasks
+  grid1-DeepSeek-V4-Pro: mean per-task rate 0.095 over 21 tasks
+  grid1-grok-4.6 - grid1-Kimi-K2.7-Code: 21 tasks, mean difference +0.222 [+0.063, +0.381], sign-flip p 0.0244, Holm 0.0488; any-attempt 7 to 2, p 0.180
+  grid1-grok-4.6 - grid1-DeepSeek-V4-Pro: 21 tasks, mean difference +0.254 [+0.095, +0.413], sign-flip p 0.0129, Holm 0.0386; any-attempt 10 to 3, p 0.092
+  grid1-Kimi-K2.7-Code - grid1-DeepSeek-V4-Pro: 21 tasks, mean difference +0.032 [-0.063, +0.127], sign-flip p 0.7656, Holm 0.7656; any-attempt 4 to 2, p 0.688
+

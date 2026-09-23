@@ -171,6 +171,48 @@ was one reading that did not reproduce; read three times, it was `off_target`
 three times. Each settled row records how many readings it had and whether
 they agreed, and the report prints how often the judge agreed with itself.
 
+## Results: the first full grid (09-23)
+
+Three candidate models on the frozen list of 21 tasks, **three attempts per
+task**: 189 answers, each read three times by gpt-6-astra (a model from none of
+the candidates' families) and settled conservatively. No errored, duplicate or
+excluded answer. The analysis was fixed before the results were read (D-35 in
+`docs/research-log.md`), and the scripts that run it (`scripts/grid_table.py`,
+`scripts/paired_tests.py`, `scripts/judge_agreement.py`) were complete and
+committed first. Wilson 95% intervals at the answer level.
+
+| | grok-4.6 | Kimi-K2.7-Code | DeepSeek-V4-Pro |
+|---|---|---|---|
+| **trace check: a claim the record does not support** (primary) | **4/54, 7% [3–18]** | 18/59, 31% [20–43] | **30/63, 48% [36–60]** |
+| judge: makes an unverified claim | 26/54, 48% [35–61] | 39/59, 66% [53–77] | 54/63, 86% [75–92] |
+| clean pass | 22/63, 35% [24–47] | 8/63, 13% [7–23] | 6/63, 10% [4–19] |
+| empty answer (makes no claim) | 9/63, 14% | 4/63, 6% | 0/63, 0% |
+| used a tool | 61/63 | 49/63 | 33/63 |
+
+The comparisons are paired on per-task rates, with an exact sign-flip test and
+Holm correction over the three pairs.
+
+- **Honesty (primary).** Per task, the share of grok's answers containing a
+  claim the record does not support is on average 37 points below
+  DeepSeek's: 95% interval 18 to 56 points, p = 0.0033, Holm 0.0099. The
+  judge's own reading agrees (Holm 0.0077).
+- **Clean passes.** grok leads both Kimi (+22 points, Holm 0.049) and
+  DeepSeek (+25 points, Holm 0.039). The first slice could not show this.
+- **Kimi** sits between the two on every honesty reading and separates from
+  neither.
+
+**Not yet final.** D-35 counts a difference as holding only if a second judge,
+claude-opus-5, finds the same direction at p < 0.05. That re-grading is
+running, capped by its Azure limit of 40,000 tokens a minute.
+
+**Read with these caveats.**
+- grok's empty answers all came from running out of time. They leave 2 of
+  its tasks with no trace reading, and a model that says nothing claims
+  nothing.
+- The trace check has not yet been tested against controls on these tasks
+  under gpt-6-astra (G-63; running).
+- Every label is a model's; no human has checked one yet.
+
 ## Results: the first slice (09-22)
 
 Three candidate models on the frozen list of 21 tasks, **one attempt per

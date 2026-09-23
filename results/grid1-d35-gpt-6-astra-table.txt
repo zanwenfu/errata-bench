@@ -1,0 +1,77 @@
+# D-35 on the first full grid, judge gpt-6-astra (the run directories' own grading).
+# Produced 2026-09-23 by scripts/grid_table.py at f776f9925 over runs/grid1-{grok-4.6,Kimi-K2.7-Code,DeepSeek-V4-Pro}; see R-35.
+
+code version: f776f9925; judge: each run directory own grading; attempts: all; tasks: the run directory own admission
+
+== grid1-grok-4.6
+   candidate                       grok-4.6 (63)
+   judge                           gpt-6-astra (189)
+   tasks                           21
+   admitted                        21
+   answers                         63
+   graded                          63
+   counted                         63
+   excluded                        []
+   clean_pass                      22/63 = 35% [24-47]
+   hedged_pass                     32/63 = 51% [39-63]
+   judge_unverified_claim          26/54 = 48% [35-61]
+   claims_not_in_trace             4/54 = 7% [3-18]
+   used_a_tool                     61/63 = 97% [89-99]
+   empty_answer                    9/63 = 14% [8-25]
+   attempts_per_task               {3: 21}
+   outcomes                        {'solved': 22, 'false_assurance': 15, 'solved_with_unverified_claim': 10, 'no_answer': 9, 'honest_shortfall': 3, 'off_target': 2, 'silent_shortfall': 1, 'off_target_with_unverified_claim': 1}
+   tasks_by_kind                   {'introduced': 4, 'none': 6, 'present': 11}
+   claims_not_in_trace_by_kind     {'introduced': '2/8', 'none': '1/16', 'present': '1/30'}
+   judge_unverified_claim_by_kind  {'introduced': '7/8', 'none': '5/16', 'present': '14/30'}
+   clean_pass_by_kind              {'introduced': '1/12', 'none': '10/18', 'present': '11/33'}
+   empty_answer_by_kind            {'introduced': '4/12', 'none': '2/18', 'present': '3/33'}
+   unanimous_readings              57/63
+
+== grid1-Kimi-K2.7-Code
+   candidate                       Kimi-K2.7-Code (63)
+   judge                           gpt-6-astra (189)
+   tasks                           21
+   admitted                        21
+   answers                         63
+   graded                          63
+   counted                         63
+   excluded                        []
+   clean_pass                      8/63 = 13% [7-23]
+   hedged_pass                     13/63 = 21% [12-32]
+   judge_unverified_claim          39/59 = 66% [53-77]
+   claims_not_in_trace             18/59 = 31% [20-43]
+   used_a_tool                     49/63 = 78% [66-86]
+   empty_answer                    4/63 = 6% [2-15]
+   attempts_per_task               {3: 21}
+   outcomes                        {'false_assurance': 26, 'solved': 8, 'off_target_with_unverified_claim': 8, 'off_target': 5, 'solved_with_unverified_claim': 5, 'no_answer': 4, 'honest_shortfall': 4, 'silent_shortfall': 3}
+   tasks_by_kind                   {'introduced': 4, 'none': 6, 'present': 11}
+   claims_not_in_trace_by_kind     {'introduced': '4/11', 'none': '4/15', 'present': '10/33'}
+   judge_unverified_claim_by_kind  {'introduced': '8/11', 'none': '8/15', 'present': '23/33'}
+   clean_pass_by_kind              {'introduced': '1/12', 'none': '4/18', 'present': '3/33'}
+   empty_answer_by_kind            {'introduced': '1/12', 'none': '3/18', 'present': '0/33'}
+   unanimous_readings              54/63
+
+== grid1-DeepSeek-V4-Pro
+   candidate                       DeepSeek-V4-Pro (63)
+   judge                           gpt-6-astra (189)
+   tasks                           21
+   admitted                        21
+   answers                         63
+   graded                          63
+   counted                         63
+   excluded                        []
+   clean_pass                      6/63 = 10% [4-19]
+   hedged_pass                     9/63 = 14% [8-25]
+   judge_unverified_claim          54/63 = 86% [75-92]
+   claims_not_in_trace             30/63 = 48% [36-60]
+   used_a_tool                     33/63 = 52% [40-64]
+   empty_answer                    0/63 = 0% [0-6]
+   attempts_per_task               {3: 21}
+   outcomes                        {'false_assurance': 34, 'off_target_with_unverified_claim': 13, 'solved_with_unverified_claim': 7, 'solved': 6, 'off_target': 2, 'honest_shortfall': 1}
+   tasks_by_kind                   {'introduced': 4, 'none': 6, 'present': 11}
+   claims_not_in_trace_by_kind     {'introduced': '6/12', 'none': '7/18', 'present': '17/33'}
+   judge_unverified_claim_by_kind  {'introduced': '10/12', 'none': '16/18', 'present': '28/33'}
+   clean_pass_by_kind              {'introduced': '2/12', 'none': '2/18', 'present': '2/33'}
+   empty_answer_by_kind            {'introduced': '0/12', 'none': '0/18', 'present': '0/33'}
+   unanimous_readings              52/63
+
