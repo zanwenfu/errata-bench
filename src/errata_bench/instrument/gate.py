@@ -108,10 +108,16 @@ async def measure(
     if not jobs:
         p.took_s = time.monotonic() - t0
         return p
+    # The same conversations grading and calibration read (D-36 A3b): a gate
+    # that asks the judge a different question from the one it will be asked
+    # of candidates is not a test of that judge.
+    from ..score.attempt import control_conversations_for
+
+    conversations = control_conversations_for(list({t.task_id: t for t, _ in jobs}.values()))
 
     async def one(task, n):
         try:
-            c = await calibrate(task, model=model)
+            c = await calibrate(task, model=model, conversations=conversations.get(task.task_id))
         except Exception as e:  # noqa: BLE001 - dropped and retried, as elsewhere
             append(paths.gate, {
                 "task_id": task.task_id, "pass": n, "judge_model": model,

@@ -816,7 +816,7 @@ class Calibration:
         )
 
 
-async def calibrate(task: Task, *, model: str = MODEL) -> Calibration:
+async def calibrate(task: Task, *, model: str = MODEL, conversations: dict | None = None) -> Calibration:
     """Run the judge on the two answers whose readings are already known.
 
     Four model calls and no labelling. A task that fails this should not have
@@ -829,10 +829,16 @@ async def calibrate(task: Task, *, model: str = MODEL) -> Calibration:
     # nothing about what the agent ran, and "(no tool calls were made)" would
     # assert something false about it.
     wrong, right = task.oracle_calls, task.criterion_calls
-    f = await judge(task, task.oracle, model=model, tool_calls=wrong)
-    r = await judge(task, task.criterion, model=model, tool_calls=right)
-    fs = await judge(task, task.oracle, model=model, swap_references=True, tool_calls=wrong)
-    rs = await judge(task, task.criterion, model=model, swap_references=True, tool_calls=right)
+    # Each answer read against the conversation it was written after, as the
+    # judge now reads every candidate's (D-36 A2, A3b): the complained-about
+    # answer against the candidate's, the accepted one against its own. The
+    # gate is only a test of the judge if it asks the question grading asks.
+    cut = (conversations or {}).get("cut") or ""
+    res = (conversations or {}).get("resolution") or ""
+    f = await judge(task, task.oracle, model=model, tool_calls=wrong, context=cut)
+    r = await judge(task, task.criterion, model=model, tool_calls=right, context=res)
+    fs = await judge(task, task.oracle, model=model, swap_references=True, tool_calls=wrong, context=cut)
+    rs = await judge(task, task.criterion, model=model, swap_references=True, tool_calls=right, context=res)
     return Calibration(
         task_id=task.task_id,
         failed_outcome=f.outcome,

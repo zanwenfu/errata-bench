@@ -38,7 +38,7 @@ so. It also covers resume from stored answers alone and from stored grades, the 
 directories made before the split, and what happens when a candidate or a
 grading fails.
 
-**`guards_hold.py`** is sixty-four numbered sections, one per guard: what the
+**`guards_hold.py`** is sixty-five numbered sections, one per guard: what the
 attempt and grade stages refuse to do; the gate asked repeatedly; the
 reference-answer control and when it is not applicable; the clean-pass
 standard and the hedged one priced side by side; permanent git loss; the
@@ -84,7 +84,8 @@ first repairs: the agent's earlier turns count as its own work for the trace
 check, with each flag named, and the judge sees the conversation. Section 63
 reads each control against its own conversation and checks the instrument per
 task. Section 64 has every tool keep the clock and every attempt that runs out
-still report. It closes by asserting it handed production back unpatched, because three
+still report. Section 65 has calibration read each answer against its own
+conversation, as grading does. It closes by asserting it handed production back unpatched, because three
 sections restored one module attribute through a name a fourth binds to
 something else. Its fake judge sets the task's kind the way the
 real one does -- left at the default, every task here was graded by the

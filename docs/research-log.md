@@ -4896,3 +4896,21 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     stayed green, because the shell's own refusal still protected it. What
     that layer adds is keeping the token count for an attempt that only ran
     commands; a check for that now goes red without it.
+- **09-23** — **Phase A, step A3b: calibration asks the judge what grading
+  asks it.** A2 showed the judge the conversation when it grades, but the
+  known pair was still read without one. So the gate that decides whether a
+  judge can be trusted on a task tested it on a different question. I had
+  listed calibration as a reader of the judge when planning A2, and then
+  left it out of A3. Now `calibrate` reads the complained-about answer
+  against the candidate's conversation and the accepted answer against its
+  own, in both orders. The pipeline's calibration stage, the re-judge and
+  the repeated gate all pass them in.
+  - Two stand-in calibrators in the suites lacked the new argument, and
+    their sections failed until they had it. One of them was B-152's in
+    `fixes_are_still_in.py`, which reported "still broken".
+  - Guard section 65. The four fixes were each reverted alone, and all went
+    red. All five suites pass in a copy with no corpus.
+  - The validation run started before A3b, so its re-judge calibration read
+    the known pairs without the conversation. That does not touch D-36's
+    criteria, which are measured on the controls, the instrument checks,
+    the re-grades and hand-read flags, against the grid's own admission.

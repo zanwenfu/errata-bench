@@ -459,7 +459,7 @@ from errata_bench.score import judge as JM
 from errata_bench.instrument import control as CM
 d = run_dir()
 _cal, _chk = JM.calibrate, CM.check
-async def fake_cal(t, *, model=None):
+async def fake_cal(t, *, model=None, conversations=None):
     from errata_bench.score.judge import Calibration
     return Calibration(t.task_id, "off_target", "solved", False, True,
                        "off_target", "solved", False, True)

@@ -102,9 +102,13 @@ async def calibrate_all(src: Paths, out: Paths, model: str, concurrency: int) ->
     todo = [t for t in tasks if t.task_id not in done]
     p.skipped = len(tasks) - len(todo)
 
+    from .attempt import control_conversations_for
+
+    conversations = control_conversations_for(todo) if todo else {}
+
     async def one(t):
         try:
-            c = await calibrate(t, model=model)
+            c = await calibrate(t, model=model, conversations=conversations.get(t.task_id))
         except Exception as e:
             append(out.calibration, {
                 "task_id": t.task_id, "judge_model": model, "sound": False,

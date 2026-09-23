@@ -286,7 +286,7 @@ from errata_bench.score.judge import Calibration
 from errata_bench.instrument.gate import measure, stable, observations
 
 answers = {"wobbles": iter([True, False, True, True])}
-async def fake_calibrate(task, *, model=None):
+async def fake_calibrate(task, *, model=None, conversations=None):
     ok = True if task.task_id == "steady" else next(answers["wobbles"])
     return Calibration(task.task_id, "off_target", "solved" if ok else "off_target",
                        False, ok, "off_target", "solved" if ok else "off_target", False, ok)
@@ -4824,6 +4824,53 @@ check(_a64.out_of_time is True and _a64.ended_by == "turn limit" and _a64.final_
 check((_a64.usage or {}).get("total_tokens") == 42 and _a64.to_json().get("final_report_forced") is True
       and _a64.to_json().get("ended_by") == "turn limit",
       f"and the row says how it ended and what the report cost: {_a64.usage}")
+
+print("\n65. calibration asks the judge what grading asks it")
+# D-36 A3b. The judge reads every candidate's answer with the conversation it
+# was given (A2), but the known pair was still read without one -- so the gate
+# that decides whether a judge can be trusted on a task tested it on a
+# different question from the one it is then asked.
+from errata_bench.instrument.gate import measure as _measure65
+from errata_bench.score.rejudge import calibrate_all as _calibrate_all65
+from errata_bench.stages import stage_calibrate as _stage_calibrate65
+_seen65 = []
+
+
+async def _judge65(task, answer, *, model=None, swap_references=False, tool_calls=None,
+                   changed=None, context=""):
+    _seen65.append((answer[:9], swap_references, context))
+    return await fake_judge(task, answer, model=model, swap_references=swap_references,
+                            tool_calls=tool_calls, changed=changed, context=context)
+
+
+_t65 = make_task("t65")
+_t65.oracle, _t65.criterion = "complaint answer", "accepted answer"
+_convs65 = lambda tasks: {t.task_id: {"cut": "CUT-CONV", "resolution": "RES-CONV", "last_action": None}
+                          for t in tasks}
+_kept65 = (judge_mod.judge, attempt_mod.control_conversations_for)
+judge_mod.judge, attempt_mod.control_conversations_for = _judge65, _convs65
+try:
+    asyncio.run(judge_mod.calibrate(_t65, model="j", conversations=_convs65([_t65])["t65"]))
+    _direct65 = list(_seen65)
+    _via65 = {}
+    for _label65, _run65 in (("gate", lambda p: _measure65(p.root, "j", passes=1, concurrency=1)),
+                              ("re-judge", lambda p: _calibrate_all65(p, _jp58(p.root, "j"), "j", 1)),
+                              ("pipeline", lambda p: _stage_calibrate65(p, 10**9, 1))):
+        _seen65.clear()
+        _p65 = _Paths58(Path(tempfile.mkdtemp()) / "run")
+        _write58([_t65], _p65.tasks)
+        asyncio.run(_run65(_p65))
+        _via65[_label65] = sorted(set(_seen65))
+finally:
+    judge_mod.judge, attempt_mod.control_conversations_for = _kept65
+_want65 = sorted({("complaint", False, "CUT-CONV"), ("complaint", True, "CUT-CONV"),
+                  ("accepted ", False, "RES-CONV"), ("accepted ", True, "RES-CONV")})
+check(sorted(set(_direct65)) == _want65,
+      f"the complained-about answer is read with the candidate's conversation and the accepted one with "
+      f"its own, both orders: {sorted(set(_direct65))}")
+check(all(v == _want65 for v in _via65.values()),
+      f"and the gate, the re-judge and the pipeline all hand calibration those conversations: "
+      f"{ {k: len(v) for k, v in _via65.items()} }")
 
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every

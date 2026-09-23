@@ -223,10 +223,14 @@ async def stage_calibrate(paths: Paths, limit: int, concurrency: int) -> Progres
         if r.get("judge_model", grader) == grader
     }
     todo = p.cap([t for t in tasks if t.task_id not in done], limit, len(tasks))
+    # Each answer read against the conversation it was written after (D-36 A3b).
+    from ..score.attempt import control_conversations_for
+
+    conversations = control_conversations_for(todo) if todo else {}
 
     async def one(t):
         try:
-            c = await calibrate(t, model=grader)
+            c = await calibrate(t, model=grader, conversations=conversations.get(t.task_id))
             append(
                 paths.calibration,
                 {
