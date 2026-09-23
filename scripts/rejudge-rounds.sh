@@ -23,9 +23,9 @@
 # exit can still have written them. A run not done after $ROUNDS rounds stops
 # the whole script, since the next run would only compete for the same quota.
 #
-# TESTS_FROM: the judge's calibration and controls depend on the task and
-# nothing else, so a grid whose directories hold the same tasks.jsonl needs
-# them once. Before a run's first round, when its judge directory has neither
+# TESTS_FROM: the judge's calibration, controls and instrument checks depend
+# on the task and nothing else, so a grid whose directories hold the same
+# tasks.jsonl needs them once. Before a run's first round, when its judge directory has neither
 # file yet, they are copied from TESTS_FROM's judge directory -- only if the two
 # tasks.jsonl are byte-identical and TESTS_FROM's tests finished with nothing
 # errored; otherwise the script stops rather than pay for them again or copy
@@ -69,13 +69,16 @@ for run in "$@"; do
       echo "=== $(basename "$run"): tasks.jsonl differs from TESTS_FROM's; not copying its tests" | tee -a "$log"
       exit 1
     fi
-    bad=$(errored "$src/calibration.jsonl" "$src/controls.jsonl")
+    bad=$(errored "$src/calibration.jsonl" "$src/controls.jsonl" "$src/instrument.jsonl")
     if [ ! -s "$src/calibration.jsonl" ] || [ ! -s "$src/controls.jsonl" ] || [ "$bad" != 0 ]; then
       echo "=== $(basename "$run"): TESTS_FROM's tests are missing or have $bad errored rows; not copying" | tee -a "$log"
       exit 1
     fi
     mkdir -p "$dir"
     cp "$src/calibration.jsonl" "$src/controls.jsonl" "$dir/"
+    # The instrument checks depend on the task alone too (D-36 A3), where the
+    # source has them; a judge from before they existed has none to share.
+    [ -s "$src/instrument.jsonl" ] && cp "$src/instrument.jsonl" "$dir/"
     echo "=== $(basename "$run"): calibration and controls copied from $(basename "${from%/}") (same tasks.jsonl)" >> "$log"
   fi
   for round in $(seq 1 "$rounds"); do
@@ -84,7 +87,7 @@ for run in "$@"; do
       nice -n 10 .venv/bin/python run.py rejudge --run "$run" --judge "$judge" \
       --passes "$passes" --concurrency "$conc" >> "$log" 2>&1
     status=$?
-    left=$(errored "$dir/calibration.jsonl" "$dir/controls.jsonl" "$dir/attempts.jsonl")
+    left=$(errored "$dir/calibration.jsonl" "$dir/controls.jsonl" "$dir/instrument.jsonl" "$dir/attempts.jsonl")
     echo "=== $(basename "$run") round $round exited $status, $left rows errored $(date -u '+%H:%M:%S')" >> "$log"
     [ "$status" = 0 ] && [ "$left" = 0 ] && continue 2
     [ "$round" -lt "$rounds" ] && sleep "$pause"
