@@ -3494,6 +3494,27 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   inlined in the kit). Guard section 60 drives all four scripts' `main`.
   Reverting the shared check alone turns it red on three of them; reverting
   the kit's copy alone, on the fourth.
+- **G-75 · Which model answered is not recorded, and one deployment's name is
+  not its model.** *(opened 09-23; measured with one small call per
+  deployment.)* The response body echoes the deployment name, except
+  gpt-6-astra's. Azure's headers carry more:
+  | deployment | served model (`x-ms-served-model` or body) | `azureml-model-session` |
+  |---|---|---|
+  | gpt-6-astra | gpt-6-astra-2026-09-03 | d20260921004409 |
+  | claude-opus-5 | **claude-opus-5-2** | (none) |
+  | DeepSeek-V4-Pro | (name only) | d20260920115741 |
+  | grok-4.6 | (name only) | d20260827015333 |
+  | Kimi-K2.7-Code | (name only) | d20260805190241 |
+
+  So the second judge is claude-opus-5-2, and the paper must say so. The
+  session ids are dated deployments, and a changed one would show a silent
+  update: DeepSeek's is from 09-20 and gpt-6-astra's from 09-21, both
+  before the grid ran on 09-22. None of this reaches a row, because agents
+  0.22 does not expose the headers, and `httpx` is not installed for a hook.
+  The plan (A6, second half) is for each attempt and grading stage to probe
+  every deployment it uses at its start and end, and write the served model,
+  the session and the region to the run directory, so a change mid-run
+  shows.
 - **G-70 · The trace check counts the agent's own earlier work, recorded in
   the conversation, as unsupported.** *(opened 09-23, from an independent
   review, verified on the rows.)*
