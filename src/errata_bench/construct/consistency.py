@@ -79,6 +79,25 @@ def _changes_tree(verb: str, rest: str) -> bool:
     return True
 
 
+# SWE-chat replaced what its secret scanners flagged with placeholders -- in
+# 45,627 rows, mostly a bare REDACTED, often over long hashes and ids. A
+# placeholder stands for the text it replaced, so it matches whatever the tree
+# holds there. Read literally, one hid an IPFS hash in oozoofrog-108's
+# chronology_unicode.md and the build rejected a tree that was right.
+_PLACEHOLDER = re.compile(r"<TRUFFLEHOG_REDACTED_[A-Z_]+>|\[REDACTED(?:_[A-Z_]+)?\]|REDACTED")
+
+
+def same_line(shown: str, held: str) -> bool:
+    """Whether a line the conversation showed is the line the tree holds."""
+    shown, held = shown.rstrip(), held.rstrip()
+    if shown == held:
+        return True
+    if "REDACTED" not in shown:
+        return False
+    pattern = ".+?".join(re.escape(part) for part in _PLACEHOLDER.split(shown))
+    return re.fullmatch(pattern, held, flags=re.S) is not None
+
+
 def _turns_until(turns: list[dict], cut: int) -> list[dict]:
     kept = [t for t in turns if t.get("turn_number") is not None and t["turn_number"] <= cut]
     return sorted(kept, key=lambda t: t["turn_number"])
@@ -248,7 +267,7 @@ def check(tree: Path, turns: list[dict], cut: int, base_sha: str,
         # newline, and dropping it reported every such file as differing.
         body = (tree / rel).read_text(errors="replace").split("\n")
         differing = [n for n, text in lines.items()
-                     if n > len(body) or body[n - 1].rstrip() != text.rstrip()]
+                     if n > len(body) or not same_line(text, body[n - 1])]
         files.append({"path": rel, "found": True, "lines_checked": len(lines),
                       "lines_differing": len(differing),
                       "first_difference": (

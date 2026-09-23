@@ -3541,6 +3541,16 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   extended; each fix reverted alone goes red. The lesson is the one B-236
   taught this morning, and it applies to my own tools as much as to the
   checker's verdicts.
+- **B-244 · The consistency gate read SWE-chat's redaction placeholders
+  literally** (found and fixed 09-23, rebuilding the 21 grid tasks). SWE-chat
+  replaced what its secret scanners flagged with placeholders: 45,627 rows,
+  mostly a bare REDACTED, also [REDACTED_OPENAI_KEY]-style keys and
+  <TRUFFLEHOG_REDACTED_...> tokens. oozoofrog-108's conversation read
+  `chronology_unicode.md` through one, over an IPFS hash. The gate compared
+  "REDACTED" with the hash in the tree and rejected a tree that was right.
+  The old build never saw it, because the only reads of that file were lost
+  parallel calls. A placeholder now matches what it replaced, and nothing else
+  on the line may differ (guard 72; each half reverted alone turns it red).
 - **B-243 · The recovery of lost calls stopped on a transcript line that is not
   an entry** (found and fixed 09-23, the first real screening run with
   recovery). `raw_calls` read every line as an object; some transcripts carry

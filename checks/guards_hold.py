@@ -5198,6 +5198,20 @@ check(_row72["lost_edits"] == ["/r/README_ZH.md", "/r/README_JA.md"] and _row72[
       f"edits only the raw transcript records are listed, and the task is not consistent: {_row72['lost_edits']}")
 check(_cs66.check(_tree72, _table70, 6, "abc")["lost_edits"] is None,
       "without the recovered record nothing is claimed either way")
+# SWE-chat's own redaction (45,627 rows): a placeholder where its secret scanner
+# fired stands for whatever it replaced, and nothing else on the line may differ.
+check(_cs66.same_line("see https://ipfs.io/ipfs/REDACTED/wiki/x.html", "see https://ipfs.io/ipfs/QmXoyp6uco/wiki/x.html")
+      and _cs66.same_line("key = [REDACTED_OPENAI_KEY]", "key = sk-abc123")
+      and _cs66.same_line("tok <TRUFFLEHOG_REDACTED_SENTRYTOKEN> end", "tok abc.def end")
+      and not _cs66.same_line("see https://ipfs.io/ipfs/REDACTED/wiki/x.html", "see https://ipfs.io/ipfs/Qm1/wiki/y.html")
+      and not _cs66.same_line("workers: 4", "workers: 8"),
+      "a redaction placeholder matches what it replaced, and only that")
+_tree72r = Path(tempfile.mkdtemp())
+(_tree72r / "notes.md").write_text("see https://ipfs.io/ipfs/QmXoyp6uco/wiki/x.html\n")
+_read72r = [_T63(1, "tool_use", tool_name="Read", file_path="/home/dev/p/notes.md", content="", tool_call_id="r"),
+            _T63(2, "tool_result", content="     1\u2192see https://ipfs.io/ipfs/REDACTED/wiki/x.html", tool_call_id="r")]
+check(_cs66.check(_tree72r, _read72r, 3, "abc")["consistent"] is True,
+      "and the check reads it so: a tree the conversation showed through a placeholder is consistent")
 
 print("\n73. a control's row says where each claim's support was found, and what is wrong with it")
 # D-36 round 3. Round 2's control rows kept only the text of a flagged claim,
