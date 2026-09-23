@@ -4090,6 +4090,50 @@ for _o54, _want54 in (("gave_up", "harness gave up"), ("no_context", "could not 
     check(_want54 in (_s54.get("unreadable") or "") and "judge could not support" not in _s54["unreadable"],
           f"a {_o54} attempt is excluded as the harness's doing, not the judge's: {_s54.get('unreadable')!r}")
 
+print("\n55. an attempt ends at its budget even when the model never returns")
+# The budget was enforced only inside tool calls, so a model call that hung held
+# the attempt for the client's timeout times its retries: 16 minutes against 10
+# on the 09-22 grid. Driven through the real `run` in host mode, with a runner
+# that never answers. Under an alarm: with the fix reverted this does not fail,
+# it waits for ever.
+import signal as _signal55, time as _time55
+
+class _Hangs:
+    @staticmethod
+    async def run(agent, prompt, **kw):
+        await asyncio.sleep(3600)
+
+_swap55 = {n: getattr(attempt_mod, n) for n in ("configure_client", "fetch", "replay", "Container", "Runner", "ATTEMPT_GRACE_S")}
+attempt_mod.configure_client = lambda: None
+attempt_mod.fetch = lambda url, sha, dest: _Checkout()
+attempt_mod.replay = lambda tree, edits, repo_id: type("R", (), {"ok": True, "reason": ""})()
+attempt_mod.Container = _NoStart
+attempt_mod.Runner = _Hangs
+attempt_mod.ATTEMPT_GRACE_S = 1
+os.environ["ERRATA_ALLOW_HOST"] = "1"
+
+def _alarm55(*_):
+    raise TimeoutError("still running 20 s after a 1 s budget")
+
+_old55 = _signal55.signal(_signal55.SIGALRM, _alarm55)
+_signal55.alarm(20)
+_t55 = _time55.monotonic()
+try:
+    _a55 = asyncio.run(REAL_RUN(make_task("task-0"), image="node:22", turns=[], budget_s=1))
+    _res55 = (_a55.out_of_time, _a55.reply, _a55.error)
+except TimeoutError as e:
+    _res55 = ("hung", str(e), None)
+finally:
+    _signal55.alarm(0)
+    _signal55.signal(_signal55.SIGALRM, _old55)
+    os.environ.pop("ERRATA_ALLOW_HOST", None)
+    for _n, _v in _swap55.items():
+        setattr(attempt_mod, _n, _v)
+_el55 = _time55.monotonic() - _t55
+check(_res55[0] is True and _res55[1] == "" and not _res55[2] and _el55 < 10,
+      f"a model that never answers ends the attempt at budget plus grace, recorded as out of "
+      f"time rather than as an error: {_res55!r} after {_el55:.1f} s")
+
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:
     print("  -", f)

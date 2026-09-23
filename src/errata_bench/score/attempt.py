@@ -23,6 +23,7 @@ assuming.
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import re
@@ -119,6 +120,14 @@ _NET_PACKAGES = (
 # real commands in the corpus -- were not screened at all.
 NETWORK = re.compile(
     _AT + r"(?:" + _NET_TOOLS + r"|(?:" + _WORD + r"{0,200}/)?(?:" + _NET_PACKAGES + r"))")
+
+# How long past its budget an attempt may run before the harness stops it. The
+# budget is enforced inside tool calls -- a command asked for after the deadline
+# is refused -- but nothing bounded the model's own calls, so one hung request
+# held an attempt for the client's timeout times its retries: a DeepSeek attempt
+# on the 09-22 grid ran 16 minutes against a 10-minute budget. The grace is room
+# for the final answer once tools start refusing, not more working time.
+ATTEMPT_GRACE_S = 180
 
 # How much of each tool's output is kept. A read of a large file is truncated
 # for the candidate at 60,000 characters anyway, and what a reading needs is
@@ -888,13 +897,16 @@ async def run(
                 # would start from a tree the first one changed. The retry for
                 # this one lives at the stage, where MAX_ATTEMPT_FAILURES
                 # discards the whole attempt and starts a fresh container.
-                result = await Runner.run(
-                    agent,
-                    prompt,
-                    context=context,
-                    max_turns=max_turns,
+                result = await asyncio.wait_for(
+                    Runner.run(agent, prompt, context=context, max_turns=max_turns),
+                    timeout=budget_s + ATTEMPT_GRACE_S,
                 )
                 reply = str(result.final_output or "")
+            except asyncio.TimeoutError:
+                # Out of time with no answer: recorded exactly as a candidate
+                # that used every turn and never reported, trace kept, reply
+                # empty, rather than as an error that would be retried.
+                ran_out, reply = True, ""
             except MaxTurnsExceeded:
                 # It worked through every turn and never answered. That is a
                 # result -- an agent that keeps going and reports nothing --

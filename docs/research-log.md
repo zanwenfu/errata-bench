@@ -4248,3 +4248,16 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   verdicts (18 s and 19 s), the quote was found in the answer, and both readings
   matched gpt-6-astra's on that answer. Not yet run over the grid: that waits
   for attempts 2 and 3 to finish so every row comes from one commit.
+- **09-22** — while the grid runs, three laptop-only changes, each shown red
+  by reverting it alone and none on the VPS until the grid finishes. (1) The
+  twelve wrong numbers from the documentation review are corrected in one
+  documentation commit, including ten mislabelled checks in
+  fixes_are_still_in.py. (2) An excluded `gave_up` or `no_context` attempt is
+  named as the harness's doing, not "the judge could not support its reading"
+  (section 54). (3) **An attempt now has a hard ceiling**: `Runner.run` is
+  bounded at the budget plus `ATTEMPT_GRACE_S` (180 s), because the budget was
+  enforced only inside tool calls and one hung model call held a DeepSeek
+  attempt for 16 minutes against 10. A timed-out attempt is recorded exactly
+  like one that used every turn -- out of time, empty reply, trace kept -- not
+  as an error to retry. Section 55 drives the real `run` with a runner that
+  never answers, under an alarm.
