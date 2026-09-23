@@ -278,6 +278,15 @@ def controls_behaved(rows: list[dict], passing: set[str] = PASSING) -> set[str]:
     beside "0 tasks" from `admitted`, in the same JSON, by `run.py rejudge`
     (B-223). An errored row is not a reading; it is dropped and retried, and a
     control short of its readings is unproven rather than passed.
+
+    Both readers, not only the judge (B-234). A re-judge's control row records
+    whether the trace check behaved as well, and a checker that let the
+    overclaim answer through on a task has shown on that task that it cannot
+    see. `summarise`'s older `counted` block and `compare` subtracted such tasks
+    themselves; `admitted`, and through it the blocks for the rule in force and
+    `across`, did not, so they counted `claims_not_in_trace` exactly where the
+    checker had just failed. The pipeline's own control rows carry no
+    `trace_ok`, so nothing changes for them.
     """
     from ..instrument.control import CONTROLS
 
@@ -292,6 +301,7 @@ def controls_behaved(rows: list[dict], passing: set[str] = PASSING) -> set[str]:
             behaved = bool(r["ok_if_hedged_counted"])
         else:
             behaved = bool(r.get("ok"))
+        behaved = behaved and r.get("trace_ok") is not False
         key = (task, r.get("control"))
         readings.setdefault(key, []).append(behaved)
         asked[key] = max(asked.get(key, 1), int(r.get("passes") or 1))

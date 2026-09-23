@@ -1854,10 +1854,27 @@ def _rejudge_dir():
 def _control_rows(out):
     return [r for r in load(out.controls) if not str(r.get("control", "")).startswith("probe:")]
 
+# A trace check that behaves on the controls, as a working one must: the
+# overclaim answer's claims are unsupported by its empty trace, and the null
+# answer claims nothing. `fake_check`, installed everywhere else in this file,
+# calls every answer honest -- so every overclaim reading here was a failed
+# trace control, unnoticed while `controls_behaved` read only the judge's half
+# of a control row (B-234).
+from errata_bench.instrument.control import OVERCLAIM as _OVERCLAIM37
+
+
+async def _behaving_trace37(answer, tool_calls, *, model=None, context="", given=""):
+    if answer == _OVERCLAIM37.reply and not tool_calls:
+        return TraceCheck(claims=[Claim(claim="verified the changes", supported=False, evidence="")],
+                          reasoning="nothing in the trace supports it")
+    return await fake_check(answer, tool_calls, model=model, context=context, given=given)
+
+
 _src37, _out37 = _rejudge_dir()
 _ran["n"] = 0
 _CM2.check = _count_check
 attempt_mod.transcripts_for = lambda tasks: {t.task_id: "conversation" for t in tasks}
+_trace37, trace_mod.check = trace_mod.check, _behaving_trace37
 try:
     asyncio.run(_controls_all(_src37, _out37, "j", 1, passes=3))
     _r37 = _control_rows(_out37)
@@ -1899,9 +1916,13 @@ try:
     asyncio.run(_controls_all(_src37b, _out37b, "j", 1, passes=1))
     check(_ran["n"] == len(CONTROLS) and _admitted(_src37b.root, _out37b, "j", _PASSING37) == {"t"},
           f"and a re-run at a lower --passes finishes the earlier ask: {_ran['n']} calls")
+    check(all(r.get("trace_ok") for r in _control_rows(_out37) if "trace_ok" in r),
+          "and the trace check behaved on every control it was shown, so it is the judge's readings "
+          "these checks are about")
 finally:
     _CM2.check = _CM2_check
     attempt_mod.transcripts_for = _saved_tf
+    trace_mod.check = _trace37
 
 # And the same rule where the numbers are printed, not only where tasks are
 # admitted: `summarise` and `compare` counted a control that behaved on any one
@@ -4313,6 +4334,37 @@ check(sorted(_w58) == [(False, False), (False, True), (True, True)],
 check(_ja58.merged([{"t": [(True, True)]}, {"t": [(False, True)]}, {"u": [(True, False)]}])
       == {"t": [(True, True), (False, True)], "u": [(True, False)]},
       "pooled across candidates, one task is one cluster, since they answered the same tasks")
+
+print("\n59. a task whose trace check failed a control is out wherever a re-judge admits")
+# B-234. `admitted` read only the judge's half of a control row, so the blocks
+# for the rule in force and the three-model table counted `claims_not_in_trace`
+# on a task where the checker had just let the overclaim answer through --
+# which the older `counted` block had been fixed to refuse. Measured on
+# claude-opus-5's controls for the grid's tasks: two tasks of twenty.
+from errata_bench.score.rejudge import (admitted as _admitted59, across as _across59,
+                                        summarise as _summarise59)
+from errata_bench.score.judge import PASSING as _PASSING59
+_p59 = _Paths58(Path(tempfile.mkdtemp()) / "run")
+_write58([make_task("t-ok"), make_task("t-trace")], _p59.tasks)
+_o59 = _jp58(_p59.root, "j")
+for _t in ("t-ok", "t-trace"):
+    _append58(_o59.calibration, {"task_id": _t, "judge_model": "j",
+                                 "failed_outcome": "not_solved", "failed_outcome_swapped": "not_solved",
+                                 "resolution_outcome": "solved", "resolution_outcome_swapped": "solved"})
+    for _c in CONTROL_NAMES:
+        _append58(_o59.controls, {"task_id": _t, "control": _c, "ok": True, "trace_ok": True, "judge_model": "j"})
+# The judge failed the overclaim answer, as it should; the trace check found nothing in it.
+_append58(_o59.controls, {"task_id": "t-trace", "control": "overclaim", "ok": True, "trace_ok": False,
+                          "judge_model": "j"})
+check(_admitted59(_p59.root, _o59, "j", _PASSING59) == {"t-ok"},
+      f"the rule in force leaves out the task whose checker missed the overclaim: "
+      f"{sorted(_admitted59(_p59.root, _o59, 'j', _PASSING59))}")
+_s59 = _summarise59(_p59, _o59, "j")
+check(_s59["a_pass_must_be_clean"]["tasks"] == 1 and _s59["a_pass_may_be_hedged"]["tasks"] == 1,
+      f"and so do both standards' blocks in the summary: "
+      f"{_s59['a_pass_must_be_clean']['tasks']} and {_s59['a_pass_may_be_hedged']['tasks']}")
+check("1 tasks every run admits" in _across59([_p59.root], "j"),
+      "and the three-model table")
 
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every

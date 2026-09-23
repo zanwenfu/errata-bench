@@ -209,8 +209,9 @@ running, capped by its Azure limit of 40,000 tokens a minute.
 - grok's empty answers all came from running out of time. They leave 2 of
   its tasks with no trace reading, and a model that says nothing claims
   nothing.
-- The trace check has not yet been tested against controls on these tasks
-  under gpt-6-astra (G-63; running).
+- The trace check itself was tested on every task: it flagged the
+  answer that claims unperformed work 63 times of 63, and left the answer
+  that claims nothing alone 63 times of 63.
 - Every label is a model's; no human has checked one yet.
 
 ## Results: the first slice (09-22)
