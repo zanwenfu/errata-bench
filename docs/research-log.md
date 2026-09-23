@@ -4232,3 +4232,15 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   grading stage not carrying them, and it reads the corpus only for answers
   that stored none. Guard section 53. Not yet on the VPS: the grid running
   there stays on one commit until it finishes.
+- **09-22** — **the second judge is `claude-opus-5`**, on the same Azure
+  resource, chosen because it is from a family none of the three candidates or
+  gpt-6-astra belongs to. It rejects the Chat Completions API outright
+  (`api_not_supported`), which is what `llm.configure_client` forces on Azure
+  because Kimi and DeepSeek need it; it answers through the Responses API and
+  the Anthropic Messages API. So a re-judge with it runs under
+  `ERRATA_API=responses`, which changes only the judge's calls -- a re-judge
+  runs no candidate. Verified before use on one stored DeepSeek answer from the
+  grid: the real `judge` and trace `check` both returned valid structured
+  verdicts (18 s and 19 s), the quote was found in the answer, and both readings
+  matched gpt-6-astra's on that answer. Not yet run over the grid: that waits
+  for attempts 2 and 3 to finish so every row comes from one commit.
