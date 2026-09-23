@@ -3,11 +3,14 @@
     .venv/bin/python scripts/paired_tests.py runs/grid1-grok-4.6 runs/grid1-Kimi-K2.7-Code \\
         runs/grid1-DeepSeek-V4-Pro [--judge claude-opus-5] [--runs 0,1,2]
 
-Readings are folded by the harness's own `settled`; only scoreable attempts of
-admitted tasks count, admission being the run directory's own (calibration and
-controls, i.e. the benchmark judge's) whichever judge's grades are read, so the
-two judges are compared on one task set. `--judge NAME` reads that judge's
-grades from `<run>/rejudge/<NAME>/attempts.jsonl` instead of the run's own.
+The rows are chosen by d35.py, the one place every D-35 script takes them from:
+readings folded by the harness's own `settled` (told which attempts the harness
+broke), only scoreable attempts of admitted tasks, admission being the run
+directory's own (calibration and controls, i.e. the benchmark judge's) whichever
+judge's grades are read, so the two judges are compared on one task set.
+`--judge NAME` reads that judge's grades from `<run>/rejudge/<NAME>/attempts.jsonl`
+instead of the run's own. `--admit-also NAME` is D-35's sensitivity analysis:
+only the tasks that judge also admits on its own tests.
 
 For every endpoint, each task gets a per-task rate over the attempts where the
 question could be asked; two candidates are compared on the tasks both have a
@@ -30,24 +33,11 @@ from fractions import Fraction
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from errata_bench.instrument.control import controlled  # noqa: E402
-from errata_bench.score.judge import PASSING, can_be_scored, outcome_of  # noqa: E402
-from errata_bench.score.rejudge import _passed, judge_paths, settled  # noqa: E402
-from errata_bench.store import Paths, load  # noqa: E402
+import d35  # noqa: E402
 
-# (name, the property, whether the question could be asked of this answer)
-ENDPOINTS = [
-    ("PRIMARY  trace check: a claim the record does not support",
-     lambda a: a.get("claims_match_trace") is False,
-     lambda a: a.get("claims_match_trace") is not None),
-    ("judge: makes an unverified claim",
-     lambda a: bool((a.get("judgement") or {}).get("makes_unverified_claim")),
-     lambda a: (a.get("judgement") or {}).get("makes_unverified_claim") is not None),
-    ("clean pass",
-     lambda a: _passed(a, PASSING),
-     lambda a: True),
-]
+ENDPOINTS = d35.ENDPOINTS
 
 
 # ---- statistics, exact where it can be --------------------------------------
@@ -105,14 +95,8 @@ def holm(ps: list[float]) -> list[float]:
 
 # ---- reading the rows ---------------------------------------------------------
 
-def graded(run: Path, judge: str | None, runs: set[int] | None) -> list[dict]:
-    paths = Paths(run)
-    admitted = {r["task_id"] for r in load(paths.calibration) if can_be_scored(r)} & controlled(paths)
-    source = judge_paths(run, judge).attempts if judge else paths.attempts
-    rows = [a for a in settled(load(source)) if a.get("task_id") in admitted and a.get("scoreable")]
-    if runs is not None:
-        rows = [a for a in rows if a.get("run") in runs]
-    return rows
+def graded(run: Path, judge: str | None, runs: set[int] | None, also: str | None = None) -> list[dict]:
+    return d35.readings(run, judge, runs, also)
 
 
 def per_task(rows: list[dict], has, asked) -> dict[str, Fraction]:
@@ -136,18 +120,21 @@ def main(argv: list[str]) -> int:
     ap.add_argument("runs", nargs="+", type=Path)
     ap.add_argument("--judge", help="read this judge's re-grades instead of the run's own grading")
     ap.add_argument("--runs", dest="attempts", help="restrict to these attempt numbers, e.g. 0 or 0,1,2")
+    ap.add_argument("--admit-also", dest="also",
+                    help="sensitivity analysis: only tasks this second judge also admits on its own tests")
     ap.add_argument("--resamples", type=int, default=10_000)
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args(argv)
     if len(args.runs) < 2:
         ap.error("give at least two run directories")
     which = {int(x) for x in args.attempts.split(",")} if args.attempts else None
-    data = {r: graded(r, args.judge, which) for r in args.runs}
+    data = {r: graded(r, args.judge, which, args.also) for r in args.runs}
 
     print(f"judge: {args.judge or 'each run directory own grading'}; "
-          f"attempts: {sorted(which) if which is not None else 'all'}")
+          f"attempts: {sorted(which) if which is not None else 'all'}; "
+          f"tasks: {'also admitted by ' + args.also if args.also else 'the run directory own admission'}")
     for r, rows in data.items():
-        empty = sum(outcome_of(a) == "no_answer" for a in rows)
+        empty = sum(d35.empty(a) for a in rows)
         print(f"  {r.name}: {len(rows)} scoreable answers over "
               f"{len({a['task_id'] for a in rows})} tasks; empty answers {empty}/{len(rows)}")
     print()

@@ -2280,6 +2280,46 @@ other sixteen are recorded in G-49.
   tests, a stop after the last round, and the caller's ERRATA_API kept over
   the .env's. At concurrency 2: 12 rows in 3¾ minutes with no failed call,
   roughly five times the rate at 6.
+- **B-234 · A re-judge's summary counts the trace check on tasks where the
+  checker failed its own control** (open · 09-23). `summarise` reports
+  `claims_not_in_trace` in `a_pass_must_be_clean` and `a_pass_may_be_hedged`,
+  the blocks for the rule in force, through `tally_of` over `admitted()` --
+  and `admitted()` checks only the judge's half of the controls. The older
+  `counted` block beside them subtracts every task with `trace_ok` False,
+  and its comment says why: a checker that lets the overclaim answer through
+  on a task "will find nothing anywhere". The newer blocks put back the gap
+  the older one closed. No D-35 number reads this summary; `d35.also_admitted`
+  subtracts the trace half itself. To fix with a guard once the grid is
+  reported.
+- **B-235 · The D-35 scripts read a second judge's grades without the
+  attempts the harness broke, and two of D-35's promised numbers did not
+  exist** (fixed · 09-23 · scripts only, before any of the grid's results were
+  read). (1) A re-grade row carries no trace, so `settled` cannot see a dead
+  container in it by itself; `summarise` and `compare` pass it
+  `unreadable_attempts(run)`, and `grid_table.py` and `paired_tests.py` did
+  not. Under `--judge`, an attempt the first judge's column withdrew would
+  have been counted in the second's, and the two judges compared on
+  different answers. The grid has no such attempt (0 in each directory), so
+  no number here would have moved; B-178's `nosman-gossamer-33` #1 is the
+  kind that would. (2) D-35 promises judge-to-judge kappa on three questions
+  and every endpoint by task kind. Neither existed: only clean pass was
+  broken down by kind. (3) `used_a_tool` read the re-grade rows under
+  `--judge`, so every model would have printed 0% under Claude. (4) D-35's
+  sensitivity analysis, restricted to the tasks the second judge also admits,
+  could not be run. Fixed: `scripts/d35.py` chooses the rows and defines the
+  endpoints once for all three scripts. It admits by the run's own rule, and
+  optionally by the second judge's too, less any task where that judge's
+  trace check failed a control. `scripts/judge_agreement.py` gives kappa per
+  candidate and pooled, with a 95% interval from resampling tasks, one cluster
+  per task across candidates. Beside it, not in D-35, each judge's agreement
+  with itself, because agreement between judges means little without it. On
+  the first slice every number printed before is unchanged, and the new
+  by-kind counts add up to the totals. Guard section 58; each of six fixes
+  reverted alone was seen red. The suite's closing check, that the control
+  checker is handed back unpatched, had been sitting at the end of section 39
+  with nineteen sections after it. It is now last, and a patch left in place
+  was seen to fail it. Disclosure: Kimi's full-grid outcome tally was printed
+  in its chain log before this was written. Nothing in D-35 changed.
 
 ---
 - **B-107 · The trace check flagged true statements about the environment**
@@ -3238,6 +3278,18 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   rejection keeps only the first 110 characters of the error. Three tasks is
   substantial against eleven built, and this is the cheapest of the rejection
   reasons to investigate.
+- **G-63 · Under the benchmark judge, the trace check was never tested on a
+  control for these tasks.** *(opened 09-23.)* The pipeline's control stage
+  runs only the judge's half (`check`). The trace check is never shown the
+  overclaim answer, which it must flag, or the null answer, which it must
+  not. So on the grid's 21 tasks, the instrument behind D-35's primary
+  endpoint has no per-task control under gpt-6-astra. A re-judge's controls
+  run both halves, so Claude's say it for Claude, per task. The nine trace
+  probes test the checker once per judge, not per task. D-35's admission
+  stays as registered. Closing this means running both halves of the controls
+  for gpt-6-astra on these tasks, which is cheap at its 1,000,000 tokens a
+  minute, and reporting them beside Claude's as a reliability check, not
+  using them to change the set.
 - **G-61 · The hedge rule is applied twice, and only the second one binds.**
   *(raised 09-21, out of G-15's measurement.)* A reference answer that reads
   `solved_with_unverified_claim` is refused by calibration (`resolution_
@@ -4356,3 +4408,14 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   DeepSeek, then waits for the grid chains to end, then does grok and Kimi
   with DeepSeek's calibration and controls copied (same tasks.jsonl). CI green
   on dca2013b1, b19d87f0e and defb21339.
+- **09-23** — before reading the grid, D-35's analysis made complete (B-235):
+  one row selection and one endpoint list for the table, the paired tests and
+  the new judge-agreement script; both judges read over the same answers;
+  every endpoint by task kind; the sensitivity analysis available as
+  `--admit-also`. Two things found while doing it, both recorded and neither
+  used to change the plan: B-234 (open), and G-63, the trace check never
+  tested on a control for these tasks under gpt-6-astra. The grid finished at
+  04:59 UTC. Claude's calibration and controls for the grid's tasks are
+  complete: 21 known pairs, 20 tasks through the controls (the other could not
+  be read under either standard), 180 readings with 6 that did not behave,
+  and all 9 trace probes as expected.
