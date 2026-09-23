@@ -5343,3 +5343,11 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   computed before the flag existed, so every stored answer is still graded.
   Guards 77 to 79 and front_stages_run section 8; eighteen changes, each
   reverted alone, turn their suite red.
+- **09-23** — **A6's last part: what grading costs.** Each grade row now
+  records its judge's and its trace check's token use (`judge_usage`,
+  `trace_usage`), from the model's own count. The trace check's count is a
+  private attribute, so it is not part of the schema the model fills in.
+  Guard 80; seven changes, each reverted alone, turn it red. Calibration and
+  control rows still record none: they are a few percent of a grid's calls,
+  and threading the count through `control.check` is left for when it is
+  needed.

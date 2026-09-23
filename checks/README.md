@@ -39,7 +39,7 @@ directories made before the split, and what happens when a candidate or a
 grading fails. Its ninth section requires that every served-model probe the
 stages made went to its stand-in, so none of it reaches the network.
 
-**`guards_hold.py`** is seventy-nine numbered sections, one per guard: what the
+**`guards_hold.py`** is eighty numbered sections, one per guard: what the
 attempt and grade stages refuse to do; the gate asked repeatedly; the
 reference-answer control and when it is not applicable; the clean-pass
 standard and the hedged one priced side by side; permanent git loss; the
@@ -105,7 +105,8 @@ the re-grade of an empty answer with the harness that wrote it. Sections 77 to
 turn or its result, candidates shown the recovered calls only on tasks built
 that way (older tasks keep their fingerprints), and a build that replays the
 lost edits and rejects a tree git changed or one that contradicts its
-conversation. It closes by asserting it handed production back unpatched, because three
+conversation. Section 80 has each grade row record what its judge and trace
+readings cost. It closes by asserting it handed production back unpatched, because three
 sections restored one module attribute through a name a fourth binds to
 something else. Its fake judge sets the task's kind the way the
 real one does -- left at the default, every task here was graded by the

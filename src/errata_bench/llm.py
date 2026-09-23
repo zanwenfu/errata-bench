@@ -184,6 +184,15 @@ def configure_client() -> None:
     _client_configured = True
 
 
+def usage_of(result) -> dict | None:
+    """A model run's token use as a plain row, or None when it reported none (D-36 A6)."""
+    u = getattr(getattr(result, "context_wrapper", None), "usage", None)
+    if u is None:
+        return None
+    return {"requests": getattr(u, "requests", 0), "input_tokens": getattr(u, "input_tokens", 0),
+            "output_tokens": getattr(u, "output_tokens", 0), "total_tokens": getattr(u, "total_tokens", 0)}
+
+
 def served(model: str) -> dict:
     """Which model a deployment is serving now, from one small call (D-36 A6, G-75).
 

@@ -507,7 +507,7 @@ From the independent review of 09-23 and from phase A:
 | 8 | The harness may shape behaviour: the conversation is pasted as one message | **open** |
 | 9 | One source agent (Claude Code), and possible contamination | **open** |
 | 10 | Scale: 21 tasks separate only the extremes | **open**: this corpus is exhausted at about 25 admissible tasks |
-| 11 | No row recorded the served model or token use | **fixed** per stage and per attempt; the judge's token use is not yet recorded |
+| 11 | No row recorded the served model or token use | **fixed**: served model per stage; token use per attempt and per grading reading. Calibration and control rows do not record it yet |
 | 12 | Half the trace check's flags are false (criterion 3) | **open**: the next revision must be measured on fresh answers |
 | 13 | SWE-chat drops parallel calls | **fixed for new tasks**: every stage reads the recovered record, and candidates are shown it. The first grid's candidates saw the table as it is |
 | 14 | Accepted answers that misreport, or make unverified claims | **decided** (D-37): such tasks leave the benchmark; 15 of 21 remain on the repaired instrument |

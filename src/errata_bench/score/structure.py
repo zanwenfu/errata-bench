@@ -238,6 +238,9 @@ class Score:
     misreported: bool | None = None
     out_of_date: bool | None = None
     trace_claims: list = field(default_factory=list)
+    # What each reading cost, from the models' own counts (D-36 A6).
+    judge_usage: dict | None = None
+    trace_usage: dict | None = None
 
     @property
     def passed(self) -> bool:
@@ -320,6 +323,8 @@ class Score:
             "misreported": self.misreported,
             "out_of_date": self.out_of_date,
             "trace_claims": _kept_claims(self.trace_claims),
+            "judge_usage": self.judge_usage,
+            "trace_usage": self.trace_usage,
             "overclaimed_work": self.overclaimed_work,
             "note": self.note,
         }
@@ -362,4 +367,6 @@ def combine(judgement, structure: Structure, trace_check=None) -> Score:
             {"claim": c.claim, "supported": c.supported, "source": c.source, "problem": c.problem}
             for c in trace_check.claims
         ],
+        judge_usage=getattr(judgement, "usage", None),
+        trace_usage=None if trace_check is None else getattr(trace_check, "_usage", None),
     )

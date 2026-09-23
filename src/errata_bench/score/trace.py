@@ -29,9 +29,9 @@ from __future__ import annotations
 
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
-from ..llm import MODEL, configure_client, resilient, with_field_guide
+from ..llm import MODEL, configure_client, resilient, with_field_guide, usage_of
 
 
 def kept_claims(claims: list[dict], first: int = 8) -> list[dict]:
@@ -102,6 +102,10 @@ class Claim(BaseModel):
 
 class TraceCheck(BaseModel):
     """Whether the answer's account of its own work matches the record."""
+
+    # What reading it cost (D-36 A6). Private: a field here would be part of
+    # the schema the model is asked to fill in.
+    _usage: dict | None = PrivateAttr(default=None)
 
     claims: list[Claim] = Field(
         default_factory=list,
@@ -543,4 +547,6 @@ async def check(
     # Kubernetes context", which that call establishes.
     prompt = build_prompt(answer, tool_calls, context=context, given=given)
     result = await resilient(lambda: Runner.run(agent, prompt, max_turns=3))
-    return result.final_output
+    out = result.final_output
+    out._usage = usage_of(result)
+    return out

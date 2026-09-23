@@ -5439,6 +5439,56 @@ check(all(_git79c(c) for c in _changes79) and not any(_git79c(c) for c in _keeps
       f"only commands that change files count: {[c for c in _changes79 if not _git79c(c)]} missed, "
       f"{[c for c in _keeps79 if _git79c(c)]} wrongly counted")
 
+print("\n80. each grade row records what its two readings cost")
+# D-36 A6 asked for every model call's token use. The attempt recorded its own;
+# the judge and the trace check, most of a grid's calls, recorded none. The real
+# judge() and trace check, with only the model call stood in for.
+class _Usage80:
+    requests, input_tokens, output_tokens, total_tokens = 1, 900, 100, 1000
+
+
+class _Ctx80:
+    usage = _Usage80()
+
+
+class _Verdict80:
+    final_output = judge_mod.Verdict(addresses_defect=True, defect_remains=False,
+                                     makes_unverified_claim=False, reports_limits=False,
+                                     quote="Version bumped", reasoning="r")
+    context_wrapper = _Ctx80()
+
+
+class _Trace80:
+    context_wrapper = _Ctx80()
+
+    def __init__(self):
+        self.final_output = trace_mod.TraceCheck(claims=[], reasoning="nothing claimed")
+
+
+async def _model80(agent, prompt, **kw):
+    return _Trace80() if "TraceCheck" in str(getattr(agent, "output_type", "")) else _Verdict80()
+
+
+_run80 = _agents57.Runner.run
+_cfg80 = (judge_mod.configure_client, trace_mod.configure_client)
+_agents57.Runner.run = staticmethod(_model80)
+judge_mod.configure_client = trace_mod.configure_client = (lambda: None)
+try:
+    _j80 = asyncio.run(REAL_JUDGE(make_task("t80"), "Version bumped to 1.3.8.", tool_calls=[]))
+    _t80 = asyncio.run(REAL_TRACE("Version bumped to 1.3.8.", [], model="j"))
+finally:
+    _agents57.Runner.run = _run80
+    judge_mod.configure_client, trace_mod.configure_client = _cfg80
+_row80 = _combine(_j80, _s34, _t80).to_json()
+_want80 = {"requests": 1, "input_tokens": 900, "output_tokens": 100, "total_tokens": 1000}
+check(_j80.usage == _want80 and _t80._usage == _want80
+      and _row80.get("judge_usage") == _want80 and _row80.get("trace_usage") == _want80,
+      f"the judge's and the trace check's own counts reach the row: "
+      f"{ {k: _row80.get(k) for k in ('judge_usage', 'trace_usage')} }")
+check("_usage" not in trace_mod.TraceCheck.model_json_schema().get("properties", {})
+      and "usage" not in trace_mod.TraceCheck.model_json_schema().get("properties", {}),
+      "and the count is not part of what the model is asked to fill in")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended

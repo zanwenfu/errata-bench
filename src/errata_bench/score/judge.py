@@ -31,7 +31,7 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, Field
 
-from ..llm import MODEL, configure_client, resilient, with_field_guide
+from ..llm import MODEL, configure_client, resilient, usage_of, with_field_guide
 from ..spec import Task
 
 class Verdict(BaseModel):
@@ -304,6 +304,8 @@ class Judgement:
     # of its own earlier turns from an invention, and both judges flagged 83-86%
     # of DeepSeek's answers as unverified claims without it.
     saw_conversation: bool = False
+    # What reading this answer cost, from the model's own count (D-36 A6).
+    usage: dict | None = None
 
     @property
     def outcome(self) -> str:
@@ -712,6 +714,7 @@ The CANDIDATE's answer, to be judged:
         # "addressed" in the repository, so neither requires it.
         introduced_kind=task.kind in ("introduced", "none"),
         saw_conversation=bool(context),
+        usage=usage_of(result),
     )
 
 
