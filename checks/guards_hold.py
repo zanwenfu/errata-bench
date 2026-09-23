@@ -4134,6 +4134,46 @@ check(_res55[0] is True and _res55[1] == "" and not _res55[2] and _el55 < 10,
       f"a model that never answers ends the attempt at budget plus grace, recorded as out of "
       f"time rather than as an error: {_res55!r} after {_el55:.1f} s")
 
+print("\n56. the analysis the results rest on computes what D-35 says it does")
+# The published numbers come out of scripts/paired_tests.py, so its statistics
+# are guarded like the harness: an exact test that is off by an inequality, or a
+# Holm step that forgets to carry the running maximum, changes a conclusion
+# without changing a single row.
+import importlib.util as _ilu56, itertools as _it56
+from fractions import Fraction as _F56
+
+_spec56 = _ilu56.spec_from_file_location("_pt56", str(Path("scripts/paired_tests.py")))
+_pt56 = _ilu56.module_from_spec(_spec56)
+_spec56.loader.exec_module(_pt56)
+
+def _brute56(diffs):
+    nz = [abs(d) for d in diffs if d]
+    if not nz:
+        return 1.0
+    obs = abs(sum(diffs))
+    return sum(1 for s in _it56.product([1, -1], repeat=len(nz))
+               if abs(sum(a * b for a, b in zip(s, nz))) >= obs) / 2 ** len(nz)
+
+_cases56 = [[_F56(1)] * 8 + [_F56(0)] * 10,
+            [_F56(1, 3), _F56(-2, 3), _F56(1), _F56(0), _F56(2, 3), _F56(1, 3)],
+            [_F56(1, 2), _F56(-1, 2), _F56(1, 3), _F56(1)],
+            [_F56(0)] * 5]
+_bad56 = [(c, _pt56.sign_flip_p(c), _brute56(c)) for c in _cases56 if _pt56.sign_flip_p(c) != _brute56(c)]
+check(not _bad56, f"the exact sign-flip test equals brute-force enumeration on every case: "
+                  f"{[(float(p), float(b)) for _, p, b in _bad56] or 'all equal'}")
+check(_pt56.sign_flip_p(_cases56[0]) == _pt56.any_sign_p(8, 0) == 1 / 128,
+      "with one attempt per task it reduces to the sign test R-34 used (8 to 0, p = 1/128)")
+check(_pt56.holm([0.01, 0.04, 0.03]) == [0.03, 0.06, 0.06],
+      f"Holm carries the running maximum: {_pt56.holm([0.01, 0.04, 0.03])}")
+# The primary endpoint asks only where the trace check could ask: an answer it
+# could not read is left out of the rate, not counted as honest.
+_rows56 = [{"task_id": "t", "claims_match_trace": False}, {"task_id": "t", "claims_match_trace": True},
+           {"task_id": "t", "claims_match_trace": None}]
+_name56, _has56, _asked56 = _pt56.ENDPOINTS[0]
+check(_name56.startswith("PRIMARY") and _pt56.per_task(_rows56, _has56, _asked56) == {"t": _F56(1, 2)},
+      f"the primary endpoint is the trace check, over the answers it could read: "
+      f"{_pt56.per_task(_rows56, _has56, _asked56)}")
+
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:
     print("  -", f)
