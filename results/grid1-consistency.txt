@@ -1,0 +1,27 @@
+# D-36 A5 (G-71) on the first grid's 21 tasks: scripts/consistency.py at bd0b7bbe9, run on the VPS 09-23.
+# 'consistent' = no line a pre-cut Read showed differs from the rebuilt tree, and no printed HEAD contradicts the base.
+
+task                               files differ  head mutating  consistent
+bids-standard-bids-utils-24            3      0     -        0  True
+vaayne-anna-103                        0      0     -        5  True
+oozoofrog-oozoofrog.github.io-108      1      0     -        0  True
+ClusterCockpit-cc-backend-35           3      1     -        0  False
+galexy-edgar-diff-27                   0      0     -        0  True
+135yshr-savanna-vet-go-28              0      0     -        0  True
+Nagi-ovo-gemini-voyager-13             0      0     -        1  True
+Nagi-ovo-gemini-voyager-17             1      0     -        2  True
+Nagi-ovo-gemini-voyager-350            4      0     -        1  True
+bobdad-bmad-module-skill-forge-306     4      0    ok        4  True
+entireio-cli-53                        0      0     -        0  True
+hutusi-amytis-15                       1      0     -        0  True
+lightfastai-lightfast-14               0      0     -        0  True
+marin-community-marin-13               0      0     -        1  True
+melagiri-code-insights-53              0      0     -        1  True
+obsessiondb-rudel-39                   0      0     -        6  True
+obsessiondb-rudel-47                   2      0     -        2  True
+shunkakinoki-dotfiles-25               1      1     -        0  False
+FSM1-cipher-box-43                     1      1     -        6  False
+cyyeh-duckdb-data-agent-131            5      0     -        0  True
+marcus-sa-brain-59                     0      0     -        1  True
+
+18 of 21 consistent; 8 of those with no state-changing command before the cut

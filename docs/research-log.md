@@ -4969,3 +4969,18 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   does (fetch, export, replay) and reports. Whether an inconsistent task
   stays in the benchmark is a decision for the next grid, not this module's.
   Guard section 66; its five rules reverted alone, all red.
+  **Measured on the first grid's 21 tasks** (bd0b7bbe9, after B-240). **18
+  are consistent.** Three are not, and reading the lines confirms each:
+  | task | the conversation showed | the rebuilt tree holds |
+  |---|---|---|
+  | ClusterCockpit-cc-backend-35 | `PlotRenderOptions.svelte` importing `getContext` | an older version, 294 of 313 lines differing: a stale base |
+  | shunkakinoki-dotfiles-25 | `tmux.conf` with a "Tmux sessionizer" section | an "Extrakto" section there instead |
+  | FSM1-cipher-box-43 | `docker-compose.yml` on `kubo:v0.40.0` | `v0.34.0`: a base 37 days older than the session |
+
+  Of the 18, 8 ran no state-changing command before the cut: bids-24,
+  oozoofrog-108, edgar-27, savanna-28, entire-53, amytis-15, lightfast-14
+  and duckdb-131. The other 10 did, for example installs, a version bump,
+  `gh`, docker. The measurement sees only files the conversation read before
+  the cut, so it is a lower bound on disagreement. Output:
+  `results/grid1-consistency.txt`. Which of these tasks the next grid keeps
+  is a decision to make with this table in front of it.
