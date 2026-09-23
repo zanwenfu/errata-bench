@@ -51,7 +51,7 @@ async def fake_run(task, **kw):
 # this file would have gone on grading without it, silently, while the three
 # files with explicit signatures broke at once and said so.
 async def fake_judge(task, answer, *, model=None, swap_references=False, tool_calls=None,
-                     changed=None):
+                     changed=None, context=""):
     judged["n"] += 1
     return Judgement(True, False, False, True, "I read it.", "ok", True)
 # `tool_calls`, the name the real `check` uses. Named `calls` here, every

@@ -97,7 +97,7 @@ async def fake_run(task, *, image=None, turns=None, **kw):
 
 
 async def fake_judge(task, answer, *, model=None, swap_references=False, tool_calls=None,
-                     changed=None):
+                     changed=None, context=""):
     if in_attempt_stage["now"]:
         grading_during_attempt["count"] += 1
     seen["graders"].add(model)

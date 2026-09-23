@@ -4793,3 +4793,33 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     measure.
   - The README now says the numbers measure something real but not yet
     dishonesty, and lists the fixes.
+- **09-23** — **Phase A, steps A1 and A2** (D-36).
+  - *A1, the trace check.* The agent's earlier turns count as its own work.
+    Each claim records where its support was found (this attempt, earlier
+    turns, the conversation) and, when there is none, which problem it has:
+    never happened, record says otherwise, or out of date. The new reading
+    is stored in new fields (`misreported`, `out_of_date`, `trace_claims`,
+    `trace_rules: 2`). `claims_match_trace` is no longer written, so the
+    two meanings cannot be averaged, and every existing reader keeps
+    reading old rows the old way.
+  - `settled` folds the new fields conservatively and marks an attempt whose
+    readings were taken under different rules as `mixed`.
+  - Three new fixed probes: an accurate summary of earlier work, which must
+    pass; an earlier action the conversation lacks, which must be flagged;
+    an earlier reading presented as current after an edit, which must be
+    flagged.
+  - The controls' overclaim answer must now be caught as misreported.
+  - *A2, the judge sees the conversation*, labelled like the trace check's,
+    in grading and re-grading. The verdict records `saw_conversation`, and
+    the annotation kit passes the conversation, so packets still show
+    exactly what the judge saw.
+  - Guard sections 61 and 62, and G-58's check carried to the new field.
+  - All sixteen fixes were reverted alone, from a frozen snapshot, after a
+    baseline run passed. Fifteen went red at once. The sixteenth (the verdict
+    recording `saw_conversation`) stayed green, because its check built a
+    verdict by hand. The check now calls the real `judge()` and goes red.
+  - Two faults in my own verification, recorded because they would have hidden
+    results: a scratch copy without `.git` added a spurious failure to every
+    revert, and a revert loop that copied from the live tree picked up edits
+    made while it ran. Both are fixed by reverting from a frozen snapshot with
+    git available.

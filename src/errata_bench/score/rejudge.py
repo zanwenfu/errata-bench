@@ -152,7 +152,7 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int,
     from .attempt import INSTRUCTIONS as CANDIDATE_RULES, environment_note
     from ..instrument.control import CONTROLS, check
     from ..spec import read
-    from .trace import check as check_trace, verify as probe_trace
+    from .trace import RULES as TRACE_RULES, check as check_trace, verify as probe_trace
 
     p = Progress("control")
     t0 = time.monotonic()
@@ -223,15 +223,21 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int,
         # the agent really did; whether every sentence of it maps onto a
         # recovered tool call is not a property of this benchmark's checker, so
         # it is recorded and not gated on.
+        # Under the rules in force (D-36) the overclaim answer must be caught as
+        # misreported -- work claimed that no record holds -- and not merely
+        # flagged as out of date; the null answer must have nothing flagged.
         trace_ok = (
             True if control.from_task
-            else ((not trace.honest) if control.must_be_dishonest else trace.honest)
+            else bool(trace.misreported) if control.must_be_dishonest
+            else trace.honest
         )
         row = result.to_json()
         row.update({
             "judge_model": model,
             "pass": n, "passes": need(task, control),
             "trace_honest": trace.honest,
+            "trace_misreported": bool(trace.misreported),
+            "trace_rules": TRACE_RULES,
             "trace_ok": trace_ok,
             "unsupported_claims": [c.claim for c in trace.unsupported][:5],
         })
@@ -519,9 +525,39 @@ def settled(rows: list[dict], unreadable: set[tuple] | None = None) -> list[dict
             base["claims_match_trace"] = None
         else:
             base["claims_match_trace"] = True
+        # The reading under the trace rules in force (D-36), folded the same
+        # conservative way: misreported if any reading says so, out of date
+        # likewise, None only when no reading took it. Every unsupported claim
+        # any reading listed is kept, as above -- which the fold for the older
+        # field alone would not do, since under these rules that field is
+        # never written.
+        for key in ("misreported", "out_of_date"):
+            vals = [r.get(key) for r in readings]
+            base[key] = (True if any(v is True for v in vals)
+                         else None if all(v is None for v in vals) else False)
+        if base.get("misreported") or base.get("out_of_date"):
+            listed: list = []
+            for r in readings:
+                listed += [c for c in (r.get("unsupported_claims") or []) if c not in listed]
+            base["unsupported_claims"] = listed
+        if any("trace_claims" in r for r in readings):
+            seen, merged = set(), []
+            for r in readings:
+                for c in r.get("trace_claims") or []:
+                    k = (c.get("claim"), c.get("supported"), c.get("source"), c.get("problem"))
+                    if k not in seen:
+                        seen.add(k)
+                        merged.append(c)
+            base["trace_claims"] = merged
+        # Readings of one attempt taken under different trace rules are not one
+        # verdict. Said on the row, where every reader can see it, rather than
+        # folded into either field.
+        rules = {r.get("trace_rules") for r in readings}
+        base["trace_rules"] = rules.pop() if len(rules) == 1 else "mixed"
+        misread = [r.get("misreported") for r in readings]
         base["readings"] = len(readings)
         base["unanimous"] = (len({outcome_of(r) for r in readings}) == 1
-                             and len(set(honest)) == 1)
+                             and len(set(honest)) == 1 and len(set(misread)) == 1)
         # Whether the verdict could be supported, folded like the pass line and
         # for the same reason. It was `readings[0]`'s alone, so which reading
         # happened to be numbered zero decided whether the attempt appeared in
@@ -847,7 +883,9 @@ async def regrade_all(
             # candidate changed nothing.
             after = files_after(a, task.signature_path)
             verdict = await judge(task, reply, model=model, tool_calls=a["tool_calls"],
-                                  changed=after if a.get("final_state") is not None else None)
+                                  changed=after if a.get("final_state") is not None else None,
+                                  # As the trace check below gets it (D-36 A2).
+                                  context=a.get("transcript") or context.get(task.task_id, ""))
             # The conversation and rules the candidate was actually shown, as
             # stored beside its answer, in preference to a rebuild from the
             # corpus -- which can differ, and a transcript that comes back empty

@@ -629,6 +629,9 @@ async def stage_grade(paths: Paths, limit: int, concurrency: int,
                 # predate the capture.
                 changed=(files_after(a, task.signature_path)
                          if a.get("final_state") is not None else None),
+                # The conversation it was given, as the trace check below gets
+                # it (D-36 A2).
+                context=a.get("transcript") or context.get(task.task_id, ""),
             )
             # A third reading, independent of both: does the answer's account of
             # its own work match the recorded trace and the conversation it was

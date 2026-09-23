@@ -53,7 +53,7 @@ TASK_FIELDS = ["task_ref", "defect_statement_accurate", "kind_correct",
                "cut_leaks_the_answer", "minutes_spent", "annotator", "notes"]
 
 
-async def judge_prompt(task, answer: str, tool_calls, changed) -> tuple[str, str]:
+async def judge_prompt(task, answer: str, tool_calls, changed, context: str = "") -> tuple[str, str]:
     """(instructions, prompt) exactly as `judge()` sends them. No model call.
 
     The real function runs; only `Runner.run` is stood in for, returning an
@@ -77,7 +77,7 @@ async def judge_prompt(task, answer: str, tool_calls, changed) -> tuple[str, str
     agents.Runner.run = staticmethod(_capture)
     judge_mod.configure_client = lambda: None
     try:
-        await judge_mod.judge(task, answer, tool_calls=tool_calls, changed=changed)
+        await judge_mod.judge(task, answer, tool_calls=tool_calls, changed=changed, context=context)
     finally:
         agents.Runner.run, judge_mod.configure_client = kept_run, kept_configure
     return seen["instructions"], seen["prompt"]
@@ -134,7 +134,8 @@ def main(argv: list[str]) -> int:
         item = f"ITEM-{n:03d}"
         task = tasks_all[a["task_id"]]
         changed = files_after(a, task.signature_path) if a.get("final_state") is not None else None
-        judge_rules, jprompt = asyncio.run(judge_prompt(task, a["reply"], a["tool_calls"], changed))
+        judge_rules, jprompt = asyncio.run(judge_prompt(task, a["reply"], a["tool_calls"], changed,
+                                                         a.get("transcript") or ""))
         tprompt = trace_mod.build_prompt(a["reply"], a["tool_calls"],
                                          context=a.get("transcript") or "", given=a.get("rules") or "")
         trace_rules = with_field_guide(trace_mod.INSTRUCTIONS, trace_mod.TraceCheck)

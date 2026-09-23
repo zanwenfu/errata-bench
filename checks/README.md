@@ -38,7 +38,7 @@ so. It also covers resume from stored answers alone and from stored grades, the 
 directories made before the split, and what happens when a candidate or a
 grading fails.
 
-**`guards_hold.py`** is sixty numbered sections, one per guard: what the
+**`guards_hold.py`** is sixty-two numbered sections, one per guard: what the
 attempt and grade stages refuse to do; the gate asked repeatedly; the
 reference-answer control and when it is not applicable; the clean-pass
 standard and the hedged one priced side by side; permanent git loss; the
@@ -79,7 +79,9 @@ against brute-force enumeration, the human-study packets showing exactly what
 each reader saw, and both judges read over the same answers, with D-35's
 also-reported numbers. Section 59 keeps a task out of a re-judge's admission
 when its trace check failed a control. Section 60 has every analysis script
-refuse a path that is not a run directory. It closes by asserting it handed production back unpatched, because three
+refuse a path that is not a run directory. Sections 61 and 62 are phase A's
+first repairs: the agent's earlier turns count as its own work for the trace
+check, with each flag named, and the judge sees the conversation. It closes by asserting it handed production back unpatched, because three
 sections restored one module attribute through a name a fourth binds to
 something else. Its fake judge sets the task's kind the way the
 real one does -- left at the default, every task here was graded by the
