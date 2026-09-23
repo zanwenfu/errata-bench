@@ -487,36 +487,38 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   [+0.095, +0.413], **Holm 0.039**; Kimi − DeepSeek 0.77. The R-34
   any-attempt test agrees on the primary comparison (2 to 12, p = 0.013).
   **D-35's verdict, 09-23: the registered claim does not hold. It is
-  judge-dependent.** claude-opus-5 graded grok's and DeepSeek's 126 answers
-  three times each: 378 readings, no errors. Kimi's are still running.
-  - **Primary endpoint under Claude:** grok 5/39 (13%), DeepSeek 8/60 (13%).
-    Per task, grok − DeepSeek is **+0.088** [−0.078, +0.275], p = 0.44: the
-    opposite direction. D-35 names that outcome in advance: "judge-dependent".
-  - **Replicated under Claude, same direction, p < 0.05:**
-    - the judge's unverified claim: grok 41% against DeepSeek 83%,
-      −0.392, p = 0.0035;
-    - clean passes: 33% against 8%, +0.237, p = 0.029.
-  - **Agreement, kappa with a task-clustered 95% interval:**
-    | | between the judges | gpt-6-astra with itself | claude-opus-5 with itself |
-    |---|---|---|---|
-    | trace check | **0.25** [0.05, 0.44] | 0.85 | 0.67 |
-    | judge, unverified claim | 0.57 [0.37, 0.76] | 0.97 | 0.89 |
-    | clean pass | 0.59 [0.34, 0.76] | 0.98 | 0.93 |
+  judge-dependent.** claude-opus-5 graded all 189 answers three times each: 567
+  readings, no errors, done at 11:27 UTC. By D-35's rule, a difference holds
+  only with Holm p < 0.05 under gpt-6-astra and the same direction at p < 0.05
+  under Claude. Per-task means below are grok / Kimi / DeepSeek.
+  | endpoint | gpt-6-astra | claude-opus-5 | holds? |
+  |---|---|---|---|
+  | trace check (primary) | 0.070 / 0.294 / 0.476 | 0.167 / 0.067 / 0.135 | **no**: grok − DeepSeek +0.088 under Claude, p = 0.44, the opposite direction |
+  | judge, unverified claim | 0.465 / 0.667 / 0.857 | 0.431 / 0.517 / 0.841 | **grok < DeepSeek yes** (Holm 0.0077; p 0.0035). Kimi < DeepSeek is Claude only (p 0.0004 against Holm 0.11) |
+  | clean pass | 0.349 / 0.127 / 0.095 | 0.325 / 0.159 / 0.079 | **grok > DeepSeek yes, narrowly** (Holm 0.039; p 0.029, Holm 0.088 under Claude). grok > Kimi no (Claude p 0.19) |
 
-    Each judge is steady, but the two do not read "supported by the record"
-    the same way. gpt-6-astra flags DeepSeek's accounts of work the
-    conversation records (48%); Claude does not (13%). That is G-70 seen from
-    a second model family.
-  - **Sensitivity**, on the tasks both judges admit: 14 tasks under Claude,
-    16 under gpt-6-astra. Nothing changes: under Claude the primary is
-    +0.060 (p = 0.63) and the judge reading −0.405 (p = 0.0071); under
-    gpt-6-astra the primary is −0.375 (p = 0.0098).
-  - **Caveats on what replicated.** Both judges see neither conversation, so
-    they could share a blind spot on in-role summaries (G-70). A clean pass
-    requires no unverified claim, so the two replicated results are not
-    independent. Claude could not support its reading on 15 of grok's
-    answers, against 3 of DeepSeek's.
-  - Outputs: `results/grid1-d35-claude-opus-5-*.txt`,
+  Agreement, pooled over three candidates, kappa with a task-clustered 95%
+  interval:
+  | | between the judges | gpt-6-astra with itself | claude-opus-5 with itself |
+  |---|---|---|---|
+  | trace check | **0.18** [0.03, 0.35] | 0.86 | 0.65 |
+  | judge, unverified claim | 0.55 [0.39, 0.71] | 0.96 | 0.89 |
+  | clean pass | 0.65 [0.47, 0.79] | 0.98 | 0.93 |
+
+  - Each judge is steady, but the two do not share a reading of "supported by
+    the record". On the trace check they rank the models differently: grok
+    first under gpt-6-astra, Kimi first under Claude. That is G-70 seen from
+    a second model family. The trace check, as built, is not a measurement
+    that can be reported.
+  - On the tasks both judges admit (13–16 under Claude), no trace-check
+    comparison is significant under Claude (p 0.53–0.63). Under gpt-6-astra
+    the same tasks give grok − DeepSeek −0.375, p = 0.0098.
+  - **Caveats on the two that hold.** Neither judge sees the conversation,
+    so both may share a blind spot on in-role summaries (G-70). A clean pass
+    requires no unverified claim, so the two are not independent. Claude
+    could not support its reading on 15 of grok's answers, 10 of Kimi's and
+    3 of DeepSeek's. And the confirmatory test re-uses attempt 0 (G-73).
+  - Outputs, three candidates each: `results/grid1-d35-claude-opus-5-*.txt`,
     `results/grid1-d35-judge-agreement.txt`,
     `results/grid1-d35-gpt-6-astra-tests-sens.txt`.
 
@@ -3403,6 +3405,20 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   without calling a judge, and that path skips `code_version`. It covers 27 of
   grok's 189 claude-opus-5 rows (9 empty answers × 3 readings). No verdict is
   affected; the provenance is incomplete.
+- **B-238 · The analysis scripts read a path that is not a run directory as an
+  empty candidate** (fixed · 09-23). While running D-35 over all three
+  candidates, a shell loop passed `--judge claude-opus-5` as one word.
+  `paired_tests.py` read it as a fourth run directory with no rows and went
+  on under the default judge. It printed a "--judge claude-opus-5" column of
+  nothing and corrected every p-value over six pairs instead of three, and
+  exited 0. `grid_table.py` and `judge_agreement.py` did the same, and
+  `annotation_kit.py` crashed with a KeyError. The output was caught by its
+  empty column, discarded, and re-run with the arguments written out.
+  Fixed: every analysis script now refuses, before reading a row, any
+  argument that holds no tasks.jsonl (`d35.require_runs`; the same check
+  inlined in the kit). Guard section 60 drives all four scripts' `main`.
+  Reverting the shared check alone turns it red on three of them; reverting
+  the kit's copy alone, on the fourth.
 - **G-70 · The trace check counts the agent's own earlier work, recorded in
   the conversation, as unsupported.** *(opened 09-23, from an independent
   review, verified on the rows.)*

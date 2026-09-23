@@ -1,22 +1,32 @@
-# D-35 on the first full grid: scripts/paired_tests.py --judge claude-opus-5 --admit-also claude-opus-5
-# Produced 2026-09-23 at 616579f17 over runs/grid1-{grok-4.6,DeepSeek-V4-Pro} (Kimi's second-judge grades still running); see R-35.
+# D-35 on the first full grid, all three candidates, second judge claude-opus-5 where named.
+# Produced 2026-09-23 at 9b6269ed1 over runs/grid1-{grok-4.6,Kimi-K2.7-Code,DeepSeek-V4-Pro}; see R-35.
 
 judge: claude-opus-5; attempts: all; tasks: also admitted by claude-opus-5
   grid1-grok-4.6: 37 scoreable answers over 15 tasks; empty answers 5/37
+  grid1-Kimi-K2.7-Code: 41 scoreable answers over 17 tasks; empty answers 3/41
   grid1-DeepSeek-V4-Pro: 48 scoreable answers over 17 tasks; empty answers 0/48
 
 PRIMARY  trace check: a claim the record does not support
   grid1-grok-4.6: mean per-task rate 0.131 over 14 tasks
+  grid1-Kimi-K2.7-Code: mean per-task rate 0.062 over 16 tasks
   grid1-DeepSeek-V4-Pro: mean per-task rate 0.108 over 17 tasks
-  grid1-grok-4.6 - grid1-DeepSeek-V4-Pro: 14 tasks, mean difference +0.060 [-0.095, +0.250], sign-flip p 0.6250, Holm 0.6250; any-attempt 2 to 2, p 1.000
+  grid1-grok-4.6 - grid1-Kimi-K2.7-Code: 13 tasks, mean difference +0.064 [-0.090, +0.269], sign-flip p 0.6250, Holm 1.0000; any-attempt 2 to 1, p 1.000
+  grid1-grok-4.6 - grid1-DeepSeek-V4-Pro: 14 tasks, mean difference +0.060 [-0.095, +0.250], sign-flip p 0.6250, Holm 1.0000; any-attempt 2 to 2, p 1.000
+  grid1-Kimi-K2.7-Code - grid1-DeepSeek-V4-Pro: 16 tasks, mean difference -0.052 [-0.156, +0.052], sign-flip p 0.5312, Holm 1.0000; any-attempt 1 to 4, p 0.375
 
 judge: makes an unverified claim
   grid1-grok-4.6: mean per-task rate 0.381 over 14 tasks
+  grid1-Kimi-K2.7-Code: mean per-task rate 0.438 over 16 tasks
   grid1-DeepSeek-V4-Pro: mean per-task rate 0.804 over 17 tasks
-  grid1-grok-4.6 - grid1-DeepSeek-V4-Pro: 14 tasks, mean difference -0.405 [-0.619, -0.179], sign-flip p 0.0071, Holm 0.0071; any-attempt 0 to 6, p 0.031
+  grid1-grok-4.6 - grid1-Kimi-K2.7-Code: 13 tasks, mean difference -0.064 [-0.308, +0.179], sign-flip p 0.6953, Holm 0.6953; any-attempt 2 to 3, p 1.000
+  grid1-grok-4.6 - grid1-DeepSeek-V4-Pro: 14 tasks, mean difference -0.405 [-0.619, -0.179], sign-flip p 0.0071, Holm 0.0142; any-attempt 0 to 6, p 0.031
+  grid1-Kimi-K2.7-Code - grid1-DeepSeek-V4-Pro: 16 tasks, mean difference -0.354 [-0.531, -0.188], sign-flip p 0.0015, Holm 0.0044; any-attempt 0 to 5, p 0.062
 
 clean pass
   grid1-grok-4.6: mean per-task rate 0.367 over 15 tasks
+  grid1-Kimi-K2.7-Code: mean per-task rate 0.176 over 17 tasks
   grid1-DeepSeek-V4-Pro: mean per-task rate 0.098 over 17 tasks
-  grid1-grok-4.6 - grid1-DeepSeek-V4-Pro: 15 tasks, mean difference +0.256 [+0.056, +0.467], sign-flip p 0.0547, Holm 0.0547; any-attempt 5 to 2, p 0.453
+  grid1-grok-4.6 - grid1-Kimi-K2.7-Code: 15 tasks, mean difference +0.167 [-0.078, +0.411], sign-flip p 0.2539, Holm 0.5078; any-attempt 5 to 3, p 0.727
+  grid1-grok-4.6 - grid1-DeepSeek-V4-Pro: 15 tasks, mean difference +0.256 [+0.056, +0.467], sign-flip p 0.0547, Holm 0.1641; any-attempt 5 to 2, p 0.453
+  grid1-Kimi-K2.7-Code - grid1-DeepSeek-V4-Pro: 17 tasks, mean difference +0.078 [-0.010, +0.196], sign-flip p 0.3750, Holm 0.5078; any-attempt 1 to 0, p 1.000
 

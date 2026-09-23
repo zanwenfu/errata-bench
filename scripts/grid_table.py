@@ -121,6 +121,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--admit-also", dest="also",
                     help="sensitivity analysis: only tasks this second judge also admits on its own tests")
     args = ap.parse_args(argv)
+    d35.require_runs(ap, args.runs)
     which = {int(x) for x in args.attempts.split(",")} if args.attempts else None
     rows = [one(r, args.judge, which, args.also) for r in args.runs]
     print(f"code version: {code_version()}; judge: {args.judge or 'each run directory own grading'}; "

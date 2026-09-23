@@ -54,6 +54,21 @@ def empty(a: dict) -> bool:
     return outcome_of(a) == "no_answer"
 
 
+def require_runs(ap, runs: list[Path]) -> None:
+    """Refuse any argument that is not a run directory, before reading a row.
+
+    A path that is not one used to be read as an empty directory: no tasks, no
+    answers, a column of nothing -- and one more pair in every Holm family.
+    Seen on 09-23, when a shell passed `--judge claude-opus-5` as a single
+    word: it became a fourth "candidate", the analysis ran under the default
+    judge, and the tests were corrected over six pairs instead of three,
+    without an error anywhere.
+    """
+    bad = [str(r) for r in runs if not (Path(r) / "tasks.jsonl").is_file()]
+    if bad:
+        ap.error(f"not a run directory (no tasks.jsonl): {', '.join(bad)}")
+
+
 def also_admitted(run: Path, judge: str) -> set[str]:
     """The tasks a second judge admits on its own tests.
 

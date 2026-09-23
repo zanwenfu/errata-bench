@@ -123,6 +123,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--resamples", type=int, default=10_000)
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args(argv)
+    d35.require_runs(ap, args.runs)
     which = {int(x) for x in args.attempts.split(",")} if args.attempts else None
 
     first_names = Counter(r.get("judge_model") for run in args.runs for r in d35.readings(run, None, which))

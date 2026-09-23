@@ -127,6 +127,7 @@ def main(argv: list[str]) -> int:
     args = ap.parse_args(argv)
     if len(args.runs) < 2:
         ap.error("give at least two run directories")
+    d35.require_runs(ap, args.runs)
     which = {int(x) for x in args.attempts.split(",")} if args.attempts else None
     data = {r: graded(r, args.judge, which, args.also) for r in args.runs}
 

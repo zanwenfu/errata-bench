@@ -17,13 +17,14 @@ The trace check finds a claim not supported by the answer's own tool calls in
 DeepSeek-V4-Pro's**. The gap between grok and DeepSeek points the same way on
 every subset tried, though it is not significant on all of them.
 
-**Under the second judge the primary result disappears.** claude-opus-5 grades
-grok and DeepSeek the same on the trace check (13% and 13%), so by the
-pre-registered rule the honesty claim is judge-dependent and **does not hold**.
-Each judge agrees with itself (kappa 0.85 and 0.67) but not with the other on
-this question (0.25). Two things replicate across both judges:
-- the judge's own reading of unverified claims: grok 41–48%, DeepSeek 83–86%;
-- clean passes: grok 33–35%, DeepSeek 8–10%.
+**Under the second judge the primary result does not hold.** On the trace check,
+claude-opus-5 ranks the three models differently from gpt-6-astra: Kimi first
+rather than grok. By the pre-registered rule the honesty claim is
+judge-dependent. Each judge agrees with itself (kappa 0.86 and 0.65) but not
+with the other on this question (0.18). Two differences do meet the rule:
+- grok makes fewer unverified claims than DeepSeek in the judge's own reading
+  (grok 43–47%, DeepSeek 84–86% per task);
+- grok has more clean passes than DeepSeek (33–35% against 8–10%), narrowly.
 
 **The numbers are not yet evidence of dishonesty.** An independent review on
 09-23 found three problems:
@@ -241,21 +242,18 @@ summarises that accurately. The trace check flagged it anyway, which is the
 first problem below.
 
 **The second judge (D-35's rule): the primary claim does not hold.**
-claude-opus-5 re-graded grok's and DeepSeek's answers three times each; Kimi's
-are still running.
+claude-opus-5 re-graded all 189 answers three times each. Per-task mean rates:
 
-| under claude-opus-5 | grok-4.6 | DeepSeek-V4-Pro | per task, grok − DeepSeek |
-|---|---|---|---|
-| trace check (primary) | 5/39, 13% | 8/60, 13% | +0.09, p = 0.44 (opposite direction) |
-| judge: unverified claim | 16/39, 41% | 50/60, 83% | −0.39, p = 0.0035 |
-| clean pass | 16/48, 33% | 5/60, 8% | +0.24, p = 0.029 |
+| | grok-4.6 | Kimi-K2.7-Code | DeepSeek-V4-Pro | holds under both judges? |
+|---|---|---|---|---|
+| trace check (primary) | 0.17 | 0.07 | 0.14 | **no**: the ranking changes with the judge |
+| judge: unverified claim | 0.43 | 0.52 | 0.84 | grok < DeepSeek: yes |
+| clean pass | 0.33 | 0.16 | 0.08 | grok > DeepSeek: yes, narrowly |
 
-The trace check's result depends on the judge. On that question the two
-judges agree at kappa 0.25, and each agrees with itself at 0.85 and 0.67. The
-judge reading and the clean pass replicate, with kappa between the judges of
-0.57 and 0.59. Both judges see neither conversation, so they may share a blind
-spot, and a clean pass requires no unverified claim. Exact output is in
-`results/grid1-d35-*.txt`.
+Agreement between the two judges, as kappa: 0.18 on the trace check, 0.55 on
+the judge's reading, 0.65 on clean pass. Neither judge sees the conversation,
+so they may share a blind spot, and a clean pass requires no unverified claim.
+Exact output is in `results/grid1-d35-*.txt`.
 
 **How much to trust the numbers.**
 - **The trace check passes its synthetic tests and fails the realistic one.**

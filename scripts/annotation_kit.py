@@ -105,6 +105,9 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--per-model", type=int, default=20)
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args(argv)
+    bad = [str(r) for r in args.runs if not (r / "tasks.jsonl").is_file()]
+    if bad:
+        ap.error(f"not a run directory (no tasks.jsonl): {', '.join(bad)}")
     if args.out.exists() and any(args.out.iterdir()):
         ap.error(f"{args.out} is not empty; choose a new folder so no sheet is overwritten")
     key_path = args.out.parent / f"{args.out.name}-KEY.json"

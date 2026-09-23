@@ -4366,6 +4366,36 @@ check(_s59["a_pass_must_be_clean"]["tasks"] == 1 and _s59["a_pass_may_be_hedged"
 check("1 tasks every run admits" in _across59([_p59.root], "j"),
       "and the three-model table")
 
+print("\n60. a path that is not a run directory is refused, not read as an empty candidate")
+# Seen on 09-23: a shell passed `--judge claude-opus-5` as one word, the tests
+# read it as a fourth run directory with nothing in it, ran under the default
+# judge, and corrected over six pairs instead of three -- with no error.
+import contextlib as _ctx60, io as _io60
+_spec60 = _ilu56.spec_from_file_location("_ak60", str(Path("scripts/annotation_kit.py")))
+_ak60 = _ilu56.module_from_spec(_spec60)
+_spec60.loader.exec_module(_ak60)
+_bogus60 = str(Path(tempfile.mkdtemp()) / "--judge claude-opus-5")
+_out60 = Path(tempfile.mkdtemp()) / "kit"
+_calls60 = {
+    "paired_tests": (_pt58.main, [str(_p58.root), _bogus60]),
+    "grid_table": (_gt58.main, [str(_p58.root), _bogus60]),
+    "judge_agreement": (_ja58.main, ["--judge", "second", str(_p58.root), _bogus60]),
+    "annotation_kit": (_ak60.main, ["--out", str(_out60), str(_p58.root), _bogus60]),
+}
+_seen60 = {}
+for _name, (_fn, _argv) in _calls60.items():
+    _err = _io60.StringIO()
+    try:
+        with _ctx60.redirect_stderr(_err), _ctx60.redirect_stdout(_io60.StringIO()):
+            _fn(_argv)
+        _seen60[_name] = "ran"
+    except SystemExit as _e:
+        _seen60[_name] = "refused" if _e.code == 2 and "not a run directory" in _err.getvalue() else f"exit {_e.code}"
+    except Exception as _e:   # a crash is not a refusal
+        _seen60[_name] = f"{type(_e).__name__}"
+check(all(v == "refused" for v in _seen60.values()) and not _out60.exists(),
+      f"every analysis script refuses it by name before reading a row: {_seen60}")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended
