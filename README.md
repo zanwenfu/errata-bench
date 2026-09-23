@@ -271,8 +271,11 @@ and others). Of what it ships, the benchmark uses:
   pushback label.
 - **raw transcripts:** 9.7 GB, one JSON-lines file per session.
 
-The benchmark reads the conversations table. It reads the raw transcripts only
-to recover the calls that table dropped.
+The benchmark reads the conversations table. From the raw transcripts it
+recovers the calls that table dropped (`corpus/recover.py`). For tasks built
+from now on, every stage reads the recovered record: screening, the build,
+and what the candidate is shown. Tasks built before are shown as their
+candidates saw them (`Task.calls_recovered`).
 
 ### 2. Moments
 
@@ -341,9 +344,11 @@ on every reading.
   `sessions.created_at` is a completion time and would select commits the
   agent made during the session, sometimes the fix itself.
 - **The replay.** The agent's own recorded edits up to the cut are replayed
-  onto that commit. An edit that will not apply rejects the task. So does a
-  session that changes the tree with git (merges, pulls, checkouts), since no
-  single commit can reproduce it.
+  onto that commit, including edits the conversations table lost, which are
+  put back from the raw transcript. An edit that will not apply rejects the
+  task. So does a session whose git commands changed its files before the cut
+  (checkouts, pulls, merges, stashes, hard resets), since no commit and list
+  of edits can reproduce it.
 - **The defect check.** The defect must be demonstrably in the tree the
   candidate receives, where the task's kind says it should be. Each task
   records how strongly this was established:
@@ -355,15 +360,18 @@ on every reading.
   digest: `python:3.12`, `node:22`, `golang:1.26`. A task with no container is
   not run. `ERRATA_ALLOW_HOST=1` is the only way to run a model's shell
   commands on your own machine.
-- **The consistency check** (`construct/consistency.py`) compares the rebuilt
-  tree with every file the conversation showed before the cut. It also compares
-  commits the conversation printed, lists commands whose effects are not
-  replayed, and counts edits lost from the table.
+- **The consistency gate** (`construct/consistency.py`). The rebuilt tree is
+  compared with every file the conversation read before the cut, line by line,
+  and with any commit the conversation printed as HEAD. A tree that differs is
+  rejected. On the first grid 3 of 21 trees differed, from an older base or a
+  file that was never committed.
 
 Known limits:
-- only file edits are replayed, not what the agent's commands did;
-- files that were never committed cannot be rebuilt;
-- 5 of the 21 tasks are known to differ from their conversation.
+- only file edits are replayed, not what the agent's other commands did;
+- files that were never committed cannot be rebuilt, and the gate catches them
+  only where the conversation read them;
+- the gate and the git check apply to tasks built from now on. 5 of the 21
+  grid tasks are known to differ from their conversation.
 
 ### 8. Admission: calibration and controls
 
@@ -493,7 +501,7 @@ From the independent review of 09-23 and from phase A:
 | 2 | The accepted-answer control failed and was not enforced | **fixed**: enforced, read against its own conversation. The 8 remaining flags are errors in the accepted answers |
 | 3 | The confirmatory test reused the data that suggested it | **open**: needs a fresh, pre-registered run |
 | 4 | The time limit was not enforced, and an attempt that ran out left no answer | **fixed in the harness**: the grid's answers predate it |
-| 5 | The container is not the world the conversation describes | **measured** on 5 of 21 tasks; lost edits recoverable. Rebuilding or excluding: **open** |
+| 5 | The container is not the world the conversation describes | **fixed for new tasks**: lost edits replayed; trees that git changed or that contradict the conversation are rejected at build. The 21 grid tasks were built before |
 | 6 | No person has checked a task or a label | **open**: one reader has read 30 flags; two annotators are planned |
 | 7 | The two honesty readings come from one model and agree little | second judge's re-reading **running**; a third judge **open** |
 | 8 | The harness may shape behaviour: the conversation is pasted as one message | **open** |
@@ -501,7 +509,7 @@ From the independent review of 09-23 and from phase A:
 | 10 | Scale: 21 tasks separate only the extremes | **open**: this corpus is exhausted at about 25 admissible tasks |
 | 11 | No row recorded the served model or token use | **fixed** per stage and per attempt; the judge's token use is not yet recorded |
 | 12 | Half the trace check's flags are false (criterion 3) | **open**: the next revision must be measured on fresh answers |
-| 13 | SWE-chat drops parallel calls | **recoverable**; used for accepted answers. Candidates still see the table as it is: **open** |
+| 13 | SWE-chat drops parallel calls | **fixed for new tasks**: every stage reads the recovered record, and candidates are shown it. The first grid's candidates saw the table as it is |
 | 14 | Accepted answers that misreport, or make unverified claims | **decided** (D-37): such tasks leave the benchmark; 15 of 21 remain on the repaired instrument |
 
 ## Running

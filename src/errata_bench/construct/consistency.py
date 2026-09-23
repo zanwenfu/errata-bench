@@ -55,6 +55,30 @@ MUTATING = re.compile(
 )
 
 
+# Git commands that change the files. The replay reproduces edits and nothing
+# else, so a session that ran one of these before the cut has a tree that no
+# commit and list of edits can rebuild (B-239: documented as rejected since the
+# replay was written, and never implemented).
+GIT_TREE = re.compile(
+    r"\bgit\s+(?:-C\s+\S+\s+)?(checkout|switch|pull|merge|rebase|reset|stash|cherry-pick|am|apply"
+    r"|restore|clean|revert)\b([^|;&]*)")
+
+
+def _changes_tree(verb: str, rest: str) -> bool:
+    """Whether one git invocation changes the working tree, not just refs or the index."""
+    words = rest.split()
+    if verb == "stash" and words[:1] in (["list"], ["show"]):
+        return False
+    if (verb in ("checkout", "switch") and words[:1] and len(words) <= 2
+            and words[0] in ("-b", "-B", "-c", "-C", "--create", "--orphan")):
+        return False   # a new branch where HEAD already is
+    if verb == "reset" and not any(w in ("--hard", "--merge", "--keep") for w in words):
+        return False   # the index, not the files
+    if verb == "restore" and "--staged" in words and not {"--worktree", "-W"} & set(words):
+        return False
+    return True
+
+
 def _turns_until(turns: list[dict], cut: int) -> list[dict]:
     kept = [t for t in turns if t.get("turn_number") is not None and t["turn_number"] <= cut]
     return sorted(kept, key=lambda t: t["turn_number"])
@@ -165,6 +189,33 @@ def printed_heads(turns: list[dict], cut: int) -> list[str]:
         if m:
             heads.append(m.group(1))
     return heads
+
+
+def tree_changing_git(turns: list[dict], cut: int) -> list[str]:
+    """The agent's git commands before the cut that changed its files."""
+    out = []
+    for t in _turns_until(turns, cut):
+        if t.get("turn_type") != "tool_use" or (t.get("tool_name") or "") not in SHELL_TOOLS:
+            continue
+        cmd = str(t.get("command") or "")
+        if any(_changes_tree(m.group(1), m.group(2)) for m in GIT_TREE.finditer(cmd)):
+            out.append(" ".join(cmd.split())[:120])
+    return out
+
+
+def why_inconsistent(row: dict) -> str:
+    """One line saying where a rebuilt tree departs from its conversation."""
+    if row.get("head_contradicts_base"):
+        return (f"the conversation printed commit {row['heads_printed'][0]} as HEAD, "
+                f"not the base the tree was built from")
+    for f in row.get("files") or []:
+        if f.get("lines_differing"):
+            d = f.get("first_difference") or {}
+            return (f"the rebuilt tree differs from what the conversation showed of {f['path']}: "
+                    f"{f['lines_differing']} of {f['lines_checked']} lines, first at line {d.get('line')}")
+    if row.get("lost_edits"):
+        return f"edits before the cut that the corpus table lost: {', '.join(row['lost_edits'][:3])}"
+    return "consistent"
 
 
 def mutating_commands(turns: list[dict], cut: int) -> list[str]:

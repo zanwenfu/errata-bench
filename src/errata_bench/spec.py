@@ -147,6 +147,10 @@ class Task:
     license_type: str | None = None
     is_copyleft: bool = False
     rounds: int = 1
+    # Whether the conversation this task shows has the calls SWE-chat's table
+    # lost put back from the raw transcript (G-76, phase B). False for every
+    # task built before: their candidates saw the table as it is.
+    calls_recovered: bool = False
 
     @property
     def discriminates(self) -> bool:
@@ -234,6 +238,10 @@ def fingerprint(task: Task) -> str:
         # admitted at all, so it changes the question.
         task.oracle_calls, task.criterion_calls,
     ))
+    # The conversation shown changes when lost calls are put back, so that is a
+    # different question. Only when set: every task built before keeps its stamp.
+    if task.calls_recovered:
+        material += "\x00calls_recovered"
     return hashlib.sha1(material.encode()).hexdigest()[:16]
 
 

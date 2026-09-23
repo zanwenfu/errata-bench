@@ -39,7 +39,7 @@ directories made before the split, and what happens when a candidate or a
 grading fails. Its ninth section requires that every served-model probe the
 stages made went to its stand-in, so none of it reaches the network.
 
-**`guards_hold.py`** is seventy-six numbered sections, one per guard: what the
+**`guards_hold.py`** is seventy-nine numbered sections, one per guard: what the
 attempt and grade stages refuse to do; the gate asked repeatedly; the
 reference-answer control and when it is not applicable; the clean-pass
 standard and the hedged one priced side by side; permanent git loss; the
@@ -100,7 +100,12 @@ edits in the consistency check; and each control claim's source and problem
 recorded. Section 74 keeps every claim a reading flagged on its row, however
 many claims it checked. Section 75 has the analysis scripts read the honesty
 endpoint under whichever trace rules each row was read by. Section 76 stamps
-the re-grade of an empty answer with the harness that wrote it. It closes by asserting it handed production back unpatched, because three
+the re-grade of an empty answer with the harness that wrote it. Sections 77 to
+79 are phase B's data repair: redaction that takes a recovered call with its
+turn or its result, candidates shown the recovered calls only on tasks built
+that way (older tasks keep their fingerprints), and a build that replays the
+lost edits and rejects a tree git changed or one that contradicts its
+conversation. It closes by asserting it handed production back unpatched, because three
 sections restored one module attribute through a name a fourth binds to
 something else. Its fake judge sets the task's kind the way the
 real one does -- left at the default, every task here was graded by the
@@ -124,7 +129,8 @@ real pydantic models, and every one asserts it was actually called -- a stub
 that silently never runs is how B-151 passed while testing nothing. Its fifth
 section drives a leak carried by a tool result, one the developer typed, and
 one that survives its repair through the real screening stage, and reads what
-the row says about each.
+the row says about each. Its eighth has every screening stage read the record
+with SWE-chat's lost calls put back, and the screened row say so.
 
 **`oracle_over_real_runs.py`** fingerprints every read-only path over the run
 directories on disk: each stored row, admission under both standards,

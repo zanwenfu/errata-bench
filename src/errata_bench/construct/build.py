@@ -25,7 +25,9 @@ import re
 import tempfile
 from pathlib import Path
 
+from ..corpus.recover import has_transcript, recovered
 from ..corpus.sessions import load_repos
+from .consistency import check as consistency_check, tree_changing_git, why_inconsistent
 from .edits import edits_before, replay
 from .presence import check, repo_url
 from ..corpus.turns import load_session_turns
@@ -166,7 +168,10 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
     starts = session_starts({r["session_id"] for r in located})
     commits = load_commits_by_repo()
     repos = load_repos()
-    turns_by_session = load_session_turns({r["session_id"] for r in located})
+    # With the calls SWE-chat's table lost put back (G-76): edits among them
+    # are replayed like any other, and a tree built without them lacked what
+    # the conversation's own results say was written.
+    turns_by_session = recovered(load_session_turns({r["session_id"] for r in located}))
 
     for row in located:
         repo_id = row.get("repo_id") or ""
@@ -306,6 +311,14 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
             reject(f"another session already built {task_id}; two tasks cannot share a name")
             continue
         url = repo_url(repo_id, repo.url)
+        # A tree changed by git before the cut is in no commit plus edits
+        # (B-239). Documented as rejected since the replay was written; this is
+        # the check that does it.
+        git = tree_changing_git(turns, row["cut"])
+        if git:
+            reject(f"the agent changed its files with git before the cut, which no replay "
+                   f"reproduces: {git[0][:90]}")
+            continue
 
         base = scratch or Path(tempfile.gettempdir()) / "errata-bench-build"
         base.mkdir(parents=True, exist_ok=True)
@@ -329,6 +342,15 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
             rep = replay(tree, edits, repo_id)
             if not rep.ok:
                 reject(f"the agent's in-session edits do not apply to the base commit: {rep.reason[:120]}")
+                continue
+            # The tree against what the conversation showed of it (A5): a file's
+            # last read before the cut, line by line, and any HEAD it printed.
+            # On the first grid 3 of 21 trees differed -- an older base, an
+            # uncommitted file -- and an agent that checked then found the
+            # opposite of what the conversation said.
+            consistent = consistency_check(tree, turns, row["cut"], sha)
+            if not consistent["consistent"]:
+                reject(why_inconsistent(consistent))
                 continue
             presence = check(task_id, sig, tree)
 
@@ -383,6 +405,7 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
                 rounds=row.get("rounds", 1),
                 edits_replayed=rep.applied,
                 edits_verified=rep.verified,
+                calls_recovered=bool(row.get("calls_recovered")) and has_transcript(row["session_id"]),
             )
         )
     return result

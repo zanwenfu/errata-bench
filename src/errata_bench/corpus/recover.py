@@ -16,11 +16,13 @@ fractional turn number, so no existing turn number moves -- tasks store their
 cut, resolution and redactions as turn numbers -- and is rendered with the turn
 number of the call it was issued beside (`shown_as`). A recovered row says so.
 
-Not applied to what a candidate is shown: the first grid's candidates saw the
-table as it is, and reading their answers against a record they were not shown
-would change the question. Used where the record should be what the original
-agent had -- the conversation the accepted answer was written after -- and to
-measure what the rebuilt tree is missing.
+Where it applies. Always to the conversation an accepted answer was written
+after, which is the record its author had. For tasks built from now on
+(phase B), to every stage: screening reads the recovered record, the build
+replays the lost edits, and the task says so (`Task.calls_recovered`), so its
+candidates are shown the calls too. Never to tasks built before: the first
+grid's candidates saw the table as it is, and reading their answers against a
+record they were not shown would change the question.
 """
 
 from __future__ import annotations
@@ -33,6 +35,20 @@ def transcript_path(session_id: str) -> Path:
     from .sessions import CORPUS
 
     return CORPUS / "transcripts" / f"{session_id}.jsonl"
+
+
+def has_transcript(session_id: str) -> bool:
+    """Whether this session's lost calls can be put back here."""
+    return transcript_path(session_id).is_file()
+
+
+def recovered(turns_by_session: dict[str, list[dict]]) -> dict[str, list[dict]]:
+    """Every session's turns with its lost calls put back, where its transcript is here.
+
+    What the stages that build new tasks read (phase B): the leak gate and the
+    candidate then see the same record, and the build replays the lost edits.
+    """
+    return {sid: recover(sid, turns) for sid, turns in turns_by_session.items()}
 
 
 def raw_calls(path: Path) -> list[dict]:

@@ -296,6 +296,10 @@ def apply(
         n = t.get("turn_number") or 0
         if n in drop:
             continue
+        # A call put back from the raw transcript (G-76) is shown under the turn
+        # of the call it was issued beside, so removing that turn removes it.
+        if t.get("recovered") and t.get("shown_as") in drop:
+            continue
         if n in edits:
             # The surveyor sees each turn truncated, so a rewrite of a long turn
             # covers only what it was shown. Re-attaching the untouched tail
@@ -307,4 +311,7 @@ def apply(
                 replacement = replacement + original[SURVEY_CHARS:]
             t = {**t, "content": replacement}
         out.append(t)
-    return out
+    # And a recovered call goes with its result: a call whose result was
+    # removed would show work whose outcome the conversation no longer holds.
+    kept = {t.get("tool_call_id") for t in out if t.get("turn_type") == "tool_result"}
+    return [t for t in out if not (t.get("recovered") and t.get("tool_call_id") not in kept)]

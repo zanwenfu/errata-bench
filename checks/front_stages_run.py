@@ -233,8 +233,10 @@ def main() -> int:
     row = screened[0]
     for field in ("session_id", "cut", "kind", "defect", "resolution",
                   "asks_for_something", "within_scope", "signals_trouble",
-                  "redaction_worked", "screen_passes"):
+                  "redaction_worked", "screen_passes", "calls_recovered"):
         check(field in row, f"{field} is on the row -> {row.get(field)!r}")
+    check(row["calls_recovered"] is False,
+          "and a session with no raw transcript here says its lost calls were not put back")
     check(row["asks_for_something"] is True and row["within_scope"] is True
           and row["signals_trouble"] is False,
           "and the three gate verdicts are the ones the fakes gave")
@@ -445,6 +447,62 @@ def main() -> int:
     check(load(r7b.readings) and load(r7b.readings)[0].get("error")
           and not _completed7(r7b.readings),
           "while a reading that really failed is still written with an error and re-asked")
+
+    print("\n8. the screening stages read the record with SWE-chat's lost calls put back")
+    # G-76, phase B. Of a batch of parallel calls the conversations table keeps
+    # only the last. The reader, locate and the leak gate must see what a
+    # candidate built from this moment will be shown: the whole batch. Each
+    # stage is checked, since each loads the turns for itself.
+    import errata_bench.corpus.recover as recover_mod
+    dir8 = Path(tempfile.mkdtemp())
+    (dir8 / "s-rec.jsonl").write_text("\n".join(json.dumps(
+        {"type": "assistant", "isSidechain": False, "message": {"id": "m1", "content": [
+            {"type": "tool_use", "id": cid, "name": "Read",
+             "input": {"file_path": f"/Users/d/code/up/src/{name}"}}]}})
+        for cid, name in (("lost", "retry.py"), ("kept", "upload.py"))) + "\n")
+    SESSIONS["s-rec"] = SESSION[:2] + [
+        {"turn_number": 4, "turn_type": "tool_use", "tool_name": "Read", "tool_call_id": "kept",
+         "content": json.dumps({"file_path": "/Users/d/code/up/src/upload.py"})},
+        {"turn_number": 5, "turn_type": "tool_result", "tool_call_id": "lost",
+         "content": "def retry(): pass"},
+    ] + SESSION[3:]
+    saw8: dict[str, bool] = {}
+    stage8 = {"now": ""}
+    seen8 = lambda turns: any(t.get("recovered") for t in turns)
+
+    def excerpt8(turns, cut, **kw):
+        saw8[stage8["now"]] = saw8.get(stage8["now"], False) or seen8(turns)
+        return fake_build_excerpt(turns, cut, **kw)
+
+    async def read8(turns, turn, **kw):
+        saw8["read"] = seen8(turns)
+        return await fake_read_pushback(turns, turn, **kw)
+
+    async def locate8(turns, turn, **kw):
+        saw8["locate"] = seen8(turns)
+        return await fake_locate(turns, turn, **kw)
+
+    kept8 = (recover_mod.transcript_path, turns_mod.build_excerpt, reading_mod.read_pushback,
+             trajectory_mod.locate)
+    recover_mod.transcript_path = lambda sid: dir8 / f"{sid}.jsonl"
+    turns_mod.build_excerpt, reading_mod.read_pushback, trajectory_mod.locate = excerpt8, read8, locate8
+    p8 = Paths(Path(tempfile.mkdtemp()) / "run")
+    append(p8.moments, {"session_id": "s-rec", "turn_number": 7, "repo_id": "acme/up",
+                        "kind": "correction", "agent_turns_before": 4})
+    try:
+        for stage, label in ((stage_triage, "triage"), (stage_read, "read"), (stage_locate, "locate"),
+                             (stage_signature, "signature"), (stage_screen, "screen")):
+            stage8["now"] = label
+            asyncio.run(stage(p8, 10**9, concurrency=1))
+    finally:
+        (recover_mod.transcript_path, turns_mod.build_excerpt, reading_mod.read_pushback,
+         trajectory_mod.locate) = kept8
+    screened8 = load(p8.screened)
+    check(all(saw8.get(k) for k in ("triage", "read", "locate", "screen")),
+          f"triage, the reader, locate and the leak gate each saw the recovered call: {saw8}")
+    check(bool(screened8) and screened8[0].get("calls_recovered") is True,
+          f"and the screened row says so, for the build to pass on: "
+          f"{screened8[0].get('calls_recovered') if screened8 else 'no row'}")
 
     print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
     for f in FAIL:

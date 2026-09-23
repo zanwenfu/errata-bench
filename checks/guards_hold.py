@@ -5302,6 +5302,143 @@ check(_row76.get("outcome") == "no_answer" and _row76.get("code_version") == _cv
       f"the empty answer is recorded as no answer, stamped like every other re-graded row: "
       f"{ {k: _row76.get(k) for k in ('outcome', 'code_version')} }")
 
+print("\n77. redaction takes a recovered call with the turn it is shown under, or with its result")
+# Phase B shows tasks' candidates the calls SWE-chat's table lost (G-76). A
+# recovered call has a fractional place and is shown under the turn of the
+# call it was issued beside, so removing that turn must remove it; and a call
+# whose result was removed would show work whose outcome the conversation no
+# longer holds.
+from errata_bench.find.redact import apply as _apply77
+_rec77 = [
+    _T63(1, "user_prompt", content="fix it"),
+    {"turn_number": 1.5, "turn_type": "tool_use", "tool_name": "Edit", "content": "{}",
+     "tool_call_id": "lost", "recovered": True, "shown_as": 2},
+    _T63(2, "tool_use", tool_name="Edit", content="{}", tool_call_id="kept"),
+    _T63(3, "tool_result", content="lost ok", tool_call_id="lost"),
+    _T63(4, "tool_result", content="kept ok", tool_call_id="kept"),
+    _T63(5, "assistant_response", content="done"),
+]
+_ids77 = lambda ts: [t.get("tool_call_id") or t["turn_type"] for t in ts]
+check(_ids77(_apply77(_rec77, [2])) == ["user_prompt", "lost", "kept", "assistant_response"]
+      and _ids77(_apply77(_rec77, [3])) == ["user_prompt", "kept", "kept", "assistant_response"]
+      and _ids77(_apply77(_rec77, [4])) == ["user_prompt", "lost", "kept", "lost", "assistant_response"]
+      and len(_apply77(_rec77, [])) == 6,
+      f"removing turn 2 takes the call shown under it; removing a recovered call's result takes the call; "
+      f"a call from the table stays as before: {_ids77(_apply77(_rec77, [2]))} {_ids77(_apply77(_rec77, [3]))}")
+
+print("\n78. a task built with the lost calls put back shows them to its candidate; one built before does not")
+# Old tasks keep the stamp their stored answers carry: the fingerprint of an
+# unflagged task is the one the code computed before the flag existed.
+import dataclasses as _dc78
+_t78 = Task("t78", "r/r", "u", "sha", "st78", 10, 11, 12, 13, "wrong " * 10, "right " * 10, "a defect", "none")
+check(fingerprint(_t78) == "d1c8f4a8161d2a2f"
+      and fingerprint(_dc78.replace(_t78, calls_recovered=True)) != "d1c8f4a8161d2a2f",
+      "a task built before keeps its stamp; one built with the calls put back is a different question")
+(_dir70 / "st78.jsonl").write_text("\n".join([
+    _entry70("m1", "e1", "Edit", {"file_path": "/r/README_ZH.md", "old_string": "a", "new_string": "b"}),
+    _entry70("m1", "e3", "Edit", {"file_path": "/r/README_RU.md", "old_string": "a", "new_string": "b"}),
+]) + "\n")
+_turns78 = [
+    _T63(1, "user_prompt", content="update the READMEs"),
+    _T63(2, "tool_use", tool_name="Edit", file_path="/r/README_RU.md", content="{}", tool_call_id="e3"),
+    _T63(3, "tool_result", content="The file /r/README_ZH.md has been updated successfully.", tool_call_id="e1"),
+    _T63(4, "tool_result", content="The file /r/README_RU.md has been updated successfully.", tool_call_id="e3"),
+    _T63(5, "assistant_response", content="both updated"),
+]
+recover_mod.transcript_path = lambda sid: _dir70 / f"{sid}.jsonl"
+try:
+    _plain78 = attempt_mod.candidate_turns(_t78, _turns78)
+    _shown78 = attempt_mod.candidate_turns(_dc78.replace(_t78, calls_recovered=True), _turns78)
+finally:
+    recover_mod.transcript_path = _NO_TRANSCRIPTS
+check(not any(t.get("recovered") for t in _plain78)
+      and [t.get("tool_call_id") for t in _shown78 if t.get("recovered")] == ["e1"],
+      "the old task shows the table as its candidates saw it, the new one the whole batch")
+
+print("\n79. the build replays the lost edits, and rejects a tree git changed or one that contradicts its conversation")
+# Phase B. G-76 cost two grid trees edits the agent made before the cut; B-239
+# documented a rejection of git-changed trees that nothing implemented; and A5
+# found 3 of 21 trees differing from what their conversation showed.
+_kept79 = {n: getattr(_B43w, n) for n in
+           ("load_repos", "session_starts", "load_commits_by_repo", "load_session_turns", "fetch", "replay", "check")}
+_long79 = lambda head: head + " " + "the uploader now retries and the tests pass. " * 12
+
+
+def _build79(turns, *, flag=True):
+    _B43w.load_repos = lambda: {"acme/up": _Repo43w(repo_id="acme/up", url="https://x/acme/up",
+                                                    license_type="mit", language="Python")}
+    _B43w.session_starts = lambda ids=None: {"s79": 1_000_000_000}
+    _B43w.load_commits_by_repo = lambda **kw: {"acme/up": [
+        type("C79", (), {"author_ns": 1, "commit_sha": "abc123"})()]}
+    _B43w.load_session_turns = lambda ids: {"s79": list(turns)}
+    _B43w.fetch = lambda url, sha, dest: _Checkout43w()
+    _B43w.replay = lambda tree, edits, repo_id: _Replay43(applied=len(edits), verified=len(edits), files={"b"})
+    _B43w.check = lambda task_id, sig, tree: _Presence43w(
+        task_id=task_id, probeable=True, present=True, detail="ok", strength="declared")
+    row = {"session_id": "s79", "repo_id": "acme/up", "request": 1, "failed": 8, "complaint": 9,
+           "resolved": 10, "cut": 7, "kind": "none", "path": "src/a.py", "token": "",
+           "defect": "a defect", "rounds": 1, "usable": True, "asks_for_something": True,
+           "within_scope": True, "signals_trouble": False, "calls_recovered": flag}
+    return _B43w.build([row])
+
+
+def _turns79(shown="x = 1", *, git=False):
+    edit = lambda cid: _T63(2, "tool_use", tool_name="Edit", tool_call_id=cid,
+                            content=json.dumps({"file_path": "/home/dev/up/src/b.py", "old_string": "y", "new_string": "z"}))
+    return [
+        _T63(1, "user_prompt", content="make the uploader retry"),
+        edit("e2"),
+        _T63(3, "tool_result", content="The file /home/dev/up/src/c.py has been updated successfully.", tool_call_id="e1"),
+        _T63(4, "tool_result", content="The file /home/dev/up/src/b.py has been updated successfully.", tool_call_id="e2"),
+        (_T63(5, "tool_use", tool_name="Bash", command="git checkout main", tool_call_id="g1", content="")
+         if git else
+         _T63(5, "tool_use", tool_name="Read", file_path="/home/dev/up/src/a.py", tool_call_id="r1", content="")),
+        _T63(6, "tool_result", content=("Switched to branch 'main'" if git else f"     1→{shown}"),
+             tool_call_id=("g1" if git else "r1")),
+        _T63(7, "user_prompt", content="and make it back off"),
+        _T63(8, "assistant_response", content=_long79("Done.")),
+        _T63(9, "user_prompt", content="you never checked the backoff fires"),
+        _T63(10, "assistant_response", content=_long79("You are right, I added the sleep and verified it.")),
+    ]
+
+
+(_dir70 / "s79.jsonl").write_text("\n".join([
+    _entry70("m2", "e1", "Edit", {"file_path": "/home/dev/up/src/c.py", "old_string": "p", "new_string": "q"}),
+    _entry70("m2", "e2", "Edit", {"file_path": "/home/dev/up/src/b.py", "old_string": "y", "new_string": "z"}),
+]) + "\n")
+recover_mod.transcript_path = lambda sid: _dir70 / f"{sid}.jsonl"
+try:
+    _ok79 = _build79(_turns79())
+    _off79 = _build79(_turns79(), flag=False)
+    _bad79 = _build79(_turns79("x = 2"))
+    _git79 = _build79(_turns79(git=True))
+    recover_mod.transcript_path = _NO_TRANSCRIPTS
+    _none79 = _build79(_turns79())
+finally:
+    recover_mod.transcript_path = _NO_TRANSCRIPTS
+    for _n79, _v79 in _kept79.items():
+        setattr(_B43w, _n79, _v79)
+_why79 = lambda r: [x.reason for x in r.rejected]
+check([t.edits_replayed for t in _ok79.tasks] == [2] and [t.edits_replayed for t in _none79.tasks] == [1],
+      f"the edit the table lost is replayed with the one it kept, where the transcript is here: "
+      f"{[t.edits_replayed for t in _ok79.tasks]} against {[t.edits_replayed for t in _none79.tasks]} without it")
+check(not _git79.tasks and any("with git" in w for w in _why79(_git79)),
+      f"a tree changed by git before the cut is rejected: {_why79(_git79)}")
+check(not _bad79.tasks and any("differs from what the conversation showed" in w and "src/a.py" in w
+                               for w in _why79(_bad79)),
+      f"and so is a tree that differs from what the conversation read of it: {_why79(_bad79)}")
+check([t.calls_recovered for t in _ok79.tasks] == [True] and [t.calls_recovered for t in _off79.tasks] == [False]
+      and [t.calls_recovered for t in _none79.tasks] == [False],
+      "the task shows the recovered calls only if its screening read them and the transcript is here")
+_git79c = lambda cmd: _cs66.tree_changing_git([_T63(1, "tool_use", tool_name="Bash", command=cmd)], 2)
+_changes79 = ["git pull", "git checkout -- src/a.py", "git stash", "git reset --hard HEAD~1",
+              "git merge feat", "git checkout -b feat origin/feat", "git -C sub restore src/a.py"]
+_keeps79 = ["git stash list", "git checkout -b feat", "git switch -c feat", "git reset HEAD src/a.py",
+            "git restore --staged src/a.py", "git log --oneline", "git status && git diff"]
+check(all(_git79c(c) for c in _changes79) and not any(_git79c(c) for c in _keeps79),
+      f"only commands that change files count: {[c for c in _changes79 if not _git79c(c)]} missed, "
+      f"{[c for c in _keeps79 if _git79c(c)]} wrongly counted")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended

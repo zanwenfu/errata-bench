@@ -82,6 +82,7 @@ async def stage_triage(paths: Paths, limit: int, concurrency: int) -> Progress:
     """
     from ..corpus.turns import build_excerpt
     from ..corpus.turns import load_session_turns
+    from ..corpus.recover import recovered
     from ..find.triage import triage
 
     p = Progress("triage")
@@ -100,7 +101,7 @@ async def stage_triage(paths: Paths, limit: int, concurrency: int) -> Progress:
         p.took_s = time.monotonic() - t0
         return p
 
-    turns = load_session_turns({m["session_id"] for m in todo})
+    turns = recovered(load_session_turns({m["session_id"] for m in todo}))
 
     async def one(m):
         try:
@@ -167,6 +168,7 @@ async def stage_triage(paths: Paths, limit: int, concurrency: int) -> Progress:
 async def stage_read(paths: Paths, limit: int, concurrency: int) -> Progress:
     """Decide which pushback moments represent a genuine agent error."""
     from ..corpus.turns import load_session_turns
+    from ..corpus.recover import recovered
     from ..find.reading import read_pushback
 
     p = Progress("read")
@@ -186,7 +188,7 @@ async def stage_read(paths: Paths, limit: int, concurrency: int) -> Progress:
         p.took_s = time.monotonic() - t0
         return p
 
-    turns = load_session_turns({m["session_id"] for m in todo})
+    turns = recovered(load_session_turns({m["session_id"] for m in todo}))
 
     async def one(m):
         try:
@@ -207,6 +209,7 @@ async def stage_read(paths: Paths, limit: int, concurrency: int) -> Progress:
 async def stage_locate(paths: Paths, limit: int, concurrency: int) -> Progress:
     """Find the four turns that define each task."""
     from ..corpus.turns import load_session_turns
+    from ..corpus.recover import recovered
     from ..find.trajectory import boundaries, locate
 
     p = Progress("locate")
@@ -222,7 +225,7 @@ async def stage_locate(paths: Paths, limit: int, concurrency: int) -> Progress:
         p.took_s = time.monotonic() - t0
         return p
 
-    turns = load_session_turns({r["session_id"] for r in todo})
+    turns = recovered(load_session_turns({r["session_id"] for r in todo}))
 
     async def one(r):
         try:
@@ -396,6 +399,7 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
     from ..construct.build import last_user_message
     from ..find.leakage import signals_trouble
     from ..corpus.turns import build_excerpt, load_session_turns
+    from ..corpus.recover import has_transcript, recovered
     from ..find.redact import apply, carried_by, survey
     from ..find.scope import in_scope
 
@@ -452,7 +456,7 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
         p.took_s = time.monotonic() - t0
         return p
 
-    turns = load_session_turns({r["session_id"] for r in todo})
+    turns = recovered(load_session_turns({r["session_id"] for r in todo}))
 
     async def one(r):
         out = dict(r)
@@ -498,6 +502,10 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
             out["redacted_turns"] = []
             out["rewritten_turns"] = {}
             out["redaction_worked"] = False
+            # Whether these gates read the record with SWE-chat's lost calls put
+            # back (G-76). The build shows them to a candidate only if so, so the
+            # candidate never sees a call the leak gate did not.
+            out["calls_recovered"] = has_transcript(r["session_id"])
 
             # `verdict`, not `leak.signals_trouble`: the row is repaired when the
             # gate as a whole says it leaks, which with more than one reading is

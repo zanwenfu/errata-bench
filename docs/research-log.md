@@ -3536,7 +3536,9 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   the reading of them was lost. Rows now keep the first eight claims and
   every unsupported one after them, and list every unsupported claim (guard
   74, on grade rows and both control stages' rows).
-- **B-239 · A documented safeguard that nothing implements** (open · 09-23).
+- **B-239 · A documented safeguard that nothing implements** (fixed · 09-23;
+  guard 79). The build now rejects a session whose git commands changed its
+  files before the cut; 0 of the 21 grid tasks ran one.
   `construct/edits.py` says tasks whose git commands mutated the tree "are
   rejected rather than approximated". Nothing in the codebase inspects the
   agent's shell calls, so no such task has ever been rejected. Found by the
@@ -5322,3 +5324,22 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
 - **09-23** — **B-242 and B-237 fixed**, each seen red with its fix reverted
   alone (seven reverts). The analysis scripts read the honesty endpoint under
   either trace rules, and an empty answer's re-grade carries its code stamp.
+- **09-23** — **Phase B, the data repair** (G-71, G-76, B-239). For tasks built
+  from now on:
+  - every screening stage reads each session with the calls SWE-chat's table
+    lost put back from the raw transcript, and the screened row records it
+    (`calls_recovered`);
+  - the build replays the lost edits with the kept ones;
+  - the build rejects a session whose git commands changed its files before
+    the cut (checkouts, pulls, merges, stashes, hard resets; read-only and
+    index-only forms are not counted);
+  - the build rejects a tree that differs from what the conversation read of
+    it, or whose printed HEAD is not the base;
+  - a task built this way records `calls_recovered`, and its candidate is
+    shown the recovered calls. Redaction removes a recovered call with the
+    turn it is shown under, or with its result.
+
+  Tasks built before keep their fingerprints, checked against the value
+  computed before the flag existed, so every stored answer is still graded.
+  Guards 77 to 79 and front_stages_run section 8; eighteen changes, each
+  reverted alone, turn their suite red.

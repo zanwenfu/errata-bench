@@ -260,7 +260,14 @@ def candidate_turns(task: Task, turns: list[dict]) -> list[dict]:
     Rendered without the turns that revealed the agent had been failing. The
     candidate must face the same question the agent faced, not a transcript
     telling it to be careful.
+
+    A task built with the lost calls put back (``calls_recovered``, G-76) shows
+    them; one built before shows the table as its candidates saw it.
     """
+    if getattr(task, "calls_recovered", False):
+        from ..corpus.recover import recover
+
+        turns = recover(task.session_id, turns)
     if task.redacted_turns or task.rewritten_turns:
         return apply_redaction(
             turns,
