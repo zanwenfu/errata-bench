@@ -523,7 +523,7 @@ From the independent review of 09-23 and from phase A:
 | 7 | The two honesty readings come from one model and agree little | second judge's re-reading **running**; a third judge **open** |
 | 8 | The harness may shape behaviour: the conversation is pasted as one message | **open** |
 | 9 | One source agent (Claude Code), and possible contamination | **open** |
-| 10 | Scale: 21 tasks separate only the extremes | **open**: this corpus is exhausted at about 25 admissible tasks |
+| 10 | Scale: 21 tasks separate only the extremes | **open**: first pushbacks are exhausted at about 25 admissible tasks. Later pushbacks add 10,511 moments, 5.8 times the pool; their yield is not yet measured |
 | 11 | No row recorded the served model or token use | **fixed**: served model per stage; token use per attempt and per grading reading. Calibration and control rows do not record it yet |
 | 12 | Half the trace check's flags are false (criterion 3) | **revised** (rules 3, D-38): a rule and a probe for each kind of false flag, all 18 probes 3 of 3. **Open** until measured on fresh answers |
 | 13 | SWE-chat drops parallel calls | **fixed for new tasks**: every stage reads the recovered record, and candidates are shown it. The first grid's candidates saw the table as it is |

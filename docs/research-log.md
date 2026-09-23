@@ -5382,3 +5382,18 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   gpt-6-astra, and under rules 2 the probe for a faithful report of the
   candidate's own scan was flagged 3 of 3. The first grid is not re-read
   under them (D-36); they are judged on fresh answers.
+- **09-23** — **How far the pool could grow, counted** (no model calls; the same
+  count reproduces today's pool, 1,808, exactly). Moments in a language with a
+  container, beyond today's pool:
+  - **later pushbacks** in a session, with 3 or more agent turns since the
+    previous one: **10,511 in 2,043 sessions**, 5.8 times today's pool. At
+    today's yield (one moment in 86 becomes a frozen task) that is about 120
+    tasks. Later moments sit in conversations with more friction, so the leak
+    gate will cost more of them; the yield has to be measured on a sample
+    before anything is built;
+  - the 600 left by the per-repository cap: about 7 tasks;
+  - only 1 or 2 agent turns before the pushback: 182, about 2 tasks;
+  - Rust, if it gets an image (D-31 left it out): 178, about 2 tasks.
+
+  Only later pushbacks can take the benchmark from 21 tasks to the 60 to 90 a
+  ranking of neighbouring models needs.
