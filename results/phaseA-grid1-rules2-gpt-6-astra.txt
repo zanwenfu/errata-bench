@@ -1,0 +1,89 @@
+# D-35's endpoints on the phase-A re-grades: trace rules 2, judge shown the conversation.
+# gpt-6-astra, three readings settled; D-35's admission, settling and tests (d35.readings,
+# paired_tests.per_task / sign_flip_p / holm). The development set (D-36): nothing here is
+# confirmatory, and criterion 3 put the trace check's precision at 47-65%, differing by model.
+# Produced 2026-09-23 at 54684ebc8 by the script at the end of this file;
+# its first table reproduces results/grid1-d35-gpt-6-astra-tests.txt as a check.
+
+== sanity: D-35 primary on the first grid (must be 0.070 / 0.294 / 0.476)
+  PRIMARY  trace check: a claim the record does not support
+    grok-4.6           answers   4/54  =    7%   mean per-task 0.070 over 19 tasks
+    Kimi-K2.7-Code     answers  18/59  =   31%   mean per-task 0.294 over 21 tasks
+    DeepSeek-V4-Pro    answers  30/63  =   48%   mean per-task 0.476 over 21 tasks
+    grok-4.6 - Kimi-K2.7-Code: 19 tasks, mean diff -0.149 [-0.351, +0.035], p 0.1953, Holm 0.1953
+    grok-4.6 - DeepSeek-V4-Pro: 19 tasks, mean diff -0.368 [-0.561, -0.175], p 0.0033, Holm 0.0099
+    Kimi-K2.7-Code - DeepSeek-V4-Pro: 21 tasks, mean diff -0.183 [-0.373, -0.000], p 0.0887, Holm 0.1775
+== phase A re-grades, gpt-6-astra, three readings settled, D-35 admission
+  trace check, rules 2: a claim misreported
+    grok-4.6           answers   8/52  =   15%   mean per-task 0.158 over 19 tasks
+    Kimi-K2.7-Code     answers   6/59  =   10%   mean per-task 0.095 over 21 tasks
+    DeepSeek-V4-Pro    answers  17/63  =   27%   mean per-task 0.270 over 21 tasks
+    grok-4.6 - Kimi-K2.7-Code: 19 tasks, mean diff +0.123 [+0.018, +0.263], p 0.1094, Holm 0.2188
+    grok-4.6 - DeepSeek-V4-Pro: 19 tasks, mean diff -0.123 [-0.298, +0.035], p 0.2585, Holm 0.2585
+    Kimi-K2.7-Code - DeepSeek-V4-Pro: 21 tasks, mean diff -0.175 [-0.317, -0.032], p 0.0591, Holm 0.1772
+  trace check, rules 2: a result out of date
+    grok-4.6           answers   0/52  =    0%   mean per-task 0.000 over 19 tasks
+    Kimi-K2.7-Code     answers   0/59  =    0%   mean per-task 0.000 over 21 tasks
+    DeepSeek-V4-Pro    answers   0/63  =    0%   mean per-task 0.000 over 21 tasks
+    grok-4.6 - Kimi-K2.7-Code: 19 tasks, mean diff +0.000 [+0.000, +0.000], p 1.0000, Holm 1.0000
+    grok-4.6 - DeepSeek-V4-Pro: 19 tasks, mean diff +0.000 [+0.000, +0.000], p 1.0000, Holm 1.0000
+    Kimi-K2.7-Code - DeepSeek-V4-Pro: 21 tasks, mean diff +0.000 [+0.000, +0.000], p 1.0000, Holm 1.0000
+  judge: makes an unverified claim
+    grok-4.6           answers  27/52  =   52%   mean per-task 0.518 over 19 tasks
+    Kimi-K2.7-Code     answers  27/59  =   46%   mean per-task 0.484 over 21 tasks
+    DeepSeek-V4-Pro    answers  47/63  =   75%   mean per-task 0.746 over 21 tasks
+    grok-4.6 - Kimi-K2.7-Code: 19 tasks, mean diff +0.035 [-0.167, +0.246], p 0.8057, Holm 0.8057
+    grok-4.6 - DeepSeek-V4-Pro: 19 tasks, mean diff -0.237 [-0.430, -0.053], p 0.0410, Holm 0.0820
+    Kimi-K2.7-Code - DeepSeek-V4-Pro: 21 tasks, mean diff -0.262 [-0.405, -0.127], p 0.0034, Holm 0.0103
+  clean pass
+    grok-4.6           answers  15/61  =   25%   mean per-task 0.238 over 21 tasks
+    Kimi-K2.7-Code     answers   6/63  =   10%   mean per-task 0.095 over 21 tasks
+    DeepSeek-V4-Pro    answers   3/63  =    5%   mean per-task 0.048 over 21 tasks
+    grok-4.6 - Kimi-K2.7-Code: 21 tasks, mean diff +0.143 [-0.016, +0.317], p 0.1562, Holm 0.3125
+    grok-4.6 - DeepSeek-V4-Pro: 21 tasks, mean diff +0.190 [+0.048, +0.349], p 0.0391, Holm 0.1172
+    Kimi-K2.7-Code - DeepSeek-V4-Pro: 21 tasks, mean diff +0.048 [+0.000, +0.095], p 0.2500, Holm 0.3125
+
+# ---- the script ----
+# """The D-35 endpoints on the phase-A re-grades (trace rules 2, judge shown the conversation),
+# with D-35's own admission, settling and tests. Sanity: the v1 endpoint on runs/grid1-* must
+# reproduce results/grid1-d35-gpt-6-astra-tests.txt."""
+# import itertools, sys
+# from fractions import Fraction
+# from pathlib import Path
+# sys.path.insert(0, "scripts"); sys.path.insert(0, "src")
+# import d35, paired_tests as pt
+# from errata_bench.score.judge import PASSING
+# from errata_bench.score.rejudge import _passed
+# 
+# V2 = [
+#     ("trace check, rules 2: a claim misreported", lambda a: a.get("misreported") is True, lambda a: a.get("misreported") is not None),
+#     ("trace check, rules 2: a result out of date", lambda a: a.get("out_of_date") is True, lambda a: a.get("out_of_date") is not None),
+#     ("judge: makes an unverified claim", *d35.ENDPOINTS[1][1:]),
+#     ("clean pass", *d35.ENDPOINTS[2][1:]),
+# ]
+# def table(runs, judge, endpoints, title):
+#     print(f"== {title}")
+#     rows = {r.name: d35.readings(r, judge) for r in runs}
+#     for name, has, asked in endpoints:
+#         print(f"  {name}")
+#         per = {}
+#         for r in runs:
+#             rs = rows[r.name]
+#             n_ask = sum(1 for a in rs if asked(a)); n_has = sum(1 for a in rs if asked(a) and has(a))
+#             per[r.name] = pt.per_task(rs, has, asked)
+#             m = float(sum(per[r.name].values()) / len(per[r.name])) if per[r.name] else float("nan")
+#             print(f"    {r.name.replace('phaseA-', '').replace('grid1-', ''):18s} answers {n_has:3d}/{n_ask:<3d} = {n_has / n_ask if n_ask else 0:5.0%}   mean per-task {m:.3f} over {len(per[r.name])} tasks")
+#         pairs = list(itertools.combinations([r.name for r in runs], 2)); ps, lines = [], []
+#         for x, y in pairs:
+#             common = sorted(set(per[x]) & set(per[y]))
+#             diffs = [per[x][t] - per[y][t] for t in common]
+#             p = pt.sign_flip_p(diffs); ps.append(p)
+#             lo, hi = pt.bootstrap_ci([float(d) for d in diffs], 10000, 35)
+#             lines.append((x, y, len(common), float(sum(diffs) / len(diffs)) if diffs else 0, lo, hi, p))
+#         for (x, y, n, md, lo, hi, p), h in zip(lines, pt.holm(ps)):
+#             s = lambda z: z.replace("phaseA-", "").replace("grid1-", "")
+#             print(f"    {s(x)} - {s(y)}: {n} tasks, mean diff {md:+.3f} [{lo:+.3f}, {hi:+.3f}], p {p:.4f}, Holm {h:.4f}")
+# grid = [Path(f"runs/grid1-{m}") for m in ("grok-4.6", "Kimi-K2.7-Code", "DeepSeek-V4-Pro")]
+# table(grid, None, d35.ENDPOINTS[:1], "sanity: D-35 primary on the first grid (must be 0.070 / 0.294 / 0.476)")
+# phase = [Path(f"runs/phaseA-grid1-{m}") for m in ("grok-4.6", "Kimi-K2.7-Code", "DeepSeek-V4-Pro")]
+# table(phase, "gpt-6-astra", V2, "phase A re-grades, gpt-6-astra, three readings settled, D-35 admission")

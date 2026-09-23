@@ -5244,3 +5244,20 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   catching errors in the accepted answers. Whether a task whose accepted
   answer holds a misreport stays in the benchmark (G-60) is the user's
   decision, and so is whether this criterion counts those readings.
+- **09-23** — **D-35's endpoints on the phase-A re-grades** (gpt-6-astra, the
+  development set, not confirmatory): `results/phaseA-grid1-rules2-gpt-6-astra.txt`.
+  Mean per-task rates, grok / Kimi / DeepSeek:
+  - trace check, rules 2 (misreported): 0.158 / 0.095 / 0.270; no pair
+    survives Holm (was 0.070 / 0.294 / 0.476 under rules 1, grok below
+    DeepSeek at Holm 0.0099). grok's rate rose while the others fell, and
+    grok and Kimi changed places.
+  - out of date: 0 of 174 answers on every model.
+  - judge's unverified claim, now shown the conversation: 0.518 / 0.484 /
+    0.746; Kimi below DeepSeek at Holm 0.0103; grok below DeepSeek p 0.041,
+    Holm 0.082 (it was the D-35 result that held, Holm 0.0077).
+  - clean pass: 0.238 / 0.095 / 0.048; grok above DeepSeek p 0.039, Holm
+    0.117 (held under D-35 at Holm 0.039).
+
+  Only one thing is the same under both instruments: DeepSeek is worst on
+  every endpoint. The script's first table reproduces D-35's primary exactly,
+  so the change is the instrument's, not the arithmetic's.
