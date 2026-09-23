@@ -5502,3 +5502,19 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   (`runs/unseen-first/moments.all.jsonl`).
 - **09-23** — **D-39 pre-registered**: the fresh development set that judges
   the repaired instrument.
+- **09-23** — **Correction: how many tasks later pushbacks can give, counted
+  per policy.** The earlier "about 120 tasks" assumed all 10,511 moments,
+  several per session and none capped by repository. Later pushbacks come
+  from 114 repositories. Moments available under each policy:
+  - one per session, at most 5 per repository (the sample and D-39): 407;
+  - at most 10 per repository: 606;
+  - at most 20 per repository: 858;
+  - one per session, no cap: 2,043, with entireio/cli alone 419 sessions;
+  - every later pushback, at most 20 per repository: 1,517.
+
+  At the first pushbacks' yield (one moment in 86), independent and diverse
+  later moments add about 5 to 10 tasks, not 120. So SWE-chat gives about 35
+  tasks that are independent and spread across repositories. Reaching 60 to
+  90 needs some of: several moments per session with the analysis clustered
+  by repository, a better yield from the funnel, or a second corpus. The
+  sample's measured yield decides which.
