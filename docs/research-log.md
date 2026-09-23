@@ -329,6 +329,32 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   only definition of "right" this corpus contains. A task that rejects its own
   reference is broken, and whether the rule or the task is at fault, its scores
   cannot be trusted. It catches G-44 by itself.
+- **D-38 · The trace check's third rules, and how they may be judged.**
+  *(decided 09-23.)* Criterion 3 read 30 flags and found nine false. Four
+  came from the task data, which phase B's repair removes for new tasks. The
+  other five are the checker's:
+  - it held against an answer a claim the answer itself withdrew;
+  - it called a faithful report of the candidate's own scan unsupported,
+    because another read disagreed with the scan;
+  - it rejected a fair paraphrase ("the command runner timed out" for a call
+    refused when time ran out);
+  - it read instructions to the developer as a claim that they had acted;
+  - it disputed a count the record confirms.
+
+  Rules 3 add one instruction for each and keep every field, so rows read
+  under them are analysed exactly as rules-2 rows. Rules 2 and 3 readings of
+  one answer are never folded together.
+  **The probes.** Six new ones: a probe for each rule, and one that must
+  still be flagged (a count the candidate's own scan contradicts). Run on
+  gpt-6-astra, all 18 probes held 3 of 3 under rules 3. Under rules 2, the
+  own-scan probe was flagged 3 times in 3 and the paraphrase once in 3, which
+  are the real false flags reproduced. The other three new probes passed
+  under both, so they guard against regression but show no effect; only
+  real answers can.
+  **How they may be judged.** Per D-36, not on the 189 answers that shaped
+  them. Criterion 3 (at least 30 hand-read flags, at least 90% real) and
+  criterion 2 are measured next on fresh answers, from tasks built with
+  phase B's repair. Until then the first grid's numbers stay rules 2.
 - **D-37 · A task whose accepted answer does not survive the instrument is
   excluded, and that exclusion is the instrument working.** *(decided 09-23,
   approved by the developer, before criterion 2 is known.)* G-60 asked what
@@ -5351,3 +5377,8 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   control rows still record none: they are a few percent of a grid's calls,
   and threading the count through `control.check` is left for when it is
   needed.
+- **09-23** — **D-38: the trace check's third rules**, five instructions and six
+  probes drawn from criterion 3's false flags. All 18 probes held 3 of 3 on
+  gpt-6-astra, and under rules 2 the probe for a faithful report of the
+  candidate's own scan was flagged 3 of 3. The first grid is not re-read
+  under them (D-36); they are judged on fresh answers.

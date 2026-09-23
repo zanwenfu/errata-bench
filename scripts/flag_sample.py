@@ -42,7 +42,7 @@ def main(argv: list[str]) -> int:
     out.mkdir(parents=True, exist_ok=True)
     sample, summary = [], []
     for run in runs:
-        rows = [r for r in completed(run / "rejudge" / judge / "attempts.jsonl") if r.get("trace_rules") == 2]
+        rows = [r for r in completed(run / "rejudge" / judge / "attempts.jsonl") if isinstance(r.get("trace_rules"), int) and r.get("trace_rules") >= 2]
         by = {}
         for r in rows:
             by.setdefault((r["task_id"], r["run"]), []).append(r)
