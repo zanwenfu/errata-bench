@@ -4935,3 +4935,18 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     the known pairs without the conversation. That does not touch D-36's
     criteria, which are measured on the controls, the instrument checks,
     the re-grades and hand-read flags, against the grid's own admission.
+- **09-23** — **Phase A, step A5, as a measurement.** `construct/consistency.py`
+  checks a rebuilt tree against what the conversation showed of it:
+  - every line a Read showed, compared on the file's last read before the
+    cut, and only if no edit followed that read;
+  - a HEAD the conversation printed, against the base commit. Only
+    `git rev-parse HEAD`, or a `git log` whose first commit is HEAD, is
+    counted, because `git log -- path` starts elsewhere;
+  - commands that changed state outside the replayed edits, listed and not
+    judged. A plain redirect to /dev/null is not listed.
+  - Reads the corpus cut at 10 KB lose their possibly broken last line.
+
+  `scripts/consistency.py` rebuilds each task's tree exactly as an attempt
+  does (fetch, export, replay) and reports. Whether an inconsistent task
+  stays in the benchmark is a decision for the next grid, not this module's.
+  Guard section 66; its five rules reverted alone, all red.

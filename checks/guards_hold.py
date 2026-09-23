@@ -4872,6 +4872,55 @@ check(all(v == _want65 for v in _via65.values()),
       f"and the gate, the re-judge and the pipeline all hand calibration those conversations: "
       f"{ {k: len(v) for k, v in _via65.items()} }")
 
+print("\n66. the rebuilt tree is checked against what the conversation showed of it")
+# D-36 A5 (G-71). Only the agent's file edits are replayed onto the base, so the
+# container can hold something other than what the conversation says: the
+# version bump in gemini-voyager-13 ran through a command, and the container
+# still says 1.3.7. This measures the disagreement; it decides nothing.
+from errata_bench.construct import consistency as _cs66
+_tree66 = Path(tempfile.mkdtemp()) / "tree"
+(_tree66 / "src").mkdir(parents=True)
+(_tree66 / "src" / "app.ts").write_text("line one\nconst PORT = 8080\nline three\n")
+(_tree66 / "src" / "edited.ts").write_text("after the edit\n")
+_T66 = lambda n, kind, **kw: {"turn_number": n, "turn_type": kind, **kw}
+_dev66 = "/Users/dev/proj/src/app.ts"
+_turns66 = [
+    _T66(1, "tool_use", tool_name="Read", file_path=_dev66, content=""),
+    _T66(2, "tool_result", content="     1→OLD\n     2→const PORT = 3000"),
+    _T66(3, "tool_use", tool_name="Read", file_path=_dev66, content=""),
+    _T66(4, "tool_result", content="     1→line one\n     2→const PORT = 8080"),
+    _T66(5, "tool_use", tool_name="Read", file_path="/Users/dev/proj/src/edited.ts", content=""),
+    _T66(6, "tool_result", content="     1→before the edit"),
+    _T66(7, "tool_use", tool_name="Edit", file_path="/Users/dev/proj/src/edited.ts", content=""),
+    _T66(8, "tool_result", content="The file has been updated."),
+    _T66(9, "tool_use", tool_name="Bash", command="git log -- src/app.ts", content=""),
+    _T66(10, "tool_result", content="deadbee fix the port"),
+    _T66(11, "tool_use", tool_name="Bash", command="bun run bump 2>&1 > /dev/null", content=""),
+    _T66(12, "tool_result", content="New version: 1.3.8"),
+]
+_ok66 = _cs66.check(_tree66, _turns66, 12, "abc1234def")
+check(_ok66["consistent"] is True and _ok66["files_compared"] == 1 and _ok66["heads_printed"] == []
+      and _ok66["mutating_commands"] == ["bun run bump 2>&1 > /dev/null"],
+      f"a file's last read is compared, one edited after its read is not, `git log -- path` is not "
+      f"HEAD, and the bump is listed: {({k: _ok66[k] for k in ('consistent', 'files_compared', 'heads_printed')})}")
+_bad66 = _cs66.check(_tree66, _turns66[:2], 2, "abc1234def")
+check(_bad66["consistent"] is False and _bad66["files_differing"] == 1
+      and (_bad66["files"][0]["first_difference"] or {}).get("tree") == "line one",
+      f"a line the conversation showed differently makes the task inconsistent, and says where: "
+      f"{_bad66['files'][0].get('first_difference')}")
+_head66 = _turns66[:2] + [_T66(3, "tool_use", tool_name="Bash", command="git rev-parse HEAD", content=""),
+                          _T66(4, "tool_result", content="9f9f9f9f9f")]
+_hd66 = _cs66.check(_tree66, _head66, 4, "abc1234def")
+check(_hd66["head_contradicts_base"] is True and _hd66["heads_printed"] == ["9f9f9f9f9f"],
+      f"a HEAD the conversation printed that is not the base contradicts it: {_hd66['heads_printed']}")
+_long66 = "\n".join(f"{n:6d}→x" for n in range(1, 2000))
+check(max(_cs66.observed_lines([_T66(1, "tool_use", tool_name="Read", file_path="a", content=""),
+                                _T66(2, "tool_result", content=_long66)], 2)["a"]) < 1999
+      and _cs66.relative(_dev66, _tree66) == "src/app.ts",
+      "a read the corpus cut short loses its last line, and a developer's path maps into the tree")
+check(_cs66.MUTATING.search("npm test > /dev/null 2>&1") is None and _cs66.MUTATING.search("echo x > out.txt"),
+      "output thrown away is not a change of state; output written to a file is")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended

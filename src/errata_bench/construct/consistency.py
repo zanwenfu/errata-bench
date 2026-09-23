@@ -1,0 +1,182 @@
+"""Does the rebuilt tree agree with what the conversation showed of it? (D-36 A5, G-71)
+
+A task's tree is the last commit before the session with the agent's own file
+edits replayed. Nothing else is replayed -- not what its commands did, not a
+branch it was on -- so the container can hold something other than what the
+conversation says the repository held. An agent that checks then finds the
+opposite of what the conversation told it, and the benchmark scores the check.
+
+SWE-chat has no per-turn snapshots to rebuild from (only 1 of the 21 grid
+sessions has a commit before its cut), so this measures instead. Three things,
+each from the conversation up to the cut:
+
+  lines     every line a Read showed, against the same line of the rebuilt
+            file. Only a file's last read before the cut is compared, and only
+            if no edit to that file followed it: a replayed edit changes the
+            file legitimately.
+  head      a commit printed by `git log` or `git rev-parse`, against the
+            commit the tree was built from.
+  commands  commands that change state outside the files the replay knows
+            about -- installs, version bumps, git history, containers. Listed,
+            not judged: whether one matters depends on the task.
+
+A task is `consistent` when no compared line differs and no printed head
+contradicts the base. Whether an inconsistent task stays in the benchmark is a
+decision, not this module's.
+"""
+
+from __future__ import annotations
+
+import re
+from pathlib import Path
+
+READ_TOOLS = frozenset({"Read", "read_file"})
+EDIT_TOOLS = frozenset({"Edit", "MultiEdit", "Write", "NotebookEdit", "edit_file", "write_file"})
+SHELL_TOOLS = frozenset({"Bash", "run_command"})
+# Claude Code's Read output: "    12→text", or "12\ttext" in older sessions.
+LINE = re.compile(r"^\s*(\d+)(?:→|\t)(.*)$")
+SHA = re.compile(r"\b([0-9a-f]{7,40})\b")
+# Near the length at which conversations.parquet cuts a tool result.
+RESULT_CAP = 9_900
+# Commands whose effects the replay does not reproduce. Deliberately broad: the
+# list is reported, and a false entry costs a reader a glance.
+MUTATING = re.compile(
+    r"\b(npm|pnpm|yarn|bun)\s+(install|i|add|remove|run\s+bump|version|link)\b"
+    r"|\bpip\s+install\b|\buv\s+(add|sync|pip)\b|\bcargo\s+(install|add)\b|\bgo\s+(get|install)\b"
+    r"|\bgit\s+(commit|checkout|switch|pull|merge|rebase|reset|stash|cherry-pick|am|apply|restore|clean|tag)\b"
+    r"|\bsed\s+-i\b|\bprettier\b.*--write|\beslint\b.*--fix|\bgofmt\s+-w\b|\bblack\b"
+    r"|\b(rm|mv|cp|mkdir|touch|chmod|ln)\s|\btee\b|>\s*(?!/dev/null)[\w./]"
+    r"|\bdocker\b|\bdocker-compose\b|\bgh\s|\bnvm\s+(install|use)\b|\bvolta\b|\bbrew\s+install\b"
+    r"|\bbump\b"
+)
+
+
+def _turns_until(turns: list[dict], cut: int) -> list[dict]:
+    kept = [t for t in turns if t.get("turn_number") is not None and t["turn_number"] <= cut]
+    return sorted(kept, key=lambda t: t["turn_number"])
+
+
+def _result_after(turns: list[dict], i: int) -> str:
+    """The content of the first tool result after position i, or ''."""
+    for t in turns[i + 1:]:
+        if t.get("turn_type") == "tool_result":
+            return str(t.get("content") or "")
+        if t.get("turn_type") == "tool_use":
+            return ""
+    return ""
+
+
+def relative(path: str, tree: Path) -> str | None:
+    """The developer's absolute path as a path in the tree: its longest suffix that exists."""
+    parts = [p for p in Path(path).parts if p not in ("/", "")]
+    for i in range(len(parts)):
+        candidate = Path(*parts[i:])
+        if (tree / candidate).is_file():
+            return str(candidate)
+    return None
+
+
+def observed_lines(turns: list[dict], cut: int) -> dict[str, dict[int, str]]:
+    """What each file's last read before the cut showed, line by line.
+
+    A file edited after its last read is dropped: the replay applies that
+    edit, so the difference would be the agent's own work, not a fault.
+    """
+    shown = _turns_until(turns, cut)
+    last_read: dict[str, tuple[int, dict[int, str]]] = {}
+    last_edit: dict[str, int] = {}
+    for i, t in enumerate(shown):
+        if t.get("turn_type") != "tool_use":
+            continue
+        tool, path = t.get("tool_name") or "", t.get("file_path") or ""
+        if not path:
+            continue
+        if tool in EDIT_TOOLS:
+            last_edit[path] = t["turn_number"]
+        elif tool in READ_TOOLS:
+            result = _result_after(shown, i)
+            lines = {}
+            for raw in result.splitlines():
+                m = LINE.match(raw)
+                if m:
+                    lines[int(m.group(1))] = m.group(2)
+            # The corpus keeps about 10 KB of a tool result, so a long read's
+            # last line can be cut mid-line; compared, it would differ falsely.
+            if len(result) >= RESULT_CAP and lines:
+                lines.pop(max(lines))
+            if lines:
+                last_read[path] = (t["turn_number"], lines)
+    return {path: lines for path, (at, lines) in last_read.items()
+            if last_edit.get(path, -1) < at}
+
+
+def _prints_head(cmd: str) -> bool:
+    """Whether a command's first printed commit is HEAD.
+
+    `git rev-parse HEAD`, or `git log` with nothing but flags or a range that
+    ends at HEAD. `git log -- path` starts with the last commit to touch that
+    path, and `git log other-branch` with that branch: either would read as a
+    contradiction of the base that is not one.
+    """
+    m = re.search(r"\bgit\s+rev-parse\s+(--short\s+)?HEAD\b", cmd)
+    if m:
+        return True
+    m = re.search(r"\bgit\s+log\b([^|;&]*)", cmd)
+    if not m:
+        return False
+    args = m.group(1).split()
+    return all(a.startswith("-") or a.isdigit() or a.endswith("HEAD") for a in args)
+
+
+def printed_heads(turns: list[dict], cut: int) -> list[str]:
+    """Commits that `git log` or `git rev-parse` printed first, before the cut."""
+    shown = _turns_until(turns, cut)
+    heads = []
+    for i, t in enumerate(shown):
+        cmd = str(t.get("command") or "")
+        if t.get("turn_type") != "tool_use" or (t.get("tool_name") or "") not in SHELL_TOOLS:
+            continue
+        if not _prints_head(cmd):
+            continue
+        m = SHA.search(_result_after(shown, i))
+        if m:
+            heads.append(m.group(1))
+    return heads
+
+
+def mutating_commands(turns: list[dict], cut: int) -> list[str]:
+    return [" ".join(str(t.get("command")).split())[:120] for t in _turns_until(turns, cut)
+            if t.get("turn_type") == "tool_use" and (t.get("tool_name") or "") in SHELL_TOOLS
+            and MUTATING.search(str(t.get("command") or ""))]
+
+
+def check(tree: Path, turns: list[dict], cut: int, base_sha: str) -> dict:
+    """The consistency of one rebuilt tree with its conversation, as a row."""
+    files = []
+    for path, lines in sorted(observed_lines(turns, cut).items()):
+        rel = relative(path, tree)
+        if rel is None:
+            files.append({"path": path, "found": False})
+            continue
+        body = (tree / rel).read_text(errors="replace").splitlines()
+        differing = [n for n, text in lines.items()
+                     if n > len(body) or body[n - 1].rstrip() != text.rstrip()]
+        files.append({"path": rel, "found": True, "lines_checked": len(lines),
+                      "lines_differing": len(differing),
+                      "first_difference": (
+                          {"line": differing[0], "conversation": lines[differing[0]][:120],
+                           "tree": (body[differing[0] - 1][:120] if differing[0] <= len(body) else "(past end)")}
+                          if differing else None)})
+    heads = printed_heads(turns, cut)
+    contradicting = [h for h in heads if not (base_sha.startswith(h) or h.startswith(base_sha))]
+    compared = [f for f in files if f.get("found")]
+    return {
+        "files_compared": len(compared),
+        "files_differing": sum(1 for f in compared if f["lines_differing"]),
+        "files_not_found": sum(1 for f in files if not f.get("found")),
+        "files": files,
+        "heads_printed": heads,
+        "head_contradicts_base": bool(contradicting),
+        "mutating_commands": mutating_commands(turns, cut),
+        "consistent": not any(f.get("lines_differing") for f in compared) and not contradicting,
+    }
