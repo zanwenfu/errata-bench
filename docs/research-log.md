@@ -5518,3 +5518,14 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   90 needs some of: several moments per session with the analysis clustered
   by repository, a better yield from the funnel, or a second corpus. The
   sample's measured yield decides which.
+- **09-23** — **The later-pushback sample through the funnel, so far** (300
+  moments; `runs/later-sample`). Against the first pushbacks' rates (09-20):
+  | stage | later sample | first pushbacks |
+  |---|---|---|
+  | triage keeps it | 113/300 (38%) | 41% |
+  | a genuine agent error | 49/113 (43%) | 33% |
+  | located, with a resolution | 39/49 (80%) | 72% |
+
+  Screening is running; `scripts/admit-chain.sh` then carries the survivors
+  through build, calibration, controls (3 readings) and the gate (7), with no
+  candidate run.
