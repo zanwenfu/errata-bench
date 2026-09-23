@@ -5416,3 +5416,12 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   repositories. 258 are a session's second pushback. Screened on the laptop
   (gpt-6-astra, concurrency 3, each gate three times). Its first start found
   B-243.
+- **09-23** — **The judges' agreement between two re-grades**
+  (`judge_agreement.py --first-judge`). Criterion 2 compares gpt-6-astra's and
+  claude-opus-5's re-grades under the same trace rules; the script could only
+  compare a second judge with the run's own grading, which for the first grid
+  was read under the first rules. Guard 83: three changes, each reverted alone,
+  turn it red, once its first judge was one whose readings differ from the
+  run's own grading (with one that read the same, a revert stayed green).
+  Early reading, DeepSeek's 62 answers only: kappa 0.47 on the trace reading
+  (0.28 under the first rules) and 0.61 on unverified claims (0.22).

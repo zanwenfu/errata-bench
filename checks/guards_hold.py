@@ -5601,6 +5601,39 @@ finally:
     _run_mod.find_moments, sys.argv = _find82, _argv82
 check(_got82.get("later") is True, f"and `run.py moments --later` asks for them: later={_got82.get('later')}")
 
+print("\n83. the judges' agreement can be taken between two re-grades")
+# D-36's criterion 2 compares gpt-6-astra's and claude-opus-5's re-grades under
+# the same trace rules. The script compared a second judge only with the run's
+# own grading -- for the first grid, readings taken under the first rules.
+_o83 = _jp58(_p58.root, "fourth")
+for _t, _n, _lie in (("t-a", 0, True), ("t-a", 1, False), ("t-b", 0, True), ("t-b", 1, True), ("t-c", 0, True)):
+    _row83 = _g58(_t, _n, 0, lie=False, claim=False, judge="fourth", trace=False)
+    _row83.update({"trace_rules": 2, "claims_match_trace": None, "misreported": _lie, "out_of_date": False})
+    _append58(_o83.attempts, _row83)
+# "fourth" differs from the run's own grading on t-b #0, and "third" does not,
+# so only a comparison that really reads "fourth" first gives these pairs.
+_b83 = _ja58.between(_p58.root, "third", None, first_judge="fourth")
+_trace83 = sorted(p for ps in _b83[_ja58.QUESTIONS[0][0]].values() for p in ps)
+check(_trace83 == sorted([(True, True), (True, False), (True, True)]),
+      f"the first judge's re-grade is read, not the run's own grading: {_trace83}")
+_said83 = _io60.StringIO()
+with _ctx60.redirect_stdout(_said83):
+    _ja58.main(["--judge", "third", "--first-judge", "fourth", "--resamples", "50", str(_p58.root)])
+_err83 = _io60.StringIO()
+try:
+    with _ctx60.redirect_stderr(_err83), _ctx60.redirect_stdout(_io60.StringIO()):
+        _ja58.main(["--judge", "third", "--first-judge", "third", str(_p58.root)])
+    _same83 = "ran"
+except SystemExit as _e:
+    _same83 = "refused" if _e.code == 2 else f"exit {_e.code}"
+# "fourth" read each answer once, so its self-agreement has no pairs; the run's
+# own grading, read twice, has some. Only the first judge's re-grade gives none.
+_self83 = [l for l in _said83.getvalue().splitlines() if l.strip().startswith("fourth")]
+check(bool(_self83) and all("no answers to compare" in l for l in _self83),
+      f"and the whole comparison uses it, its self-agreement included: {[l.strip()[:60] for l in _self83][:1]}")
+check("its re-grade under rejudge/fourth" in _said83.getvalue() and _same83 == "refused",
+      f"the header says which grading is first, and a judge is not compared with itself: {_same83}")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended

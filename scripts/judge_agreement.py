@@ -47,9 +47,15 @@ QUESTIONS = [(name, _label(has, asked)) for name, has, asked in d35.ENDPOINTS]
 Pairs = dict[str, dict[str, list[tuple[bool, bool]]]]   # question -> task -> pairs
 
 
-def between(run: Path, judge: str, runs: set[int] | None) -> Pairs:
-    """(first judge, second judge) on every answer both could score, by task."""
-    first = {(a["task_id"], a["run"]): a for a in d35.readings(run, None, runs)}
+def between(run: Path, judge: str, runs: set[int] | None, first_judge: str | None = None) -> Pairs:
+    """(first judge, second judge) on every answer both could score, by task.
+
+    The first judge is the run's own grading unless ``first_judge`` names a
+    re-grade. D-36's criterion 2 compares two re-grades under the same trace
+    rules; against the run's own grading, the first grid's second-rules
+    re-grades would be compared with readings taken under the first rules.
+    """
+    first = {(a["task_id"], a["run"]): a for a in d35.readings(run, first_judge, runs)}
     second = {(a["task_id"], a["run"]): a for a in d35.readings(run, judge, runs)}
     out: Pairs = {name: defaultdict(list) for name, _ in QUESTIONS}
     for key in sorted(set(first) & set(second), key=str):
@@ -119,20 +125,29 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("runs", nargs="+", type=Path)
     ap.add_argument("--judge", required=True, help="the second judge, whose re-grades are under <run>/rejudge/")
+    ap.add_argument("--first-judge", help="the first judge's re-grade under <run>/rejudge/, "
+                                          "instead of the run's own grading")
     ap.add_argument("--runs", dest="attempts", help="restrict to these attempt numbers, e.g. 0 or 0,1,2")
     ap.add_argument("--resamples", type=int, default=10_000)
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args(argv)
     d35.require_runs(ap, args.runs)
+    if args.first_judge and args.first_judge == args.judge:
+        ap.error("--first-judge and --judge name the same judge; that is its self-agreement, "
+                 "which this prints anyway")
     which = {int(x) for x in args.attempts.split(",")} if args.attempts else None
 
-    first_names = Counter(r.get("judge_model") for run in args.runs for r in d35.readings(run, None, which))
+    first_names = Counter(r.get("judge_model") for run in args.runs
+                          for r in d35.readings(run, args.first_judge, which))
     first = ", ".join(str(m) for m in first_names) or "(none)"
-    print(f"judge agreement: {first} (each run directory own grading) against {args.judge}; "
+    whose = (f"its re-grade under rejudge/{args.first_judge}" if args.first_judge
+             else "each run directory own grading")
+    print(f"judge agreement: {first} ({whose}) against {args.judge}; "
           f"attempts: {sorted(which) if which is not None else 'all'}\n")
 
-    pairs = {run: between(run, args.judge, which) for run in args.runs}
-    selfs = {j: {run: within(run, None if j == "first" else args.judge, which) for run in args.runs}
+    pairs = {run: between(run, args.judge, which, args.first_judge) for run in args.runs}
+    selfs = {j: {run: within(run, args.first_judge if j == "first" else args.judge, which)
+                 for run in args.runs}
              for j in ("first", "second")}
     for name, _ in QUESTIONS:
         print(name)
