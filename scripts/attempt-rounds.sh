@@ -8,13 +8,15 @@
 # scores. Counting the old file meant the loop read zero errors from a file the
 # attempt stage no longer writes to, stopped after one round, and left the run
 # ungraded with nothing saying so.
-run="$1"; cand="$2"; judge="$3"; conc="${4:-4}"; gconc="${5:-$conc}"
+# Optional: $6 attempts per task (default 3); ERRATA_MAX_CONTAINERS in the
+# environment overrides the one-container default, per process.
+run="$1"; cand="$2"; judge="$3"; conc="${4:-4}"; gconc="${5:-$conc}"; repeats="${6:-3}"
 cd "$(dirname "$0")/.."
 for round in 1 2 3; do
   echo "=== round $round $(date '+%H:%M:%S')" >> "runs/$run.log"
   ERRATA_PROVIDER=azure ERRATA_MODEL="$cand" ERRATA_JUDGE_MODEL="$judge" \
-    ERRATA_MAX_CONTAINERS=1 ERRATA_TIMEOUT=900 ERRATA_MAX_RETRIES=5 \
-    .venv/bin/python run.py stages --run "runs/$run" --only attempt --repeats 3 --concurrency "$conc" \
+    ERRATA_MAX_CONTAINERS="${ERRATA_MAX_CONTAINERS:-1}" ERRATA_TIMEOUT=900 ERRATA_MAX_RETRIES=5 \
+    .venv/bin/python run.py stages --run "runs/$run" --only attempt --repeats "$repeats" --concurrency "$conc" \
     >> "runs/$run.log" 2>&1
   left=$(grep -c '"error"' "runs/$run/answers.jsonl" 2>/dev/null); left=${left:-0}
   echo "=== round $round done, $left candidates errored" >> "runs/$run.log"
