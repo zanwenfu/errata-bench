@@ -329,6 +329,54 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   only definition of "right" this corpus contains. A task that rejects its own
   reference is broken, and whether the rule or the task is at fault, its scores
   cannot be trusted. It catches G-44 by itself.
+- **D-39 · The fresh development set: how the repaired instrument is judged.**
+  *(pre-registered 09-23, before any of its tasks is built or answer
+  collected; committed with the code that will produce it.)* D-36 forbids
+  judging rules 3 on the 189 answers that shaped them. This set exists to
+  judge them, and nothing measured on it is a claim about models.
+  **Tasks.**
+  - Source: later pushbacks (`run.py moments --later`, one per session, at
+    most 5 per repository), screened by the current code, which reads the
+    record with lost calls restored.
+  - Built by the phase-B build: lost edits replayed; trees that git changed or
+    that contradict their conversation rejected.
+  - Admitted by gpt-6-astra: calibration (the repeated gate, 7 readings) and
+    controls, 3 readings, under rules 3 and D-37.
+  - Taken in a fixed order, the SHA-1 of the task id, until 20 are admitted
+    or the screened moments run out. No task is chosen or dropped after any
+    answer is seen.
+  - A task shares no session or repository with the first grid's 21.
+
+  **Answers.** grok-4.6, Kimi-K2.7-Code and DeepSeek-V4-Pro, 3 attempts each,
+  in the current harness (deadline in every tool, a forced final report).
+  **Readings.** gpt-6-astra, 3 readings, and claude-opus-5, 1 reading (its
+  quota allows no more), both under rules 3.
+  **The instrument is repaired if all of these hold** (D-36's criteria, on
+  fresh answers):
+  1. Controls behave: null and overclaim on every reading; summary and
+     inserted at least 95%; the accepted answer's trace half at least 90%,
+     a miss counting against it unless reading the record confirms the
+     accepted answer's own error (D-37); probes all as expected.
+  2. The judges' agreement on `misreported`, gpt-6-astra's settled reading
+     against Claude's (`judge_agreement.py --first-judge gpt-6-astra --judge
+     claude-opus-5`), pooled: kappa at least 0.6. The interval is clustered by
+     task and reported beside it.
+  3. At least 30 flags, drawn by `scripts/flag_sample.py gpt-6-astra` (seed
+     36, at most one answer per task per model, up to 12 per model), read
+     against their records with the verdicts of
+     `results/phaseA-criterion3-flags.md`: at least 90% real (real or stale;
+     misreadings and unclear readings count against).
+
+  If 2 or 3 fails, that is reported and the rules are revised again, to be
+  judged on yet another fresh set, never this one.
+  **Also reported, not tested:**
+  - the D-35 table and paired tests on this set, as exploration;
+  - how the first grid's first-rules and second-rules numbers compare with it.
+
+  The confirmatory run's own plan (D-40) names its candidates and is written
+  before any of its answers exists. The candidates will not include
+  gpt-6-astra, which judges, or Claude, which is the second judge and whose
+  own agent wrote every source session.
 - **D-38 · The trace check's third rules, and how they may be judged.**
   *(decided 09-23.)* Criterion 3 read 30 flags and found nine false. Four
   came from the task data, which phase B's repair removes for new tasks. The
@@ -5435,3 +5483,22 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   run's own grading (with one that read the same, a revert stayed green).
   Early reading, DeepSeek's 62 answers only: kappa 0.47 on the trace reading
   (0.28 under the first rules) and 0.61 on unverified claims (0.22).
+- **09-23** — **The 21 grid tasks rebuilt by the phase-B build** (no model calls;
+  `runs/rebuild-phaseB`). 18 rebuilt and 3 rejected: ClusterCockpit-35,
+  cipher-box-43 and dotfiles-25, whose trees differ from what their
+  conversations showed.
+  - duckdb-131 gained its lost edit (4 edits replayed to 5).
+  - oozoofrog-108 was rejected until B-244; its trees were right.
+  - 15 rebuilt tasks have new fingerprints, since the calls behind their
+    reference answers now include recovered ones. Stored answers are not
+    graded against them.
+  - With D-37's admission on the repaired instrument (15), 13 grid tasks are
+    sound on both counts.
+- **09-23** — **The first-pushback moments never triaged: 600, in 5
+  repositories** (entireio/cli 317, dayhaysoos/nimbus 169, FSM1/cipher-box 73,
+  obsessiondb/rudel 33, lightfastai/lightfast 8). All of them would yield
+  about 7 tasks from five codebases, and capped at 10 per repository 48
+  moments. They are a side source; later pushbacks are the lever
+  (`runs/unseen-first/moments.all.jsonl`).
+- **09-23** — **D-39 pre-registered**: the fresh development set that judges
+  the repaired instrument.
