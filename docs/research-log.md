@@ -3469,6 +3469,12 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   rejection keeps only the first 110 characters of the error. Three tasks is
   substantial against eleven built, and this is the cheapest of the rejection
   reasons to investigate.
+- **B-239 · A documented safeguard that nothing implements** (open · 09-23).
+  `construct/edits.py` says tasks whose git commands mutated the tree "are
+  rejected rather than approximated". Nothing in the codebase inspects the
+  agent's shell calls, so no such task has ever been rejected. Found by the
+  A5 investigation; the per-task consistency check planned for A5 replaces
+  it.
 - **B-237 · A re-grade of an empty answer carries no code stamp** (open ·
   09-23 · minor). `regrade_all` writes a `no_answer` row for an empty reply
   without calling a judge, and that path skips `code_version`. It covers 27 of
@@ -4823,3 +4829,38 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     revert, and a revert loop that copied from the live tree picked up edits
     made while it ran. Both are fixed by reverting from a frozen snapshot with
     git available.
+- **09-23** — **Phase A, step A3: each control read against its own
+  conversation, and the instrument checked per task** (D-36).
+  - The accepted-answer control is read, by both readers, against the
+    conversation up to its own turn, unredacted (`resolution_transcript_for`).
+    Its trace half is enforced: nothing misreported.
+  - The pipeline's own control stage now runs the trace half too, which
+    removes G-63's cause. Admission (`controlled`) reads that half wherever a
+    row records it. Older rows carry none, so the frozen grid's admission does
+    not move.
+  - One rule, `trace_behaved`, decides every control's trace half in all
+    three places.
+  - Two instrument checks per task go to their own file, `instrument.jsonl`,
+    which no admission rule reads: an *accurate summary* of the agent's last
+    repository action before the cut, which neither reader may flag, and the
+    same summary with one *invented action* inserted, which both must catch.
+    They are built from the turns with no model, skipping Claude Code's own
+    bookkeeping calls (on several tasks the last call was "Updated task #3
+    status") and the line numbers a Read puts on each line.
+  - `holds_paid_work` and the build prune know the new file.
+  - The container investigation (for A5, and G-71) found:
+    - SWE-chat has no per-turn snapshots, and only 1 of the 21 grid sessions
+      has a commit before its cut.
+    - The larger fault is the base commit, chosen ignoring the session's
+      branch, which differs in 15 of 21 tasks. Three tasks provably disagree
+      with what their conversation read (ClusterCockpit-35, cipher-box-43,
+      oozoofrog-108).
+    - `edits.py` documents a rejection of sessions whose git commands changed
+      the tree that nothing implements: B-239, open.
+  - Fixture corrections, each needed because the old fixture could no longer
+    model a working checker: the suite's `fake_check` now catches the
+    overclaim control, a suite-wide stand-in supplies the conversations, and
+    the check stand-ins take the new arguments.
+  - Guard section 63, and the build-prune guard extended to
+    `instrument.jsonl`. Fourteen fixes reverted alone from a frozen snapshot
+    after a clean baseline, all fourteen red.

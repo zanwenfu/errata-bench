@@ -211,6 +211,22 @@ def environment_note(environment: str = "host") -> str:
     )
 
 
+def candidate_turns(task: Task, turns: list[dict]) -> list[dict]:
+    """The session's turns as the candidate sees them: with the redactions applied.
+
+    Rendered without the turns that revealed the agent had been failing. The
+    candidate must face the same question the agent faced, not a transcript
+    telling it to be careful.
+    """
+    if task.redacted_turns or task.rewritten_turns:
+        return apply_redaction(
+            turns,
+            task.redacted_turns,
+            {int(k): v for k, v in (task.rewritten_turns or {}).items()},
+        )
+    return turns
+
+
 def transcript_for(task: Task, turns: list[dict]) -> str:
     """The conversation the candidate is shown: redacted, then cut and rendered.
 
@@ -219,16 +235,79 @@ def transcript_for(task: Task, turns: list[dict]) -> str:
     answers of inventing what was sitting in front of them. Rebuilt rather than
     stored: the task carries the cut and the redactions, so this is exact.
     """
-    if task.redacted_turns or task.rewritten_turns:
-        # Rendered without the turns that revealed the agent had been failing.
-        # The candidate must face the same question the agent faced, not a
-        # transcript telling it to be careful.
-        turns = apply_redaction(
-            turns,
-            task.redacted_turns,
-            {int(k): v for k, v in (task.rewritten_turns or {}).items()},
-        )
-    return build_excerpt(turns, task.cut_turn)
+    return build_excerpt(candidate_turns(task, turns), task.cut_turn)
+
+
+def resolution_transcript_for(task: Task, turns: list[dict]) -> str:
+    """The conversation the accepted answer was written after (D-36 A3).
+
+    The accepted-answer control was read against the candidate's conversation,
+    which ends at the cut. The answer the developer accepted was written after
+    the complaint and everything that followed it, and it cites them: read
+    against the wrong conversation, the trace check called it unsupported on
+    5 of the 21 grid tasks. Not redacted -- the redactions hide from a
+    candidate what the agent was later told, which is exactly what this answer
+    was written knowing.
+    """
+    return build_excerpt(turns, (task.resolved_turn or task.cut_turn + 1) - 1)
+
+
+# The agent's own tools whose calls are work on the repository, for the
+# accurate-summary control.
+SUMMARY_TOOLS = frozenset({"Bash", "Read", "Grep", "Glob", "Edit", "Write", "MultiEdit",
+                           "LS", "NotebookEdit", "run_command", "read_file", "list_dir",
+                           "write_file", "edit_file"})
+
+
+def last_recorded_action(task: Task, turns: list[dict]) -> dict | None:
+    """The last tool call the agent made before the cut whose output was recorded.
+
+    What the accurate-summary control reports (D-36 A3): a statement about the
+    agent's own earlier work that the conversation the candidate is shown
+    supports word for word. Built from the turns, with no model involved, so
+    the control means the same thing on every task and in every run. None when
+    no call before the cut has a recorded output.
+    """
+    shown = [t for t in candidate_turns(task, turns)
+             if t.get("turn_number") is not None and t["turn_number"] <= task.cut_turn]
+    shown.sort(key=lambda t: t["turn_number"])
+    for i in range(len(shown) - 1, 0, -1):
+        result = shown[i]
+        if result.get("turn_type") != "tool_result":
+            continue
+        # The first line with content, without the line number a Read puts in
+        # front of each line ("1→package cli", "1\t[build-system]").
+        output = next((re.sub(r"^\s*\d+(?:→|\t)", "", line).strip()
+                       for line in str(result.get("content") or "").splitlines()
+                       if re.sub(r"^\s*\d+(?:→|\t)", "", line).strip()), "")
+        call = next((t for t in reversed(shown[:i]) if t.get("turn_type") == "tool_use"), None)
+        # Work on the repository only. Claude Code's own bookkeeping -- a task
+        # list updated, a background job polled -- is the last recorded call
+        # on several tasks, and a summary of "Updated task #3 status" tests
+        # nothing about whether the agent's account of its work is believed.
+        if output and call and (call.get("tool_name") or "") in SUMMARY_TOOLS:
+            detail = call.get("command") or call.get("file_path") or str(call.get("content") or "")
+            return {"tool": call.get("tool_name") or "a tool",
+                    "detail": " ".join(str(detail).split())[:160],
+                    "output": output[:160]}
+    return None
+
+
+def control_conversations_for(tasks) -> dict[str, dict]:
+    """What the controls are read against, per task, in one pass over the corpus.
+
+    ``cut`` is the candidate's conversation; ``resolution`` the one the accepted
+    answer was written after; ``last_action`` the agent's last recorded call
+    before the cut, for the accurate-summary control.
+    """
+    turns = load_session_turns({t.session_id for t in tasks})
+    out = {}
+    for t in tasks:
+        mine = turns.get(t.session_id) or []
+        out[t.task_id] = {"cut": transcript_for(t, mine),
+                          "resolution": resolution_transcript_for(t, mine),
+                          "last_action": last_recorded_action(t, mine)}
+    return out
 
 
 def transcripts_for(tasks) -> dict[str, str]:

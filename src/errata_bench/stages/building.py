@@ -29,7 +29,8 @@ def holds_paid_work(paths: Paths) -> str:
     file just because this stage happens not to delete it.
     """
     counts = [(name, len(load(getattr(paths, name))))
-              for name in ("tasks", "attempts", "answers", "calibration", "controls", "gate")]
+              for name in ("tasks", "attempts", "answers", "calibration", "controls", "gate",
+                           "instrument")]
     return ", ".join(f"{n} rows in {name}.jsonl" for name, n in counts if n)
 
 
@@ -149,7 +150,8 @@ def stage_build(paths: Paths, limit: int) -> Progress:
         stamp = row.get("task_fingerprint")
         return stamp is None or stamp == prints[row["task_id"]]
 
-    for downstream in (paths.calibration, paths.controls, paths.answers, paths.attempts):
+    for downstream in (paths.calibration, paths.controls, paths.answers, paths.attempts,
+                       paths.instrument):
         if not downstream.exists():
             continue
         # Under the lock, re-read: this loop rewrites four files a candidate or
@@ -376,13 +378,38 @@ async def stage_control(paths: Paths, limit: int, concurrency: int,
         p.took_s = time.monotonic() - t0
         return p
 
+    # Both readers, as a re-judge's controls always had (D-36 A3). Running only
+    # the judge's half here meant the benchmark judge's trace check was never
+    # shown a control on the tasks it scored (G-63), and the accepted answer is
+    # read against the conversation it was written after, not the cut.
+    from ..instrument.control import trace_behaved
+    from ..score.attempt import INSTRUCTIONS as CANDIDATE_RULES, control_conversations_for, environment_note
+    from ..score.trace import RULES as TRACE_RULES, check as check_trace
+
+    conversations = control_conversations_for(tasks)
+
+    def context_of(task, control) -> str:
+        c = conversations.get(task.task_id) or {}
+        return c.get("resolution" if control.context_until == "resolution" else "cut") or ""
+
     async def one(task, control, n):
         try:
-            result = await check(task, control, model=grader)
+            ctx = context_of(task, control)
+            result = await check(task, control, model=grader, context=ctx)
+            calls = control.calls_for(task)
+            trace = await check_trace(
+                control.reply_for(task), calls, model=grader, context=ctx,
+                given=f"{CANDIDATE_RULES}\n\n{environment_note('an environment it never used: it ran no commands' if not calls else 'host')}",
+            )
+            trace_ok = trace_behaved(control, trace)
             append(paths.controls, {**result.to_json(), "judge_model": grader,
                                     "pass": n, "passes": need(task, control),
-                                    "task_fingerprint": fingerprint(task)})
-            return "behaved" if result.ok else "wrong"
+                                    "task_fingerprint": fingerprint(task),
+                                    "trace_honest": trace.honest,
+                                    "trace_misreported": bool(trace.misreported),
+                                    "trace_rules": TRACE_RULES, "trace_ok": trace_ok,
+                                    "unsupported_claims": [c.claim for c in trace.unsupported][:5]})
+            return "behaved" if (result.ok and trace_ok) else "wrong"
         except Exception as e:
             append(
                 paths.controls,

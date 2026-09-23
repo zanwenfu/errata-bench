@@ -150,7 +150,7 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int,
     behaved and as many were taken as were asked for.
     """
     from .attempt import INSTRUCTIONS as CANDIDATE_RULES, environment_note
-    from ..instrument.control import CONTROLS, check
+    from ..instrument.control import CONTROLS, check, trace_behaved
     from ..spec import read
     from .trace import RULES as TRACE_RULES, check as check_trace, verify as probe_trace
 
@@ -188,12 +188,20 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int,
             for n in range(have[(t.task_id, c.name)], need(t, c))]
     p.skipped = sum(need(t, c) for t in tasks for c in CONTROLS) - len(jobs)
     # A control has to run under exactly the conditions a candidate does, or it
-    # is not a control: same judge, same empty trace, same conversation.
-    context = transcripts_for(tasks) if jobs else {}
+    # is not a control: same judge, same empty trace, same conversation -- and
+    # the accepted answer under the conditions it was written in, which is the
+    # conversation up to its own turn (D-36 A3).
+    from .attempt import control_conversations_for
+
+    conversations = control_conversations_for(tasks) if jobs else {}
+
+    def context_of(task, control) -> str:
+        c = conversations.get(task.task_id) or {}
+        return c.get("resolution" if control.context_until == "resolution" else "cut") or ""
 
     async def one(task, control, n):
         try:
-            result = await check(task, control, model=model)
+            result = await check(task, control, model=model, context=context_of(task, control))
             # The control's own answer and its own trace. Taking `control.reply`
             # and an empty list was right while every control was a fixed
             # string with nothing behind it; the criterion control carries the
@@ -205,7 +213,7 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int,
                 control.reply_for(task),
                 calls,
                 model=model,
-                context=context.get(task.task_id, ""),
+                context=context_of(task, control),
                 given=f"{CANDIDATE_RULES}\n\n{environment_note('an environment it never used: it ran no commands' if not calls else 'host')}",
             )
         except Exception as e:
@@ -225,12 +233,12 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int,
         # it is recorded and not gated on.
         # Under the rules in force (D-36) the overclaim answer must be caught as
         # misreported -- work claimed that no record holds -- and not merely
-        # flagged as out of date; the null answer must have nothing flagged.
-        trace_ok = (
-            True if control.from_task
-            else bool(trace.misreported) if control.must_be_dishonest
-            else trace.honest
-        )
+        # flagged as out of date; the null answer must have nothing flagged; and
+        # the accepted answer, read against the conversation it was written
+        # after, must have nothing misreported. That half was hard-wired to pass
+        # (`True if control.from_task`) and failed on 5 of 21 tasks unreported
+        # (G-63); it is enforced now that it is asked the right question.
+        trace_ok = trace_behaved(control, trace)
         row = result.to_json()
         row.update({
             "judge_model": model,
@@ -269,6 +277,77 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int,
         except Exception as e:
             append(out.controls, {"task_id": "(trace probe)", "control": "probe", "ok": False,
                                   "judge_model": model, "error": f"{type(e).__name__}: {e}"})
+    p.took_s = time.monotonic() - t0
+    return p
+
+
+async def instrument_all(src: Paths, out: Paths, model: str, concurrency: int,
+                         passes: int = 1) -> Progress:
+    """The instrument's own checks, per task: measured, never gated on (D-36 A3).
+
+    Two answers built from the agent's last recorded action before the cut, and
+    read against the candidate's conversation exactly as a candidate's answer
+    is. The accurate summary -- the shape the trace check used to call
+    invented -- must have nothing flagged by either reader. The same summary
+    with one invented action added must be caught by both. Written to
+    `instrument.jsonl`, which no admission rule reads: adding them to CONTROLS
+    would retire every task whose rows predate them, the frozen grid included.
+    """
+    from collections import Counter
+
+    from .attempt import INSTRUCTIONS as CANDIDATE_RULES, control_conversations_for, environment_note
+    from ..instrument.control import INSTRUMENT_CONTROLS, check, trace_behaved
+    from ..spec import fingerprint, read
+    from .trace import RULES as TRACE_RULES, check as check_trace
+
+    p = Progress("instrument")
+    t0 = time.monotonic()
+    readable = {
+        r["task_id"] for r in load(out.calibration)
+        if (can_be_scored(r) or can_be_scored(r, passing=PASSING_WITH_HEDGE))
+    }
+    tasks = [t for t in read(src.tasks) if t.task_id in readable]
+    want = max(1, passes)
+    have = Counter((r["task_id"], r["control"]) for r in completed(out.instrument))
+    jobs = [(t, c, n) for t in tasks for c in INSTRUMENT_CONTROLS
+            for n in range(have[(t.task_id, c.name)], want)]
+    p.skipped = len(tasks) * len(INSTRUMENT_CONTROLS) * want - len(jobs)
+    conversations = control_conversations_for(tasks) if jobs else {}
+    rules = f"{CANDIDATE_RULES}\n\n{environment_note('an environment it never used: it ran no commands')}"
+
+    async def one(task, control, n):
+        conv = conversations.get(task.task_id) or {}
+        action = conv.get("last_action")
+        base = {"task_id": task.task_id, "control": control.name, "judge_model": model,
+                "pass": n, "passes": want, "task_fingerprint": fingerprint(task)}
+        if not control.applicable(task, action):
+            append(out.instrument, {**base, "applicable": False, "ok": False, "trace_ok": None,
+                                    "detail": "no action with a recorded output before the cut"})
+            return False
+        reply = control.reply_for(task, action)
+        try:
+            result = await check(task, control, model=model, context=conv.get("cut") or "",
+                                 action=action)
+            trace = await check_trace(reply, [], model=model, context=conv.get("cut") or "",
+                                      given=rules)
+        except Exception as e:
+            append(out.instrument, {**base, "ok": False, "error": f"{type(e).__name__}: {e}"})
+            return False
+        trace_ok = trace_behaved(control, trace)
+        append(out.instrument, {
+            **base, **result.to_json(), "reply": reply, "action": action,
+            "trace_honest": trace.honest, "trace_misreported": bool(trace.misreported),
+            "trace_out_of_date": bool(trace.out_of_date), "trace_rules": TRACE_RULES,
+            "trace_ok": trace_ok,
+            "trace_claims": [{"claim": c.claim, "supported": c.supported, "source": c.source,
+                              "problem": c.problem} for c in trace.claims][:8],
+        })
+        return result.ok and trace_ok
+
+    if jobs:
+        results = await _gather([one(t, c, n) for t, c, n in jobs], concurrency)
+        p.produced = sum(1 for r in results if r)
+        p.failed = sum(1 for r in results if not r)
     p.took_s = time.monotonic() - t0
     return p
 
@@ -1195,6 +1274,8 @@ async def rejudge(run: Path, model: str, *, concurrency: int = 4, passes: int = 
     p = await calibrate_all(src, out, model, concurrency)
     print(p.line(), flush=True)
     p = await controls_all(src, out, model, concurrency, passes)
+    print(p.line(), flush=True)
+    p = await instrument_all(src, out, model, concurrency, passes)
     print(p.line(), flush=True)
     p = await regrade_all(src, out, model, concurrency, passes)
     print(p.line(), flush=True)

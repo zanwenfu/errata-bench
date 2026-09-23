@@ -458,7 +458,7 @@ async def fake_cal(t, *, model=None):
     from errata_bench.score.judge import Calibration
     return Calibration(t.task_id, "off_target", "solved", False, True,
                        "off_target", "solved", False, True)
-async def fake_ctl(task, control, *, model=None):
+async def fake_ctl(task, control, *, model=None, context="", action=None):
     from errata_bench.instrument.control import ControlResult
     return ControlResult(task.task_id, control.name, False, True, False, True)
 JM.calibrate, CM.check = fake_cal, fake_ctl

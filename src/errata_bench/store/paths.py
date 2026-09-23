@@ -45,6 +45,8 @@ FILES = (
     "attempts",
     "rejections",
     "gate",
+    # The instrument's own checks per task (D-36 A3): measured, never gated on.
+    "instrument",
 )
 
 
