@@ -960,6 +960,9 @@ async def regrade_all(
                 "claims_match_trace": None, "unsupported_claims": [],
                 "overclaimed_work": False,
                 "note": "the candidate answered with nothing; there was no answer to read",
+                # The harness that wrote it, as on every other re-graded row
+                # (B-237): this path alone left it out.
+                "code_version": code_version(),
             })
             return True
         try:

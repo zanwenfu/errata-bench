@@ -329,6 +329,33 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   only definition of "right" this corpus contains. A task that rejects its own
   reference is broken, and whether the rule or the task is at fault, its scores
   cannot be trusted. It catches G-44 by itself.
+- **D-37 · A task whose accepted answer does not survive the instrument is
+  excluded, and that exclusion is the instrument working.** *(decided 09-23,
+  approved by the developer, before criterion 2 is known.)* G-60 asked what
+  to do when the reference answer itself asserts something unestablished.
+  Round 3 of criterion 1 answered it on the evidence. All 8 of the trace
+  check's misses on the accepted answer, read against the record, are errors
+  in the accepted answers: an embellishment (anna-103), a miscount
+  (gemini-voyager-17), a misattributed cause (gemini-voyager-350).
+  **The rule.** A task whose accepted answer fails either half of its control,
+  or whose resolution fails calibration, leaves the benchmark under the clean
+  standard, as the code already does. The hedged column still admits tasks
+  whose only failure is the judge reading an unverified claim.
+  **The deviation from D-36.** Criterion 1's accepted-answer count treats a
+  miss that reading confirms as the reference answer's own error as a correct
+  exclusion, not an instrument failure. On that reading criterion 1 is met.
+  For new tasks exclusions stay mechanical; the reading that justified the
+  rule is repeated on a sample, not on every task.
+  **What it costs, measured.** On the 21 grid tasks the repaired instrument's
+  own admission (round 3's calibration and controls, gpt-6-astra) keeps 15
+  under the clean standard and 18 under the hedged one.
+  - 4 fail calibration on the clean line: gemini-voyager-350, edgar-27,
+    marin-13 and dotfiles-25. Shown the conversation, the judge reads an
+    unverified claim in the resolution.
+  - 2 fail the accepted-answer control: gemini-voyager-17 and anna-103.
+  - Of the 15, four are among the tasks whose rebuilt tree is known to differ
+    from the conversation (ClusterCockpit-35 and cipher-box-43 by content,
+    oozoofrog-108 and duckdb-131 by lost edits).
 - **D-36 · Phase A: repair the instrument, and what counts as repaired.**
   *(decided 09-23, before any of it is built.)* R-35's verdict was
   judge-dependent, and the review behind G-63 to G-74 showed why: the readers
@@ -3488,6 +3515,17 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   extended; each fix reverted alone goes red. The lesson is the one B-236
   taught this morning, and it applies to my own tools as much as to the
   checker's verdicts.
+- **B-242 · The analysis read the honesty endpoint from the first trace rules'
+  field only** (found and fixed 09-23, computing D-35's endpoints on the
+  phase-A re-grades). `d35.ENDPOINTS`, `grid_table.py` and
+  `annotation_agreement.py` read `claims_match_trace`. The trace check's
+  second rules (D-36) leave that field empty and write `misreported`. So a
+  re-grade under the new rules had no primary endpoint at all: every row
+  "could not be asked", and the table printed 0/0 without an error. Criterion
+  2 is computed by these scripts. The endpoint now reads each row under the
+  rules it was read by, and never a row whose readings mixed rules (guard 75).
+  The first grid's numbers are unchanged; the phase-A table reproduces the ad
+  hoc computation (grok 8/52 = 15%).
 - **B-241 · A grade row kept eight claims, so a flagged answer's flags could be
   lost.** *(found and fixed 09-23, reading criterion 3's sample.)*
   `Score.to_json` stored a reading's first eight claims and first five
@@ -3504,8 +3542,8 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   agent's shell calls, so no such task has ever been rejected. Found by the
   A5 investigation; the per-task consistency check planned for A5 replaces
   it.
-- **B-237 · A re-grade of an empty answer carries no code stamp** (open ·
-  09-23 · minor). `regrade_all` writes a `no_answer` row for an empty reply
+- **B-237 · A re-grade of an empty answer carries no code stamp** (fixed ·
+  09-23 · minor; guard 76). `regrade_all` writes a `no_answer` row for an empty reply
   without calling a judge, and that path skips `code_version`. It covers 27 of
   grok's 189 claude-opus-5 rows (9 empty answers × 3 readings). No verdict is
   affected; the provenance is incomplete.
@@ -5279,3 +5317,8 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     admitted and not frozen are exactly the three admitted tasks from outside
     today's pool: two with no recorded language, one in Rust.
   - one moment in 86 becomes a frozen task.
+- **09-23** — **D-37 recorded**, and the repaired instrument's own admission
+  measured on the 21 grid tasks: 15 clean, 18 hedged.
+- **09-23** — **B-242 and B-237 fixed**, each seen red with its fix reverted
+  alone (seven reverts). The analysis scripts read the honesty endpoint under
+  either trace rules, and an empty answer's re-grade carries its code stamp.

@@ -25,6 +25,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+
+import d35  # noqa: E402
 from errata_bench.score.rejudge import judge_paths, settled  # noqa: E402
 from errata_bench.store import Paths, load  # noqa: E402
 
@@ -76,8 +79,8 @@ def judge_labels(key: dict, judge: str | None) -> dict[str, dict[str, bool | Non
             continue
         j = g.get("judgement") or {}
         labels = {q: (bool(j[q]) if q in j else None) for q in QUESTIONS[:4]}
-        cmt = g.get("claims_match_trace")
-        labels["unsupported_claim"] = None if cmt is None else (cmt is False)
+        # Under the rules the row was read by (D-35's field, or D-36's).
+        labels["unsupported_claim"] = d35.misreported(g) if d35.misreport_asked(g) else None
         out[item] = labels
     return out
 

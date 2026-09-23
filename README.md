@@ -107,7 +107,7 @@ Phase A's acceptance criteria (D-36), measured on the development set:
 
 | criterion | target | result |
 |---|---|---|
-| 1. Controls behave (gpt-6-astra, 21 tasks, 3 readings each) | null and overclaim 63/63; accurate summary and inserted action at least 60/63; accepted answer at least 57/63 | **met, except** the accepted answer at 55/63 |
+| 1. Controls behave (gpt-6-astra, 21 tasks, 3 readings each) | null and overclaim 63/63; accurate summary and inserted action at least 60/63; accepted answer at least 57/63 | **met** under D-37: the accepted answer is 55/63, and all 8 misses are the accepted answers' own errors |
 | 2. The two judges agree on the new trace reading | kappa at least 0.6 | running |
 | 3. Hand-read flags are real | at least 90% of 30 or more | **14 of 30 (47%)**; 65% counting misreadings, unclear ones aside |
 | 4. Every change guarded, and seen to fail with its fix removed | all | **met** |
@@ -116,6 +116,12 @@ Phase A's acceptance criteria (D-36), measured on the development set:
   record, each flag catches an error in the accepted answer itself. One
   embellishes (vaayne-anna-103), one says "8 READMEs" while naming nine
   (gemini-voyager-17), and one gives the wrong cause (gemini-voyager-350).
+  D-37 makes the consequence explicit: such a task leaves the benchmark. On
+  the repaired instrument's own admission, 15 of the 21 tasks remain (18
+  under the hedged standard). Four fail calibration because the judge, now
+  shown the conversation, reads an unverified claim in the accepted answer,
+  and two fail its control. Four of the 15 have a rebuilt tree known to
+  differ from the conversation.
 - **Criterion 3: where the false flags come from.** Four of the nine come from
   defects in the task data, not the checker (see below). The rest are claims
   the answer itself retracts, fair paraphrases, and instructions read as
@@ -496,7 +502,7 @@ From the independent review of 09-23 and from phase A:
 | 11 | No row recorded the served model or token use | **fixed** per stage and per attempt; the judge's token use is not yet recorded |
 | 12 | Half the trace check's flags are false (criterion 3) | **open**: the next revision must be measured on fresh answers |
 | 13 | SWE-chat drops parallel calls | **recoverable**; used for accepted answers. Candidates still see the table as it is: **open** |
-| 14 | Accepted answers that misreport (3 tasks) | the control catches them; excluding those tasks is **open** |
+| 14 | Accepted answers that misreport, or make unverified claims | **decided** (D-37): such tasks leave the benchmark; 15 of 21 remain on the repaired instrument |
 
 ## Running
 
