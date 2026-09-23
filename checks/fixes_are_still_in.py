@@ -63,6 +63,11 @@ async def fake_check(answer, tool_calls, *, model=None, context="", given=""):
 A.run, J.judge, T.check = fake_run, fake_judge, fake_check
 A.transcript_for = lambda t, turns: "conversation"
 A.transcripts_for = lambda ts: {t.task_id: "conversation" for t in ts}
+# The control stage reads what each control is read against (D-36 A3). Without
+# this stand-in the stage read the real corpus wherever one was present -- a
+# 1.3 GB file, silently, on a laptop -- and failed where none was, in CI.
+A.control_conversations_for = lambda ts: {
+    t.task_id: {"cut": "conversation", "resolution": "conversation", "last_action": None} for t in ts}
 C.image_for = lambda l, **k: None
 C.sweep = lambda: None
 C.max_containers = lambda: 2
