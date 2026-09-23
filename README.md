@@ -210,7 +210,7 @@ left in the corpus through triage, read, locate, signature, screen and build.
 No stage here makes a candidate run or grades an answer; this is the funnel
 that decides which tasks exist.
 
-| | sweep 1 | sweep 2 | what it means |
+| | sweep 1 (`runs/sweep1`) | sweep 2 (`runs/sweep3`) | what it means |
 |---|---|---|---|
 | moments in | 167 | 250 | already triaged, and freshly collected |
 | worth reading | 167 | 84 | triage, one call each |
@@ -220,21 +220,23 @@ that decides which tasks exist.
 | **tasks built** | **21** | **8** | the tree rebuilds and the defect is really in it |
 
 **29 new tasks across 18 repositories**, taking the benchmark from 15 distinct
-task ids ever built to 44. About 1,900 model calls, no errored rows in any
+task ids ever built to 44, not counting 6 more that exist only in the
+September 17 `runs/tasks.jsonl`, from before the current pipeline. About 1,900 model calls, no errored rows in any
 stage, at `--concurrency 3` and `--passes 3` on every screening gate.
 
 Built is not admitted. A task counts only once the judge has been calibrated on
 its known pair and the three controls have behaved:
 
-| | sweep 1 | sweep 2 |
+| | sweep 1 (`runs/sweep1`) | sweep 2 (`runs/sweep3`) |
 |---|---|---|
 | tasks built | 21 | 8 |
 | pass the calibration gate | 17 | 6 |
 | pass the controls | 14 | 4 |
 | **admitted** | **14** | **4** |
 
-Every control failure was on the reference answer, and on five tasks it was the
-`criterion` control reporting *not applicable*: the answer the developer
+Every control failure was on the reference answer. On four tasks it was the
+`criterion` control reporting *not applicable*, and on one, obsessiondb-rudel-69,
+an applicable criterion control that failed 3 of 3. Not applicable means the answer the developer
 accepted carries no tool calls, so that control would be asking the null
 control's question. The task is untestable by it rather than broken, and the
 code deliberately keeps it out. **That rule alone excludes 4 of the 29 new

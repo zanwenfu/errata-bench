@@ -536,7 +536,7 @@ from errata_bench.score import rejudge as RJ
 # ---- B-159 / B-160: the table counts only what it says it counts ------
 
 # ---- B-161: a regrade's own rows carry the task version ---------------
-check("B-161", "regraded rows are stamped and keyed on the stamp",
+check("B-160", "regraded rows are stamped and keyed on the stamp",
       'stamps[a["task_id"]]' in src(RJ.regrade_all) and
       'r.get("task_fingerprint")' in src(RJ.regrade_all))
 
@@ -547,7 +547,7 @@ t = mktask(); t = dataclasses.replace(t, signature_token="2000")
 # All three answers, not two: both clauses of the old assertion were satisfied
 # by `token_removed = True` unconditionally, which reports every token task as
 # fixed.
-check("B-162", "an empty capture abstains, one holding the token says no, one without says yes",
+check("B-161", "an empty capture abstains, one holding the token says no, one without says yes",
       analyse(t, At("t", "m"), {}).token_removed is None
       and analyse(t, At("t", "m"), {"a": "timeout = 2000"}).token_removed is False
       and analyse(t, At("t", "m"), {"a": "no token here"}).token_removed is True)
@@ -587,39 +587,39 @@ def rejudge_fixture(*, sound_field=False, controls=True, trace_ok=True, scoreabl
 # ---- B-156: the gate, not the raw field ------------------------------
 srcp, outp = rejudge_fixture(sound_field=False)
 summary = RJ.summarise(srcp, outp, "the-judge")
-check("B-156", "a task the original judge really read is not listed as one it could not",
+check("B-155", "a task the original judge really read is not listed as one it could not",
       summary["known_pair"]["of_the_tasks_the_original_read"] == "1/1"
       and summary["known_pair"]["that_the_original_could_not"] == [])
 
 # ---- B-157: the funnel's gate ----------------------------------------
 srcp, _ = rejudge_fixture(sound_field=False)
 stage_report(srcp)
-check("B-157", "the funnel counts a task whose pass/fail line holds",
+check("B-156", "the funnel counts a task whose pass/fail line holds",
       json.loads(srcp.report.read_text())["funnel"]["tasks_calibrated"] == 1)
 
 # ---- B-158: an unsupportable reading is not a result ------------------
 srcp, outp = rejudge_fixture(scoreable=False)
-check("B-158", "a reading the judge could not support is dropped from the rate",
+check("B-157", "a reading the judge could not support is dropped from the rate",
       RJ.summarise(srcp, outp, "the-judge")["counted"]["attempts"] == 0)
 
 # ---- B-163: a checker that failed its own control is untrusted --------
 srcp, outp = rejudge_fixture(trace_ok=False)
-check("B-163", "a task whose trace control failed is not counted",
+check("B-162", "a task whose trace control failed is not counted",
       RJ.summarise(srcp, outp, "the-judge")["counted"]["attempts"] == 0)
 
 # ---- B-159 / B-160: the table counts only what it says --------------
 srcp, outp = rejudge_fixture(scoreable=False)
 table = RJ.compare(srcp.root)
-check("B-159", "an unsupportable cell is left out of the totals",
+check("B-158", "an unsupportable cell is left out of the totals",
       "0/0" in table)
 srcp, outp = rejudge_fixture(controls=False)
-check("B-160", "a task with no control is untrusted in the table",
+check("B-159", "a task with no control is untrusted in the table",
       "0/0" in RJ.compare(srcp.root))
 
 # ---- B-164: a task with no scored attempt is named -------------------
 srcp, _ = rejudge_fixture(scoreable=False)
 stage_report(srcp)
-check("B-164", "a task whose every attempt is unreadable is named as unscored",
+check("B-163", "a task whose every attempt is unreadable is named as unscored",
       json.loads(srcp.report.read_text())["funnel"]["tasks_with_no_scored_attempt"] == ["t"])
 
 # ---- B-161: a regrade after a rebuild replaces, it does not stack ----
@@ -635,7 +635,7 @@ asyncio.run(stage_attempt(d, 10**9, concurrency=2, repeats=1))
 asyncio.run(stage_grade(d, 10**9, concurrency=2))
 asyncio.run(RJ.regrade_all(d, out2, "second", 2, 1))
 rows2 = load(out2.attempts)
-check("B-161", f"a regrade after a rebuild leaves one grade, not two ({first} then {len(rows2)})",
+check("B-187", f"a regrade after a rebuild leaves one grade, not two ({first} then {len(rows2)})",
       first == 1 and len(rows2) == 1
       and rows2[0]["task_fingerprint"] == fingerprint(mktask(defect="rebuilt")))
 

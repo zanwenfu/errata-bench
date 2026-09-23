@@ -38,7 +38,7 @@ so. It also covers resume from stored answers alone and from stored grades, the 
 directories made before the split, and what happens when a candidate or a
 grading fails.
 
-**`guards_hold.py`** is forty-nine numbered sections, one per guard: what the
+**`guards_hold.py`** is fifty-three numbered sections, one per guard: what the
 attempt and grade stages refuse to do; the gate asked repeatedly; the
 reference-answer control and when it is not applicable; the clean-pass
 standard and the hedged one priced side by side; permanent git loss; the
@@ -79,8 +79,9 @@ real one does -- left at the default, every task here was graded by the
 present-kind rule and an attempt that did no work passed.
 
 **`fixes_are_still_in.py`** is one live assertion per bug found on 09-20 and
-after (B-122 to B-164, B-210, B-211 and GATE-1 to GATE-6 in
-`docs/research-log.md`). It exists because a log entry
+after: B-122 to B-163, B-187, B-210, B-211 and GATE-1 to GATE-6 in
+`docs/research-log.md`. B-164 is left out because it was a comment that said the
+opposite of the code, with no behaviour to assert. It exists because a log entry
 saying "fixed" is a claim, and several of these were dangerous enough that the
 claim should be re-checkable: one of them deleted three finished run
 directories on an ordinary-looking command.
@@ -114,8 +115,8 @@ and says so in its own header.
 
 **`imports_resolve.py`** resolves every import in the package -- module-level,
 deferred inside a function, and plain `import a.b` -- against the real package,
-and asserts the corpus is where the code looks. It exists because 82 of the
-package's imports are deferred and a wrong one fails only when its stage runs;
+and asserts the corpus is where the code looks. It exists because 105 of the
+package's 279 imports are deferred and a wrong one fails only when its stage runs;
 two of those were the expensive stages, and every other suite was green.
 
 **`renderer_effect.py`** is a one-off measurement, not a guard: the same 81

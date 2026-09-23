@@ -300,7 +300,7 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   destroying finished runs or fabricating a result. A line in this log saying
   "fixed" is a claim about code that keeps changing, so each one has a live
   assertion in `checks/fixes_are_still_in.py` that runs the real function and
-  fails if the old behaviour returns. Two more scripts sit beside it: one that
+  fails if the old behaviour returns. Two more scripts sat beside it as of 09-20 (there are eight now; checks/README.md lists them): one that
   proves splitting the grading stage changed no scored row, by running the
   previous revision and the current one over the same fakes and comparing every
   field, and one for what the stages refuse to do. No network, no containers,
@@ -546,7 +546,7 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   whose language has none here.
 
 - **R-30 · How unstable the screening gates actually are, measured.**
-  *(09-21.)* 51 screened rows, three gates, five readings each: **765
+  *(09-21.)* 51 screened rows, three gates, five readings each: **760
   readings, no errors, and 7 of the 152 (row, gate) sets disagreed with
   themselves.** The `answerable` gate is perfectly steady -- 255 readings,
   zero variation. All the movement is in `in_scope` (5 of 50 rows) and
@@ -564,7 +564,7 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   dropping the 1s and 2s, which is the behaviour wanted.
   **The first run of this measurement was worthless and is worth recording.**
   It reduced each gate's answer with `bool(v)`; every gate returns a pydantic
-  model and every model is truthy, so all 765 readings came back True and the
+  model and every model is truthy, so all 760 readings came back True and the
   result read as perfect stability. That is the exact mistake `_agree`'s
   docstring records, in a docstring I had read and quoted in a commit message
   the same day. What caught it was not care but arithmetic: the downstream
@@ -634,7 +634,9 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   separate structural reading looks at the tree, but only by searching for a
   literal defect string, and **only 3 of the 15 tasks ever built have one** --
   the rest are behavioural, with nothing to grep. Measured over the 172
-  stored gradings: **the tree-based reading could answer at all on 18 of
+  stored gradings (a file set the entry does not name and a 09-22 review could
+  not re-derive; over the primary grading directories it is 162, with the same
+  18): **the tree-based reading could answer at all on 18 of
   them.** On the other 154 nothing has looked at the files. The trace still
   catches an edit that never happened, because there is no write call to show
   for it; what is missing is what landed. So the judge is given the files the
@@ -671,7 +673,7 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   sessions, 80%. Rust is 380 of them, 6.5%; the rest of what is left out is
   Zig, Kotlin, C#, Swift, Ruby and repositories with no language recorded. The
   point of filtering there is that nothing is then spent reading a
-  conversation whose task could never be attempted -- 12 of the 51 rows that
+  conversation whose task could never be attempted -- 13 of the 51 rows that
   reached build in `rebuild-after` were in such a language, at about eight
   model calls each. What it costs: **the scoreable set goes from seven tasks
   to six.** `Lightprotocol` was one of the seven;
@@ -1083,7 +1085,7 @@ order found.
   fully regraded.
 - **B-88b · The corpus is a symlink into the archived project** (limit · 09-19).
   `data/swe-chat` points at `IdeaProject/errata/data/corpora/swe-chat` (12 GB, six
-  parquet files and 5,852 transcripts). Deleting the archived project takes the
+  parquet files and 5,850 transcripts). Deleting the archived project takes the
   dataset with it; it was a symlink rather than a copy because only 22 GB was
   free at the time. `5a644e6`
 - **B-89 · A sleeping laptop froze detached runs** (limit · 09-19). 03:46 to
@@ -1801,7 +1803,7 @@ other sixteen are recorded in G-49.
 - **B-226 · The assertion written to catch a gate answering the wrong shape
   could not catch the wrong shape it actually produces** (fixed · 09-22).
   `_agree` verifies that every gate reading is a real bool, after the
-  measurement whose 765 readings all came back `True`. It searched for the
+  measurement whose 760 readings all came back `True`. It searched for the
   offender with `next((v for v in values if not isinstance(v, bool)), None)`
   -- so `None`, which is exactly what a `reading` returns when it reaches for
   a field the model does not have, was both the thing to catch and the sign
@@ -2165,7 +2167,7 @@ other sixteen are recorded in G-49.
   names to `store`, and `load_session_turns` lives in `corpus.turns`, so
   `stage_triage` and `stage_locate` both carried
   `from ..store import load_session_turns`. Importing every module does not
-  catch that -- 82 of the package's 210 imports are inside function bodies and
+  catch that -- as of 09-20, 82 of the package's imports were inside function bodies (105 of 279 on 09-22) and
   are not executed at import time -- and no check runs those two stages. The
   stages that read the corpus were therefore the ones left broken, which is
   the shape of the problem rather than bad luck: a deferred import fails when
@@ -2791,7 +2793,7 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   session, 4 to a leak that survives redaction, and 3 to a `git fetch` that
   simply failed. The last is the cheapest thing on the list.
 - **G-23b · The corpus holds roughly 48–60 defensible tasks** at the current
-  gates: 4,016 first-pushback moments with enough history, of which the reader
+  gates: ~~4,016~~ **2,264** first-pushback moments with enough history (§11b; 4,016 was an earlier, looser count), of which the reader
   has seen 568. Going further means using later pushbacks (24,391), where
   redaction would have to repair conversations already full of friction.
 - **G-24 · The repository has no LICENSE**, so "open-sourced" is not yet
@@ -3944,7 +3946,7 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   present-kind task with a token probe survives every gate to reach a built
   task. Any proposal aimed at the presence probe has to beat that denominator.
 - **Size and shape.** Revision `f66cca95b14caaa4177f7ed5eaa424608dadcffa`:
-  12 GB, six parquet tables and 5,852 transcript files. 2.69M conversation
+  12 GB, six parquet tables and 5,850 transcript files. 2.69M conversation
   turns over 5,851 sessions; 14,459 commit rows, 9,254 of them with a patch,
   7,447 after de-duplication (B-01).
 - **The transcript directory is mixed-format.** Claude Code JSONL alongside
@@ -3983,8 +3985,9 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   release complete after local testing without committing".
 - **Progress rows inflate every turn count**: 68 of the 91 raw turns before
   vaayne/anna's cut are progress events, leaving 8 real actions.
-- **The usable pool today**: 4,016 first-pushback moments with at least three
-  prior agent turns, across 185 repositories.
+- **The usable pool today**: ~~4,016 moments across 185 repositories~~ **2,264 first-pushback
+  moments with at least three prior agent turns, across 161 repositories** (§11b,
+  reproduced to the digit; 4,016 was an earlier, looser count).
 - **Why this corpus at all.** One developer's own machine yielded about one
   usable case a month and none publishable, which is what sent the project to
   SWE-chat.
@@ -4185,8 +4188,9 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   a shell loop waits on a process by name.
 - **09-22** — the new tasks calibrated and controlled: **18 of the 29 are
   admitted** (14 of 21 in sweep1, 4 of 8 in sweep3). Every control failure is
-  on the reference answer, and on five tasks it is the `criterion` control
-  reporting *not applicable*, because the answer the developer accepted carries
+  on the reference answer: on four tasks it is the `criterion` control
+  reporting *not applicable*, and on one (obsessiondb-rudel-69) an applicable
+  criterion control that failed 3 of 3. The not-applicable cases arise because the answer the developer accepted carries
   no tool calls and the control would then be asking the null control's
   question. `ControlResult.ok` is False for those, so the task is excluded.
   **G-62 opened**: that rule costs 4 of the 29 new tasks and 7 across every run
