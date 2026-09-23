@@ -65,9 +65,14 @@ def raw_calls(path: Path) -> list[dict]:
                 entry = json.loads(line)
             except ValueError:
                 continue
-            message = entry.get("message") or {}
+            # Not every line is an entry: some transcripts carry bare JSON
+            # strings, and some entries a message that is a string. Found on
+            # the first real screening run, which it stopped before a call.
+            if not isinstance(entry, dict):
+                continue
+            message = entry.get("message")
             if (entry.get("type") != "assistant" or entry.get("isSidechain")
-                    or not isinstance(message.get("content"), list)):
+                    or not isinstance(message, dict) or not isinstance(message.get("content"), list)):
                 continue
             for block in message["content"]:
                 if isinstance(block, dict) and block.get("type") == "tool_use" and block.get("id"):

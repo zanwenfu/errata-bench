@@ -58,8 +58,16 @@ def find_moments(
     kinds: tuple[str, ...] = PUSHBACK_KINDS,
     min_agent_turns: int = 3,
     max_per_repo: int = 0,
+    later: bool = False,
 ) -> int:
     """Collect pushback moments from the corpus.
+
+    ``later`` takes, instead of each session's first pushback, its earliest
+    later one with at least ``min_agent_turns`` agent turns since the pushback
+    before it: new work, objected to again. One per session, so tasks stay
+    independent, and the earliest, so the conversation carries as little
+    friction as a later moment can. The first pushbacks are exhausted (all
+    1,808 drawn); these are 10,511 more moments in 2,043 sessions.
 
     Takes the first genuine pushback in each session. A later one sits in a
     conversation already full of friction, and a candidate reading that does not
@@ -100,6 +108,7 @@ def find_moments(
 
     wanted = set(kinds)
     first: dict[str, dict] = {}
+    pushes: dict[str, list[tuple]] = {}
     conv = pq.ParquetFile(CORPUS / "conversations.parquet")
     for batch in conv.iter_batches(
         batch_size=200_000,
@@ -114,6 +123,9 @@ def find_moments(
                 continue
             session = cols["session_id"][i]
             turn = cols["turn_number"][i]
+            if later:
+                pushes.setdefault(session, []).append((turn, kind))
+                continue
             if session in first and first[session]["turn_number"] <= turn:
                 continue
             first[session] = {
@@ -129,6 +141,8 @@ def find_moments(
     # now?", which is a real bug report and an impossible task, because there is
     # no failing answer in this transcript to cut before. Triage catches these
     # for the price of a model call; counting rows costs nothing.
+    if later:
+        first = _later_moments(conv, pushes, repo_of, min_agent_turns)
     need = {m["session_id"]: m["turn_number"] for m in first.values()}
     acted: dict[str, int] = {s: 0 for s in need}
     for batch in conv.iter_batches(
@@ -215,6 +229,40 @@ def find_moments(
     return len(spread)
 
 
+def _later_moments(conv, pushes: dict, repo_of: dict, min_agent_turns: int) -> dict[str, dict]:
+    """Each session's earliest later pushback with enough new agent work before it.
+
+    Agent turns are counted between consecutive pushbacks, so "3 turns since
+    the previous objection" means the agent did new work that was objected to
+    again -- not that a pile of turns from before the first objection carried
+    over. A session with one pushback has no later moment.
+    """
+    from bisect import bisect_right
+
+    order = {s: sorted(p) for s, p in pushes.items() if len(p) > 1}
+    turns = {s: [t for t, _ in p] for s, p in order.items()}
+    between: dict[str, list[int]] = {s: [0] * len(p) for s, p in order.items()}
+    for batch in conv.iter_batches(batch_size=200_000, columns=["session_id", "turn_number", "turn_type"]):
+        cols = {n: batch.column(n).to_pylist() for n in batch.schema.names}
+        for i in range(len(cols["session_id"])):
+            session = cols["session_id"][i]
+            if session not in turns or cols["turn_type"][i] not in ("assistant_response", "tool_use"):
+                continue
+            k = bisect_right(turns[session], cols["turn_number"][i])
+            if k < len(between[session]):
+                between[session][k] += 1   # agent work done before pushback k
+    out = {}
+    for session, p in order.items():
+        for k in range(1, len(p)):
+            if between[session][k] >= min_agent_turns:
+                out[session] = {"session_id": session, "turn_number": p[k][0],
+                                "repo_id": repo_of.get(session), "kind": p[k][1],
+                                "later": True, "nth_pushback": k + 1,
+                                "agent_turns_since_previous": between[session][k]}
+                break
+    return out
+
+
 def show_status(paths: Paths) -> None:
     rows = [
         ("moments", paths.moments),
@@ -285,6 +333,12 @@ def main() -> None:
         help="collect moments not present in an earlier run's moments file",
     )
     ap.add_argument("--exclude", help="a moments file whose rows to skip")
+    ap.add_argument(
+        "--later",
+        action="store_true",
+        help="collect each session's earliest later pushback with new agent work before it, "
+             "instead of its first (the `moments` command only)",
+    )
     ap.add_argument(
         "--max-per-repo",
         type=int,
@@ -403,7 +457,7 @@ def main() -> None:
         kinds = tuple(k.strip() for k in args.kinds.split(",") if k.strip())
         n = find_moments(50 if args.limit is None else args.limit,
                          paths.moments, skip_seen=skip, kinds=kinds,
-                         max_per_repo=args.max_per_repo)
+                         max_per_repo=args.max_per_repo, later=args.later)
         if args.fresh:
             print(f"  skipping moments already in {len([p for p in skip if p.exists()])} file(s)")
         print(f"  collected {n} moments -> {paths.moments}")

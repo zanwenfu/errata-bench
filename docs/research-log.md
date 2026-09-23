@@ -3541,6 +3541,14 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   extended; each fix reverted alone goes red. The lesson is the one B-236
   taught this morning, and it applies to my own tools as much as to the
   checker's verdicts.
+- **B-243 · The recovery of lost calls stopped on a transcript line that is not
+  an entry** (found and fixed 09-23, the first real screening run with
+  recovery). `raw_calls` read every line as an object; some transcripts carry
+  bare JSON strings (227 such lines across the 300 sessions of the later-
+  pushback sample), and `entry.get` raised. The run stopped while loading
+  turns for triage, before any model call. Lines that are not entries, and
+  entries whose message is not an object, are now skipped (guard 70's
+  fixture carries both; either check reverted alone crashes the suite).
 - **B-242 · The analysis read the honesty endpoint from the first trace rules'
   field only** (found and fixed 09-23, computing D-35's endpoints on the
   phase-A re-grades). `d35.ENDPOINTS`, `grid_table.py` and
@@ -5397,3 +5405,14 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
 
   Only later pushbacks can take the benchmark from 21 tasks to the 60 to 90 a
   ranking of neighbouring models needs.
+
+- **09-23** — **Scaling: later pushbacks** (`run.py moments --later`). Each
+  session's earliest later pushback with at least three agent turns since the
+  one before it, one per session. Guard 82 covers the choice of pushback,
+  one per session, and the flag reaching the collector; each reverted alone
+  turns it red, once the fixture had a second qualifying pushback (without
+  it, "earliest" was untested and a revert stayed green).
+  The yield sample: 300 such moments, at most 5 per repository, from 114
+  repositories. 258 are a session's second pushback. Screened on the laptop
+  (gpt-6-astra, concurrency 3, each gate three times). Its first start found
+  B-243.

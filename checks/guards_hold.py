@@ -5116,6 +5116,9 @@ def _entry70(msg, cid, name, given, side=False):
     _entry70("m1", "e3", "Edit", {"file_path": "/r/README_RU.md", "old_string": "a", "new_string": "b"}),
     _entry70("m9", "sub1", "Edit", {"file_path": "/r/SUBAGENT.md"}, side=True),
     _entry70("m2", "gone", "Bash", {"command": "ls"}),
+    # Lines real transcripts carry that are not entries: a bare string, and an
+    # entry whose message is a string. They stopped the first real run.
+    json.dumps("a bare string"), json.dumps({"type": "assistant", "message": "a string"}),
 ]) + "\n")
 _table70 = [
     _T63(1, "user_prompt", content="update the READMEs"),
@@ -5539,6 +5542,64 @@ finally:
 _s81 = json.loads((_out81 / "sample.json").read_text())
 check([x["task_id"] for x in _s81] == ["t81"] and "ran the tests" in _s81[0]["claims"],
       f"and the hand-reading sample draws from third-rules rows: {[x['task_id'] for x in _s81]}")
+
+print("\n82. a later pushback is collected after new work, one per session")
+# The first pushbacks are exhausted (all 1,808 drawn); later ones are 10,511
+# more moments in 2,043 sessions. `--later` takes each session's earliest later
+# pushback with at least three agent turns since the one before it: s-multi's
+# second objection follows two turns of work and is passed over, its third
+# follows four and is taken, though its fourth qualifies too; s-once objects
+# once and has no later moment.
+_corpus82 = Path(tempfile.mkdtemp())
+_langs82 = {"s-multi": "TypeScript", "s-once": "TypeScript"}
+_pq.write_table(_pa.table({"session_id": list(_langs82), "repo_id": [f"o/{k}" for k in _langs82]}),
+                _corpus82 / "sessions.parquet")
+_pq.write_table(_pa.table({
+    "repo_id": [f"o/{k}" for k in _langs82], "url": ["u"] * 2, "license_type": ["mit"] * 2,
+    "repo_github_metadata": [json.dumps({"language": v}) for v in _langs82.values()]}),
+    _corpus82 / "repositories.parquet")
+_A82 = ("assistant_response", None)
+_rows82 = [("s-multi", n, *kp) for n, kp in enumerate([
+    ("user_prompt", "non_pushback"), _A82, ("tool_use", None), _A82,      # 3 turns of work
+    ("user_prompt", "correction"),                                        # 5: the first pushback
+    _A82, _A82,                                                           # 2 turns
+    ("user_prompt", "failure_report"),                                    # 8: too little new work
+    _A82, ("tool_use", None), _A82, ("tool_use", None),                   # 4 turns
+    ("user_prompt", "rejection"),                                         # 13: taken, the earliest
+    _A82, ("tool_use", None), _A82,                                       # 3 turns
+    ("user_prompt", "correction")], start=1)]                             # 17: qualifies too, later
+_rows82 += [("s-once", n, *kp) for n, kp in enumerate([
+    ("user_prompt", "non_pushback"), _A82, _A82, _A82, ("user_prompt", "correction")], start=1)]
+_pq.write_table(_pa.table({"session_id": [r[0] for r in _rows82], "turn_number": [r[1] for r in _rows82],
+                           "turn_type": [r[2] for r in _rows82], "prompt_pushback": [r[3] for r in _rows82]}),
+                _corpus82 / "conversations.parquet")
+_keep82 = (_sessions_mod.CORPUS, _sessions_mod.load_repos)
+_sessions_mod.CORPUS, _sessions_mod.load_repos = _corpus82, REAL_LOAD_REPOS
+try:
+    _out82, _out82f = (Path(tempfile.mkdtemp()) / "m.jsonl" for _ in range(2))
+    with _contextlib38.redirect_stdout(_io38.StringIO()):
+        _run_mod.find_moments(10, _out82, later=True)
+        _run_mod.find_moments(10, _out82f)
+finally:
+    _sessions_mod.CORPUS, _sessions_mod.load_repos = _keep82
+_m82 = load(_out82)
+check([(r["session_id"], r["turn_number"], r.get("nth_pushback"), r.get("agent_turns_since_previous"))
+       for r in _m82] == [("s-multi", 13, 3, 4)]
+      and _m82[0].get("later") is True and _m82[0]["agent_turns_before"] == 9 and _m82[0]["kind"] == "rejection",
+      f"the earliest later pushback after enough new work, and none where a session objected once: "
+      f"{[(r['session_id'], r['turn_number']) for r in _m82]}")
+check(sorted((r["session_id"], r["turn_number"]) for r in load(_out82f)) == [("s-multi", 5), ("s-once", 5)],
+      "and without --later each session's first pushback is collected, as before")
+_got82: dict = {}
+_find82, _argv82 = _run_mod.find_moments, sys.argv[:]
+_run_mod.find_moments = lambda limit, out, **kw: (_got82.update(kw), 0)[1]
+sys.argv = ["run.py", "moments", "--later", "--limit", "5", "--run", str(Path(tempfile.mkdtemp()) / "run")]
+try:
+    with _contextlib38.redirect_stdout(_io38.StringIO()):
+        _run_mod.main()
+finally:
+    _run_mod.find_moments, sys.argv = _find82, _argv82
+check(_got82.get("later") is True, f"and `run.py moments --later` asks for them: later={_got82.get('later')}")
 
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
