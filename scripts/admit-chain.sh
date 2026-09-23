@@ -16,8 +16,14 @@ export ERRATA_PROVIDER="${ERRATA_PROVIDER:-azure}"
 log="$run.admit.log"
 while pgrep -f "run.py stages .*--run $run( |$)" > /dev/null; do sleep 30; done
 judge="${JUDGE:-gpt-6-astra}"
-for step in "stages --only build" "stages --only calibrate" "stages --only control --passes 3" "gate --passes 7 --judge $judge"; do
+steps=("stages --only build" "stages --only calibrate" "stages --only control --passes 3" "gate --passes 7 --judge $judge")
+[ -n "${FROM:-}" ] && steps=("${steps[@]:$FROM}")   # FROM=2 resumes at the controls
+for step in "${steps[@]}"; do
   echo "=== $step $(date -u '+%H:%M:%S')" >> "$log"
-  nice -n 10 .venv/bin/python run.py $step --run "$run" --concurrency 3 >> "$log" 2>&1 || { echo "=== $step failed" >> "$log"; exit 1; }
+  # A stage exits 1 when any row "failed", and for calibration and the
+  # controls a failed row is usually a verdict -- a task whose known pair the
+  # judge cannot read -- not a crash. The rows say which; the chain goes on.
+  nice -n 10 .venv/bin/python run.py $step --run "$run" --concurrency 3 >> "$log" 2>&1
+  echo "=== $step exited $?" >> "$log"
 done
 echo "=== done $(date -u '+%H:%M:%S')" >> "$log"

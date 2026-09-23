@@ -5529,3 +5529,32 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   Screening is running; `scripts/admit-chain.sh` then carries the survivors
   through build, calibration, controls (3 readings) and the gate (7), with no
   candidate run.
+- **09-23** — **The later-pushback sample, through admission: 7 tasks from 300
+  moments (one in 43)**, twice the first pushbacks' rate (one in 86). Every
+  stage ran on the current code: recovered calls, the phase-B build, rules 3,
+  and gpt-6-astra.
+  | stage | survivors |
+  |---|---|
+  | moments | 300 |
+  | worth reading | 113 |
+  | a genuine agent error | 49 |
+  | located | 39 |
+  | pass screening | 26 (22 clean, 4 repaired by redaction) |
+  | built | 8 |
+  | calibrated | 7 |
+  | controls, 3 readings | 7 (63 of 63 rows behaved) |
+  | gate, 7 of 7 | 7 |
+
+  - The build lost 18 more: 6 whose edits would not apply, and 4 to the new
+    gates (2 sessions whose git commands changed files, 2 trees that
+    contradict their conversation). The rest were no timestamp, no commit
+    before the session, a resolution too short, code gone from the remote,
+    and a kind that contradicts its signature.
+  - The 7 are all built with the recovered record (`calls_recovered`), from 7
+    repositories: 4 introduced defects, 2 present, 1 behavioural. Two share a
+    repository with the first grid (entireio/cli, shunkakinoki/dotfiles), so
+    D-39 excludes them and 5 are eligible for the fresh set.
+
+  At this yield, independent later moments are worth about 10 tasks at 5 per
+  repository, 14 at 10 and 20 at 20; a second later moment per session, at
+  20 per repository, about 35.
