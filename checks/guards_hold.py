@@ -87,6 +87,10 @@ judge_mod.judge = fake_judge
 trace_mod.check = fake_check
 attempt_mod.transcript_for = lambda task, turns: f"conversation for {task.task_id}"
 attempt_mod.transcripts_for = no_corpus
+# The served-model probe makes a network call (D-36 A6). No section here may,
+# so a stand-in, kept real for section 67.
+REAL_SERVED = reader.served
+reader.served = lambda model: {"deployment": model, "served_model": f"{model} (stand-in)"}
 # What the controls are read against (D-36 A3): the control paths now read the
 # conversations, which is not the corpus read any section here tests -- section
 # 63 tests the real one -- so a fixed stand-in, kept real for that section.
@@ -4953,6 +4957,50 @@ check(_cs66.check(_tree66, _nl66, 2, "x")["consistent"],
 # reads a 1.3 GB file that CI does not have, so its column list is checked here.
 check("tool_call_id" in turns_mod.TURN_COLUMNS,
       "the turn loader reads each call's id, which pairing results to calls needs")
+
+print("\n67. each stage records which model each deployment served, before and after")
+# D-36 A6 (G-75). Which model answered was recorded nowhere, and one deployment's
+# name is not its model: the one called claude-opus-5 serves claude-opus-5-2.
+_env67 = {k: os.environ.pop(k) for k in ("AZURE_OPENAI_API_KEY", "OPENAI_API_KEY") if k in os.environ}
+_dotenv67, reader._load_dotenv = reader._load_dotenv, (lambda: None)
+try:
+    _row67 = REAL_SERVED("some-deployment")
+finally:
+    reader._load_dotenv = _dotenv67
+    os.environ.update(_env67)
+check(_row67.get("error") == "no credential to probe with" and _row67.get("deployment") == "some-deployment",
+      f"with nothing to probe with, the probe says so rather than raising: {_row67}")
+# A call that fails is a row too, not a stage that stops. Port 9 on this
+# machine refuses at once; nothing leaves it.
+_keys67 = ("ERRATA_PROVIDER", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_BASE_URL", "ERRATA_API")
+_saved67 = {k: os.environ.get(k) for k in _keys67}
+os.environ.update({"ERRATA_PROVIDER": "azure", "AZURE_OPENAI_API_KEY": "not-a-key",
+                   "AZURE_OPENAI_BASE_URL": "http://127.0.0.1:9/openai/v1", "ERRATA_API": "responses"})
+try:
+    try:
+        _row67b = REAL_SERVED("some-deployment")
+    except Exception as e:  # noqa: BLE001 - what is being checked
+        _row67b = {"raised": repr(e)}
+finally:
+    for _k, _v in _saved67.items():
+        if _v is None:
+            os.environ.pop(_k, None)
+        else:
+            os.environ[_k] = _v
+check(str(_row67b.get("error", "")).startswith("APIConnectionError") and "served_model" not in _row67b,
+      f"a probe whose call fails is recorded as failed, and the stage goes on: {_row67b}")
+_p67 = fresh(["task-0"])
+asyncio.run(stage_attempt(_p67, 10**9, concurrency=1, repeats=1))
+asyncio.run(stage_grade(_p67, 10**9, concurrency=1))
+_st67 = [(r.get("stage"), r.get("when")) for r in load(_p67.served)]
+_rj67 = _jp58(_p67.root, "second")
+from errata_bench.score.rejudge import rejudge as _rejudge67
+asyncio.run(_rejudge67(_p67.root, "second", concurrency=1, passes=1))
+_rs67 = [(r.get("stage"), r.get("when"), r.get("deployment")) for r in load(_rj67.served)]
+check(_st67 == [("attempt", "start"), ("attempt", "end"), ("grade", "start"), ("grade", "end")]
+      and _rs67 == [("rejudge", "start", "second"), ("rejudge", "end", "second")]
+      and all(str(r.get("served_model")).endswith("(stand-in)") for r in load(_p67.served) + load(_rj67.served)),
+      f"the attempt, grading and re-judge stages each probe at their start and end: {_st67} {_rs67}")
 
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every

@@ -184,6 +184,55 @@ def configure_client() -> None:
     _client_configured = True
 
 
+def served(model: str) -> dict:
+    """Which model a deployment is serving now, from one small call (D-36 A6, G-75).
+
+    The response body echoes the deployment name for most Azure deployments,
+    but Azure's headers say more: `x-ms-served-model` (the deployment named
+    claude-opus-5 serves claude-opus-5-2) and `azureml-model-session`, a dated
+    id that changes when the deployment does. The model library does not pass
+    headers on, so each stage asks once at its start and once at its end, and
+    a change mid-run shows. Never raises: a probe that could not be made is a
+    row saying why, not a stage that stops.
+    """
+    import datetime
+
+    row = {"deployment": model,
+           "at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")}
+    _load_dotenv()
+    azure = os.environ.get("ERRATA_PROVIDER", "").lower() == "azure"
+    key = os.environ.get("AZURE_OPENAI_API_KEY" if azure else "OPENAI_API_KEY")
+    base = os.environ.get("AZURE_OPENAI_BASE_URL") if azure else None
+    if not key or (azure and not base):
+        return {**row, "error": "no credential to probe with"}
+    try:
+        from openai import OpenAI
+
+        client = OpenAI(api_key=key, base_url=base.rstrip("/") if base else None,
+                        max_retries=2, timeout=60)
+        api = os.environ.get("ERRATA_API") or ("chat_completions" if azure else "responses")
+        if api == "responses":
+            raw = client.responses.with_raw_response.create(model=model, input="Reply with the word OK.")
+        else:
+            raw = client.chat.completions.with_raw_response.create(
+                model=model, messages=[{"role": "user", "content": "Reply with the word OK."}])
+        body, headers = raw.parse(), raw.headers
+        return {**row, "served_model": headers.get("x-ms-served-model") or getattr(body, "model", None),
+                "model_session": headers.get("azureml-model-session"),
+                "region": headers.get("x-ms-region")}
+    except Exception as e:  # noqa: BLE001 - provenance is recorded, never fatal
+        return {**row, "error": f"{type(e).__name__}: {e}"[:300]}
+
+
+async def record_served(path, model: str, stage: str, when: str) -> None:
+    """Probe `model` and append what it served to `path` (a run's served.jsonl)."""
+    import asyncio
+
+    from .store import append
+
+    append(path, {**await asyncio.to_thread(served, model), "stage": stage, "when": when})
+
+
 def _describe(schema: dict, defs: dict, indent: str = "") -> list[str]:
     """One line per field of a JSON schema: its name, its type, what it means."""
     lines = []

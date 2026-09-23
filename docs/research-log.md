@@ -3534,6 +3534,18 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   every deployment it uses at its start and end, and write the served model,
   the session and the region to the run directory, so a change mid-run
   shows.
+  *Built 09-23 (A6, second half).* The attempt stage, the grading stage and
+  the re-judge each probe their deployment once before their calls and once
+  after, and append the served model, the session and the region to
+  `served.jsonl` in the run (or judge) directory. A probe that cannot be made
+  is a row saying why; it never stops a stage. **This departs from D-36's
+  wording**, which asked for the served model on every row: agents 0.22
+  gives a call's body but not its headers, so per row there is only the
+  deployment name, which is what G-75 says is not enough. What the probes
+  cannot show is a change and a change back inside one stage. Token use is
+  recorded per attempt (A6, first half); the judge's and the trace check's
+  calls still record none, which is the other part of D-36's wording not
+  met.
 - **G-70 · The trace check counts the agent's own earlier work, recorded in
   the conversation, as unsupported.** *(opened 09-23, from an independent
   review, verified on the rows.)*
@@ -5031,3 +5043,14 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   development set. Each change reverted alone goes red, and all five
   suites pass without the corpus. Criterion 1 is measured again in a fresh
   directory.
+- **09-23** — **A6, second half: which model each deployment served**
+  (D-36, G-75). The attempt, grading and re-judge stages each probe their
+  deployment at their start and end and write the served model, the Azure
+  model session and the region to `served.jsonl`. The probe never raises: no
+  credential is a row saying so, and a failed call is a row with its error.
+  Recorded per stage, not per row as D-36 asked, because the model library
+  does not pass headers on (G-75 says what that leaves out). Guard section
+  67, and a counted stand-in in each of the three suites that drive those
+  stages, so no suite reaches the network. Each of the nine changes,
+  reverted alone from a frozen snapshot, turns its suite red; all five suites
+  pass without the corpus.

@@ -36,9 +36,10 @@ fakes, and compares every field the old row carried, on every scored row, and re
 supposed to change how fast the work runs and nothing else; this is what says
 so. It also covers resume from stored answers alone and from stored grades, the run
 directories made before the split, and what happens when a candidate or a
-grading fails.
+grading fails. Its ninth section requires that every served-model probe the
+stages made went to its stand-in, so none of it reaches the network.
 
-**`guards_hold.py`** is sixty-six numbered sections, one per guard: what the
+**`guards_hold.py`** is sixty-seven numbered sections, one per guard: what the
 attempt and grade stages refuse to do; the gate asked repeatedly; the
 reference-answer control and when it is not applicable; the clean-pass
 standard and the hedged one priced side by side; permanent git loss; the
@@ -86,7 +87,10 @@ reads each control against its own conversation and checks the instrument per
 task. Section 64 has every tool keep the clock and every attempt that runs out
 still report. Section 65 has calibration read each answer against its own
 conversation, as grading does. Section 66 checks a rebuilt tree against what
-the conversation showed of it. It closes by asserting it handed production back unpatched, because three
+the conversation showed of it. Section 67 has the attempt, grading and
+re-judge stages each record which model their deployment served, at their
+start and end, and a probe that cannot be made recorded as such rather than
+stopping the stage. It closes by asserting it handed production back unpatched, because three
 sections restored one module attribute through a name a fourth binds to
 something else. Its fake judge sets the task's kind the way the
 real one does -- left at the default, every task here was graded by the
@@ -94,7 +98,8 @@ present-kind rule and an attempt that did no work passed.
 
 **`fixes_are_still_in.py`** is one live assertion per bug found on 09-20 and
 after: B-122 to B-163, B-187, B-210, B-211 and GATE-1 to GATE-6 in
-`docs/research-log.md`. B-164 is left out because it was a comment that said the
+`docs/research-log.md`, and A6, which requires the stages' served-model probes
+to have gone to the stand-in. B-164 is left out because it was a comment that said the
 opposite of the code, with no behaviour to assert. It exists because a log entry
 saying "fixed" is a claim, and several of these were dangerous enough that the
 claim should be re-checkable: one of them deleted three finished run

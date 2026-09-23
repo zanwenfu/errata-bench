@@ -63,6 +63,10 @@ async def fake_check(answer, tool_calls, *, model=None, context="", given=""):
 A.run, J.judge, T.check = fake_run, fake_judge, fake_check
 A.transcript_for = lambda t, turns: "conversation"
 A.transcripts_for = lambda ts: {t.task_id: "conversation" for t in ts}
+# The served-model probe calls the network (D-36 A6); never from a check.
+import errata_bench.llm as _llm_served
+_served_calls: list[str] = []
+_llm_served.served = lambda model: _served_calls.append(model) or {"deployment": model, "served_model": "stand-in"}
 # The control stage reads what each control is read against (D-36 A3). Without
 # this stand-in the stage read the real corpus wherever one was present -- a
 # 1.3 GB file, silently, on a laptop -- and failed where none was, in CI.
@@ -722,6 +726,11 @@ P.replace(d.controls, [{"task_id": "t", "control": "null", "ok": False},
 stage_report(d)
 check("GATE-6", "and a task whose control fails leaves the report's rate",
       json.loads(d.report.read_text())["attempts"] == 0)
+
+# Counted, because a stand-in nothing calls proves nothing: without it the
+# stages' probes went to the real model wherever a credential was found.
+check("A6", "every served-model probe the stages made went to the stand-in, not the network",
+      bool(_served_calls))
 
 bad = [b for b, ok in RESULTS if not ok]
 print(f"\n  {len(RESULTS) - len(bad)} of {len(RESULTS)} fixes verified live"

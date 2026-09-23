@@ -47,6 +47,8 @@ FILES = (
     "gate",
     # The instrument's own checks per task (D-36 A3): measured, never gated on.
     "instrument",
+    # Which model each deployment served, at a stage's start and end (D-36 A6).
+    "served",
 )
 
 

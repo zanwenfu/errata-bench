@@ -143,6 +143,10 @@ judge_mod.judge = fake_judge
 trace_mod.check = fake_check
 attempt_mod.transcript_for = lambda task, turns: f"conversation for {task.task_id}"
 attempt_mod.transcripts_for = lambda tasks: {t.task_id: f"conversation for {t.task_id}" for t in tasks}
+# The served-model probe calls the network (D-36 A6); never from a check.
+import errata_bench.llm as _llm_served
+_served_calls: list[str] = []
+_llm_served.served = lambda model: _served_calls.append(model) or {"deployment": model, "served_model": "stand-in"}
 container_mod.image_for = lambda lang, **kw: "node:22"
 container_mod.sweep = lambda: None
 container_mod.max_containers = lambda: 2
@@ -495,6 +499,12 @@ src = Structure("t", investigated=True, executed=False, wrote=True, tool_calls=7
                 touched_defect_file=True, declaration_matches=None)
 check(Structure.from_json(json.loads(json.dumps(src.to_json()))) == src,
       "every field written is read back unchanged")
+
+# ---------------------------------------------- 9. nothing reached the network
+
+print("\n9. the served-model probes went to the stand-in")
+# Counted, because a stand-in nothing calls proves nothing (D-36 A6).
+check(bool(_served_calls), f"the stages probed {len(_served_calls)} times, all through the stand-in")
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:

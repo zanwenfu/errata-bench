@@ -341,7 +341,12 @@ async def stage_attempt(
         )
         return True
 
+    # Which model the candidate deployment served, before and after (D-36 A6).
+    from ..llm import model_name as _served_name, record_served
+
+    await record_served(paths.served, _served_name(), "attempt", "start")
     results = await _gather([one(t, i) for t, i in jobs], concurrency)
+    await record_served(paths.served, _served_name(), "attempt", "end")
     p.produced = sum(1 for r in results if r)
     p.failed = sum(1 for r in results if not r)
     sweep()
@@ -672,7 +677,12 @@ async def stage_grade(paths: Paths, limit: int, concurrency: int,
         })
         return True
 
+    # Which model the judge deployment served, before and after (D-36 A6).
+    from ..llm import record_served
+
+    await record_served(paths.served, grader, "grade", "start")
     results = await _gather([one(a, n) for a, n in todo], concurrency)
+    await record_served(paths.served, grader, "grade", "end")
     p.produced = sum(1 for r in results if r)
     p.failed = sum(1 for r in results if not r)
     p.took_s = time.monotonic() - t0

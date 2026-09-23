@@ -1275,6 +1275,10 @@ async def rejudge(run: Path, model: str, *, concurrency: int = 4, passes: int = 
     src = Paths(run)
     out = judge_paths(run, model)
     print(f"  judge: {model}\n  from:  {run}\n  into:  {out.root}\n", flush=True)
+    # Which model the judge deployment served, before and after (D-36 A6).
+    from ..llm import record_served
+
+    await record_served(out.served, model, "rejudge", "start")
     p = await calibrate_all(src, out, model, concurrency)
     print(p.line(), flush=True)
     p = await controls_all(src, out, model, concurrency, passes)
@@ -1283,6 +1287,7 @@ async def rejudge(run: Path, model: str, *, concurrency: int = 4, passes: int = 
     print(p.line(), flush=True)
     p = await regrade_all(src, out, model, concurrency, passes)
     print(p.line(), flush=True)
+    await record_served(out.served, model, "rejudge", "end")
     summary = summarise(src, out, model)
     # Temp and rename, like every other file this writes. B-197 fixed exactly
     # this for `stage_report` and left the rejudge summary in place, so a kill
