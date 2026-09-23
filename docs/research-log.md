@@ -5261,3 +5261,21 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   Only one thing is the same under both instruments: DeepSeek is worst on
   every endpoint. The script's first table reproduces D-35's primary exactly,
   so the change is the instrument's, not the arithmetic's.
+- **09-23** — **The README rewritten around what is known now**: status,
+  results (D-35, the phase-A re-grades, the acceptance criteria, what the data
+  showed, what can be claimed), the funnel, how the system works stage by
+  stage, and a table of every problem found with where it stands. The funnel
+  is counted by the new `scripts/funnel.py`, from the corpus and every run
+  directory:
+  - the pool as `run.py moments` defines it: 2,692,480 turns to 2,264 moments,
+    as counted on 09-20, then **1,808** in a language with a container, in 106
+    repositories. **All 1,808 have been drawn.**
+  - from the 1,808: 1,208 triaged (600 left by the per-repository cap), 476
+    worth reading, 472 read, 164 a genuine agent error, 100 located with a
+    resolution, 97 with a signature, 44 through all three screening gates, 40
+    built.
+  - the frozen 21 come from sweep1, sweep3 and rebuild-after: 43 built, 31
+    calibrated, 25 admitted, 24 holding the seven-reading gate. The three
+    admitted and not frozen are exactly the three admitted tasks from outside
+    today's pool: two with no recorded language, one in Rust.
+  - one moment in 86 becomes a frozen task.
