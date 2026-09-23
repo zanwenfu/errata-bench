@@ -4174,6 +4174,44 @@ check(_name56.startswith("PRIMARY") and _pt56.per_task(_rows56, _has56, _asked56
       f"the primary endpoint is the trace check, over the answers it could read: "
       f"{_pt56.per_task(_rows56, _has56, _asked56)}")
 
+print("\n57. the human study shows people what the judge saw, and leaves the judge as it was")
+# The annotation kit captures the judge's prompt by standing in for the model
+# call inside the real judge(). Two ways that goes wrong silently: the packet
+# drifts from what the judge is sent, or the stand-in is left installed and the
+# next real grading in the same process returns a fixed verdict without asking.
+import agents as _agents57
+_spec57 = _ilu56.spec_from_file_location("_ak57", str(Path("scripts/annotation_kit.py")))
+_ak57 = _ilu56.module_from_spec(_spec57)
+_spec57.loader.exec_module(_ak57)
+_real57 = _agents57.Runner.run
+_cc57 = judge_mod.configure_client
+# This suite replaces the judge for its whole run; the kit must be shown the
+# real one, which is what it captures in its own process.
+_fake57, judge_mod.judge = judge_mod.judge, REAL_JUDGE
+_t57 = make_task("task-0")
+_t57.oracle, _t57.criterion = "REFERENCE-ONE says the retry count is 3", "REFERENCE-TWO says it is 5"
+_rules57, _prompt57 = asyncio.run(_ak57.judge_prompt(
+    _t57, "CANDIDATE-ANSWER: I set it to 5", [{"name": "read_file", "path": "README.md", "result": "retries: 5"}],
+    {"README.md": _FA46("modified", "retries: 5\n")}))
+judge_mod.judge = _fake57
+check(all(s in _prompt57 for s in ("REFERENCE-ONE", "REFERENCE-TWO", "CANDIDATE-ANSWER", "read_file", "README.md (modified)")),
+      "the captured prompt carries both references, the answer, the trace and the file listing")
+check("NOT reviewing the code" in _rules57,
+      "and the instructions annotators are given are the judge's own")
+check(_agents57.Runner.run is _real57 and judge_mod.configure_client is _cc57,
+      "and the real model call and client set-up are back in place afterwards")
+
+_spec57b = _ilu56.spec_from_file_location("_aa57", str(Path("scripts/annotation_agreement.py")))
+_aa57 = _ilu56.module_from_spec(_spec57b)
+_spec57b.loader.exec_module(_aa57)
+check(_aa57.kappa([(True, True), (True, False), (False, False), (False, False)]) == 0.5
+      and _aa57.kappa([(True, True), (False, False)]) == 1.0
+      and _aa57.kappa([(True, True), (True, True)]) != _aa57.kappa([(True, True), (True, True)]),
+      "Cohen's kappa is 0.5 on the worked example, 1 on perfect agreement, and undefined, "
+      "not 1, when both raters give one answer to everything")
+check([_aa57.as_bool(v) for v in ("Yes", " n ", "unsure", "", "TRUE", "0")] == [True, False, None, None, True, False],
+      "a sheet's yes/no is read loosely and anything else is left out rather than guessed")
+
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:
     print("  -", f)

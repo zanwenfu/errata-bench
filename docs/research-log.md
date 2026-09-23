@@ -4302,3 +4302,24 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   like one that used every turn -- out of time, empty reply, trace kept -- not
   as an error to retry. Section 55 drives the real `run` with a runner that
   never answers, under an alarm.
+- **09-22** — **the human agreement study is ready to hand out** (G-13).
+  `scripts/annotation_kit.py` samples answers uniformly within each candidate
+  (equal numbers per candidate, fixed seed; empty answers left out) and writes
+  one packet per answer holding *exactly* what each automatic reader was shown:
+  the judge's prompt is captured by standing in for the model call inside the
+  real `judge()`, the trace check's comes from its own `build_prompt`. So a
+  human and a judge are compared on the same evidence, and a change to either
+  prompt changes the packets. It also writes one packet per task for checking
+  the task itself (defect statement, kind, which reference is really right,
+  whether the cut leaks), a sheet per part, and guidelines carrying the
+  judge's and the checker's own definitions. The candidate is not named and
+  items are shuffled; which answer each item is lives in a key file written
+  beside the folder, not in it. `scripts/annotation_agreement.py` reads the
+  filled sheets and reports raw agreement and Cohen's kappa with a bootstrap
+  interval: annotator against annotator, each against the judge (`--judge` for
+  Claude), and the consensus against the judge. Tested on a 15-item kit from
+  the first slice with synthetic sheets (a copy of the judge scores 1.00; three
+  flips in fifteen score 0.80). Guard section 57. The packets are gitignored
+  (`annotation/`), because they hold corpus text. The real round is drawn
+  from the full grid once grading finishes; at 15 items the kappa intervals
+  run from about -0.1 to 1.0, which is why it needs on the order of 150.

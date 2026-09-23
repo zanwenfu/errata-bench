@@ -8,3 +8,7 @@ __pycache__/
 *.egg-info/
 runs/
 runs/*/*.jsonl.lock
+
+# Human-study packets hold corpus text and the answers being judged; the
+# scripts that make them are tracked, the packets and their keys are not.
+annotation/
