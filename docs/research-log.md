@@ -4864,3 +4864,35 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - Guard section 63, and the build-prune guard extended to
     `instrument.jsonl`. Fourteen fixes reverted alone from a frozen snapshot
     after a clean baseline, all fourteen red.
+  - CI failed on the A3 commit, and it was right to. `fixes_are_still_in.py`
+    drives the control stage, which now reads conversations, and it had no
+    stand-in for them. On the laptop the stage silently read the real
+    1.3 GB corpus and passed; CI, with no corpus, failed. Fixed in
+    1bf85304f. Pre-commit runs now happen in a copy with no `data/`, as
+    CI's do.
+- **09-23** — **Phase A, step A4: every tool keeps the clock, and an attempt
+  that runs out still reports** (D-36, G-64).
+  - The deadline is checked in every tool through one helper, not only the
+    shell. A late call is recorded as a refusal and changes nothing. The
+    shell's own late refusal is now typed as one; returned as a plain string,
+    it was recorded as a command that ran, and counted as work.
+  - An attempt that ends at the turn limit or the time ceiling gets one
+    final turn without tools. It is shown what it was shown before, its own
+    calls with what they returned, and "your time is up: report what you did,
+    what you established and what you did not get to check". That report is
+    its answer. If the report cannot be had, the row says why and the reply
+    stays empty, as before.
+  - Rows now say how the attempt ended (`ended_by`: answered, turn limit or
+    time limit), whether the report was forced, whether the clock ran out
+    at all (`past_deadline`), and its token use (`usage`, the first part of
+    A6). The served model's identity is not exposed by agents 0.22 and is
+    still to come.
+  - A regression caught before commit: the shared deadline check read
+    `ctx.context["deadline"]`, and every file tool driven without a deadline
+    failed. A context with no deadline has no clock, as the file tools
+    always assumed.
+  - Guard section 64, and section 55 extended. Fourteen fixes reverted
+    alone. Thirteen went red at once. The tool-level check on the shell
+    stayed green, because the shell's own refusal still protected it. What
+    that layer adds is keeping the token count for an attempt that only ran
+    commands; a check for that now goes red without it.

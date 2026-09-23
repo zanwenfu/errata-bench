@@ -4140,13 +4140,17 @@ class _Hangs:
     async def run(agent, prompt, **kw):
         await asyncio.sleep(3600)
 
-_swap55 = {n: getattr(attempt_mod, n) for n in ("configure_client", "fetch", "replay", "Container", "Runner", "ATTEMPT_GRACE_S")}
+_swap55 = {n: getattr(attempt_mod, n) for n in ("configure_client", "fetch", "replay", "Container", "Runner",
+                                                 "ATTEMPT_GRACE_S", "FINAL_REPORT_S")}
 attempt_mod.configure_client = lambda: None
 attempt_mod.fetch = lambda url, sha, dest: _Checkout()
 attempt_mod.replay = lambda tree, edits, repo_id: type("R", (), {"ok": True, "reason": ""})()
 attempt_mod.Container = _NoStart
 attempt_mod.Runner = _Hangs
 attempt_mod.ATTEMPT_GRACE_S = 1
+# The final report (D-36 A4) asks this same model, which never answers; bounded
+# like the attempt, so it too ends rather than waits.
+attempt_mod.FINAL_REPORT_S = 1
 os.environ["ERRATA_ALLOW_HOST"] = "1"
 
 def _alarm55(*_):
@@ -4158,6 +4162,7 @@ _t55 = _time55.monotonic()
 try:
     _a55 = asyncio.run(REAL_RUN(make_task("task-0"), image="node:22", turns=[], budget_s=1))
     _res55 = (_a55.out_of_time, _a55.reply, _a55.error)
+    _end55 = (_a55.ended_by, _a55.final_report_forced, _a55.final_report_error)
 except TimeoutError as e:
     _res55 = ("hung", str(e), None)
 finally:
@@ -4170,6 +4175,9 @@ _el55 = _time55.monotonic() - _t55
 check(_res55[0] is True and _res55[1] == "" and not _res55[2] and _el55 < 10,
       f"a model that never answers ends the attempt at budget plus grace, recorded as out of "
       f"time rather than as an error: {_res55!r} after {_el55:.1f} s")
+check(_res55[0] == "hung" or (_end55[0] == "time limit" and _end55[1] is False and "Timeout" in _end55[2]),
+      f"and it says it ended by the clock, and that its final report could not be had, and why: "
+      f"{(_end55 if _res55[0] != 'hung' else 'hung')!r}")
 
 print("\n56. the analysis the results rest on computes what D-35 says it does")
 # The published numbers come out of scripts/paired_tests.py, so its statistics
@@ -4727,6 +4735,95 @@ _p63 = fresh(["task-0"])
 append(_p63.instrument, {"task_id": "task-0", "control": "summary", "ok": True})
 check("instrument.jsonl" in _holds63(_p63) and _controlled63(_p63) == {"task-0"},
       "rows in instrument.jsonl count as paid work, and do not change admission")
+
+print("\n64. every tool keeps the clock, and an attempt that runs out still reports")
+# D-36 A4. Only the shell checked the deadline, so a candidate past its budget
+# went on reading and editing until its turns ran out, and the harness then
+# recorded an empty reply: grok's nine empty answers were all such attempts,
+# 13 to 28 minutes against 10, and counted the other way they took the
+# headline's significance with them (G-64).
+from agents.tool_context import ToolContext as _TC64
+import time as _time64
+_tree64 = Path(tempfile.mkdtemp()) / "tree"
+(_tree64 / "src").mkdir(parents=True)
+(_tree64 / "src" / "a.txt").write_text("hello\n")
+_box64 = {"tree": _tree64, "calls": [], "deadline": _time64.monotonic() - 1, "container": None}
+_args64 = {"read_file": '{"path": "src/a.txt"}', "list_dir": '{"path": "src"}',
+           "write_file": '{"path": "src/b.txt", "content": "x"}',
+           "edit_file": '{"path": "src/a.txt", "old_text": "hello", "new_text": "bye"}',
+           "run_command": '{"command": "true"}'}
+_late64 = {}
+for _name64, _json64 in _args64.items():
+    _tool64 = getattr(attempt_mod, _name64)
+    _ctx64 = _TC64(context=_box64, tool_name=_name64, tool_call_id=_name64, tool_arguments=_json64)
+    _late64[_name64] = asyncio.run(_tool64.on_invoke_tool(_ctx64, _json64))
+check(all(str(v).startswith("refused: this attempt has run out of time") for v in _late64.values())
+      and [c.failed for c in _box64["calls"]] == [True] * 5
+      and (_tree64 / "src" / "a.txt").read_text() == "hello\n" and not (_tree64 / "src" / "b.txt").exists(),
+      f"after the deadline every tool refuses, the refusal is recorded as one, and nothing is written: "
+      f"{ {k: str(v)[:24] for k, v in _late64.items()} }")
+check(_box64.get("usage") is not None,
+      "and the run's token count is kept within reach of whatever ends the attempt")
+# An attempt that only ever ran commands keeps its token count too: the shell
+# goes through the same check as every other tool, not only its own.
+_shell64 = {"tree": _tree64, "calls": [], "deadline": _time64.monotonic() - 1, "container": None}
+asyncio.run(attempt_mod.run_command.on_invoke_tool(
+    _TC64(context=_shell64, tool_name="run_command", tool_call_id="s", tool_arguments='{"command": "true"}'),
+    '{"command": "true"}'))
+check(_shell64.get("usage") is not None and [c.failed for c in _shell64["calls"]] == [True],
+      "an attempt that only ran commands keeps its token count, and its late command is a refusal")
+# The shell's own check, for a deadline that passes between the tool's check
+# and the command: a refusal typed as one, or it is recorded as a command that
+# ran and counted as work.
+_race64 = attempt_mod._run_command(type("C", (), {"context": {"tree": _tree64, "deadline": _time64.monotonic() - 1,
+                                                              "container": None, "calls": []}})(), "true", 10)
+check(isinstance(_race64, attempt_mod.Refused) and str(_race64) == attempt_mod.LATE,
+      f"and the shell's own late refusal is typed as a refusal: {type(_race64).__name__}")
+# The forced final report: a model that works through every turn and never
+# answers is asked once more, without tools, and shown its own record.
+from agents.exceptions import MaxTurnsExceeded as _MTE64
+_asked64 = {}
+
+
+class _Report64:
+    final_output = "I read src/a.txt and did not get to run the tests."
+    context_wrapper = type("W", (), {"usage": type("U", (), {"requests": 1, "input_tokens": 30,
+                                                            "output_tokens": 12, "total_tokens": 42})()})()
+
+
+class _RunsOut64:
+    @staticmethod
+    async def run(agent, prompt, **kw):
+        if agent.tools:
+            ctx = kw.get("context") or {}
+            ctx.setdefault("calls", []).append(ToolCall("read_file", {"path": "src/a.txt"}, result="hello"))
+            raise _MTE64("Max turns (30) exceeded")
+        _asked64["prompt"], _asked64["tools"] = prompt, list(agent.tools)
+        return _Report64()
+
+
+_swap64 = {n: getattr(attempt_mod, n) for n in ("configure_client", "fetch", "replay", "Container", "Runner")}
+attempt_mod.configure_client = lambda: None
+attempt_mod.fetch = lambda url, sha, dest: _Checkout()
+attempt_mod.replay = lambda tree, edits, repo_id: type("R", (), {"ok": True, "reason": ""})()
+attempt_mod.Container = _NoStart
+attempt_mod.Runner = _RunsOut64
+os.environ["ERRATA_ALLOW_HOST"] = "1"
+try:
+    _a64 = asyncio.run(REAL_RUN(make_task("task-0"), image="node:22", turns=[], budget_s=600))
+finally:
+    os.environ.pop("ERRATA_ALLOW_HOST", None)
+    for _n, _v in _swap64.items():
+        setattr(attempt_mod, _n, _v)
+check(_a64.out_of_time is True and _a64.ended_by == "turn limit" and _a64.final_report_forced is True
+      and _a64.reply == _Report64.final_output and _asked64.get("tools") == []
+      and attempt_mod.FINAL_REPORT in _asked64.get("prompt", "") and "src/a.txt" in _asked64.get("prompt", ""),
+      f"an attempt that used every turn is asked once, without tools and shown its own record, and its "
+      f"report is the answer: ended_by={_a64.ended_by!r} forced={_a64.final_report_forced} "
+      f"reply={_a64.reply[:40]!r}")
+check((_a64.usage or {}).get("total_tokens") == 42 and _a64.to_json().get("final_report_forced") is True
+      and _a64.to_json().get("ended_by") == "turn limit",
+      f"and the row says how it ended and what the report cost: {_a64.usage}")
 
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
