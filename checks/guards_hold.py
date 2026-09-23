@@ -4084,6 +4084,12 @@ check(seen["changed"] and all(c is not None and "README.md" in c for c in seen["
       f"and the second judge is shown the files the candidate left, as the first was: "
       f"{[None if c is None else sorted(c) for c in seen['changed']]}")
 
+print("\n54. an exclusion names the party that caused it")
+for _o54, _want54 in (("gave_up", "harness gave up"), ("no_context", "could not be rebuilt")):
+    _s54 = _settled([{"task_id": "t", "run": 0, "outcome": _o54, "passed": False, "scoreable": False}])[0]
+    check(_want54 in (_s54.get("unreadable") or "") and "judge could not support" not in _s54["unreadable"],
+          f"a {_o54} attempt is excluded as the harness's doing, not the judge's: {_s54.get('unreadable')!r}")
+
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:
     print("  -", f)

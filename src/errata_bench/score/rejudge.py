@@ -533,11 +533,17 @@ def settled(rows: list[dict], unreadable: set[tuple] | None = None) -> list[dict
         base["scoreable"] = all(supported)
         if not all(supported):
             short = sum(1 for s in supported if not s)
+            # A harness verdict is not a judge's: no judge read a `gave_up`
+            # attempt or a `no_context` one, so saying "the judge could not
+            # support its reading" named the wrong party in the report.
+            harness = {"gave_up": "the harness gave up on this attempt; no judge read it",
+                       "no_context": "the conversation could not be rebuilt; no judge read it"}
             base.setdefault(
                 "unreadable",
-                "the judge could not support its reading of this answer"
-                if len(supported) == 1
-                else f"{short} of {len(supported)} readings could not be supported",
+                harness.get(base.get("outcome"))
+                or ("the judge could not support its reading of this answer"
+                    if len(supported) == 1
+                    else f"{short} of {len(supported)} readings could not be supported"),
             )
         # An attempt whose container died is a harness failure, not a result
         # (G-43). Grading it again grades the same broken record -- the damage
