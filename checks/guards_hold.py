@@ -4042,6 +4042,48 @@ check(_prog52b.failed == 0 and len(load(_p52.answers)) == _n52 + 1,
       f"while the same candidate resuming adds its next attempt and keeps the first: "
       f"{_n52} -> {len(load(_p52.answers))}")
 
+print("\n53. a re-judge reads each answer once, with the evidence the first judge had")
+# regrade_all read attempts.jsonl, which holds one row per READING. After
+# grading at --passes 3 it queued every attempt three times per requested pass,
+# and since graded rows carry no final_state its judge was never shown the files
+# the candidate left, while the original grading was: the two columns of
+# `compare` graded on different evidence.
+from errata_bench.score.rejudge import regrade_all as _regrade53
+
+async def _run53(task, *, image=None, turns=None, **kw):
+    return Attempt(task.task_id, "the-candidate", reply="I fixed the retry count.",
+                   tool_calls=[ToolCall("edit_file", {"path": "README.md"}, result="edited")],
+                   actual_changes={"README.md": "modified"},
+                   final_state={"README.md": "retries: 5\n"},
+                   environment=image or "host")
+_p53 = fresh(["task-0", "task-1"])
+_kept53 = attempt_mod.run
+attempt_mod.run = _run53
+try:
+    asyncio.run(stage_attempt(_p53, 10**9, concurrency=2, repeats=2))
+finally:
+    attempt_mod.run = _kept53
+asyncio.run(stage_grade(_p53, 10**9, concurrency=2, passes=3))
+_graded53 = len(load(_p53.attempts))
+_j53 = _judge_paths(_p53.root, "second-judge")
+seen["changed"].clear()
+# Caught and named: with the fix reverted this does not merely answer wrongly,
+# it reaches for the corpus to rebuild conversations the answers already carry,
+# and a bare call would take the suite down instead of going red.
+try:
+    asyncio.run(_regrade53(_p53, _j53, "second-judge", concurrency=2, passes=1))
+    _err53 = None
+except BaseException as e:  # noqa: BLE001 - the failure is the assertion
+    _err53 = f"{type(e).__name__}: {e}"
+check(_err53 is None, f"the re-judge runs from the stored answers alone: {_err53 or 'ok'}")
+_rows53 = load(_j53.attempts)
+check(_graded53 == 12 and len(_rows53) == 4
+      and len({(r["task_id"], r["run"]) for r in _rows53}) == 4,
+      f"4 attempts graded 3 times each ({_graded53} rows) are re-judged once each: {len(_rows53)} rows")
+check(seen["changed"] and all(c is not None and "README.md" in c for c in seen["changed"]),
+      f"and the second judge is shown the files the candidate left, as the first was: "
+      f"{[None if c is None else sorted(c) for c in seen['changed']]}")
+
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:
     print("  -", f)

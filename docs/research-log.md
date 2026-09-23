@@ -4220,3 +4220,15 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   .github/workflows/checks.yml runs the five offline suites on every push,
   against requirements-lock.txt (40 packages, frozen from the environment the
   suites pass in), with the corpus assertion skipped by name and said so.
+- **09-22** — the re-judge fixed (§11g item 6), shown red by reverting it
+  alone. `regrade_all` read attempts.jsonl, one row per *reading*, so a source
+  graded at `--passes 3` had every attempt queued three times per requested
+  pass; and graded rows carry no `final_state`, so a second judge was never
+  shown the files the candidate left while the first judge was. It now reads
+  answers.jsonl, one row per attempt, falling back to the graded rows
+  deduplicated to one per attempt only for directories that predate the split.
+  It also uses the transcript and rules stored with each answer rather than
+  rebuilding them from the corpus, which closes the known item about the
+  grading stage not carrying them, and it reads the corpus only for answers
+  that stored none. Guard section 53. Not yet on the VPS: the grid running
+  there stays on one commit until it finishes.

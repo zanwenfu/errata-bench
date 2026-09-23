@@ -687,10 +687,39 @@ async def regrade_all(
     # check has nothing to compare against and would call every claim false,
     # and whether the candidate did any work -- which decides a pass on most
     # tasks -- could not be recomputed.
-    stored = [
-        a for a in load(src.attempts)
-        if not a.get("error") and a.get("task_id") in tasks and "tool_calls" in a
-    ]
+    # One row per attempt, from the answers the candidate stage wrote. This read
+    # attempts.jsonl, which the grading stage writes one row per READING: a
+    # source graded at --passes 3 holds three rows per attempt, so every attempt
+    # was queued three times per requested pass and `settled` then folded nine
+    # readings as if they were three. Those graded rows also never carry
+    # `final_state` or `actual_changes`, so a re-judge could not show its judge
+    # the files the candidate left (D-32) while the original grading did -- the
+    # two columns of `compare` were graded on different evidence. answers.jsonl
+    # has one row per attempt with the files, the transcript and the rules the
+    # candidate was shown. Directories from before grading was split out have no
+    # answers file; for those the graded rows are the answers, deduplicated to
+    # one per attempt, lowest pass first.
+    answers = [a for a in load(src.answers) if not a.get("error") and not a.get("gave_up_after")]
+    if answers:
+        pool = answers
+    else:
+        pool = sorted((a for a in load(src.attempts) if not a.get("error")),
+                      key=lambda a: a.get("pass", 0))
+    seen: set = set()
+    stored = []
+    for a in pool:
+        key = (a.get("task_id"), a.get("run"))
+        if key in seen or a.get("task_id") not in tasks or "tool_calls" not in a:
+            continue
+        seen.add(key)
+        stored.append(a)
+    # A harness verdict the grading stage reached -- no conversation, or an
+    # attempt given up -- lives on the graded rows, not the answers.
+    unreadable_here = {
+        (r.get("task_id"), r.get("run")) for r in load(src.attempts)
+        if r.get("outcome") in ("no_context", "gave_up")
+    }
+    stored = [a for a in stored if (a.get("task_id"), a.get("run")) not in unreadable_here]
     # The fourth place the task fingerprint has to agree. An answer written
     # before its task was rebuilt describes a different question, and grading it
     # against the current reference answers scores it on a problem its candidate
@@ -763,7 +792,10 @@ async def regrade_all(
         and (a["task_id"], a["run"], n, None) not in done
     ]
     p.skipped = len(stored) * passes - len(todo)
-    context = transcripts_for([tasks[a["task_id"]] for a, _ in todo]) if todo else {}
+    # Rebuilt only for answers that did not store the conversation they were
+    # shown; every answer collected since the split carries its own.
+    missing = [tasks[a["task_id"]] for a, _ in todo if not a.get("transcript")]
+    context = transcripts_for(missing) if missing else {}
 
     async def one(a, n):
         task = tasks[a["task_id"]]
@@ -800,12 +832,17 @@ async def regrade_all(
             after = files_after(a, task.signature_path)
             verdict = await judge(task, reply, model=model, tool_calls=a["tool_calls"],
                                   changed=after if a.get("final_state") is not None else None)
+            # The conversation and rules the candidate was actually shown, as
+            # stored beside its answer, in preference to a rebuild from the
+            # corpus -- which can differ, and a transcript that comes back empty
+            # turns the trace check into an accusation machine (stage_grade
+            # reads the stored ones for the same reason).
             trace = await check_trace(
                 reply,
                 a["tool_calls"],
                 model=model,
-                context=context.get(task.task_id, ""),
-                given=f"{CANDIDATE_RULES}\n\n{environment_note(a.get('environment', 'host'))}",
+                context=a.get("transcript") or context.get(task.task_id, ""),
+                given=a.get("rules") or f"{CANDIDATE_RULES}\n\n{environment_note(a.get('environment', 'host'))}",
             )
         except Exception as e:
             append(out.attempts, {
@@ -819,7 +856,7 @@ async def regrade_all(
             "task_id": a["task_id"],
             "run": a["run"],
             "pass": n,
-            "kind": a.get("kind"),
+            "kind": a.get("kind") or task.kind,
             "judge_model": model,
             # Which version of the task this grade is about, so a later regrade
             # of a rebuilt task is work rather than a silent skip.
