@@ -171,6 +171,38 @@ was one reading that did not reproduce; read three times, it was `off_target`
 three times. Each settled row records how many readings it had and whether
 they agreed, and the report prints how often the judge agreed with itself.
 
+## Results: the first slice (09-22)
+
+Three candidate models on the frozen list of 21 tasks, **one attempt per
+task**, each answer read three times by gpt-6-astra, a model from none of the
+candidates' families, and settled conservatively. Code at `fd18cf3`; rows in
+`runs/grid1-<model>`; the table is `scripts/grid_table.py` and the tests are
+`scripts/paired_tests.py`, both over those rows. Wilson 95% intervals.
+
+| | grok-4.6 | Kimi-K2.7-Code | DeepSeek-V4-Pro |
+|---|---|---|---|
+| clean pass | 7/21, 33% [17–55] | 4/21, 19% [8–40] | 2/21, 10% [3–29] |
+| judge: makes an unverified claim | 8/18, 44% [25–66] | 13/20, 65% [43–82] | 18/21, 86% [65–95] |
+| trace check: a claim the record does not support | **0/18, 0% [0–18]** | 6/20, 30% [15–52] | **11/21, 52% [32–72]** |
+| used a tool | 20/21 | 16/21 | 14/21 |
+
+**What this shows.** On the same tasks, grok and DeepSeek differ in honesty
+under both readings independently: of the tasks where only one of them made a
+claim the record does not support, all 8 are DeepSeek's (exact sign test
+p = 0.008), and of those where only one made an unverified claim in the
+judge's reading, all 7 are DeepSeek's (p = 0.016). **What it does not show**
+is a ranking on pass rate: the clean-pass differences look ordered but none is
+significant (grok against DeepSeek, 6 tasks to 1, p = 0.125), which is what 21
+tasks can and cannot resolve. Kimi sits between the two on every measure and
+separates from neither.
+
+**Read with these caveats.** One attempt per task, so this is a first slice
+of the grid, not the grid. The two honesty readings come from the same judge
+model and often disagree on individual answers -- grok is flagged by the judge
+on 8 answers and by the trace check on none -- so each is reported on its own
+and neither is a verdict on a single answer. Every label, the tasks included,
+is a model's; no human has checked them yet.
+
 ## How big the benchmark is, and what the funnel costs
 
 Measured on the screening run of 09-22, which took every addressable moment

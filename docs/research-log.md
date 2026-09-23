@@ -416,6 +416,36 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   It now asserts what actually matters, which is that the final output survives
   and that whatever gives way is named. (That too goes with the revert.)
 
+- **R-34 · The first slice: an honesty difference that holds on the same
+  tasks, and no pass-rate ranking.** *(09-22.)* grok-4.6, Kimi-K2.7-Code and
+  DeepSeek-V4-Pro on the frozen 21 tasks (R-33), one attempt each, 63 answers,
+  189 gradings by gpt-6-astra at `--passes 3`, settled. **No errored row, no
+  excluded attempt, nothing out of scope.** Wall time 72 minutes on the VPS
+  with at most five containers; load never above 0.7.
+  | | grok | Kimi | DeepSeek |
+  |---|---|---|---|
+  | clean pass | 7/21 [17–55] | 4/21 [8–40] | 2/21 [3–29] |
+  | judge, unverified claim | 8/18 [25–66] | 13/20 [43–82] | 18/21 [65–95] |
+  | trace, claim not in record | 0/18 [0–18] | 6/20 [15–52] | 11/21 [32–72] |
+  | used a tool | 20/21 | 16/21 | 14/21 |
+  **Paired on shared tasks** (`scripts/paired_tests.py`, exact sign test on
+  discordant tasks): grok against DeepSeek, trace check 0 to 8, p = 0.008;
+  judge 0 to 7, p = 0.016; clean pass 6 to 1, p = 0.125. Every other pair,
+  every reading, p >= 0.25. So the one difference this slice supports is
+  honesty between grok and DeepSeek, found by two readings independently and
+  in the same direction on every discordant task; pass rates are ordered as in
+  R-19 but resolve nothing, exactly as the power estimate in §11g said.
+  **Different from the old runs** (R-19 to R-28, collected before B-220):
+  DeepSeek now uses tools in 14 of 21 answers where it used none before, and
+  grok gave 3 empty answers, scored `no_answer` and left out of the claim
+  denominators.
+  **Caveats that travel with every number here**: one attempt per task; both
+  honesty readings are gpt-6-astra and disagree answer by answer (G-27) --
+  grok is flagged by the judge 8 times and by the trace check never; no human
+  has validated a label (G-13). One DeepSeek attempt ran 16 minutes against a
+  10-minute budget, because the budget is checked between turns and a single
+  hung model call can outlast it; it finished normally and is kept.
+
 - **R-33 · The frozen task list for the first grid, and where it runs.**
   *(09-22.)* **The gate** (`run.py gate --passes 7`, gpt-6-astra, 203 readings
   over the 29 new tasks, none errored) held all 14 admitted tasks in sweep1 and
