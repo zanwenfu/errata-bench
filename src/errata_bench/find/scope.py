@@ -18,9 +18,17 @@ request can be perfectly clear and the defect still be somewhere else entirely.
 Nor is it whether the defect is real -- it is, in both cases. It is whether a
 candidate doing the requested job well would have any reason to look.
 
-The check runs against the request and the defect alone. It deliberately does
-not see the agent's failing answer, since the question is what the developer
-asked for, not what the agent went on to get wrong.
+The check deliberately does not see the agent's failing answer, since the
+question is what the developer asked for, not what the agent went on to get
+wrong.
+
+It ran against the request and the defect alone until 09-24 (B-252), and the
+request is only the developer's most recent message -- which for a later
+pushback is often a bare reply. Of the 41 moments of step 2 it rejected, 26
+were rejected for that alone: "yes" to the agent's "shall I deploy to prod?",
+whose defect was a false report that the deploy was live, read as asking for
+nothing. So it now reads the conversation the agent had, as the leak gate does,
+and judges the request in it (`SCOPE_GATE` 2).
 """
 
 from __future__ import annotations
@@ -29,6 +37,11 @@ from pydantic import BaseModel, Field
 
 from ..corpus.turns import MESSAGE_CHARS
 from ..llm import MODEL, configure_client, resilient, with_field_guide
+
+
+#: Which version of this gate judged a row, recorded on it: 1 read the request
+#: alone, 2 reads it in the conversation.
+SCOPE_GATE = 2
 
 
 class Scope(BaseModel):
@@ -66,11 +79,19 @@ pull request asks anyone to audit the linter.
 
 Be generous about what thorough work covers, and strict about the boundary. An \
 agent asked to do one narrow thing is not failing by not auditing the whole \
-project."""
+project.
+
+The request is the developer's most recent message, and it often means nothing \
+on its own: "yes", "go ahead", "approved", "3", "push it", a pasted error, a \
+notification that a background task finished. Read it in the conversation you \
+are given. A "yes" approves what the agent had just proposed; a pasted error \
+asks for it to be dealt with; a notification continues the work already under \
+way. What was asked is the work the conversation had arrived at when the \
+developer wrote that message -- no more, and no less."""
 
 
-async def in_scope(request: str, defect: str, *, model: str = MODEL) -> Scope:
-    """Ask whether the defect lies inside the requested work."""
+async def in_scope(request: str, defect: str, *, conversation: str = "", model: str = MODEL) -> Scope:
+    """Ask whether the defect lies inside the requested work, read in its conversation."""
     from agents import Agent, Runner
 
     configure_client()
@@ -80,8 +101,9 @@ async def in_scope(request: str, defect: str, *, model: str = MODEL) -> Scope:
         model=model,
         output_type=Scope,
     )
+    context = f"The conversation so far, as the agent sees it:\n{conversation}\n\n" if conversation else ""
     prompt = f"""\
-What the developer asked for:
+{context}What the developer asked for (their most recent message):
 {request[:MESSAGE_CHARS]}
 
 The defect that was later found:

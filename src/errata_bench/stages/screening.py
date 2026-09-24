@@ -401,7 +401,7 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
     from ..corpus.turns import build_excerpt, load_session_turns
     from ..corpus.recover import has_transcript, recovered
     from ..find.redact import apply, carried_by, survey
-    from ..find.scope import in_scope
+    from ..find.scope import SCOPE_GATE, in_scope
 
     p = Progress("screen")
     t0 = time.monotonic()
@@ -480,20 +480,24 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
             # in a CI workflow; three candidates reported the pull request, the
             # only sensible answer, and all three were scored off_target.
             request = (message or {}).get("content") or ""
+            # The conversation the agent had, which both gates below read: a
+            # bare "yes" asks for whatever the agent had just proposed (B-252).
+            excerpt = build_excerpt(ts, r["cut"])
             if request:
                 verdict, tally, scope = await _agree(
-                    lambda: in_scope(request, r.get("defect", "")), passes, keep_on=True,
+                    lambda: in_scope(request, r.get("defect", ""), conversation=excerpt), passes, keep_on=True,
                     reading=lambda x: x.within_scope)
                 out["within_scope"] = verdict
                 out["within_scope_held"] = tally
                 out["scope_reason"] = scope.reason
+                out["scope_gate"] = SCOPE_GATE
             else:
                 out["within_scope"] = False
                 out["scope_reason"] = "no request to judge scope against"
 
             # Leaking is the rejecting answer, so one reading saying so is enough.
             verdict, tally, leak = await _agree(
-                lambda: signals_trouble(build_excerpt(ts, r["cut"])), passes, keep_on=False,
+                lambda: signals_trouble(excerpt), passes, keep_on=False,
                 reading=lambda x: x.signals_trouble)
             out["signals_trouble"] = verdict
             out["clean_held"] = tally

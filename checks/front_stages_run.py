@@ -157,13 +157,19 @@ async def fake_asks(message, **kw):
     return Answerable(asks_for_something=True, request=message[:40], reasoning="a request")
 
 
+# What the scope and leak gates were handed, for section 3 (B-252).
+SEEN: dict = {}
+
+
 async def fake_in_scope(request, defect, **kw):
     records("in_scope")
+    SEEN["scope_conversation"] = kw.get("conversation")
     return Scope(within_scope=True, reason="the defect is inside the requested work")
 
 
 async def fake_signals_trouble(excerpt, **kw):
     records("signals_trouble")
+    SEEN["leak_conversation"] = excerpt
     return Leakage(signals_trouble=False, quote="", reasoning="nothing is given away")
 
 
@@ -240,6 +246,14 @@ def main() -> int:
     check(row["asks_for_something"] is True and row["within_scope"] is True
           and row["signals_trouble"] is False,
           "and the three gate verdicts are the ones the fakes gave")
+    # B-252: the scope gate read only the developer's last message, so a bare
+    # "yes" to the agent's proposal asked for nothing. It now reads the same
+    # conversation the leak gate does, and the row says which gate judged it.
+    check(bool(SEEN.get("scope_conversation"))
+          and SEEN.get("scope_conversation") == SEEN.get("leak_conversation"),
+          f"the scope gate is handed the conversation the leak gate reads: "
+          f"{str(SEEN.get('scope_conversation'))[:40]!r}")
+    check(row.get("scope_gate") == 2, f"and the row records the scope gate's version: {row.get('scope_gate')!r}")
 
     print("\n4. the gates are asked --passes times and settled by majority")
     # A gate that changes its mind is settled by what most of its readings say,

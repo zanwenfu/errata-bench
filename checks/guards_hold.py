@@ -6168,6 +6168,40 @@ check(_named92 == "refused" and _lifted92 == "claude-opus-5" and "refused" in (_
       f"and it is refused where a model is chosen -- ERRATA_MODEL {_named92}, the served probe, "
       f"`run.py rejudge --judge` {_cli92} -- unless ERRATA_ALLOW_CLAUDE=1: {_lifted92}")
 
+print("\n93. the scope gate reads the request in its conversation")
+# B-252: it read only the developer's last message and the defect. 26 of 41
+# step-2 rejections were a bare reply -- "yes" to the agent's "shall I deploy to
+# prod?" -- read as asking for nothing.
+import errata_bench.find.scope as _sc93
+import agents as _ag93
+_cap93: dict = {"prompts": []}
+
+
+async def _run93(agent, prompt, **kw):
+    _cap93["prompts"].append(prompt)
+    _cap93["instructions"] = agent.instructions
+    return type("R93", (), {"final_output": _sc93.Scope(within_scope=True, reason="r")})()
+
+
+_keep93 = (_ag93.Runner.__dict__["run"], _sc93.configure_client)
+_ag93.Runner.run = _run93
+_sc93.configure_client = lambda: None
+try:
+    asyncio.run(_sc93.in_scope("yes", "the deploy was reported live but was not",
+                               conversation="[turn 9] AGENT: Shall I deploy to prod?"))
+    asyncio.run(_sc93.in_scope("create the pull request", "a linter version pinned in CI"))
+finally:
+    setattr(_ag93.Runner, "run", _keep93[0])
+    _sc93.configure_client = _keep93[1]
+_p93, _q93 = _cap93["prompts"]
+check("Shall I deploy to prod?" in _p93 and _p93.index("Shall I deploy") < _p93.index("yes\n")
+      and "conversation so far" in _p93,
+      f"the conversation comes before the request it explains: {_p93[:90]!r}")
+check("conversation so far" not in _q93 and "create the pull request" in _q93,
+      "and without one the gate reads the request and the defect, as before")
+check('A "yes" approves what the agent had just proposed' in (_cap93.get("instructions") or ""),
+      "and it is told a bare reply means what the conversation had arrived at")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended
