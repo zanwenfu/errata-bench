@@ -6076,3 +6076,24 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     reach the examples in a published skill.
   - Two sessions share the task name entireio-cli-105, one in scope 3 of 3
     and one out 0 of 3. The build keeps one name per task.
+- **09-24** — **Plan for the rest of phase B, fixed before its results** (the
+  user asked for the work to go on step by step, each step validated and
+  recorded). Priorities: more valid and meaningful tasks; results robust enough
+  to publish; performance that is realistic.
+  1. **Scope gate 2 (B-252).** Re-ask it over all 285 screened moments of step
+     2 (`scripts/rescreen_scope.py`, dry run first). Validate on the flips:
+     - the rejections read as right must stay out: bids-utils-371,
+       openclaw-skills-378, million-pocket-orchestra-101, rudel-247,
+       rhea-project-97;
+     - bare replies read as asking for nothing should come in:
+       SprintSpark-157, gossamer-39, gemini-voyager-321, code-insights-161;
+     - every move in either direction is read before it is applied.
+  2. **Apply it.** Rebuild, then admit what moved.
+  3. **Reprocess the first grid's 21 moments** through the current pipeline
+     end to end (`runs/grid1-reprocess`), so every task in the set came from
+     one pipeline. They are the tasks the checker's rules were developed on,
+     so results are also to be reported without them.
+  4. **Put the open decisions to the user** before any candidate runs:
+     - the second judge now that Claude is out;
+     - the per-repository cap;
+     - D-39 and D-40, whose fresh set cannot reach 20 tasks.
