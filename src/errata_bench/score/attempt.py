@@ -35,7 +35,7 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from agents import Agent, Runner, function_tool
+from agents import Agent, RunHooks, Runner, function_tool
 from agents.exceptions import MaxTurnsExceeded
 from agents.run_context import RunContextWrapper
 from ..corpus.turns import build_excerpt, load_session_turns
@@ -219,17 +219,64 @@ def environment_note(environment: str = "host") -> str:
 
 
 def _usage_of(u) -> dict | None:
-    """A run's token count as a plain row, or None when there was none to read."""
+    """A run's token count as a plain row, or None when there was none to read.
+
+    With the cached and the reasoning tokens (B-254): a cached input token is
+    billed at a fraction of the price, and a thinking model's reasoning is
+    billed as output it never shows, so the cost cannot be told from the four
+    totals alone.
+    """
     if u is None:
         return None
     return {"requests": getattr(u, "requests", 0), "input_tokens": getattr(u, "input_tokens", 0),
-            "output_tokens": getattr(u, "output_tokens", 0), "total_tokens": getattr(u, "total_tokens", 0)}
+            "output_tokens": getattr(u, "output_tokens", 0), "total_tokens": getattr(u, "total_tokens", 0),
+            "cached_tokens": getattr(getattr(u, "input_tokens_details", None), "cached_tokens", 0) or 0,
+            "reasoning_tokens": getattr(getattr(u, "output_tokens_details", None), "reasoning_tokens", 0) or 0}
 
 
 def _add_usage(a: dict | None, b: dict | None) -> dict | None:
     if a is None or b is None:
         return a or b
     return {k: a.get(k, 0) + b.get(k, 0) for k in set(a) | set(b)}
+
+
+def _described(items: list) -> str:
+    """What one model response held, in a few words (B-254).
+
+    Kept for the attempt's last response, so an empty reply says why it is
+    empty: a message with no text, a refusal (the provider's content filter
+    arrives as one), or only reasoning.
+    """
+    parts = []
+    for item in items:
+        kind = getattr(item, "type", "") or type(item).__name__
+        if kind == "message":
+            for c in getattr(item, "content", None) or []:
+                if getattr(c, "type", "") == "refusal":
+                    parts.append(f"refusal: {str(getattr(c, 'refusal', ''))[:120]}")
+                else:
+                    parts.append(f"text of {len(str(getattr(c, 'text', '') or ''))} characters")
+        elif kind == "function_call":
+            parts.append(f"call to {getattr(item, 'name', '?')}")
+        else:
+            parts.append(str(kind))
+    return "; ".join(parts) or "nothing"
+
+
+class _Meter(RunHooks):
+    """Counts each model call's tokens into the attempt's context as it returns (B-254).
+
+    The count used to be kept by the tools, which stored the run's counter the
+    first time one was called -- so an attempt that called no tool kept none,
+    and five of the six smoke candidates answered one task without a call. A
+    call that returned is counted here however the attempt then ends; one cut
+    off by the clock is billed and never counted.
+    """
+
+    async def on_llm_end(self, context, agent, response) -> None:
+        box = context.context
+        box["usage"] = _add_usage(box.get("usage"), _usage_of(getattr(response, "usage", None)))
+        box["last_response"] = _described(getattr(response, "output", None) or [])
 
 
 async def _final_report(model: str, prompt: str, calls: list) -> tuple[str, bool, str, dict | None]:
@@ -541,6 +588,9 @@ class Attempt:
     past_deadline: bool = False
     # Token use of the run, as the model library counted it (D-36 A6).
     usage: dict | None = None
+    # What the candidate's last model response held (B-254): why a reply is
+    # empty, when it is.
+    last_response: str = ""
 
     @property
     def wrote_anything(self) -> bool:
@@ -566,6 +616,7 @@ class Attempt:
             "final_report_error": self.final_report_error,
             "past_deadline": self.past_deadline,
             "usage": self.usage,
+            "last_response": self.last_response,
         }
 
 
@@ -710,11 +761,9 @@ def _late(ctx: RunContextWrapper) -> "Refused | None":
     Only `run_command` checked the deadline, so a candidate past its budget
     went on reading and editing files until its turns ran out: grok's nine
     empty answers each used all thirty turns, 13 to 28 minutes against 10.
-    Also where the run's token count is kept within reach (A6): the wrapper
-    holds it, and an attempt that ends by the clock returns no result to read
-    it from.
+    The run's token count used to be kept here as well (A6), which missed
+    every attempt that called no tool; `_Meter` keeps it now (B-254).
     """
-    ctx.context.setdefault("usage", getattr(ctx, "usage", None))
     # A context with no deadline has no clock: the file tools never read one
     # before, and a caller that sets none -- a test, a tool driven directly --
     # must not have every file tool fail on a missing key.
@@ -1134,7 +1183,7 @@ async def run(
                 # this one lives at the stage, where MAX_ATTEMPT_FAILURES
                 # discards the whole attempt and starts a fresh container.
                 result = await asyncio.wait_for(
-                    Runner.run(agent, prompt, context=context, max_turns=max_turns),
+                    Runner.run(agent, prompt, context=context, max_turns=max_turns, hooks=_Meter()),
                     timeout=budget_s + ATTEMPT_GRACE_S,
                 )
                 reply = str(result.final_output or "")
@@ -1154,7 +1203,7 @@ async def run(
                 # empty reply, and nothing invents an answer it never gave.
                 ran_out, reply = True, ""
                 ended_by = "turn limit"
-            usage = _usage_of(context.get("usage"))
+            usage = context.get("usage")
             # An attempt that ran out is asked for its report once, with no
             # tools (D-36 A4). Recorded empty, it made no claim and so could
             # not be dishonest: grok's nine were all such attempts, and counted
@@ -1169,7 +1218,7 @@ async def run(
                 # and grading it measures the harness.
                 return Attempt(
                     task.task_id, model, tool_calls=calls, actual_changes=changed,
-                    environment=environment,
+                    environment=environment, usage=usage,
                     error=f"the container died mid-attempt: {context['container_died']}",
                 )
             return Attempt(
@@ -1181,6 +1230,7 @@ async def run(
                 final_report_error=report_error,
                 past_deadline=time.monotonic() > deadline,
                 usage=usage,
+                last_response=context.get("last_response", ""),
                 reply=reply,
                 declared_changes=[],
                 tool_calls=calls,
@@ -1197,6 +1247,7 @@ async def run(
                 actual_changes=changed,
                 final_state=_capture(tree, task, changed),
                 environment=environment,
+                usage=context.get("usage"),
                 error=f"{type(e).__name__}: {e}",
             )
         finally:

@@ -6274,3 +6274,35 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     - the plan of the confirmatory run. D-39's fresh set cannot reach its 20
       (14 eligible) and names Claude as its second judge.
     - which candidate deployments the Azure credits cover.
+- **09-24** — **B-254 fixed: no answer recorded its tokens** (the D-40 smoke
+  run, first pass).
+  - **Found.** None of the smoke run's 12 answer rows had a `usage` field.
+    Grading rows did: gpt-6-astra's `judge_usage` and `trace_usage` are on
+    every reading.
+  - **Cause, two parts.**
+    - D-36 A4 and A6 put five fields on the attempt: `ended_by`,
+      `final_report_forced`, `final_report_error`, `past_deadline` and
+      `usage`. The attempt stage builds its own row and copied none of them.
+      Section 64 tested the attempt's `to_json`, which nothing stores. So no
+      answer since D-36 said what it cost, or whether its reply was the
+      forced report.
+    - The count was kept by the tools: the first tool call stored the run's
+      counter. An attempt that called no tool had none. Five of the six smoke
+      candidates answered entireio-cli-105 without a call.
+  - **Fix.**
+    - A run hook, `_Meter`, adds up each model call's tokens as it returns,
+      whichever way the attempt ends. It also records the cached and reasoning
+      tokens, which are priced differently.
+    - It keeps a few words on what the last response held (`last_response`),
+      so an empty reply says why: a message with no text, a refusal (Azure's
+      content filter arrives as one), or only reasoning.
+    - The row now carries all six fields, and an errored attempt's row
+      carries its tokens too.
+    - A call cut off by the clock is billed and never counted, so the count is
+      a slight undercount for timed-out attempts.
+  - **Guard:** section 95 (9 pieces reverted alone, each seen red). It
+    includes a check that every field the attempt reports is in the stored
+    row, so the next field added cannot be left behind silently.
+  - **Not the instrument.** Nothing the candidate is shown, and nothing the
+    judges read, changed. The smoke run is repeated on this commit to confirm
+    the fix.

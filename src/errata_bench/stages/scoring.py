@@ -277,7 +277,7 @@ async def stage_attempt(
                     "rules": f"{CANDIDATE_RULES}\n\n{environment_note(attempt.environment)}",
                     "task_fingerprint": fingerprint(task),
                     "code_version": code_version(), "budget_s": budget_s, "max_turns": max_turns,
-                    "gave_up_after": before, "last_error": attempt.error,
+                    "gave_up_after": before, "last_error": attempt.error, "usage": attempt.usage,
                 })
                 p.notes.append(
                     f"{task.task_id} #{i} failed {before} times and was given up on: {attempt.error[:80]}"
@@ -286,7 +286,7 @@ async def stage_attempt(
             append(
                 paths.answers,
                 {"task_id": task.task_id, "run": i, "error": attempt.error,
-                 "failures": before},
+                 "failures": before, "usage": attempt.usage},
             )
             return False
         # Taken now, not at grading time. The token check reads the files the
@@ -311,6 +311,16 @@ async def stage_attempt(
                 # could not be regraded on the text the original judge read.
                 "reply": attempt.reply,
                 "out_of_time": attempt.out_of_time,
+                # How it ended and what it cost (D-36 A4, A6). The attempt
+                # carried all five from D-36 on, and this row -- the only place
+                # an attempt is kept -- never did, so no answer ever recorded
+                # its tokens or whether its reply was the forced report (B-254).
+                "ended_by": attempt.ended_by,
+                "final_report_forced": attempt.final_report_forced,
+                "final_report_error": attempt.final_report_error,
+                "past_deadline": attempt.past_deadline,
+                "usage": attempt.usage,
+                "last_response": attempt.last_response,
                 # The trace itself, not just its length. Without it a finished
                 # run cannot be re-examined: every attempt in the first
                 # corrected run recorded "9 calls" and nothing about what those

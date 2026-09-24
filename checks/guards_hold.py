@@ -4791,16 +4791,15 @@ check(all(str(v).startswith("refused: this attempt has run out of time") for v i
       and (_tree64 / "src" / "a.txt").read_text() == "hello\n" and not (_tree64 / "src" / "b.txt").exists(),
       f"after the deadline every tool refuses, the refusal is recorded as one, and nothing is written: "
       f"{ {k: str(v)[:24] for k, v in _late64.items()} }")
-check(_box64.get("usage") is not None,
-      "and the run's token count is kept within reach of whatever ends the attempt")
-# An attempt that only ever ran commands keeps its token count too: the shell
-# goes through the same check as every other tool, not only its own.
+# The token count was kept here too, by the tools, until B-254 moved it to a
+# hook every model call passes through (section 95): kept by the tools, it
+# missed every attempt that called none.
 _shell64 = {"tree": _tree64, "calls": [], "deadline": _time64.monotonic() - 1, "container": None}
 asyncio.run(attempt_mod.run_command.on_invoke_tool(
     _TC64(context=_shell64, tool_name="run_command", tool_call_id="s", tool_arguments='{"command": "true"}'),
     '{"command": "true"}'))
-check(_shell64.get("usage") is not None and [c.failed for c in _shell64["calls"]] == [True],
-      "an attempt that only ran commands keeps its token count, and its late command is a refusal")
+check([c.failed for c in _shell64["calls"]] == [True],
+      "an attempt's late command is a refusal too")
 # The shell's own check, for a deadline that passes between the tool's check
 # and the command: a refusal typed as one, or it is recorded as a command that
 # ran and counted as work.
@@ -6242,6 +6241,115 @@ check("just before it" not in _j94 and "build log" in _j94,
 check('"yes" after "Shall I deploy to production?" asks the agent to deploy' in (_cap94.get("instructions") or "")
       and "Pasted output is still not a request" in (_cap94.get("instructions") or ""),
       "and it is told a reply to the agent's question asks for something, and pasted output still does not")
+
+print("\n95. every answer row records its tokens and how it ended")
+# B-254. D-36 put the token count (A6) and how the attempt ended (A4) on the
+# attempt, and the stage that writes the answer row -- the only place an
+# attempt is kept -- copied neither: the D-40 smoke run's answers recorded no
+# tokens at all. Section 64 tested the attempt's own `to_json`, which nothing
+# stores. And the count was kept by the tools, so an attempt that called no
+# tool had none to copy: five of the six smoke candidates answered one task
+# without a call.
+from agents.usage import Usage as _U95
+from openai.types.responses import (ResponseFunctionToolCall as _Call95, ResponseOutputMessage as _Msg95,
+                                    ResponseOutputRefusal as _Ref95, ResponseOutputText as _Txt95)
+from openai.types.responses.response_usage import InputTokensDetails as _In95, OutputTokensDetails as _Out95
+
+
+def _resp95(inp, out, cached, reasoning, output):
+    return type("M95", (), {"output": output, "usage": _U95(
+        requests=1, input_tokens=inp, output_tokens=out, total_tokens=inp + out,
+        input_tokens_details=_In95(cached_tokens=cached, cache_write_tokens=0),
+        output_tokens_details=_Out95(reasoning_tokens=reasoning))})()
+
+
+_said95 = _Msg95(id="m", role="assistant", status="completed", type="message",
+                 content=[_Txt95(type="output_text", text="Done.", annotations=[])])
+_called95 = _resp95(100, 20, 40, 15, [_Call95(type="function_call", name="list_dir", arguments="{}", call_id="c")])
+_answered95 = _resp95(150, 30, 0, 25, [_said95])
+_box95: dict = {}
+_w95 = type("W95", (), {"context": _box95})()
+asyncio.run(attempt_mod._Meter().on_llm_end(_w95, None, _called95))
+asyncio.run(attempt_mod._Meter().on_llm_end(_w95, None, _answered95))
+check(_box95.get("usage") == {"requests": 2, "input_tokens": 250, "output_tokens": 50, "total_tokens": 300,
+                              "cached_tokens": 40, "reasoning_tokens": 40}
+      and _box95.get("last_response") == "text of 5 characters",
+      f"every model call's tokens are added up as it returns, cached and reasoning tokens with them, and "
+      f"the last response is described: {_box95}")
+_filtered95 = _Msg95(id="m", role="assistant", status="completed", type="message",
+                     content=[_Ref95(type="refusal", refusal="Response withheld by the provider's content filter.")])
+check(attempt_mod._described([_filtered95]).startswith("refusal: Response withheld")
+      and attempt_mod._described([]) == "nothing",
+      "and an empty reply says why: a refusal, or nothing at all")
+
+# The real attempt, answered on the first response without a tool call.
+
+
+class _Answers95:
+    @staticmethod
+    async def run(agent, prompt, **kw):
+        hooks = kw.get("hooks")
+        if hooks is not None:
+            await hooks.on_llm_end(type("W", (), {"context": kw.get("context")})(), agent, _answered95)
+        return type("R", (), {"final_output": "Done."})()
+
+
+_swap95 = {n: getattr(attempt_mod, n) for n in ("configure_client", "fetch", "replay", "Container", "Runner")}
+attempt_mod.configure_client = lambda: None
+attempt_mod.fetch = lambda url, sha, dest: _Checkout()
+attempt_mod.replay = lambda tree, edits, repo_id: type("R", (), {"ok": True, "reason": ""})()
+attempt_mod.Container = _NoStart
+attempt_mod.Runner = _Answers95
+os.environ["ERRATA_ALLOW_HOST"] = "1"
+try:
+    _a95 = asyncio.run(REAL_RUN(make_task("task-0"), image="node:22", turns=[], budget_s=600))
+finally:
+    os.environ.pop("ERRATA_ALLOW_HOST", None)
+    for _n, _v in _swap95.items():
+        setattr(attempt_mod, _n, _v)
+check(not _a95.error and _a95.reply == "Done." and not _a95.tool_calls
+      and (_a95.usage or {}).get("total_tokens") == 180 and _a95.last_response == "text of 5 characters",
+      f"an attempt that answered without calling a tool has its tokens: error={_a95.error!r} "
+      f"usage={_a95.usage} last={_a95.last_response!r}")
+
+# The row the stage keeps.
+_want95 = {"out_of_time": True, "ended_by": "turn limit", "final_report_forced": True,
+           "final_report_error": "", "past_deadline": True, "last_response": "text of 5 characters",
+           "usage": {"requests": 3, "input_tokens": 900, "output_tokens": 90, "total_tokens": 990,
+                     "cached_tokens": 300, "reasoning_tokens": 60}}
+_made95: dict = {}
+
+
+async def _ran95(task, *, image=None, turns=None, **kw):
+    _made95["attempt"] = Attempt(task.task_id, "the-candidate", reply="Done.", tool_calls=[],
+                                 actual_changes={}, final_state={}, environment=image or "host", **_want95)
+    return _made95["attempt"]
+
+
+async def _died95(task, *, image=None, turns=None, **kw):
+    return Attempt(task.task_id, "the-candidate", environment=image or "host", error="the container died",
+                   usage={"requests": 1, "input_tokens": 50, "output_tokens": 5, "total_tokens": 55,
+                          "cached_tokens": 0, "reasoning_tokens": 0})
+
+
+_before95 = attempt_mod.run
+_p95, _q95 = fresh(["task-0"]), fresh(["task-0"])
+try:
+    attempt_mod.run = _ran95
+    asyncio.run(stage_attempt(_p95, 10**9, concurrency=1, repeats=1))
+    attempt_mod.run = _died95
+    asyncio.run(stage_attempt(_q95, 10**9, concurrency=1, repeats=1))
+finally:
+    attempt_mod.run = _before95
+_row95, _err95 = _first40(_p95.answers), _first40(_q95.answers)
+check(all(_row95.get(k) == v for k, v in _want95.items()),
+      f"the stored answer says what it cost and how it ended: "
+      f"{ {k: _row95.get(k) for k in _want95} }")
+_left95 = set(_made95["attempt"].to_json()) - set(_row95) - {"error"} if _made95 else {"no attempt was made"}
+check(not _left95, f"and every field the attempt reports reaches the row, so the next one cannot be left "
+                   f"behind unnoticed: missing {sorted(_left95)}")
+check(_err95.get("error") and (_err95.get("usage") or {}).get("total_tokens") == 55,
+      f"an attempt the harness broke still says what it spent: {_err95.get('usage')}")
 
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
