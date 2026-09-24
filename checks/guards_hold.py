@@ -5862,6 +5862,34 @@ check(all(_cs66.same_line(shown, held) for shown, held in (
       and not _cs66.same_line("github_access_token=[REDACTED:SECRET],", "gitlab_token=ghp_x9Yz,"),
       "a redaction mark of any kind matches the text it hid, and nothing around it is relaxed")
 
+print("\n89. the git rule reads each call with its result, and misses no verb that changes the tree")
+# Of 486 commands the first rule flagged, 75 changed nothing and 29 stashed and
+# popped in one call; 52 moments were rejected for these alone, among them
+# iptvnator-351 (a stash the user declined to run) and dispersal-draft-283.
+# And `git mv`, `git rm` and `gh pr checkout` were never flagged.
+_g89 = lambda cmd, out="": _cs66.tree_changing_git(
+    [_T63(1, "tool_use", tool_name="Bash", command=cmd, tool_call_id="g1"),
+     _T63(2, "tool_result", tool_call_id="g1", content=out)], 5)
+_keep89 = [("git merge-base main HEAD", ""), ("git merge-tree a b", ""), ("git checkout -b feat 2>&1", ""),
+           ("git stash drop 2>/dev/null; git checkout ee07e89 -- /dev/null 2>/dev/null", ""),
+           ("git clean -n", ""), ("git apply --check fix.patch", ""), ("git rm --cached secrets.env", ""),
+           ("git checkout main", "The user doesn't want to proceed with this tool use. The tool use was rejected"),
+           ("git stash && nx test web 2>&1 | tail -5 && git stash pop",
+            "Saved working directory and index state WIP on main: abc\n2 passed\nDropped refs/stash@{0} (f00)"),
+           ("git stash && python -m pytest -q 2>&1 | tail -5", "No local changes to save\n3 passed")]
+_change89 = [("git mv src/a.py src/b.py", ""), ("git rm src/old.py", ""), ("gh pr checkout 42", ""),
+             ("git stash && npm test && git stash pop", "Saved working directory\nCONFLICT (content): Merge conflict"),
+             ("git stash", "Saved working directory and index state WIP"), ("git pull", "Already up to date."),
+             ("git merge feat", ""), ("git checkout -b feat origin/feat", "")]
+check(not any(_g89(c, o) for c, o in _keep89) and all(_g89(c, o) for c, o in _change89),
+      f"only what changed the tree counts: {[c for c, o in _keep89 if _g89(c, o)]} wrongly counted, "
+      f"{[c for c, o in _change89 if not _g89(c, o)]} missed")
+_h89 = (_bash85(2, "git log --oneline -1", "abc1234 the base")
+        + _bash85(4, "git merge-base main HEAD", "abc1234")
+        + _bash85(6, "git rev-parse --short HEAD", "0123abc"))
+check(_cs66.printed_heads(_h89, 10) == ["abc1234", "0123abc"],
+      f"and `git merge-base` does not end the HEAD comparison as a merge would: {_cs66.printed_heads(_h89, 10)}")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended

@@ -5768,3 +5768,33 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     `consistency.py`, which needs a name the cached `edits` lacked.
   - From here, unattended runs start from a pinned worktree of a commit, so
     editing `src/` cannot reach them.
+- **09-24** — **B-249 fixed: the git rule rejected commands that changed
+  nothing, and missed three that do.**
+  - A read-only audit classified the 486 distinct commands the rule flagged
+    before the 2,631 moments of the sample and the next batches:
+    - 377 changed the tree;
+    - 29 stashed and popped in one call, proven by the call's own output;
+    - 75 changed nothing: `git merge-base` and `merge-tree` read as `merge`
+      (the verb was matched by `\b`, and `-` ends a word), 17 calls declined
+      at the prompt or denied by a hook (iptvnator-351's stash never ran),
+      `stash drop`, `checkout -b <new> 2>&1` counted as three arguments,
+      `checkout <sha> -- /dev/null`;
+    - 5 unclear.
+  - 52 moments were rejected for these alone. Three verbs that change the tree
+    were never flagged: `git mv`, `git rm` and `gh pr checkout`.
+  - Now the verb must end its word, and each call is read with its result:
+    - a call that never ran is skipped;
+    - a stash the output shows saved and dropped in pairs, with no conflict,
+      `cd` or other `-C` between, is undone;
+    - redirections are not arguments;
+    - dry runs, `--cached` and `apply --check` change nothing;
+    - `mv`, `rm` and `gh pr checkout` count.
+  - `HEAD_MOVES` had the same `\b`, so `git merge-base` ended the HEAD
+    comparison early.
+  - Over the table's records of those moments: the old rule rejected 242, the
+    new one 215; 39 cleared and 12 newly rejected, for `git mv`, `git rm` or
+    `gh pr checkout` before the cut.
+  - Left rejected on purpose: git run in another checkout, a temporary clone,
+    or over ssh (8 moments). Telling those apart needs a shell lexer and the
+    transcript's working directory.
+  - Guard: section 89, 13 pieces each reverted alone and seen red.

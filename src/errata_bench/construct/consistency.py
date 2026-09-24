@@ -62,35 +62,113 @@ MUTATING = re.compile(
 # else, so a session that ran one of these before the cut has a tree that no
 # commit and list of edits can rebuild (B-239: documented as rejected since the
 # replay was written, and never implemented).
+#
+# Measured over the 486 distinct commands the first version flagged before the
+# moments of the sample and the next batches (B-249): 377 changed the tree; 29
+# stashed and popped in one call, which the call's own output proves; 75 did
+# not change it -- `git merge-base` and `merge-tree` read as `merge` (the verb
+# was matched by \b, and `-` ends a word), 17 never ran (declined at the
+# prompt, denied by a hook), `stash drop`, `checkout -b <new> 2>&1` counted as
+# three arguments, `checkout <sha> -- /dev/null`. 52 moments were rejected for
+# these alone. And three that do change the tree were missed: `git mv`, `git
+# rm` and `gh pr checkout`.
 GIT_TREE = re.compile(
-    r"\bgit\s+(?:-C\s+\S+\s+)?(checkout|switch|pull|merge|rebase|reset|stash|cherry-pick|am|apply"
-    r"|restore|clean|revert)\b([^|;&]*)")
+    r"\bgit\s+(?:-C\s+\S+\s+)?"
+    r"(checkout-index|checkout|switch|pull|merge-file|merge|rebase|reset|stash|cherry-pick|am|apply"
+    r"|restore|clean|revert|rm|mv)(?![\w-])([^|;&\n)]*)")
+GH_CHECKOUT = re.compile(r"\bgh\s+pr\s+checkout\b")
+_REDIRECT = re.compile(r"^(?:\d*>>?|&>>?|\d*<|>&)")
+_CREATE = ("-b", "-B", "-c", "-C", "--create", "--force-create", "--orphan")
+_DRY_RUN = re.compile(r"--dry-run|-[a-zA-Z]*n[a-zA-Z]*")
+# A call that never ran: declined at the permission prompt, denied by a hook,
+# blocked by a plugin, or refused by the tool before running.
+_NEVER_RAN = re.compile(
+    r"\s*(?:The user doesn't want to proceed with this tool use|The user doesn't want to take this action"
+    r"|Hook PreToolUse:\S+ denied this tool|BLOCKED by Safety Net|<tool_use_error>)")
+
+
+def _words(rest: str) -> list[str]:
+    """An invocation's arguments, without its redirections (`2>&1` is not an argument)."""
+    return [w for w in rest.split() if not _REDIRECT.match(w)]
+
+
+def _stash_sub(rest: str) -> str:
+    return next((w for w in _words(rest) if w not in ("-q", "--quiet")), "")
 
 
 def _changes_tree(verb: str, rest: str) -> bool:
     """Whether one git invocation changes the working tree, not just refs or the index."""
-    words = rest.split()
-    if verb == "stash" and words[:1] in (["list"], ["show"]):
+    words = _words(rest)
+    if "-h" in words or "--help" in words:
         return False
-    if (verb in ("checkout", "switch") and words[:1] and len(words) <= 2
-            and words[0] in ("-b", "-B", "-c", "-C", "--create", "--orphan")):
-        return False   # a new branch where HEAD already is
-    if verb == "reset" and not any(w in ("--hard", "--merge", "--keep") for w in words):
-        return False   # the index, not the files
+    if verb == "stash":
+        return _stash_sub(rest) not in ("list", "show", "drop", "clear", "create", "store")
+    if verb in ("checkout", "switch"):
+        if not words:
+            return False
+        if words[0] in _CREATE and (len(words) <= 2 or (len(words) == 3 and words[2] in ("HEAD", "@"))):
+            return False   # a new branch where HEAD already is
+        if "--" in words:
+            paths = words[words.index("--") + 1:]
+            if paths and all(p == "/dev/null" for p in paths):
+                return False
+        return True
+    if verb == "reset":
+        return any(w in ("--hard", "--merge", "--keep") for w in words)   # else the index, not the files
     if verb == "restore" and "--staged" in words and not {"--worktree", "-W"} & set(words):
         return False
+    if verb == "rm" and "--cached" in words:
+        return False
+    if verb in ("clean", "rm", "mv") and any(_DRY_RUN.fullmatch(w) for w in words):
+        return False
+    if verb == "apply" and (("--cached" in words and "--index" not in words)
+                            or ({"--check", "--stat", "--numstat", "--summary"} & set(words)
+                                and "--apply" not in words)):
+        return False
     return True
+
+
+def _undone(hits: list, result: str, cmd: str) -> list:
+    """The invocations that changed the tree, less stashes the call's own output shows undone.
+
+    `git stash && npm test | tail -5 && git stash pop` leaves the tree as it
+    was, and says so: one "Saved working directory" and one "Dropped
+    refs/stash@{0}" per pair. Anything the output does not prove -- a
+    conflict, an entry kept, a `cd` or another `-C` between the two -- stays.
+    """
+    stash = [h for h in hits if h.group(1) == "stash"]
+    if not stash:
+        return hits
+    others = [h for h in hits if h.group(1) != "stash"]
+    kinds = [{"pop": "pop", "apply": "apply"}.get(_stash_sub(h.group(2)), "push") for h in stash]
+    targets = {re.match(r"git\s+(?:-C\s+(\S+)\s+)?", h.group(0)).group(1) for h in stash}
+    if len(targets) > 1 or re.search(r"(?:^|[\s;&|(])cd\s", cmd[stash[0].start():stash[-1].start()]):
+        return hits
+    if "apply" in kinds or any(s in result for s in ("CONFLICT", "would be overwritten",
+                                                      "The stash entry is kept", "could not restore")):
+        return hits
+    saved = result.count("Saved working directory")
+    dropped = len(re.findall(r"Dropped (?:refs/)?stash@\{0\}", result))
+    nothing = "No local changes to save" in result
+    pairs = len(kinds) // 2
+    alternating = pairs > 0 and kinds == ["push", "pop"] * pairs
+    if alternating and saved == pairs == dropped and not nothing:
+        return others
+    if kinds == ["push"] and nothing and saved == 0 and dropped == 0:
+        return others
+    if alternating and saved == 0 and dropped == 0 and "No stash entries found" in result:
+        return others
+    return hits
 
 
 # SWE-chat replaced what its secret scanners flagged with placeholders -- in
 # 45,627 rows, mostly a bare REDACTED, often over long hashes and ids. A
 # placeholder stands for the text it replaced, so it matches whatever the tree
 # holds there. Read literally, one hid an IPFS hash in oozoofrog-108's
-# chronology_unicode.md and the build rejected a tree that was right.
-# SWE-chat's redaction marks, each standing for text the tree holds in full.
-# `[REDACTED:SECRET]` alone appears 1,639 times in the next batches' tool
-# results, `[REDACTED:DB_PASSWORD]` 477, `[REDACTED:ENV]` 231; read as the bare
-# word, its brackets and kind were demanded literally of the tree, and
+# chronology_unicode.md and the build rejected a tree that was right. Marks
+# with a kind count too: `[REDACTED:SECRET]` appears 1,639 times in the next
+# batches' tool results, `[REDACTED:DB_PASSWORD]` 477, `[REDACTED:ENV]` 231, and
+# read as the bare word their brackets and kind were demanded of the tree --
 # BugViper-101 was rejected over `github_access_token=[REDACTED:SECRET],`.
 _PLACEHOLDER = re.compile(
     r"<TRUFFLEHOG_REDACTED_[A-Z_]+>|\[REDACTED(?:[_:][A-Z0-9_]+)?\]|REDACTED(?:_[A-Z0-9_]+)?")
@@ -208,7 +286,7 @@ def _prints_head(cmd: str) -> bool:
 # changes the git rule rejects anyway. 114 of the 2,340 sessions of the sample
 # and the next batches print a HEAD after one of these before their moment, and
 # every such HEAD differs from the base by construction.
-HEAD_MOVES = re.compile(r"\bgit\s+(?:-C\s+\S+\s+)?(commit|reset|merge|pull|rebase|cherry-pick|am|revert)\b")
+HEAD_MOVES = re.compile(r"\bgit\s+(?:-C\s+\S+\s+)?(commit|reset|merge|pull|rebase|cherry-pick|am|revert)(?![\w-])")
 
 
 def printed_heads(turns: list[dict], cut: int) -> list[str]:
@@ -234,13 +312,23 @@ def printed_heads(turns: list[dict], cut: int) -> list[str]:
 
 
 def tree_changing_git(turns: list[dict], cut: int) -> list[str]:
-    """The agent's git commands before the cut that changed its files."""
+    """The agent's git commands before the cut that changed its files.
+
+    Each call is read with its result: a call declined at the prompt never
+    ran, and a stash its own output shows popped changed nothing.
+    """
+    shown = _turns_until(turns, cut)
+    results = _results_by_call(shown)
     out = []
-    for t in _turns_until(turns, cut):
+    for i, t in enumerate(shown):
         if t.get("turn_type") != "tool_use" or (t.get("tool_name") or "") not in SHELL_TOOLS:
             continue
         cmd = str(t.get("command") or "")
-        if any(_changes_tree(m.group(1), m.group(2)) for m in GIT_TREE.finditer(cmd)):
+        result = results.get(i, "")
+        if _NEVER_RAN.match(result):
+            continue
+        hits = [m for m in GIT_TREE.finditer(cmd) if _changes_tree(m.group(1), m.group(2))]
+        if _undone(hits, result, cmd) or GH_CHECKOUT.search(cmd):
             out.append(" ".join(cmd.split())[:120])
     return out
 
