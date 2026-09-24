@@ -6422,3 +6422,30 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - **Time.** grok's attempts take about 9 minutes each; 3 containers for it
     and 1 for each other model gives about 10 to 12 hours.
   - **Put to the user before the full run starts**, as D-40 requires.
+- **09-24** — **Billing checked against Microsoft's own documents** (at the
+  user's request: the run may draw only on Azure credits, never the card).
+  - **The rule.** Foundry models are either *sold by Azure*, billed through
+    the Azure subscription, or *from partners and community*, billed through
+    Azure Marketplace.
+    - "You can pay for Models sold by Azure charges with your Azure
+      Prepayment credit. However, you can't use Azure Prepayment credit to pay
+      for charges for other provider models because they're billed through
+      Azure Marketplace" (Plan and manage costs, 2026-08-27).
+    - Microsoft for Startups: "sponsorship credits apply to Microsoft Foundry
+      models that are sold and billed directly by Azure."
+    - Claude is a partner model: "If you have an account with a credit card
+      on file, the credit card will be charged instead of Azure Credits." That
+      is what happened on 09-23.
+  - **All eight deployments are sold by Azure.** Each appears by exact name
+    on "Foundry Models sold by Azure" (updated 2026-09-23): gpt-6-astra,
+    gpt-6-sol, grok-4.6, Kimi-K2.7-Code, DeepSeek-V4-Pro, DeepSeek-V4-Flash,
+    Mistral-Large-3 and MAI-Thinking-1.
+    - Four are Preview, which does not change how they are billed.
+    - Each served exactly that model on the smoke run (`x-ms-served-model`),
+      not a Fireworks-hosted `FW-` copy or the older partner `Mistral-large`.
+  - **The remaining way to reach the card.** "Once you use all of your free
+    Azure credits, your Azure sponsorship subscription is automatically
+    converted to a paid Pay-As-You-Go (PayGo) subscription." Azure OpenAI has
+    no hard spending limit. So the run must fit inside the remaining credit
+    balance, with margin, and before the credits expire. Only the user can
+    see that balance.
