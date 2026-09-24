@@ -5965,3 +5965,41 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - The two VPS runs started at 04:02:59 UTC, side by side, each at
     concurrency 3, on gpt-6-astra.
   - Their results come back to the laptop's `runs/` when done.
+- **09-24** — **Step 2's result: 40 admitted tasks from later and first
+  pushbacks, 33 of them new** (`results/step2-admission.txt`, from
+  `scripts/step2_tally.py`).
+
+  | run | moments | screened | built | sound | admitted |
+  |---|---|---|---|---|---|
+  | later-sample (rebuilt) | 300 | 39 | 10 | 8 | 7 |
+  | later-cap20 | 557 | 66 | 15 | 7 | 5 |
+  | step2-later (laptop) | 388 | 49 | 19 | 11 | 9 |
+  | step2-later-vps | 775 | 95 | 21 | 16 | 14 |
+  | step2-first-vps | 417 | 36 | 9 | 6 | 5 |
+  | **all** | **2,437** | **285** | **74** | **48** | **40** |
+
+  - **Clean.** No session gave two admitted tasks, so the first-pushback
+    rule removed none. No task name is used twice across runs. None comes
+    from a first-grid session.
+  - **Yield.** One task in 61 moments overall: 1 in 43 in the sample (small
+    repositories, drawn first), 1 in 111 in later-cap20, 1 in 83 among the
+    first pushbacks.
+  - **Where the funnel loses tasks now:**
+    - screening, the leak and scope gates;
+    - the build, uncommitted work above all;
+    - calibration, which failed 26 of the 74 built tasks (35%). Examined
+      next, since a fix there would matter most.
+  - **Valid tasks: 53.** The 40, plus the 13 first-grid tasks sound on both
+    counts. Those 13 were built before the phase-B build, so a rebuild would
+    put all 53 on one footing.
+  - **Concentration.** 17 repositories, entireio/cli 15 of the 40 (38%), then
+    obsessiondb/rudel 5 and shunkakinoki/dotfiles 3. The analysis clusters by
+    repository, and a per-repository cap in the final set is a decision still
+    to make.
+  - **D-39's fresh set** (outside the first grid's 18 repositories): 12
+    eligible, short of its 20.
+  - **Wall time.** 03:25 to 06:04 UTC. The VPS took 1,192 of the 1,580 new
+    moments, and no stage on either machine left a row in error.
+  - The empty laptop placeholder for step2-first is
+    `runs/step2-first.empty-laptop-placeholder`. The VPS's results are
+    `runs/step2-later-vps` and `runs/step2-first-vps`.

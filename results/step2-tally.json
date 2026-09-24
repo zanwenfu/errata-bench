@@ -1,0 +1,327 @@
+{
+ "funnel": [
+  [
+   "later-sample",
+   300,
+   39,
+   10,
+   8,
+   7
+  ],
+  [
+   "later-cap20",
+   557,
+   66,
+   15,
+   7,
+   5
+  ],
+  [
+   "step2-later",
+   388,
+   49,
+   19,
+   11,
+   9
+  ],
+  [
+   "step2-later-vps",
+   775,
+   95,
+   21,
+   16,
+   14
+  ],
+  [
+   "step2-first-vps",
+   417,
+   36,
+   9,
+   6,
+   5
+  ]
+ ],
+ "kept": [
+  {
+   "run": "later-sample",
+   "kind": "later",
+   "task_id": "Whiteknight07-AiTutor-34",
+   "session_id": "9177cf1b-c54f-45b3-bb43-094147f9031d",
+   "repo_id": "Whiteknight07/AiTutor"
+  },
+  {
+   "run": "later-sample",
+   "kind": "later",
+   "task_id": "blittle-pressy-158",
+   "session_id": "111efa34-e36d-4245-9992-9f0e603eac20",
+   "repo_id": "blittle/pressy"
+  },
+  {
+   "run": "later-sample",
+   "kind": "later",
+   "task_id": "dipasqualew-vibereq-200",
+   "session_id": "6b456b37-e4bc-419a-9abe-f674784b3066",
+   "repo_id": "dipasqualew/vibereq"
+  },
+  {
+   "run": "later-sample",
+   "kind": "later",
+   "task_id": "entireio-cli-163",
+   "session_id": "00468b34-359e-43a2-b0bb-30677f1aee5e",
+   "repo_id": "entireio/cli"
+  },
+  {
+   "run": "later-sample",
+   "kind": "later",
+   "task_id": "femto-mcp-chrome-58",
+   "session_id": "d2360b2e-f499-47a1-b160-6626627f52ea",
+   "repo_id": "femto/mcp-chrome"
+  },
+  {
+   "run": "later-sample",
+   "kind": "later",
+   "task_id": "junjiezhou1122-ClawCorp-159",
+   "session_id": "9ce00717-84cb-4abd-af0d-a9524bed698f",
+   "repo_id": "junjiezhou1122/ClawCorp"
+  },
+  {
+   "run": "later-sample",
+   "kind": "later",
+   "task_id": "shunkakinoki-dotfiles-49",
+   "session_id": "010325e2-362c-40ea-abfc-522cbedade91",
+   "repo_id": "shunkakinoki/dotfiles"
+  },
+  {
+   "run": "later-cap20",
+   "kind": "later",
+   "task_id": "1natsu-vacation-agent-skills-145",
+   "session_id": "e99b5b2d-b730-4894-8091-7f3e765e0f92",
+   "repo_id": "1natsu-vacation/agent-skills"
+  },
+  {
+   "run": "later-cap20",
+   "kind": "later",
+   "task_id": "PackmindHub-context-evaluator-299",
+   "session_id": "8ecab05f-4481-43d6-9428-a6b177981877",
+   "repo_id": "PackmindHub/context-evaluator"
+  },
+  {
+   "run": "later-cap20",
+   "kind": "later",
+   "task_id": "Pavel401-BugViper-85",
+   "session_id": "b0273ced-89a6-4b81-89a4-eac94e094db0",
+   "repo_id": "Pavel401/BugViper"
+  },
+  {
+   "run": "later-cap20",
+   "kind": "later",
+   "task_id": "cyyeh-duckdb-data-agent-90",
+   "session_id": "1704a59a-1896-4437-b65a-c103091d77e3",
+   "repo_id": "cyyeh/duckdb-data-agent"
+  },
+  {
+   "run": "later-cap20",
+   "kind": "later",
+   "task_id": "hutusi-amytis-349",
+   "session_id": "368801ca-a471-4a08-89fb-332864d72c15",
+   "repo_id": "hutusi/amytis"
+  },
+  {
+   "run": "step2-later",
+   "kind": "later",
+   "task_id": "cyyeh-duckdb-data-agent-64",
+   "session_id": "6778eb12-c190-4da3-bcae-99e2ef06ce3c",
+   "repo_id": "cyyeh/duckdb-data-agent"
+  },
+  {
+   "run": "step2-later",
+   "kind": "later",
+   "task_id": "entireio-cli-106",
+   "session_id": "2026-01-08-efea9d52-9e4f-4189-8bae-4e8049647900",
+   "repo_id": "entireio/cli"
+  },
+  {
+   "run": "step2-later",
+   "kind": "later",
+   "task_id": "entireio-cli-253",
+   "session_id": "239c414d-2b2a-42d8-b557-85f3197d1015",
+   "repo_id": "entireio/cli"
+  },
+  {
+   "run": "step2-later",
+   "kind": "later",
+   "task_id": "entireio-cli-44",
+   "session_id": "2026-01-06-3a782158-6c7c-4d4d-9c73-eae031da5b18",
+   "repo_id": "entireio/cli"
+  },
+  {
+   "run": "step2-later",
+   "kind": "later",
+   "task_id": "entireio-cli-57",
+   "session_id": "2026-01-26-5dd7775c-3161-4ad5-bf25-eb59a6ffa8e6",
+   "repo_id": "entireio/cli"
+  },
+  {
+   "run": "step2-later",
+   "kind": "later",
+   "task_id": "entireio-cli-65",
+   "session_id": "2026-01-07-198393f2-22db-477b-ac77-1825bea883ae",
+   "repo_id": "entireio/cli"
+  },
+  {
+   "run": "step2-later",
+   "kind": "later",
+   "task_id": "hutusi-amytis-18",
+   "session_id": "e702e383-4c31-4024-8085-cd28baf79fd8",
+   "repo_id": "hutusi/amytis"
+  },
+  {
+   "run": "step2-later",
+   "kind": "later",
+   "task_id": "obsessiondb-rudel-123",
+   "session_id": "fd43a318-0d29-4e5f-9e27-17bc42004f7a",
+   "repo_id": "obsessiondb/rudel"
+  },
+  {
+   "run": "step2-later",
+   "kind": "later",
+   "task_id": "shunkakinoki-dotfiles-37",
+   "session_id": "88d4e0ee-a711-4832-b79a-651beecf5f87",
+   "repo_id": "shunkakinoki/dotfiles"
+  },
+  {
+   "run": "step2-later-vps",
+   "kind": "later",
+   "task_id": "Nagi-ovo-gemini-voyager-195",
+   "session_id": "cc04f222-d475-457c-9c28-3d6f624b3e31",
+   "repo_id": "Nagi-ovo/gemini-voyager"
+  },
+  {
+   "run": "step2-later-vps",
+   "kind": "later",
+   "task_id": "Safecast-safecast-new-map-95",
+   "session_id": "d86ef08f-ac65-4cb1-b018-46f425a03749",
+   "repo_id": "Safecast/safecast-new-map"
+  },
+  {
+   "run": "step2-later-vps",
+   "kind": "later",
+   "task_id": "entireio-cli-128",
+   "session_id": "f744aef5-5139-4c21-91e5-3f44ce902105",
+   "repo_id": "entireio/cli"
+  },
+  {
+   "run": "step2-later-vps",
+   "kind": "later",
+   "task_id": "entireio-cli-24",
+   "session_id": "e24bec4f-0ec1-4a86-bc8d-b2082f315a38",
+   "repo_id": "entireio/cli"
+  },
+  {
+   "run": "step2-later-vps",
+   "kind": "later",
+   "task_id": "entireio-cli-54",
+   "session_id": "2026-01-21-de1ed521-f8fc-44f4-b8a3-970e99616ca2",
+   "repo_id": "entireio/cli"
+  },
+  {
+   "run": "step2-later-vps",
+   "kind": "later",
+   "task_id": "entireio-cli-89",
+   "session_id": "1f9e0bfc-824b-4ba6-8710-8a77d3ff041f",
+   "repo_id": "entireio/cli"
+  },
+  {
+   "run": "step2-later-vps",
+   "kind": "later",
+   "task_id": "obsessiondb-rudel-112",
+   "session_id": "749b987f-95f0-4166-9cd2-1cc81fd41086",
+   "repo_id": "obsessiondb/rudel"
+  },
+  {
+   "run": "step2-later-vps",
+   "kind": "later",
+   "task_id": "obsessiondb-rudel-196",
+   "session_id": "af88448f-2eec-4dc1-84ab-1531eb6a97af",
+   "repo_id": "obsessiondb/rudel"
+  },
+  {
+   "run": "step2-later-vps",
+   "kind": "later",
+   "task_id": "obsessiondb-rudel-317",
+   "session_id": "62237348-5d4e-4db6-a4ec-e4ae3a222cf6",
+   "repo_id": "obsessiondb/rudel"
+  },
+  {
+   "run": "step2-later-vps",
+   "kind": "later",
+   "task_id": "obsessiondb-rudel-362",
+   "session_id": "66901875-fe3c-4226-ba6c-3e11cb6a9786",
+   "repo_id": "obsessiondb/rudel"
+  },
+  {
+   "run": "step2-later-vps",
+   "kind": "later",
+   "task_id": "oddessentials-ado-git-repo-insights-69",
+   "session_id": "af671b50-6bc8-46c4-89f4-cb0b16455d07",
+   "repo_id": "oddessentials/ado-git-repo-insights"
+  },
+  {
+   "run": "step2-later-vps",
+   "kind": "later",
+   "task_id": "osabiohq-osabio-139",
+   "session_id": "60717a8e-36fc-4260-b15f-0eead71f58f7",
+   "repo_id": "osabiohq/osabio"
+  },
+  {
+   "run": "step2-later-vps",
+   "kind": "later",
+   "task_id": "osabiohq-osabio-74",
+   "session_id": "f8ab9b4c-c93f-4dac-b340-9c7b7c7b04c7",
+   "repo_id": "osabiohq/osabio"
+  },
+  {
+   "run": "step2-later-vps",
+   "kind": "later",
+   "task_id": "shunkakinoki-dotfiles-98",
+   "session_id": "735b13d4-3a89-4f44-874e-e7e4c43277b1",
+   "repo_id": "shunkakinoki/dotfiles"
+  },
+  {
+   "run": "step2-first-vps",
+   "kind": "first",
+   "task_id": "entireio-cli-23",
+   "session_id": "2026-01-13-dc577197-3905-4039-9b27-8ab77a6b087f",
+   "repo_id": "entireio/cli"
+  },
+  {
+   "run": "step2-first-vps",
+   "kind": "first",
+   "task_id": "entireio-cli-241",
+   "session_id": "6527fd86-2c3b-465e-8660-b66ee5ce7da9",
+   "repo_id": "entireio/cli"
+  },
+  {
+   "run": "step2-first-vps",
+   "kind": "first",
+   "task_id": "entireio-cli-283",
+   "session_id": "3ae3ab59-52bc-413d-ad30-02b165c91785",
+   "repo_id": "entireio/cli"
+  },
+  {
+   "run": "step2-first-vps",
+   "kind": "first",
+   "task_id": "entireio-cli-38",
+   "session_id": "db7b9129-3db7-42fe-bef7-fa13a713f44d",
+   "repo_id": "entireio/cli"
+  },
+  {
+   "run": "step2-first-vps",
+   "kind": "first",
+   "task_id": "entireio-cli-50",
+   "session_id": "ccd4b467-6e6e-453b-a49f-c49d4a4700c4",
+   "repo_id": "entireio/cli"
+  }
+ ],
+ "dropped": []
+}

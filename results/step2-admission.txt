@@ -1,0 +1,53 @@
+run                 moments  screened  built  sound  admitted
+later-sample            300        39     10      8         7
+later-cap20             557        66     15      7         5
+step2-later             388        49     19     11         9
+step2-later-vps         775        95     21     16        14
+step2-first-vps         417        36      9      6         5
+
+admitted: 40 | sessions with two admitted tasks: 0 (dropped: [])
+task names used twice across runs: []
+in the first grid's sessions: 0
+kept: 40 = 7 from later-sample + 33 new in step 2 (with later-cap20)
+outside the first grid's 18 repositories (eligible for D-39's fresh set): 12
+repositories: 17; most tasks: [('entireio/cli', 15), ('obsessiondb/rudel', 5), ('shunkakinoki/dotfiles', 3), ('cyyeh/duckdb-data-agent', 2), ('hutusi/amytis', 2), ('osabiohq/osabio', 2)]
+  later-cap20      1natsu-vacation-agent-skills-145
+  later-cap20      PackmindHub-context-evaluator-299
+  later-cap20      Pavel401-BugViper-85
+  later-cap20      cyyeh-duckdb-data-agent-90
+  later-cap20      hutusi-amytis-349
+  later-sample     Whiteknight07-AiTutor-34
+  later-sample     blittle-pressy-158
+  later-sample     dipasqualew-vibereq-200
+  later-sample     entireio-cli-163
+  later-sample     femto-mcp-chrome-58
+  later-sample     junjiezhou1122-ClawCorp-159
+  later-sample     shunkakinoki-dotfiles-49
+  step2-first-vps  entireio-cli-23
+  step2-first-vps  entireio-cli-241
+  step2-first-vps  entireio-cli-283
+  step2-first-vps  entireio-cli-38
+  step2-first-vps  entireio-cli-50
+  step2-later      cyyeh-duckdb-data-agent-64
+  step2-later      entireio-cli-106
+  step2-later      entireio-cli-253
+  step2-later      entireio-cli-44
+  step2-later      entireio-cli-57
+  step2-later      entireio-cli-65
+  step2-later      hutusi-amytis-18
+  step2-later      obsessiondb-rudel-123
+  step2-later      shunkakinoki-dotfiles-37
+  step2-later-vps  Nagi-ovo-gemini-voyager-195
+  step2-later-vps  Safecast-safecast-new-map-95
+  step2-later-vps  entireio-cli-128
+  step2-later-vps  entireio-cli-24
+  step2-later-vps  entireio-cli-54
+  step2-later-vps  entireio-cli-89
+  step2-later-vps  obsessiondb-rudel-112
+  step2-later-vps  obsessiondb-rudel-196
+  step2-later-vps  obsessiondb-rudel-317
+  step2-later-vps  obsessiondb-rudel-362
+  step2-later-vps  oddessentials-ado-git-repo-insights-69
+  step2-later-vps  osabiohq-osabio-139
+  step2-later-vps  osabiohq-osabio-74
+  step2-later-vps  shunkakinoki-dotfiles-98
