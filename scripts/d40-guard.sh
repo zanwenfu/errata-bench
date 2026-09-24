@@ -6,7 +6,7 @@ cd /root/errata-bench-d40 || exit 1
 LOG=runs/d40-spend.log
 STOP="${STOP:-1600}"
 while true; do
-  .venv/bin/python d40_spend.py --stop "$STOP" >> "$LOG" 2>&1
+  .venv/bin/python scripts/d40_spend.py --stop "$STOP" >> "$LOG" 2>  .venv/bin/python d40_spend.py --stop "$STOP" >> "$LOG" 2>&11
   if [ $? -eq 3 ]; then
     echo "=== STOP LINE REACHED; stopping the run $(date -u +%FT%TZ)" >> "$LOG"
     echo "=== stopped by the spend guard at \$$STOP $(date -u +%FT%TZ)" >> runs/d40-chain.log
