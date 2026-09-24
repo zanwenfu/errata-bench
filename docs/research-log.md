@@ -6711,3 +6711,22 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     once its quota is enough for its long tasks' requests: Kimi 250K (about
     30K a request), DeepSeek-V4-Flash 500K (about 70K a request). The guard
     stops every branch's process group at its stop line.
+- **09-24, 23:1x UTC** — **Forced reports blocked by the filter, as the run
+  stands:** MAI-Thinking-1 had 3 blocked of 4 (blittle-pressy-158,
+  entireio-cli-163, hutusi-amytis-82); grok-4.6 had 1 of 4. The other
+  candidates have needed none yet. A blocked report is spread across tasks
+  for MAI, so without a fix MAI would lose most of the attempts it ran out
+  on, the ones D-36 A4 added the report for.
+  - **Probed, not reproduced.** MAI's longest delivered trajectory, rebuilt
+    as tool messages with "time is up" appended, went through 9 of 9 times:
+    tools listed with `tool_choice="none"` (as sent), `auto`, and no tools
+    (one of these was a null response). So the trigger is in the live
+    conversation, MAI's own messages included, which an errored row does
+    not keep.
+  - **The fix is the user's guardrail change** (block to annotate). Errored
+    attempts are retried only after a candidate's first round, about 2 to 3
+    hours for MAI. Whatever is given up on for a filter block is run again
+    after the change, as decided at 22:4x.
+  - **Grading at scale is cached as B-256 meant:** Mistral-Large-3's first
+    70 readings had 16% of their input cached on the first reading and
+    100% on the second and third.
