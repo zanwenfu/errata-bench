@@ -6097,3 +6097,37 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
      - the second judge now that Claude is out;
      - the per-repository cap;
      - D-39 and D-40, whose fresh set cannot reach 20 tasks.
+- **09-24** — **Scope gate 2 (B-252), validated and applied** to all 285
+  screened moments of step 2, three readings each
+  (`results/scope2-rescreen-*.jsonl`).
+  - 40 verdicts moved into scope and 1 out. Of the 41 build rejections for
+    scope, 34 came in and 7 stayed out. The other moves are rows that another
+    gate rejects anyway.
+  - **Validation, fixed in the plan beforehand:**
+    - all 5 rejections read as right stayed out: bids-utils-371 1/3,
+      openclaw-skills-378 0/3, million-pocket-orchestra-101 1/3,
+      rhea-project-97 0/3, rudel-247 0/3;
+    - all 4 bare replies read as false rejections came in, 3/3 each:
+      SprintSpark-157, gossamer-39, gemini-voyager-321, code-insights-161.
+  - **Every move's reason was read,** and three were checked against the
+    conversation itself:
+    - SprintSpark-157's "yes" answers the agent's "Want me to promote to
+      production now?";
+    - duckdb-135's "request" is an injected Systematic Debugging skill text,
+      after the developer's real one ("I can't see sql query and result in
+      thinking block");
+    - entireio-64's "yes" answers "Want me to rebase onto origin/main
+      instead?".
+
+    Three moves held 2 of 3: ado-git-repo-insights-23, cipher-box-383,
+    entireio-399.
+  - **The one move out, marin-285:** the conversation shows the approved work
+    was a specific timeout fix, not the separate failure the defect concerns.
+  - Also seen: `last_user_message` takes an injected skill text for the
+    developer's request. Gate 2 reads past it; the answerable gate does not
+    (recorded, unchanged).
+  - **Applied** with backups (`screened.pre-scope2.jsonl` and whole-run copies
+    `*.pre-scope2-0924`). Rebuild and admission (`FROM=1`) running: the
+    laptop takes later-sample, later-cap20 and step2-later, the VPS
+    step2-later-vps and step2-first. The first grid's reprocess runs on the
+    VPS too (`/root/errata-bench-grid`, ef3fa7d2e).
