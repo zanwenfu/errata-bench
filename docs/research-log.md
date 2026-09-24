@@ -329,6 +329,66 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   only definition of "right" this corpus contains. A task that rejects its own
   reference is broken, and whether the rule or the task is at fault, its scores
   cannot be trusted. It catches G-44 by itself.
+- **D-40 · The confirmatory run.** *(pre-registered 09-24, before any of its
+  answers exists; committed with this text, and the instrument frozen at this
+  commit.)*
+  - **Why D-39 is set aside.** Its separate fresh set cannot reach 20 tasks: 14
+    are outside the first grid's repositories. Its second judge was Claude,
+    which the user cannot afford for now.
+  - **What replaces it.** One run, whose answers also judge the instrument.
+    The checker is frozen before they exist, so it is never judged on answers
+    that shaped it.
+
+  **Tasks.** The 55 of `results/step2-admission.txt` (dad0d6f21), every one
+  from the current pipeline.
+  - **Headline set:** at most 8 per repository. entireio/cli's 16 are cut to
+    the 8 with the lowest SHA-1 of their task id, leaving 47.
+  - **Also reported:** all 55, and the 46 without the first grid's 9
+    reprocessed tasks (the tasks rules 3 were developed on).
+
+  **Candidates.** grok-4.6, Kimi-K2.7-Code, DeepSeek-V4-Pro, DeepSeek-V4-Flash,
+  Mistral-Large-3 and MAI-Thinking-1, 3 attempts per task. The current harness
+  runs them on the VPS: per-language containers, a deadline in every tool, a
+  forced final report.
+
+  **Judges.** gpt-6-astra and gpt-6-sol, 3 readings each, settled as in
+  D-35, under trace rules 3.
+  - gpt-6-sol stands in for Claude, which the user cannot afford for now. It
+    shares a maker with gpt-6-astra, so their agreement is a weaker check
+    than agreement across makers. A re-grade by another maker's model is to
+    follow when funding allows.
+
+  **Endpoints and tests** (D-35's). Per model, the rate over answers of:
+  - `misreported` (the trace check), the primary endpoint;
+  - an unverified claim (the judge);
+  - a clean pass.
+
+  Paired sign-flip tests on per-task rates between every pair of models, Holm
+  corrected. A difference is claimed only if it holds under both judges.
+  Intervals by bootstrap, clustered by task, and by repository beside it.
+
+  **The instrument, judged on these answers** (D-36's criteria):
+  - kappa at least 0.6 on `misreported` between the two judges' settled
+    readings, pooled (`judge_agreement.py --first-judge gpt-6-astra --judge
+    gpt-6-sol`);
+  - at least 30 flags drawn by `scripts/flag_sample.py gpt-6-astra` (seed 36,
+    at most one answer per task per model, up to 12 per model), read against
+    their records: at least 90% real.
+
+  If either fails, the model comparison is reported as provisional, with the
+  failure, and the instrument is not revised on these answers.
+
+  **Smoke run first.** 2 tasks (one TypeScript, one Go) × 6 candidates × 1
+  attempt, graded by both judges. It must show:
+  - every model completes attempts in its container;
+  - both judges' readings parse;
+  - token usage is recorded on every attempt and grade row.
+
+  Its answers are excluded from every analysis. The full run's cost is
+  measured from it and put to the user before the full run starts.
+
+  **Billing.** Every deployment above draws on the Azure credits (confirmed by
+  the user on 09-24). No Claude.
 - **D-39 · The fresh development set: how the repaired instrument is judged.**
   *(pre-registered 09-23, before any of its tasks is built or answer
   collected; committed with the code that will produce it.)* D-36 forbids
