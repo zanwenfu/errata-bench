@@ -22,6 +22,7 @@ the authority on which repository a session belongs to.
 from __future__ import annotations
 
 import collections
+import json
 import re
 from dataclasses import dataclass
 
@@ -72,6 +73,13 @@ class CommitInfo:
     message: str = ""
     patch: str = ""
     commit_sha: str = ""
+    # When it entered the history: after a rebase or an amend, later than
+    # author_ns. 122 of 1,565 bases chosen by author date were committed only
+    # after their session had started.
+    commit_ns: int | None = None
+    # The Entire checkpoint that recorded it, which names the sessions whose
+    # work it holds.
+    checkpoint_pk: str = ""
 
 
 
@@ -83,21 +91,25 @@ def load_commits_by_repo(*, with_patches: bool = False) -> dict[str, list[Commit
     on a machine with a few GB free, and wasted when only a handful of commits
     are ever rendered. Fetch those with :func:`load_patches`.
     """
-    columns = ["repo_id", "author_date", "files_changed", "status", "commit_message", "commit_sha"]
+    columns = ["repo_id", "author_date", "commit_date", "files_changed", "status", "commit_message",
+               "commit_sha", "checkpoint_pk"]
     if with_patches:
         columns.append("patch")
     t = pq.read_table(CORPUS / "commits.parquet", columns=columns)
     ns = _to_ns(t.column("author_date"), t.schema.field("author_date").type)
+    committed = _to_ns(t.column("commit_date"), t.schema.field("commit_date").type)
     patches = t.column("patch").to_pylist() if with_patches else None
     out: dict[str, list[CommitInfo]] = collections.defaultdict(list)
-    for i, (rid, when, files, status, message, sha) in enumerate(
+    for i, (rid, when, at, files, status, message, sha, checkpoint) in enumerate(
         zip(
             t.column("repo_id").to_pylist(),
             ns,
+            committed,
             t.column("files_changed").to_pylist(),
             t.column("status").to_pylist(),
             t.column("commit_message").to_pylist(),
             t.column("commit_sha").to_pylist(),
+            t.column("checkpoint_pk").to_pylist(),
         )
     ):
         if status != "ok" or not files or when is None or not sha:
@@ -113,10 +125,25 @@ def load_commits_by_repo(*, with_patches: bool = False) -> dict[str, list[Commit
                 message=message or "",
                 patch=(patches[i] or "") if patches else "",
                 commit_sha=sha,
+                commit_ns=at,
+                checkpoint_pk=checkpoint or "",
             )
         )
     for rid in out:
         out[rid].sort(key=lambda c: c.author_ns or 0)
+    return out
+
+
+def session_checkpoints(session_ids: set[str]) -> dict[str, set[str]]:
+    """The Entire checkpoints each session contributed to: the commits that hold its own work."""
+    t = pq.read_table(CORPUS / "sessions.parquet", columns=["session_id", "checkpoint_ids"])
+    out: dict[str, set[str]] = {}
+    for sid, ids in zip(t.column("session_id").to_pylist(), t.column("checkpoint_ids").to_pylist()):
+        if sid in session_ids:
+            try:
+                out[sid] = set(json.loads(ids or "[]"))
+            except ValueError:
+                out[sid] = set()
     return out
 
 

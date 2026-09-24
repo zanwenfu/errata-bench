@@ -3252,15 +3252,16 @@ class _Checkout43w:
         return dest
 
 _kept43w = {n: getattr(_B43w, n) for n in
-            ("load_repos", "session_starts", "load_commits_by_repo", "load_session_turns",
-             "fetch", "edits_before", "replay", "check")}
+            ("load_repos", "session_starts", "load_commits_by_repo", "session_checkpoints",
+             "load_session_turns", "fetch", "edits_before", "replay", "check")}
 
 def _built43w(verified):
     _B43w.load_repos = lambda: {"acme/up": _Repo43w(repo_id="acme/up", url="https://x/acme/up",
                                                     license_type="mit", language="Python")}
     _B43w.session_starts = lambda ids=None: {"s-43w": 1_000_000_000}
     _B43w.load_commits_by_repo = lambda **kw: {"acme/up": [
-        type("C43w", (), {"author_ns": 1, "commit_sha": "abc123"})()]}
+        type("C43w", (), {"author_ns": 1, "commit_ns": None, "checkpoint_pk": "", "commit_sha": "abc123"})()]}
+    _B43w.session_checkpoints = lambda ids: {}
     _B43w.load_session_turns = lambda ids: {"s-43w": list(_turns43w)}
     _B43w.fetch = lambda url, sha, dest: _Checkout43w()
     _B43w.edits_before = lambda turns, cut: []
@@ -5378,16 +5379,18 @@ print("\n79. the build replays the lost edits, and rejects a tree git changed or
 # documented a rejection of git-changed trees that nothing implemented; and A5
 # found 3 of 21 trees differing from what their conversation showed.
 _kept79 = {n: getattr(_B43w, n) for n in
-           ("load_repos", "session_starts", "load_commits_by_repo", "load_session_turns", "fetch", "replay", "check")}
+           ("load_repos", "session_starts", "load_commits_by_repo", "session_checkpoints", "load_session_turns",
+            "fetch", "replay", "check")}
 _long79 = lambda head: head + " " + "the uploader now retries and the tests pass. " * 12
 
 
-def _build79(turns, *, flag=True):
+def _build79(turns, *, flag=True, commits=None, checkpoints=None):
     _B43w.load_repos = lambda: {"acme/up": _Repo43w(repo_id="acme/up", url="https://x/acme/up",
                                                     license_type="mit", language="Python")}
     _B43w.session_starts = lambda ids=None: {"s79": 1_000_000_000}
-    _B43w.load_commits_by_repo = lambda **kw: {"acme/up": [
-        type("C79", (), {"author_ns": 1, "commit_sha": "abc123"})()]}
+    _B43w.load_commits_by_repo = lambda **kw: commits or {"acme/up": [
+        type("C79", (), {"author_ns": 1, "commit_ns": None, "checkpoint_pk": "", "commit_sha": "abc123"})()]}
+    _B43w.session_checkpoints = lambda ids: checkpoints or {}
     _B43w.load_session_turns = lambda ids: {"s79": list(turns)}
     _B43w.fetch = lambda url, sha, dest: _Checkout43w()
     _B43w.replay = lambda tree, edits, repo_id: _Replay43(applied=len(edits), verified=len(edits), files={"b"})
@@ -5889,6 +5892,59 @@ _h89 = (_bash85(2, "git log --oneline -1", "abc1234 the base")
         + _bash85(6, "git rev-parse --short HEAD", "0123abc"))
 check(_cs66.printed_heads(_h89, 10) == ["abc1234", "0123abc"],
       f"and `git merge-base` does not end the HEAD comparison as a merge would: {_cs66.printed_heads(_h89, 10)}")
+
+print("\n90. the base is committed before the session started, and never the session's own commit")
+# By author date a rebased or amended commit counts from when it was first
+# written: 122 of 1,565 bases were committed only after their session began.
+# And 5 were the session's own commits, recorded under its own checkpoints.
+from errata_bench.corpus.timeline import CommitInfo as _CI90
+_c90 = lambda sha, authored, committed, checkpoint: _CI90(
+    repo_id="o/r", author_ns=authored, files=frozenset({"a.py"}), commit_sha=sha,
+    commit_ns=committed, checkpoint_pk=checkpoint)
+_older90 = _c90("a" * 40, 100, 100, "o/r#else")
+_rebased90 = _c90("b" * 40, 200, 400, "o/r#else")      # written before the start, committed after it
+_mine90 = [_c90("c" * 40, 250, 260, "o/r#own"), _c90("c" * 40, 250, 260, "o/r#shared")]
+check(_B43w.base_commit("o/r", 300, {"o/r": [_older90, _rebased90]}) == "a" * 40,
+      "a commit that entered the history after the start is not the base, whatever its author date")
+check(_B43w.base_commit("o/r", 300, {"o/r": [_older90, _rebased90] + _mine90}, {"o/r#own"}) == "a" * 40
+      and _B43w.base_commit("o/r", 300, {"o/r": [_older90] + _mine90}) == "c" * 40,
+      "nor the session's own commit, by sha -- one commit is a row per checkpoint that recorded it")
+_kept90 = {n: getattr(_B43w, n) for n in _kept79}
+try:
+    (_dir70 / "s79.jsonl").write_text("\n".join(_cc87) + "\n")
+    recover_mod.transcript_path = lambda sid: _dir70 / f"{sid}.jsonl"
+    _w90 = _build79(_turns79(), commits={"acme/up": [_c90("d" * 40, 5, 5, "acme/up#else"),
+                                                     _c90("e" * 40, 9, 9, "acme/up#own79")]},
+                    checkpoints={"s79": {"acme/up#own79"}})
+finally:
+    recover_mod.transcript_path = _NO_TRANSCRIPTS
+    for _n90, _v90 in _kept90.items():
+        setattr(_B43w, _n90, _v90)
+check([t.sha for t in _w90.tasks] == ["d" * 40],
+      f"and the build hands the session's checkpoints to the choice: {[t.sha[:8] for t in _w90.tasks]} "
+      f"{[r.reason for r in _w90.rejected]}")
+# And the loader reads both from the corpus: the commit date and the checkpoint
+# beside the author date, and each session's checkpoints.
+import errata_bench.corpus.timeline as _tl90
+_fake90 = Path(tempfile.mkdtemp())
+_ts90 = lambda xs: _pa.array(xs, _pa.timestamp("us", tz="UTC"))
+_pq.write_table(_pa.table({
+    "repo_id": ["o/r", "o/r"], "author_date": _ts90([1_000_000, 2_000_000]),
+    "commit_date": _ts90([1_000_000, 9_000_000]), "files_changed": ["M\ta.py", "M\tb.py"],
+    "status": ["ok", "ok"], "commit_message": ["one", "two"], "commit_sha": ["a" * 40, "b" * 40],
+    "checkpoint_pk": ["o/r#else", "o/r#own"]}), _fake90 / "commits.parquet")
+_pq.write_table(_pa.table({"session_id": ["s1", "s2"], "checkpoint_ids": ['["o/r#own"]', None]}),
+                _fake90 / "sessions.parquet")
+_keepc90 = _tl90.CORPUS
+_tl90.CORPUS = _fake90
+try:
+    _loaded90 = {c.commit_sha[0]: (c.author_ns, c.commit_ns, c.checkpoint_pk) for c in _tl90.load_commits_by_repo()["o/r"]}
+    _cps90 = _tl90.session_checkpoints({"s1", "s2"})
+finally:
+    _tl90.CORPUS = _keepc90
+check(_loaded90 == {"a": (1_000_000_000, 1_000_000_000, "o/r#else"), "b": (2_000_000_000, 9_000_000_000, "o/r#own")}
+      and _cps90 == {"s1": {"o/r#own"}, "s2": set()},
+      f"read from the corpus: {_loaded90} {_cps90}")
 
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every

@@ -34,7 +34,7 @@ from ..corpus.turns import load_session_turns
 from ..find.signature import Signature
 from ..spec import MIN_ORACLE_CHARS, BuildResult, Rejection, Task
 from ..corpus.session_time import session_starts
-from ..corpus.timeline import load_commits_by_repo
+from ..corpus.timeline import load_commits_by_repo, session_checkpoints
 from .workspace import GitError, fetch, is_permanent
 
 
@@ -118,21 +118,30 @@ def calls_behind(turns: list[dict], answer_turn: int, *, keep: int = 60) -> list
     return calls[-keep:]
 
 
-def base_commit(repo_id: str, session_ns: int | None, commits) -> str | None:
+def base_commit(repo_id: str, session_ns: int | None, commits,
+                own: set[str] | frozenset[str] = frozenset()) -> str | None:
     """The last commit in this repository before the session started.
 
     Later commits are excluded even though they are tempting: they are the work
     the session produced, including the fix a candidate is supposed to arrive at
     on its own.
+
+    "Before" is when the commit entered the history, not when it was authored:
+    a rebase or an amend keeps the author date, and 122 of 1,565 bases chosen
+    by it were committed after their session started. And a commit recorded
+    under one of this session's own checkpoints (`own`) is never the base, in
+    whichever order its dates fall: 5 of those 1,565 were.
     """
     if session_ns is None:
         return None
-    earlier = [
-        c for c in commits.get(repo_id, []) if c.author_ns and c.author_ns < session_ns
-    ]
+    when = lambda c: c.commit_ns if c.commit_ns is not None else c.author_ns
+    # By sha: one commit is a row per checkpoint that recorded it.
+    mine = {c.commit_sha for c in commits.get(repo_id, []) if c.checkpoint_pk in own}
+    earlier = [c for c in commits.get(repo_id, [])
+               if when(c) and when(c) < session_ns and c.commit_sha not in mine]
     if not earlier:
         return None
-    return max(earlier, key=lambda c: c.author_ns).commit_sha
+    return max(earlier, key=when).commit_sha
 
 
 def subagent_edits_before(session_id: str, turns: list[dict], cut: int) -> list[str]:
@@ -184,6 +193,7 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
     # "passed" three times out of three.
     starts = session_starts({r["session_id"] for r in located})
     commits = load_commits_by_repo()
+    checkpoints = session_checkpoints({r["session_id"] for r in located})
     repos = load_repos()
     # With the calls SWE-chat's table lost put back (G-76): edits among them
     # are replayed like any other, and a tree built without them lacked what
@@ -299,7 +309,7 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
         if started_ns is None:
             reject("no turn in this session carries a timestamp, so its start is unknown")
             continue
-        sha = base_commit(repo_id, started_ns, commits)
+        sha = base_commit(repo_id, started_ns, commits, checkpoints.get(row["session_id"], set()))
         if sha is None:
             reject("no commit exists before the session started")
             continue

@@ -5798,3 +5798,23 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     or over ssh (8 moments). Telling those apart needs a shell lexer and the
     transcript's working directory.
   - Guard: section 89, 13 pieces each reverted alone and seen red.
+- **09-24** — **B-250 fixed: the base could be committed after the session
+  started, or be the session's own commit.**
+  - The base was the latest corpus commit *authored* before the start. A
+    rebase or an amend keeps the author date, and 122 of 1,565 chosen bases
+    were committed only after their session began.
+  - 5 of the 1,565 were the session's own commits, recorded under one of its
+    own Entire checkpoints: a starting tree that can already hold the
+    session's work, the fix included.
+  - Now the base is the latest commit that entered the history before the
+    start (`commit_date`), and a commit recorded under any of the session's
+    checkpoints is never chosen, excluded by sha because one commit is a row
+    per checkpoint.
+  - Guard: section 90, including the corpus loader, 6 pieces each reverted
+    alone and seen red.
+  - Not done, recorded as the next lever for yield: commits.parquet holds a
+    median 10% of each repository's commits and none of GitHub's merge or
+    squash commits. A base read from the repository itself (the HEAD the
+    conversation printed, or `git rev-list --first-parent --before=<start>` on
+    the session's branch) would recover some sessions this rule still
+    rejects: savanna-vet-go, ClusterCockpit-35.
