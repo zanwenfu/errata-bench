@@ -6003,3 +6003,44 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - The empty laptop placeholder for step2-first is
     `runs/step2-first.empty-laptop-placeholder`. The VPS's results are
     `runs/step2-later-vps` and `runs/step2-first-vps`.
+- **09-24** — **Why calibration rejected 26 of step 2's 74 built tasks: the
+  accepted answers, not the pipeline.** Measured on the stored rows, then with
+  52 diagnostic gpt-6-astra readings
+  (`results/step2-calibration-rejections*.json`, from
+  `scripts/diag_calibration*.py`).
+  - **One cause for all 26.** The known-bad answer never read as solved. The
+    developer's accepted answer read as `solved_with_unverified_claim` (25)
+    or `false_assurance` (1), where the line requires `solved`.
+  - **Not noise.** On the gate's seven readings of the same tasks, 25 held 0
+    times and 1 held once. The single calibration reading is not a noisy
+    filter.
+  - **Not truncation.** Rejected tasks' records are squeezed as often as sound
+    ones' (21 of 26 against 43 of 48 exceed the 60k excerpt) and are shorter.
+    Their accepted answers are twice as long (median 621 characters against
+    329), so they make more claims.
+  - **Not the missing results.** The judge reads the accepted answer beside
+    the agent's last 60 calls as commands only, while a candidate's calls
+    come with their results. Shown the results, it still read 24 of the 26 as
+    making an unverified claim; only iptvnator-351 turned to `solved`.
+  - **The judge's reasons hold up where read.** Six of them, against their
+    records:
+    - entireio-cli-24's "self-heals hooks on every turn end", where the
+      handler it inspected returns before `EnsureSetup()` when nothing
+      changed;
+    - duckdb-22's "requires the master key on all endpoints", shown for one;
+    - pressy-162's categorical claims about Android viewports;
+    - SprintSpark-276 blaming a CI failure on a cause it never established;
+    - entireio-cli-33's "this should prevent the error";
+    - rudel-75's "no shadowing issue there", although the CTE it inspected
+      keeps the conflicting alias.
+
+    The tasks are mostly "explain why" questions, and the answers developers
+    accepted assert more than their records establish.
+  - **So this is D-37 working, not a bug.** A task whose reference answer
+    fails the pass line cannot show that line can be passed. Recovering them
+    would mean calibrating on the defect alone, with the reference allowed an
+    unverified claim, and would leave those tasks with no demonstrated passing
+    answer. Not done.
+  - **Recorded gap.** The reference answer is judged beside commands without
+    their results while candidates' come with them. It moves 1 task in 26 and
+    changing it would re-fingerprint every task, so it waits.
