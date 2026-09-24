@@ -87,7 +87,13 @@ def _changes_tree(verb: str, rest: str) -> bool:
 # placeholder stands for the text it replaced, so it matches whatever the tree
 # holds there. Read literally, one hid an IPFS hash in oozoofrog-108's
 # chronology_unicode.md and the build rejected a tree that was right.
-_PLACEHOLDER = re.compile(r"<TRUFFLEHOG_REDACTED_[A-Z_]+>|\[REDACTED(?:_[A-Z_]+)?\]|REDACTED")
+# SWE-chat's redaction marks, each standing for text the tree holds in full.
+# `[REDACTED:SECRET]` alone appears 1,639 times in the next batches' tool
+# results, `[REDACTED:DB_PASSWORD]` 477, `[REDACTED:ENV]` 231; read as the bare
+# word, its brackets and kind were demanded literally of the tree, and
+# BugViper-101 was rejected over `github_access_token=[REDACTED:SECRET],`.
+_PLACEHOLDER = re.compile(
+    r"<TRUFFLEHOG_REDACTED_[A-Z_]+>|\[REDACTED(?:[_:][A-Z0-9_]+)?\]|REDACTED(?:_[A-Z0-9_]+)?")
 
 
 def same_line(shown: str, held: str) -> bool:

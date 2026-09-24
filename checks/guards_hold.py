@@ -5824,6 +5824,44 @@ check(not _copilot87.tasks and any("not in Claude Code's format" in w for w in _
       f"and a transcript in another agent's format is rejected, not read as having no calls: "
       f"{_why79(_copilot87)} formats={_formats87}")
 
+print("\n88. an edit that never happened is not replayed, and every redaction mark is a wildcard")
+# About 1,100 of 39,700 edit calls did not apply: "File has not been read yet"
+# 571 times, after which the agent reads the file and retries -- a replay of
+# both found the retry's old_string gone -- and refused by the user 196 times
+# (ccw-140). And `[REDACTED:SECRET]` (1,639 tool results) was demanded
+# literally of the tree (BugViper-101).
+_ed88 = lambda n, cid, old, new: _T63(n, "tool_use", tool_name="Edit", tool_call_id=cid, content=json.dumps(
+    {"file_path": "/home/dev/up/src/a.py", "old_string": old, "new_string": new}))
+_res88 = lambda n, cid, text: _T63(n, "tool_result", tool_call_id=cid, content=text)
+_turns88 = [
+    _ed88(1, "u1", "a = 1", "a = 2"),
+    _res88(2, "u1", "<tool_use_error>File has not been read yet. Read it first before writing to it.</tool_use_error>"),
+    _T63(3, "tool_use", tool_name="Read", tool_call_id="r3", file_path="/home/dev/up/src/a.py", content="{}"),
+    _res88(4, "r3", "     1→a = 1"),
+    _ed88(5, "u5", "a = 1", "a = 2"),
+    _res88(6, "u5", "The file /home/dev/up/src/a.py has been updated. Here's the result:\n     1→a = 2  # blocked"),
+    _ed88(7, "u7", "a = 2", "a = 99"),
+    _res88(8, "u7", "The user doesn't want to proceed with this tool use. The tool use was rejected "
+                    "(eg. if it was a file edit, the new_string was NOT written to the file)."),
+    _ed88(9, "u9", "a = 2", "a = 3"),
+    _res88(10, "u9", "The file /home/dev/up/src/a.py has been updated."),
+    _ed88(11, "u11", "a = 3", "a = 4"),   # its result is not in the record
+]
+_got88 = [e["turn"] for e in _edits_before43(_turns88, 20)]
+_t88 = Path(tempfile.mkdtemp()) / "tree"
+(_t88 / "src").mkdir(parents=True)
+(_t88 / "src" / "a.py").write_text("a = 1\n")
+_r88 = replay_edits(_t88, _edits_before43(_turns88, 20), "dev/up")
+check(_got88 == [5, 9, 11] and _r88.ok and (_t88 / "src" / "a.py").read_text() == "a = 4\n",
+      f"the failed and the refused edit are skipped, the retry, the next edit and an unanswered one applied: "
+      f"{_got88} ok={_r88.ok} {_r88.reason!r}")
+check(all(_cs66.same_line(shown, held) for shown, held in (
+          ("github_access_token=[REDACTED:SECRET],", "github_access_token=ghp_x9Yz,"),
+          ("DB=[REDACTED:DB_PASSWORD] ok", "DB=hunter2 ok"), ("key = REDACTED_WEIGHTSANDBIASES", "key = 0a1b2c"),
+          ("t=[REDACTED]", "t=abc")))
+      and not _cs66.same_line("github_access_token=[REDACTED:SECRET],", "gitlab_token=ghp_x9Yz,"),
+      "a redaction mark of any kind matches the text it hid, and nothing around it is relaxed")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended

@@ -5742,3 +5742,29 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     - 122 were authored before the start but committed after it;
     - the start is the earliest entry rather than the first prompt (savanna:
       a 6-minute gap in which the developer merged and switched branch).
+- **09-24** — **B-248 fixed: the replay applied edits that never happened,
+  and redaction marks with a kind were read literally.**
+  - Of 39,700 edit calls in the next batches' sessions, about 1,100 did not
+    apply:
+    - "File has not been read yet", 571 times. The agent then reads the file
+      and retries, so a replay of both found the retry's old_string gone.
+    - Refused by the user, 196 times. ccw-140: the replay applied a refused
+      edit, and the next one no longer matched.
+    - "Modified since read" 112 times, then ambiguous matches and writes a
+      hook or plugin blocked.
+  - The replay now skips an edit whose result starts with one of these
+    (`edits.REFUSED`, matched at the start: a successful edit's result shows
+    the edited lines, which can say anything). An edit with no result in the
+    record is still applied.
+  - The consistency check read `[REDACTED:SECRET]` (1,639 tool results),
+    `[REDACTED:DB_PASSWORD]` (477) and `REDACTED_<KIND>` as the bare word, so
+    their brackets and kind were demanded of the tree (BugViper-101). Every
+    such mark is now a wildcard.
+  - Guard: section 88, each fix reverted alone and seen red.
+- **09-24** — **The screening of `runs/later-cap20` crashed at 22:02**, with
+  its triage, reading, locating and signatures recorded and nothing screened.
+  - The process had imported `construct.edits` at 21:22. Commit 940942df1
+    changed it at 21:59, and at 22:02 the screen stage imported the new
+    `consistency.py`, which needs a name the cached `edits` lacked.
+  - From here, unattended runs start from a pinned worktree of a commit, so
+    editing `src/` cannot reach them.

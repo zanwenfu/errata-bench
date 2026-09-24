@@ -122,13 +122,37 @@ class Replay:
         return self.applied == 0 or self.verified > 0
 
 
+# How an edit that never happened answers, at the start of its result. Of the
+# 39,700 edit calls in the next batches' sessions, about 1,100 did not apply:
+# "File has not been read yet" 571 times -- the agent then reads the file and
+# retries, so a replay that applied both found the retry's old_string gone and
+# rejected the task -- the user refusing the edit 196 (ccw-140: the replay
+# applied a refused edit and the next one no longer matched), "modified since
+# read" 112, an ambiguous match, a hook or a plugin blocking the write. Matched
+# at the start only: a successful edit's result shows the edited lines, which
+# can say anything.
+REFUSED = re.compile(
+    r"\s*(?:<tool_use_error>|The user doesn't want to proceed with this tool use"
+    r"|PreToolUse:\S* hook error|Source write blocked|File has been unexpectedly modified"
+    r"|Cannot edit files outside allowed directories|Tool permission request failed)")
+
+
 def edits_before(turns: list[dict], cut_turn: int) -> list[dict]:
-    """The agent's edit calls up to and including the cut, in order."""
+    """The agent's edit calls up to and including the cut, in order, less those that did not apply.
+
+    An edit whose result says it was refused or failed changed nothing, so it
+    is not replayed. One whose result is not in the record is: nothing says
+    it failed.
+    """
+    answered = {str(t["tool_call_id"]): str(t.get("content") or "") for t in turns
+                if t.get("turn_type") == "tool_result" and t.get("tool_call_id")}
     out = []
     for t in sorted(turns, key=lambda t: t.get("turn_number") or 0):
         if (t.get("turn_number") or 0) > cut_turn:
             break
         if t.get("turn_type") != "tool_use" or t.get("tool_name") not in EDIT_TOOLS:
+            continue
+        if REFUSED.match(answered.get(str(t.get("tool_call_id") or ""), "")):
             continue
         try:
             args = json.loads(t.get("content") or "")
