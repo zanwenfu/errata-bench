@@ -6559,3 +6559,14 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     provider's filter on grok's reply to that task's content. B-257 retries
     the attempt (pass 2's got through) and then gives up; the count per
     model is reported.
+- **09-24** — **D-40's three task sets, for every analysis script.**
+  - `scripts/d35.py` gains `restrict()`, which narrows admission to a list
+    of task ids. `grid_table.py`, `paired_tests.py` and
+    `judge_agreement.py` take it as `--tasks FILE`, so the table, the tests
+    and the agreement are computed over one set.
+  - The sets, fixed now from `results/step2-tally.json` and
+    `runs/d40-base/d40.json`:
+    - `results/d40-tasks-headline.json` (47, at most 8 per repository);
+    - `results/d40-tasks-all.json` (55);
+    - `results/d40-tasks-new.json` (46, without the first grid's 9).
+  - Guard: section 58, seen red with the restriction removed.

@@ -4387,6 +4387,18 @@ check(sorted(_w58) == [(False, False), (False, True), (True, True)],
 check(_ja58.merged([{"t": [(True, True)]}, {"t": [(False, True)]}, {"u": [(True, False)]}])
       == {"t": [(True, True), (False, True)], "u": [(True, False)]},
       "pooled across candidates, one task is one cluster, since they answered the same tasks")
+# D-40 reports three task sets through one restriction every script shares.
+_set58 = Path(tempfile.mkdtemp()) / "tasks.json"
+_set58.write_text(json.dumps(["t-a", "t-x"]))
+_all58 = _d58.admission(_p58.root)
+_d58.restrict(_set58)
+try:
+    _only58 = (_d58.admission(_p58.root), {a["task_id"] for a in _d58.readings(_p58.root)})
+finally:
+    _d58.restrict(None)
+check(_only58 == ({"t-a"}, {"t-a"}) and _d58.admission(_p58.root) == _all58 and len(_all58) > 1,
+      f"--tasks keeps only the listed tasks the run admits, for every script, and lifting it restores them: "
+      f"{_only58} then {sorted(_d58.admission(_p58.root))}")
 
 print("\n59. a task whose trace check failed a control is out wherever a re-judge admits")
 # B-234. `admitted` read only the judge's half of a control row, so the blocks

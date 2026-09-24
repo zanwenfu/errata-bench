@@ -120,6 +120,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("runs", nargs="+", type=Path)
     ap.add_argument("--judge", help="read this judge's re-grades instead of the run's own grading")
     ap.add_argument("--runs", dest="attempts", help="restrict to these attempt numbers, e.g. 0 or 0,1,2")
+    ap.add_argument("--tasks", type=Path, help="only these tasks: a JSON list of task ids (D-40's task sets)")
     ap.add_argument("--admit-also", dest="also",
                     help="sensitivity analysis: only tasks this second judge also admits on its own tests")
     ap.add_argument("--resamples", type=int, default=10_000)
@@ -128,6 +129,9 @@ def main(argv: list[str]) -> int:
     if len(args.runs) < 2:
         ap.error("give at least two run directories")
     d35.require_runs(ap, args.runs)
+    d35.restrict(args.tasks)
+    if args.tasks:
+        print(f"tasks restricted to {args.tasks} ({len(d35.ONLY)} ids)")
     which = {int(x) for x in args.attempts.split(",")} if args.attempts else None
     data = {r: graded(r, args.judge, which, args.also) for r in args.runs}
 

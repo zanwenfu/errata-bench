@@ -115,12 +115,34 @@ def also_admitted(run: Path, judge: str) -> set[str]:
     return judge_admitted(run, out, judge, PASSING) - trace_failed
 
 
+# A named subset of the tasks, for every script at once (D-40 reports three:
+# its headline set of at most 8 per repository, all 55, and the 46 not drawn
+# from the first grid). Set by `restrict`, from each script's `--tasks`.
+ONLY: set[str] | None = None
+
+
+def restrict(path: Path | None) -> None:
+    """Keep only the task ids listed in the JSON file at `path`; None keeps all."""
+    global ONLY
+    if path is None:
+        ONLY = None
+        return
+    import json
+
+    ids = json.loads(Path(path).read_text())
+    if not isinstance(ids, list) or not ids or not all(isinstance(i, str) for i in ids):
+        raise SystemExit(f"--tasks {path}: not a JSON list of task ids")
+    ONLY = set(ids)
+
+
 def admission(run: Path, also: str | None = None) -> set[str]:
     """The task set every D-35 number is computed over."""
     paths = Paths(run)
     tasks = {r["task_id"] for r in load(paths.calibration) if can_be_scored(r)} & controlled(paths)
     if also:
         tasks &= also_admitted(run, also)
+    if ONLY is not None:
+        tasks &= ONLY
     return tasks
 
 

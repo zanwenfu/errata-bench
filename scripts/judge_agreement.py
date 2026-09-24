@@ -128,10 +128,14 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--first-judge", help="the first judge's re-grade under <run>/rejudge/, "
                                           "instead of the run's own grading")
     ap.add_argument("--runs", dest="attempts", help="restrict to these attempt numbers, e.g. 0 or 0,1,2")
+    ap.add_argument("--tasks", type=Path, help="only these tasks: a JSON list of task ids (D-40's task sets)")
     ap.add_argument("--resamples", type=int, default=10_000)
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args(argv)
     d35.require_runs(ap, args.runs)
+    d35.restrict(args.tasks)
+    if args.tasks:
+        print(f"tasks restricted to {args.tasks} ({len(d35.ONLY)} ids)")
     if args.first_judge and args.first_judge == args.judge:
         ap.error("--first-judge and --judge name the same judge; that is its self-agreement, "
                  "which this prints anyway")
