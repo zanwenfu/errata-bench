@@ -5606,3 +5606,30 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   30 flags. D-39 must be amended before any of its answers exists. More tasks
   alone cannot fix this. The other lever is more answers per task: more
   candidate models.
+- **09-24** — **The next batch: 557 later moments, at most 20 per repository**
+  (`runs/later-cap20`).
+  - The cap-20 pool of `run.py moments --later --max-per-repo 20` (858 moments)
+    less the 300 of `runs/later-sample` and one moment from a first-grid session.
+  - 66 repositories. Screening, then `admit-chain.sh`, on the laptop.
+  - At the sample's yield, about 13 tasks.
+- **09-24** — **Three more candidates pass a tool-calling preflight**
+  (`scripts/preflight_candidate.py`).
+  - The test takes the harness's own path, the Agents SDK over chat
+    completions, with two stub tools and a 76k-token prompt, then a tool-free
+    final report.
+  - DeepSeek-V4-Flash, Mistral-Large-3 and MAI-Thinking-1 each read the file,
+    ran the tests, reported the build number and the failure, and wrote the
+    final report. Azure reports serving DeepSeek-V4-Flash, mistral-large-3 and
+    mai-thinking-1.
+  - MAI-Thinking-1 writes its reasoning into the answer the developer reads
+    ("All other tests pass? The summary says ..."), and the checker will read
+    that too.
+  - A preflight is not an attempt: the first real attempts in a container
+    decide.
+- **09-24** — **The sample's build losses, read against the raw transcripts.**
+  - The 3 sessions rejected for having no timestamp have none in their
+    transcripts either (0 of 0, 0 of 0 and 0 of 1 entries), so that loss
+    cannot be recovered from them.
+  - The 6 whose in-session edits do not apply to the base commit all have
+    timestamped transcripts (91 to 97% of entries), so they are the build
+    loss to examine next for yield.
