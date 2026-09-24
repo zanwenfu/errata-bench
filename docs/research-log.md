@@ -5818,3 +5818,64 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     conversation printed, or `git rev-list --first-parent --before=<start>` on
     the session's branch) would recover some sessions this rule still
     rejects: savanna-vet-go, ClusterCockpit-35.
+- **09-24** — **B-251 fixed: what an unattended batch could lose** (from a
+  read-only audit of the stages, the store and `admit-chain.sh`).
+  - **Memory.** Loading turns converted every column of each 200,000-row batch
+    that held any requested session: 5 to 6 GB for a few hundred sessions,
+    with 1,700 to come. Only the requested rows are converted now: 214 KB
+    traced where the batch holds 30 MB of text.
+  - **Connections.** A dropped connection (timeout, reset, 5xx) was not
+    retried; after a laptop sleeps every call in flight fails within seconds,
+    and the stage reported itself finished. Now retried like throttling.
+  - **One row stopped the build.** An exception in the replay, the
+    consistency check or a transcript aborted the whole build. Now that row
+    is rejected as a tree that could not be built this pass, so its rows are
+    kept.
+  - **Gate readings.** They carried no fingerprint and were never pruned, so a
+    task rebuilt under its name kept its older version's readings and was
+    admitted on them. Now they are stamped, counted only for the current
+    version, and pruned with the rest.
+  - **Pruning.** The build's prune now sets aside what it drops in
+    `<file>.pruned.jsonl`.
+  - **Silent skips.** The build says how many screened rows carry an error and
+    were not built.
+  - **The chain.** `admit-chain.sh` now:
+    - waits on the run's lock, not a process name;
+    - repeats a step while it leaves rows in error, up to three times;
+    - screens a run that has no `screened.jsonl`;
+    - reads calibration, the controls and the gate with one judge.
+  - Also found and not changed:
+    - the gate reads tasks calibration rejected (7 of 56 readings in
+      later-sample). Filtering them changes what a standalone gate means, and
+      a guard said so;
+    - rewrites are not fsynced;
+    - the gate and the stages take different locks.
+  - Guard: section 91, 9 fixes each reverted alone and seen red. The script
+    was run end to end on an empty run.
+- **09-24** — **Step 2 decided** (before any of its moments is read;
+  `scripts/draw_step2.py`).
+  - **Sources.** Every pushback no run has triaged:
+    - each session's earliest later pushback, with no per-repository cap;
+    - and its first pushback. 600 first pushbacks were drawn into
+      runs/sweep2 and never triaged, so the test is "not triaged", not "not
+      drawn".
+  - **Left out:**
+    - moments any run triaged;
+    - first-grid sessions;
+    - sessions with a task built in any run;
+    - sessions without a timestamp;
+    - first pushbacks whose session's later moment is already in later-sample
+      or later-cap20.
+  - **Result:** `runs/step2-later` 1,163 moments, `runs/step2-first` 417; 270
+    sessions are in both.
+  - **One task per session.** If both of a session's moments become admitted
+    tasks, the first pushback is kept, being the earlier moment with less
+    friction.
+  - **Concentration, accepted for yield.** The later list comes from 17
+    repositories, entireio/cli 399 of them. The analysis will treat the
+    repository as a cluster, and D-39's fresh set still excludes the first
+    grid's repositories.
+  - **Order, one after another, from a pinned worktree of the commit that
+    carries this entry:** later-cap20 (screen, then admission), later-sample
+    rebuilt under the fixed build (its false rejections), step2-later,
+    step2-first.

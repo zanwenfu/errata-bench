@@ -24,9 +24,8 @@ def holds_paid_work(paths: Paths) -> str:
     -- and then the prune below deleted `calibration` and `controls` too, which
     are judge calls, bought, and not in the list that decides whether to refuse.
     A directory holding nothing but calibration and controls was wiped without
-    a refusal. `gate` is counted as well: it is not pruned, but it is paid, and
-    a guard that exists to say "there is work here" should not be blind to a
-    file just because this stage happens not to delete it.
+    a refusal. `gate` is counted as well, and since B-251 it is pruned like the
+    rest.
     """
     counts = [(name, len(load(getattr(paths, name))))
               for name in ("tasks", "attempts", "answers", "calibration", "controls", "gate",
@@ -55,6 +54,12 @@ def stage_build(paths: Paths, limit: int) -> Progress:
     p = Progress("build")
     t0 = time.monotonic()
     rows = [r for r in load(paths.screened) if not r.get("error")]
+    errored = sum(1 for r in load(paths.screened) if r.get("error"))
+    if errored:
+        # In neither tasks.jsonl nor rejections.jsonl, so said here: re-running
+        # the screen stage retries them (B-251).
+        p.notes.append(f"{errored} screened row(s) carry an error and were not built; "
+                       "re-run the screen stage to retry them")
     # Refuse to rebuild nothing over something. The candidate run directories
     # hold their tasks, calibration, controls and answers but not the screened
     # rows those were derived from -- they were copied in. Running every stage
@@ -150,8 +155,10 @@ def stage_build(paths: Paths, limit: int) -> Progress:
         stamp = row.get("task_fingerprint")
         return stamp is None or stamp == prints[row["task_id"]]
 
+    # The gate too (B-251): its readings of an older version of a task were
+    # kept, never re-read, and counted toward admitting the new one.
     for downstream in (paths.calibration, paths.controls, paths.answers, paths.attempts,
-                       paths.instrument):
+                       paths.instrument, paths.gate):
         if not downstream.exists():
             continue
         # Under the lock, re-read: this loop rewrites four files a candidate or
@@ -162,6 +169,13 @@ def stage_build(paths: Paths, limit: int) -> Progress:
             rows = load(downstream)
             kept = [r for r in rows if still_describes(r)]
             if len(kept) != len(rows):
+                # Set aside beside the file, not destroyed: a new rule or a bug in
+                # new build code can reject a task that was sound, and what was
+                # bought for it should be recoverable by hand (B-251).
+                gone = downstream.with_name(downstream.stem + ".pruned.jsonl")
+                for r in rows:
+                    if not still_describes(r):
+                        append(gone, r)
                 replace(downstream, kept)
                 p.notes.append(f"dropped {len(rows) - len(kept)} stale rows from {downstream.name}")
     # Said out loud, because rows kept for a task that is not in tasks.jsonl are

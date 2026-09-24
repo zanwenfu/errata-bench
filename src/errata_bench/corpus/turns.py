@@ -33,21 +33,28 @@ def load_session_turns(session_ids: set[str]) -> dict[str, list[dict]]:
 
     conversations.parquet is 1.3 GB and 2.7M rows, so it is streamed in batches
     and scanned once for all requested sessions rather than once per session.
+    Only the requested sessions' rows are made into Python objects. Converting
+    every column of each 200,000-row batch that held any of them peaked at 5 to
+    6 GB for a few hundred sessions, and the next batches ask for 1,700 (B-251).
     """
+    import pyarrow as pa
+    import pyarrow.compute as pc
     import pyarrow.parquet as pq
 
     from .sessions import CORPUS
 
     out: dict[str, list[dict]] = {s: [] for s in session_ids}
     pf = pq.ParquetFile(CORPUS / "conversations.parquet")
+    wanted = None
     for batch in pf.iter_batches(batch_size=200_000, columns=TURN_COLUMNS):
-        sids = batch.column("session_id").to_pylist()
-        hits = [i for i, s in enumerate(sids) if s in session_ids]
-        if not hits:
+        ids = batch.column("session_id")
+        if wanted is None:
+            wanted = pa.array(sorted(session_ids), type=ids.type)
+        mask = pc.is_in(ids, value_set=wanted)
+        if not pc.any(mask).as_py():
             continue
-        cols = {c: batch.column(c).to_pylist() for c in TURN_COLUMNS}
-        for i in hits:
-            out[sids[i]].append({c: cols[c][i] for c in TURN_COLUMNS})
+        for row in batch.filter(mask).to_pylist():
+            out[row["session_id"]].append({c: row[c] for c in TURN_COLUMNS})
     for s in out:
         out[s].sort(key=lambda t: t["turn_number"] or 0)
     return out

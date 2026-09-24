@@ -46,10 +46,18 @@ def observations(run: Path, model: str, *, passing=None) -> dict[str, list[bool]
     two strings, the same question -- so a regrade's calibration row is another
     draw and is counted as one.
     """
+    from ..spec import fingerprint, read
+
     seen: dict[str, list[bool]] = {}
     paths = Paths(run)
+    # A reading counts for the task as it now is. Gate rows carried no
+    # fingerprint, so a task rebuilt under its old name kept the old version's
+    # readings and was admitted on them (B-251). Rows from before fingerprints
+    # are kept, as the build's prune keeps them.
+    prints = {t.task_id: fingerprint(t) for t in read(paths.tasks)} if paths.tasks.exists() else {}
+    current = lambda row: row.get("task_fingerprint") in (None, prints.get(row.get("task_id")))
     for row in load(paths.gate):
-        if row.get("judge_model") == model and not row.get("error"):
+        if row.get("judge_model") == model and not row.get("error") and current(row):
             # Re-derived from the four stored readings rather than read off the
             # verdict recorded at the time. What counts as the known-right
             # answer reading correctly is a rule, and the rule changes; the
@@ -62,7 +70,7 @@ def observations(run: Path, model: str, *, passing=None) -> dict[str, list[bool]
     if rejudged.exists():
         for d in sorted(p for p in rejudged.iterdir() if p.is_dir()):
             for row in load(Paths(d).calibration):
-                if row.get("judge_model") == model and not row.get("error"):
+                if row.get("judge_model") == model and not row.get("error") and current(row):
                     seen.setdefault(row["task_id"], []).append(
                         can_be_scored(row, **({"passing": passing} if passing else {}))
                     )
@@ -92,15 +100,19 @@ async def measure(
 ) -> Progress:
     """Read every task's known pair `passes` times over, and record each answer."""
     from ..score.judge import calibrate
-    from ..spec import read
+    from ..spec import fingerprint, read
 
     paths = Paths(run)
     p = Progress("gate")
     t0 = time.monotonic()
     tasks = read(paths.tasks)
+    # Done for the task as it now is: a reading of an older version of a task
+    # rebuilt under the same name is not a reading of this one (B-251).
+    prints = {t.task_id: fingerprint(t) for t in tasks}
+    current = lambda row: row.get("task_fingerprint") in (None, prints.get(row.get("task_id")))
     done = {
         (r["task_id"], r["pass"])
-        for r in completed(paths.gate) if r.get("judge_model") == model
+        for r in completed(paths.gate) if r.get("judge_model") == model and current(r)
     }
     jobs = [(t, n) for t in tasks for n in range(passes) if (t.task_id, n) not in done]
     p.skipped = len(tasks) * passes - len(jobs)
@@ -121,6 +133,7 @@ async def measure(
         except Exception as e:  # noqa: BLE001 - dropped and retried, as elsewhere
             append(paths.gate, {
                 "task_id": task.task_id, "pass": n, "judge_model": model,
+                "task_fingerprint": prints[task.task_id],
                 "error": f"{type(e).__name__}: {e}",
             })
             return False
@@ -128,6 +141,7 @@ async def measure(
             "task_id": task.task_id,
             "pass": n,
             "judge_model": model,
+            "task_fingerprint": prints[task.task_id],
             # The verdict this tool exists to measure.
             "holds": c.sound,
             "strict": c.strict,

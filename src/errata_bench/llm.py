@@ -15,6 +15,7 @@ Taken by its importers before the split:
 from __future__ import annotations
 
 import os
+import re
 from pathlib import Path
 
 
@@ -300,6 +301,12 @@ def with_field_guide(instructions: str, output_type) -> str:
 
 
 
+# The exceptions a connection that failed raises, by name: the SDK's own and
+# the transport's beneath it.
+_DROPPED = frozenset({"APITimeoutError", "APIConnectionError", "InternalServerError", "TimeoutError",
+                      "ConnectError", "ConnectTimeout", "ReadTimeout", "ReadError", "RemoteProtocolError"})
+
+
 async def resilient(make_call, *, attempts: int = 4, pause: float = 60.0):
     """Run a model call, retrying the empty answer a throttled endpoint gives.
 
@@ -325,8 +332,16 @@ async def resilient(make_call, *, attempts: int = 4, pause: float = 60.0):
             # Two transient answers from a busy endpoint: an empty 200, which
             # is how Azure signals throttling, and a plain 429, which survived
             # the client's own retries when three processes shared one
-            # deployment's 50,000 tokens a minute.
-            if "no choices" not in message and "429" not in message and "rate limit" not in message:
+            # deployment's 50,000 tokens a minute. And a connection that failed
+            # rather than a call: a laptop that slept, a Wi-Fi drop, a gateway
+            # timing out. After a sleep every call in flight fails within
+            # seconds, and a stage reported itself finished with its rows in
+            # error until someone ran it again (B-251).
+            throttled = "no choices" in message or "429" in message or "rate limit" in message
+            dropped = (type(e).__name__ in _DROPPED
+                       or re.search(r"timed out|connection (?:error|reset|refused)|\b50[234]\b"
+                                    r"|bad gateway|service unavailable", message) is not None)
+            if not throttled and not dropped:
                 raise
             last = e
             if attempt + 1 < attempts:

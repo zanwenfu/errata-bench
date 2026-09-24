@@ -112,6 +112,7 @@ container_mod.sweep = lambda: None
 container_mod.max_containers = lambda: 2
 REAL_LOAD_REPOS = corpus.load_repos      # kept: section 38 reads a corpus written for it
 corpus.load_repos = lambda: {}
+REAL_LOAD_SESSION_TURNS = turns_mod.load_session_turns   # kept: section 91 reads a corpus written for it
 turns_mod.load_session_turns = lambda ids: {}
 
 
@@ -5945,6 +5946,135 @@ finally:
 check(_loaded90 == {"a": (1_000_000_000, 1_000_000_000, "o/r#else"), "b": (2_000_000_000, 9_000_000_000, "o/r#own")}
       and _cps90 == {"s1": {"o/r#own"}, "s2": set()},
       f"read from the corpus: {_loaded90} {_cps90}")
+
+print("\n91. an unattended batch survives a dropped connection, a surprising row and a rebuild")
+# From the robustness audit of 09-24 (B-251): loading turns turned every column
+# of each 200,000-row batch into Python objects; a dropped connection was not
+# retried; one exception in the replay aborted the whole build; gate readings of
+# an older version of a rebuilt task were kept and counted; and the build's
+# prune destroyed what it dropped.
+import tracemalloc as _tm91
+import errata_bench.corpus.turns as _turns91
+_corp91 = Path(tempfile.mkdtemp())
+_n91 = 30_000
+_pq.write_table(_pa.table({
+    "session_id": [f"s{i % 300}" for i in range(_n91)], "turn_number": [i // 300 for i in range(_n91)],
+    "role": ["assistant"] * _n91, "turn_type": ["assistant_response"] * _n91,
+    "content": [f"{i:06d}" + "x" * 994 for i in range(_n91)], "tool_name": [None] * _n91,
+    "command": [None] * _n91, "file_path": [None] * _n91, "prompt_pushback": [None] * _n91,
+    "is_conversational": [True] * _n91, "tool_call_id": [None] * _n91}), _corp91 / "conversations.parquet")
+_keep91 = _sessions_mod.CORPUS
+_sessions_mod.CORPUS = _corp91
+try:
+    _tm91.start()
+    _got91 = REAL_LOAD_SESSION_TURNS({"s7"})
+    _peak91 = _tm91.get_traced_memory()[1]
+    _tm91.stop()
+finally:
+    _sessions_mod.CORPUS = _keep91
+check([t["turn_number"] for t in _got91["s7"]] == list(range(100))
+      and all(set(t) == set(_turns91.TURN_COLUMNS) for t in _got91["s7"])
+      and _got91["s7"][0]["content"].startswith("000007"),
+      f"one session's turns, in order, every column: {len(_got91['s7'])} rows")
+check(_peak91 < 3_000_000,
+      f"and only its rows become Python objects -- the batch holds 30 MB of text: peak {_peak91:,} bytes")
+
+
+class APIConnectionError(Exception):
+    pass
+
+
+_tries91 = {"n": 0}
+
+
+async def _flaky91():
+    _tries91["n"] += 1
+    if _tries91["n"] == 1:
+        raise APIConnectionError("Connection error.")
+    if _tries91["n"] == 2:
+        raise RuntimeError("Request timed out.")
+    return "answered"
+
+
+_said91 = asyncio.run(reader.resilient(_flaky91, pause=0))
+
+
+async def _broken91():
+    raise ValueError("the prompt is malformed")
+
+
+try:
+    asyncio.run(reader.resilient(_broken91, pause=0))
+    _raised91 = None
+except ValueError:
+    _raised91 = "raised"
+check(_said91 == "answered" and _tries91["n"] == 3 and _raised91 == "raised",
+      f"a dropped connection and a timeout are retried, a real error is not: {_said91} after "
+      f"{_tries91['n']} tries, {_raised91}")
+
+_kept91b = {n: getattr(_B43w, n) for n in _kept79}
+try:
+    (_dir70 / "s79.jsonl").write_text("\n".join(_cc87) + "\n")
+    recover_mod.transcript_path = lambda sid: _dir70 / f"{sid}.jsonl"
+    _build79(_turns79())   # installs the stubs
+    _B43w.replay = lambda tree, edits, repo_id: (_ for _ in ()).throw(RuntimeError("a replay surprise"))
+    _row91 = {"session_id": "s79", "repo_id": "acme/up", "request": 1, "failed": 8, "complaint": 9,
+              "resolved": 10, "cut": 7, "kind": "none", "path": "src/a.py", "token": "", "defect": "a defect",
+              "rounds": 1, "usable": True, "asks_for_something": True, "within_scope": True,
+              "signals_trouble": False}
+    _boom91 = _B43w.build([_row91])
+finally:
+    recover_mod.transcript_path = _NO_TRANSCRIPTS
+    for _n91b, _v91b in _kept91b.items():
+        setattr(_B43w, _n91b, _v91b)
+check(not _boom91.tasks and len(_boom91.rejected) == 1
+      and _boom91.rejected[0].reason.startswith("could not build the tree: an unexpected RuntimeError"),
+      f"an exception in one row rejects that row as transient, not the build: {[r.reason for r in _boom91.rejected]}")
+
+from errata_bench.spec import fingerprint as _fp91, read as _read91
+_new91 = _task49("acme-kt-9")
+_p91 = Paths(Path(tempfile.mkdtemp()) / "run")
+append(_p91.screened, {"session_id": "s2", "repo_id": "acme/kt", "complaint": 9, "usable": True, "kind": "present"})
+append(_p91.screened, {"session_id": "s3", "repo_id": "acme/kt", "complaint": 11, "error": "APITimeoutError"})
+for _fp, _pass in (("an-older-version", 0), (_fp91(_new91), 1), (None, 2)):
+    append(_p91.gate, {"task_id": "acme-kt-9", "pass": _pass, "judge_model": "j", "holds": True}
+           | ({"task_fingerprint": _fp} if _fp else {}))
+append(_p91.gate, {"task_id": "acme-up-7", "pass": 0, "judge_model": "j", "holds": True, "task_fingerprint": "x"})
+append(_p91.calibration, {"task_id": "acme-up-7", "sound": True, "task_fingerprint": "x"})
+_kept91c = _build49.build
+_build49.build = lambda rows, **kw: _BR49(tasks=[_new91], rejected=[_Rej49("acme/up", 7, "no defect signature")])
+try:
+    _prog91 = _stage_build49(_p91, 10**9)
+finally:
+    _build49.build = _kept91c
+_gate91 = sorted((r["task_id"], r["pass"]) for r in load(_p91.gate))
+_gone91 = sorted((r["task_id"], r["pass"]) for r in load(_p91.root / "gate.pruned.jsonl"))
+check(_gate91 == [("acme-kt-9", 1), ("acme-kt-9", 2)] and _gone91 == [("acme-kt-9", 0), ("acme-up-7", 0)]
+      and [r["task_id"] for r in load(_p91.root / "calibration.pruned.jsonl")] == ["acme-up-7"],
+      f"the gate is pruned like the rest, and what is pruned is set aside: kept {_gate91}, aside {_gone91}")
+check(any("1 screened row(s) carry an error" in n for n in _prog91.notes),
+      f"and a screened row that errored is said, not silently left unbuilt: {[n[:60] for n in _prog91.notes]}")
+async def _cal91(task, *, model=None, conversations=None):
+    return Calibration(task.task_id, failed_outcome="off_target", resolution_outcome="solved",
+                       failed_solved=False, resolution_solved=True, failed_outcome_swapped="off_target",
+                       resolution_outcome_swapped="solved", failed_solved_swapped=False,
+                       resolution_solved_swapped=True)
+
+
+_saved91 = judge_mod.calibrate
+judge_mod.calibrate = _cal91
+try:
+    _g91 = fresh(["steady"])
+    append(_g91.gate, {"task_id": "steady", "pass": 0, "judge_model": "the-judge", "holds": False,
+                       "task_fingerprint": "an-older-version", "failed_outcome": "solved"})
+    asyncio.run(measure(_g91.root, "the-judge", passes=1, concurrency=1))
+finally:
+    judge_mod.calibrate = _saved91
+_rows91 = load(_g91.gate)
+check(len(_rows91) == 2 and _rows91[-1].get("task_fingerprint") == _fp91(_read91(_g91.tasks)[0])
+      and observations(_g91.root, "the-judge") == {"steady": [True]},
+      f"a reading of an older version is neither done nor counted, and a new one is stamped: "
+      f"{len(_rows91)} rows, {observations(_g91.root, 'the-judge')}")
 
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every

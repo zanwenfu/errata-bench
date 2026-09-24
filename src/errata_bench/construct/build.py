@@ -207,253 +207,262 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
         def reject(why: str) -> None:
             result.rejected.append(Rejection(repo_id, complaint, why))
 
-        if not row.get("usable"):
-            reject(row.get("reason", "trajectory not usable"))
-            continue
-        if not row.get("kind"):
-            reject("no signature was derived")
-            continue
-
-        # A conversation that leaks is repaired before it is rejected. Removing
-        # the turns that carry the hint recovers nine of fourteen leaking tasks
-        # while keeping 78-100% of the text, so the candidate still has the work
-        # the original agent had. Only a leak that survives redaction -- or one
-        # diffuse enough to have no turns to remove -- ends the task.
-        if row.get("signals_trouble") and not row.get("redaction_worked"):
-            # The conversation already signals that something is wrong, so a
-            # candidate can take the hint rather than check anything. Measured,
-            # not assumed: of twelve tasks scored before any such gate, every
-            # passing verdict came from a task whose context leaked -- four of
-            # six leaky tasks passed, against none of six clean ones.
-            #
-            # Read by a model rather than by pattern. A regex version scored
-            # oddessentials-83 clean because nobody apologised, while the
-            # conversation contains "SC-003 scope is incorrect. Fix: Change from
-            # 'modified files' to 'entire repo typecheck surface' to prevent
-            # local pass / CI fail divergence" -- it hands over the very
-            # rationale the task asks the candidate to avoid inventing.
-            reject(f"the context already signals trouble: {row.get('leak_reason','')}")
-            continue
-
-        turns = turns_by_session.get(row["session_id"]) or []
-        by_turn = {t.get("turn_number"): t for t in turns}
-
-        # A missing verdict is not a pass. Screened rows written before the scope
-        # gate existed carry no `within_scope` at all, and testing only for False
-        # let every one of them through -- including nsega-mcp-todoist, whose
-        # request is "create the pull request" and whose defect is a linter
-        # version in a CI workflow nobody mentioned. A gate that silently
-        # abstains when its input is absent is not a gate.
-        asked = row.get("asks_for_something")
-        why_not = row.get("request_reason", "")
-
-        # Before the scope gate, because when no request was found the scope
-        # gate cannot have run and its message -- "the defect is outside the
-        # requested work" -- describes a judgement nobody made. Five of the
-        # eight rows rejected for scope were really this, and reading them as
-        # scope judgements sent an audit looking in the wrong place.
-        if asked is False and "no user message" in str(why_not):
-            reject(f"nothing for the candidate to answer: {why_not}")
-            continue
-
-        if not row.get("within_scope"):
-            reject(
-                "the defect is outside the requested work: "
-                f"{row.get('scope_reason') or 'the scope gate did not run on this row'}"
-            )
-            continue
-        if asked is False:
-            # A candidate answers the developer's most recent message. When the
-            # excerpt ends without one -- or ends on pasted terminal output with
-            # no question in it -- there is nothing to answer, and a reasonable
-            # model summarises the logs. Six of nine attempts on present-defect
-            # tasks were scored off_target for exactly this: moltis ends on 1,837
-            # characters of validation output the developer pasted with no
-            # question attached, and oddessentials-221 has no user turn within
-            # eighty turns of its cut. Neither measures the model.
-            reject(f"nothing for the candidate to answer: {why_not}")
-            continue
-        # Both must be answers the agent wrote, not tool calls. A located turn
-        # can land on a tool_use row, whose content is the serialised call --
-        # heath0xFF-hChat took raw JSON as both its oracle and its criterion, and
-        # calibration certified it "sound", because a judge comparing two blobs
-        # of JSON will happily report that they differ.
-        failed_turn = by_turn.get(row["failed"]) or {}
-        resolved_turn = by_turn.get(row["resolved"]) or {}
-        if failed_turn.get("turn_type") != "assistant_response":
-            reject(
-                f"the failing turn is a {failed_turn.get('turn_type') or 'missing turn'}, "
-                "not an answer the agent wrote"
-            )
-            continue
-        if resolved_turn.get("turn_type") != "assistant_response":
-            reject(
-                f"the resolving turn is a {resolved_turn.get('turn_type') or 'missing turn'}, "
-                "not an answer the agent wrote"
-            )
-            continue
-        oracle = (failed_turn.get("content") or "").strip()
-        criterion = (resolved_turn.get("content") or "").strip()
-        if len(oracle) < MIN_ORACLE_CHARS:
-            reject(f"the failed answer is {len(oracle)} characters: too short to test against")
-            continue
-        if len(criterion) < MIN_ORACLE_CHARS:
-            reject(f"the resolution is {len(criterion)} characters: too short to judge against")
-            continue
-
-        repo = repos.get(repo_id)
-        if repo is None:
-            reject("repository not in the corpus")
-            continue
-        started_ns = starts.get(row["session_id"])
-        if started_ns is None:
-            reject("no turn in this session carries a timestamp, so its start is unknown")
-            continue
-        sha = base_commit(repo_id, started_ns, commits, checkpoints.get(row["session_id"], set()))
-        if sha is None:
-            reject("no commit exists before the session started")
-            continue
-
-        sig = Signature(
-            kind=row["kind"],
-            path=row.get("path") or "",
-            token=row.get("token") or "",
-            # The field `stage_signature` writes is `is_symlink_defect`, from
-            # `Signature.model_dump()`. Reading `symlink` found nothing, so
-            # every derived True became a definite False -- B-122's shape -- and
-            # `probe_for` never reached its symlink branch, falling through to
-            # the token and path probes instead.
-            is_symlink_defect=bool(row.get("is_symlink_defect")),
-            reasoning=row.get("sig_reasoning") or row.get("reasoning") or "",
-        )
-        task_id = f"{repo_id.replace('/', '-')}-{complaint}"
-        # A task is named for its repository and the turn the developer
-        # objected at, which is not unique: 93 of 400 moments in one run share
-        # a (repository, turn) pair with another session. None has survived to
-        # a built task yet, and the funnel is the only reason. Two tasks under
-        # one name is worse than one task fewer -- they overwrite each other's
-        # answers, each is reported as "an earlier version" of the other, and a
-        # full pass never converges because whichever is written second wins.
-        if task_id in seen:
-            reject(f"another session already built {task_id}; two tasks cannot share a name")
-            continue
-        url = repo_url(repo_id, repo.url)
-        # A tree changed by git before the cut is in no commit plus edits
-        # (B-239). Documented as rejected since the replay was written; this is
-        # the check that does it.
-        git = tree_changing_git(turns, row["cut"])
-        if git:
-            reject(f"the agent changed its files with git before the cut, which no replay "
-                   f"reproduces: {git[0][:90]}")
-            continue
-        # The same for files changed by a tool the replay does not read, or by
-        # a sub-agent, whose calls only the raw transcript records. Either way
-        # the replay would report success on a tree lacking the agent's work.
-        unread = unreplayed_writes(turns, row["cut"])
-        if unread:
-            reject(f"the agent changed files before the cut with a tool the replay does not "
-                   f"read: {', '.join(unread)[:90]}")
-            continue
-        by_subagent = subagent_edits_before(row["session_id"], turns, row["cut"])
-        if by_subagent:
-            reject(f"a sub-agent edited files before the cut, which the replay does not "
-                   f"reproduce: {by_subagent[0][:90]}")
-            continue
-        # A transcript in another agent's format: the table may hold none of
-        # the session's calls (a Copilot session's has no tool rows, while its
-        # transcript records 14 edits before the moment), and nothing here can
-        # read the transcript to tell.
-        if foreign_transcript(row["session_id"]):
-            reject("the session's transcript is not in Claude Code's format, so its calls "
-                   "cannot be checked against the table")
-            continue
-
-        base = scratch or Path(tempfile.gettempdir()) / "errata-bench-build"
-        base.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory(dir=base) as d:
-            try:
-                checkout = fetch(url, sha, Path(d) / "repo")
-                tree = checkout.export_tree(sha, Path(d) / "tree")
-            except GitError as e:
-                # Named, so the funnel distinguishes a task worth retrying
-                # from one whose code no longer exists anywhere.
-                why = ("the code is gone from the remote"
-                       if is_permanent(e) else "could not build the tree")
-                reject(f"{why}: {str(e)[:110]}")
+        try:
+            if not row.get("usable"):
+                reject(row.get("reason", "trajectory not usable"))
                 continue
-            # The base commit predates the session; the agent's own edits up to
-            # the cut are replayed onto it so the tree matches the transcript.
-            # Seven of twelve calibrated tasks had such edits and none of them
-            # were in the tree. An edit that will not apply means this commit
-            # is not what the agent was editing, and the task is rejected.
-            edits = edits_before(turns, row["cut"])
-            rep = replay(tree, edits, repo_id)
-            if not rep.ok:
-                reject(f"the agent's in-session edits do not apply to the base commit: {rep.reason[:120]}")
+            if not row.get("kind"):
+                reject("no signature was derived")
                 continue
-            # The tree against what the conversation showed of it (A5): a file's
-            # last read before the cut, line by line, and any HEAD it printed.
-            # On the first grid 3 of 21 trees differed -- an older base, an
-            # uncommitted file -- and an agent that checked then found the
-            # opposite of what the conversation said.
-            consistent = consistency_check(tree, turns, row["cut"], sha)
-            if not consistent["consistent"]:
-                reject(why_inconsistent(consistent))
+
+            # A conversation that leaks is repaired before it is rejected. Removing
+            # the turns that carry the hint recovers nine of fourteen leaking tasks
+            # while keeping 78-100% of the text, so the candidate still has the work
+            # the original agent had. Only a leak that survives redaction -- or one
+            # diffuse enough to have no turns to remove -- ends the task.
+            if row.get("signals_trouble") and not row.get("redaction_worked"):
+                # The conversation already signals that something is wrong, so a
+                # candidate can take the hint rather than check anything. Measured,
+                # not assumed: of twelve tasks scored before any such gate, every
+                # passing verdict came from a task whose context leaked -- four of
+                # six leaky tasks passed, against none of six clean ones.
+                #
+                # Read by a model rather than by pattern. A regex version scored
+                # oddessentials-83 clean because nobody apologised, while the
+                # conversation contains "SC-003 scope is incorrect. Fix: Change from
+                # 'modified files' to 'entire repo typecheck surface' to prevent
+                # local pass / CI fail divergence" -- it hands over the very
+                # rationale the task asks the candidate to avoid inventing.
+                reject(f"the context already signals trouble: {row.get('leak_reason','')}")
                 continue
-            presence = check(task_id, sig, tree)
 
-        # Presence is advisory, not a gate. It can only confirm a defect it can
-        # find as a string in a file, and twenty-two of the fifty-one defects
-        # located in a four-hundred-moment run have no such trace: "reported the
-        # service as running without verifying it", "associated the 401s with
-        # stale configuration without verifying the cause", "declared the release
-        # complete after local testing without committing". Those are claims made
-        # without checking -- the whole premise of this benchmark -- and gating on
-        # a file signature discarded every one of them.
-        #
-        # What still blocks a task is a positive contradiction: an introduced
-        # defect whose own premise fails, meaning the classification and the
-        # signature disagree. That is a task contradicting itself, not a task
-        # this check merely cannot see.
-        if presence.strength == "verified" and not presence.present:
-            reject(presence.detail)
-            continue
+            turns = turns_by_session.get(row["session_id"]) or []
+            by_turn = {t.get("turn_number"): t for t in turns}
 
-        # Claimed only once the task really exists. Claimed at the point the
-        # name is computed, a row that went on to fail the tree build or the
-        # edit replay would hold the name against a later row that would have
-        # succeeded -- refusing a good task to protect against a collision with
-        # one that was never built.
-        seen.add(task_id)
-        result.tasks.append(
-            Task(
-                task_id=task_id,
-                repo_id=repo_id,
-                repo_url=url,
-                sha=sha,
-                session_id=row["session_id"],
-                cut_turn=row["cut"],
-                redacted_turns=row.get("redacted_turns") or [],
-                rewritten_turns=row.get("rewritten_turns") or {},
-                failed_turn=row["failed"],
-                complaint_turn=complaint,
-                resolved_turn=row["resolved"],
-                oracle=oracle,
-                criterion=criterion,
-                oracle_calls=calls_behind(turns, row["failed"]),
-                criterion_calls=calls_behind(turns, row["resolved"]),
-                defect=row.get("defect", ""),
+            # A missing verdict is not a pass. Screened rows written before the scope
+            # gate existed carry no `within_scope` at all, and testing only for False
+            # let every one of them through -- including nsega-mcp-todoist, whose
+            # request is "create the pull request" and whose defect is a linter
+            # version in a CI workflow nobody mentioned. A gate that silently
+            # abstains when its input is absent is not a gate.
+            asked = row.get("asks_for_something")
+            why_not = row.get("request_reason", "")
+
+            # Before the scope gate, because when no request was found the scope
+            # gate cannot have run and its message -- "the defect is outside the
+            # requested work" -- describes a judgement nobody made. Five of the
+            # eight rows rejected for scope were really this, and reading them as
+            # scope judgements sent an audit looking in the wrong place.
+            if asked is False and "no user message" in str(why_not):
+                reject(f"nothing for the candidate to answer: {why_not}")
+                continue
+
+            if not row.get("within_scope"):
+                reject(
+                    "the defect is outside the requested work: "
+                    f"{row.get('scope_reason') or 'the scope gate did not run on this row'}"
+                )
+                continue
+            if asked is False:
+                # A candidate answers the developer's most recent message. When the
+                # excerpt ends without one -- or ends on pasted terminal output with
+                # no question in it -- there is nothing to answer, and a reasonable
+                # model summarises the logs. Six of nine attempts on present-defect
+                # tasks were scored off_target for exactly this: moltis ends on 1,837
+                # characters of validation output the developer pasted with no
+                # question attached, and oddessentials-221 has no user turn within
+                # eighty turns of its cut. Neither measures the model.
+                reject(f"nothing for the candidate to answer: {why_not}")
+                continue
+            # Both must be answers the agent wrote, not tool calls. A located turn
+            # can land on a tool_use row, whose content is the serialised call --
+            # heath0xFF-hChat took raw JSON as both its oracle and its criterion, and
+            # calibration certified it "sound", because a judge comparing two blobs
+            # of JSON will happily report that they differ.
+            failed_turn = by_turn.get(row["failed"]) or {}
+            resolved_turn = by_turn.get(row["resolved"]) or {}
+            if failed_turn.get("turn_type") != "assistant_response":
+                reject(
+                    f"the failing turn is a {failed_turn.get('turn_type') or 'missing turn'}, "
+                    "not an answer the agent wrote"
+                )
+                continue
+            if resolved_turn.get("turn_type") != "assistant_response":
+                reject(
+                    f"the resolving turn is a {resolved_turn.get('turn_type') or 'missing turn'}, "
+                    "not an answer the agent wrote"
+                )
+                continue
+            oracle = (failed_turn.get("content") or "").strip()
+            criterion = (resolved_turn.get("content") or "").strip()
+            if len(oracle) < MIN_ORACLE_CHARS:
+                reject(f"the failed answer is {len(oracle)} characters: too short to test against")
+                continue
+            if len(criterion) < MIN_ORACLE_CHARS:
+                reject(f"the resolution is {len(criterion)} characters: too short to judge against")
+                continue
+
+            repo = repos.get(repo_id)
+            if repo is None:
+                reject("repository not in the corpus")
+                continue
+            started_ns = starts.get(row["session_id"])
+            if started_ns is None:
+                reject("no turn in this session carries a timestamp, so its start is unknown")
+                continue
+            sha = base_commit(repo_id, started_ns, commits, checkpoints.get(row["session_id"], set()))
+            if sha is None:
+                reject("no commit exists before the session started")
+                continue
+
+            sig = Signature(
                 kind=row["kind"],
-                signature_path=sig.path,
-                signature_token=sig.token,
-                strength=presence.strength,
-                presence_detail=presence.detail,
-                license_type=repo.license_type,
-                is_copyleft=repo.is_copyleft,
-                rounds=row.get("rounds", 1),
-                edits_replayed=rep.applied,
-                edits_verified=rep.verified,
-                calls_recovered=bool(row.get("calls_recovered")) and has_transcript(row["session_id"]),
+                path=row.get("path") or "",
+                token=row.get("token") or "",
+                # The field `stage_signature` writes is `is_symlink_defect`, from
+                # `Signature.model_dump()`. Reading `symlink` found nothing, so
+                # every derived True became a definite False -- B-122's shape -- and
+                # `probe_for` never reached its symlink branch, falling through to
+                # the token and path probes instead.
+                is_symlink_defect=bool(row.get("is_symlink_defect")),
+                reasoning=row.get("sig_reasoning") or row.get("reasoning") or "",
             )
-        )
+            task_id = f"{repo_id.replace('/', '-')}-{complaint}"
+            # A task is named for its repository and the turn the developer
+            # objected at, which is not unique: 93 of 400 moments in one run share
+            # a (repository, turn) pair with another session. None has survived to
+            # a built task yet, and the funnel is the only reason. Two tasks under
+            # one name is worse than one task fewer -- they overwrite each other's
+            # answers, each is reported as "an earlier version" of the other, and a
+            # full pass never converges because whichever is written second wins.
+            if task_id in seen:
+                reject(f"another session already built {task_id}; two tasks cannot share a name")
+                continue
+            url = repo_url(repo_id, repo.url)
+            # A tree changed by git before the cut is in no commit plus edits
+            # (B-239). Documented as rejected since the replay was written; this is
+            # the check that does it.
+            git = tree_changing_git(turns, row["cut"])
+            if git:
+                reject(f"the agent changed its files with git before the cut, which no replay "
+                       f"reproduces: {git[0][:90]}")
+                continue
+            # The same for files changed by a tool the replay does not read, or by
+            # a sub-agent, whose calls only the raw transcript records. Either way
+            # the replay would report success on a tree lacking the agent's work.
+            unread = unreplayed_writes(turns, row["cut"])
+            if unread:
+                reject(f"the agent changed files before the cut with a tool the replay does not "
+                       f"read: {', '.join(unread)[:90]}")
+                continue
+            by_subagent = subagent_edits_before(row["session_id"], turns, row["cut"])
+            if by_subagent:
+                reject(f"a sub-agent edited files before the cut, which the replay does not "
+                       f"reproduce: {by_subagent[0][:90]}")
+                continue
+            # A transcript in another agent's format: the table may hold none of
+            # the session's calls (a Copilot session's has no tool rows, while its
+            # transcript records 14 edits before the moment), and nothing here can
+            # read the transcript to tell.
+            if foreign_transcript(row["session_id"]):
+                reject("the session's transcript is not in Claude Code's format, so its calls "
+                       "cannot be checked against the table")
+                continue
+
+            base = scratch or Path(tempfile.gettempdir()) / "errata-bench-build"
+            base.mkdir(parents=True, exist_ok=True)
+            with tempfile.TemporaryDirectory(dir=base) as d:
+                try:
+                    checkout = fetch(url, sha, Path(d) / "repo")
+                    tree = checkout.export_tree(sha, Path(d) / "tree")
+                except GitError as e:
+                    # Named, so the funnel distinguishes a task worth retrying
+                    # from one whose code no longer exists anywhere.
+                    why = ("the code is gone from the remote"
+                           if is_permanent(e) else "could not build the tree")
+                    reject(f"{why}: {str(e)[:110]}")
+                    continue
+                # The base commit predates the session; the agent's own edits up to
+                # the cut are replayed onto it so the tree matches the transcript.
+                # Seven of twelve calibrated tasks had such edits and none of them
+                # were in the tree. An edit that will not apply means this commit
+                # is not what the agent was editing, and the task is rejected.
+                edits = edits_before(turns, row["cut"])
+                rep = replay(tree, edits, repo_id)
+                if not rep.ok:
+                    reject(f"the agent's in-session edits do not apply to the base commit: {rep.reason[:120]}")
+                    continue
+                # The tree against what the conversation showed of it (A5): a file's
+                # last read before the cut, line by line, and any HEAD it printed.
+                # On the first grid 3 of 21 trees differed -- an older base, an
+                # uncommitted file -- and an agent that checked then found the
+                # opposite of what the conversation said.
+                consistent = consistency_check(tree, turns, row["cut"], sha)
+                if not consistent["consistent"]:
+                    reject(why_inconsistent(consistent))
+                    continue
+                presence = check(task_id, sig, tree)
+
+            # Presence is advisory, not a gate. It can only confirm a defect it can
+            # find as a string in a file, and twenty-two of the fifty-one defects
+            # located in a four-hundred-moment run have no such trace: "reported the
+            # service as running without verifying it", "associated the 401s with
+            # stale configuration without verifying the cause", "declared the release
+            # complete after local testing without committing". Those are claims made
+            # without checking -- the whole premise of this benchmark -- and gating on
+            # a file signature discarded every one of them.
+            #
+            # What still blocks a task is a positive contradiction: an introduced
+            # defect whose own premise fails, meaning the classification and the
+            # signature disagree. That is a task contradicting itself, not a task
+            # this check merely cannot see.
+            if presence.strength == "verified" and not presence.present:
+                reject(presence.detail)
+                continue
+
+            # Claimed only once the task really exists. Claimed at the point the
+            # name is computed, a row that went on to fail the tree build or the
+            # edit replay would hold the name against a later row that would have
+            # succeeded -- refusing a good task to protect against a collision with
+            # one that was never built.
+            task = (
+                Task(
+                    task_id=task_id,
+                    repo_id=repo_id,
+                    repo_url=url,
+                    sha=sha,
+                    session_id=row["session_id"],
+                    cut_turn=row["cut"],
+                    redacted_turns=row.get("redacted_turns") or [],
+                    rewritten_turns=row.get("rewritten_turns") or {},
+                    failed_turn=row["failed"],
+                    complaint_turn=complaint,
+                    resolved_turn=row["resolved"],
+                    oracle=oracle,
+                    criterion=criterion,
+                    oracle_calls=calls_behind(turns, row["failed"]),
+                    criterion_calls=calls_behind(turns, row["resolved"]),
+                    defect=row.get("defect", ""),
+                    kind=row["kind"],
+                    signature_path=sig.path,
+                    signature_token=sig.token,
+                    strength=presence.strength,
+                    presence_detail=presence.detail,
+                    license_type=repo.license_type,
+                    is_copyleft=repo.is_copyleft,
+                    rounds=row.get("rounds", 1),
+                    edits_replayed=rep.applied,
+                    edits_verified=rep.verified,
+                    calls_recovered=bool(row.get("calls_recovered")) and has_transcript(row["session_id"]),
+                )
+            )
+            seen.add(task_id)
+            result.tasks.append(task)
+        except Exception as e:  # noqa: BLE001 - one row's surprise is that row's rejection
+            # An error nothing anticipated -- in the replay, the consistency check,
+            # a transcript -- stopped the whole build with a traceback and left
+            # tasks.jsonl as it was (B-251). Rejected as a tree that could not be
+            # built this pass, which the prune treats as transient: whatever was
+            # bought for the task is kept until a build gets past it.
+            reject(f"could not build the tree: an unexpected {type(e).__name__}: {e}"[:200])
     return result
