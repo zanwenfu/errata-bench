@@ -5945,3 +5945,23 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     - 4gray-iptvnator-351: the stash the git rule flagged was declined at the
       prompt and never ran;
     - Pavel401-BugViper-101: a `[REDACTED:SECRET]` line read literally.
+- **09-24** — **Step 2 split across the laptop and the VPS**, to run in half
+  the time. The moments and the rules are unchanged; only where each moment is
+  processed moved.
+  - `runs/step2-later` keeps every third row of the 1,163 (388) for the
+    laptop's chain. The other 775 are `runs/step2-later-vps`. The full list is
+    `runs/step2-later.moments-full-0924.jsonl`.
+  - All 417 of `runs/step2-first` go to the VPS. The laptop's
+    `runs/step2-first` is left empty, so its chain passes over it; the full
+    list is `runs/step2-first-for-vps`.
+  - The VPS runs at the same commit, from its own pinned worktree
+    (/root/errata-bench-step2 at bd13ad757; the offline suites pass there).
+  - Its corpus is a slice holding exactly its 1,013 sessions:
+    - their 647,539 conversation rows and their transcripts;
+    - the commits of their 17 repositories;
+    - the sessions, repositories and checkpoints tables whole.
+
+    Every one of its 1,192 moments has a Claude Code transcript there.
+  - The two VPS runs started at 04:02:59 UTC, side by side, each at
+    concurrency 3, on gpt-6-astra.
+  - Their results come back to the laptop's `runs/` when done.
