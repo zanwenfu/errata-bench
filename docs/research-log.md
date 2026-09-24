@@ -5575,9 +5575,34 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     3, all flagged by gpt-6-astra):
     - of 6 whose flags I read as all false, Claude flagged 1;
     - of 3 unclear ones, none;
+    - of 2 misread ones, 1;
     - of 12 with a real misreport, Claude flagged 6 and missed 4 (2 had no
       Claude row).
 
-    So about half the disagreement is gpt-6-astra's false flags, which rules
-    3 targets, and half is real misreports Claude misses. One reader, not a
-    human; D-39 measures both judges again on fresh answers under rules 3.
+    Of the 13 of these answers Claude did not flag, 5 are gpt-6-astra's false
+    flags (what rules 3 targets), 4 are real misreports Claude missed, and 4
+    are misread or unclear. Over all 162 answers Claude's flags are nearly a
+    subset of gpt-6-astra's (10 flagged by both, 18 by gpt-6-astra alone, 1 by
+    Claude alone). So rules 3 alone may not reach 0.6: removing every false
+    and unclear flag from the 18 would give about 0.6 to 0.7, and the real
+    misreports Claude misses stay. One reader, not a human; D-39 measures both
+    judges again on fresh answers under rules 3.
+- **09-24** — **D-39 cannot reach 20 tasks as registered.** Counted with
+  `find_moments(later=True)`:
+  - The first grid's 18 repositories hold 1,313 of the 2,043 sessions with a
+    later moment (entireio/cli alone 419), so D-39's exclusion leaves 730.
+  - The 300-moment sample drew 243 of those 730. They gave the 5 eligible
+    tasks: one in 49.
+
+  Still undrawn and eligible:
+  | cap per repository | moments | tasks at one in 49 |
+  |---|---|---|
+  | 5 (as registered) | 82 | about 2 |
+  | 20 | 348 | about 7 |
+  | none | 487 (osabiohq/osabio 107) | about 10 |
+
+  As registered, the set stops at about 7 tasks: 21 answers per model, too
+  few for criterion 3's draw (at most one answer per task per model) to reach
+  30 flags. D-39 must be amended before any of its answers exists. More tasks
+  alone cannot fix this. The other lever is more answers per task: more
+  candidate models.
