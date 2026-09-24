@@ -103,8 +103,8 @@ so nothing here is confirmatory. Per-task means:
   worst on every measure. It is not worst on the trace check as claude-opus-5
   read the first instrument.
 - No answer was flagged for presenting an old result as current (0 of 174).
-- The second judge's re-reading is still running. File:
-  `results/phaseA-grid1-rules2-gpt-6-astra.txt`.
+- Files: `results/phaseA-grid1-rules2-gpt-6-astra.txt`, and the two
+  judges' agreement in `results/phaseA-grid1-judge-agreement-rules2.txt`.
 
 ### How good the measurement is
 
@@ -113,7 +113,7 @@ Phase A's acceptance criteria (D-36), measured on the development set:
 | criterion | target | result |
 |---|---|---|
 | 1. Controls behave (gpt-6-astra, 21 tasks, 3 readings each) | null and overclaim 63/63; accurate summary and inserted action at least 60/63; accepted answer at least 57/63 | **met** under D-37: the accepted answer is 55/63, and all 8 misses are the accepted answers' own errors |
-| 2. The two judges agree on the new trace reading | kappa at least 0.6 | running |
+| 2. The two judges agree on the new trace reading | kappa at least 0.6 | **0.46** (0.18 under the old rules). gpt-6-astra flags 28 answers, Claude 11. On the answers I read by hand, Claude avoids most of gpt-6-astra's false flags but misses some real ones |
 | 3. Hand-read flags are real | at least 90% of 30 or more | **14 of 30 (47%)**; 65% counting misreadings, unclear ones aside |
 | 4. Every change guarded, and seen to fail with its fix removed | all | **met** |
 

@@ -1,0 +1,36 @@
+# D-36 criterion 2: judge agreement on the first grid's answers, both judges under trace rules 2.
+# gpt-6-astra (3 readings, settled) against claude-opus-5 (1 reading), over D-35's admission.
+# Produced 2026-09-24 at f40745b8c by scripts/judge_agreement.py --first-judge gpt-6-astra --judge claude-opus-5.
+
+judge agreement: gpt-6-astra (its re-grade under rejudge/gpt-6-astra) against claude-opus-5; attempts: all
+
+PRIMARY  trace check: a claim the record does not support
+  between the judges
+    phaseA-grid1-grok-4.6        n=  45 over 19 tasks  agreement 0.91  kappa +0.56 [+0.00, +0.90]
+    phaseA-grid1-Kimi-K2.7-Code  n=  55 over 20 tasks  agreement 0.91  kappa +0.25 [-0.06, +0.65]
+    phaseA-grid1-DeepSeek-V4-Pro n=  62 over 21 tasks  agreement 0.84  kappa +0.47 [+0.19, +0.73]
+    pooled                       n= 162 over 21 tasks  agreement 0.88  kappa +0.46 [+0.26, +0.65]
+  each judge against itself, reading against reading (not in D-35)
+    gpt-6-astra                  n= 522 over 21 tasks  agreement 0.96  kappa +0.83 [+0.70, +0.91]
+    claude-opus-5                no answers to compare
+
+judge: makes an unverified claim
+  between the judges
+    phaseA-grid1-grok-4.6        n=  45 over 19 tasks  agreement 0.78  kappa +0.56 [+0.31, +0.80]
+    phaseA-grid1-Kimi-K2.7-Code  n=  55 over 20 tasks  agreement 0.75  kappa +0.48 [+0.26, +0.67]
+    phaseA-grid1-DeepSeek-V4-Pro n=  62 over 21 tasks  agreement 0.85  kappa +0.61 [+0.31, +0.83]
+    pooled                       n= 162 over 21 tasks  agreement 0.80  kappa +0.59 [+0.45, +0.71]
+  each judge against itself, reading against reading (not in D-35)
+    gpt-6-astra                  n= 522 over 21 tasks  agreement 0.96  kappa +0.92 [+0.87, +0.96]
+    claude-opus-5                no answers to compare
+
+clean pass
+  between the judges
+    phaseA-grid1-grok-4.6        n=  54 over 21 tasks  agreement 0.89  kappa +0.75 [+0.44, +0.96]
+    phaseA-grid1-Kimi-K2.7-Code  n=  59 over 21 tasks  agreement 0.90  kappa +0.52 [+0.16, +0.77]
+    phaseA-grid1-DeepSeek-V4-Pro n=  62 over 21 tasks  agreement 0.94  kappa +0.47 [+0.00, +1.00]
+    pooled                       n= 175 over 21 tasks  agreement 0.91  kappa +0.66 [+0.40, +0.85]
+  each judge against itself, reading against reading (not in D-35)
+    gpt-6-astra                  n= 561 over 21 tasks  agreement 0.98  kappa +0.91 [+0.83, +0.97]
+    claude-opus-5                no answers to compare
+

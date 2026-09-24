@@ -5558,3 +5558,26 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   At this yield, independent later moments are worth about 10 tasks at 5 per
   repository, 14 at 10 and 20 at 20; a second later moment per session, at
   20 per repository, about 35.
+- **09-24** — **D-36 criterion 2: not met.** gpt-6-astra (3 readings, settled)
+  against claude-opus-5 (1 reading), both under trace rules 2, over the 189
+  answers (`results/phaseA-grid1-judge-agreement-rules2.txt`). Pooled kappa:
+  | reading | now | rules 1 | target |
+  |---|---|---|---|
+  | trace check, misreported | 0.46 [0.26, 0.65] | 0.18 | 0.6 |
+  | judge, unverified claim | 0.59 | 0.55 | |
+  | clean pass | 0.66 | 0.65 | |
+
+  By model on the trace reading: grok 0.56, Kimi 0.25, DeepSeek 0.47.
+  - *Not the lopsided design.* gpt-6-astra's first reading alone against
+    Claude's gives 0.38. The judges differ in how often they flag:
+    gpt-6-astra 21 to 28 of 162 answers, Claude 11.
+  - *Which judge the hand reading sides with* (the 23 answers of criterion
+    3, all flagged by gpt-6-astra):
+    - of 6 whose flags I read as all false, Claude flagged 1;
+    - of 3 unclear ones, none;
+    - of 12 with a real misreport, Claude flagged 6 and missed 4 (2 had no
+      Claude row).
+
+    So about half the disagreement is gpt-6-astra's false flags, which rules
+    3 targets, and half is real misreports Claude misses. One reader, not a
+    human; D-39 measures both judges again on fresh answers under rules 3.
