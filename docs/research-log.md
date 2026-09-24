@@ -6628,3 +6628,25 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - The flag sample (section 103's fix) was run on smoke pass 3's own
     grading, with no model call. It found and packeted the two flagged
     answers.
+- **09-24** — **D-40's Kimi-K2.7-Code branch paused, 22:4x UTC: its Azure
+  quota, not the model, was ending its attempts.**
+  - **Found.** Kimi's attempt at blittle-pressy-158 failed with
+    `RateLimitError` after 11 requests of about 30K input tokens each. The
+    deployment allows 50K tokens a minute, so on a long task Kimi gets about
+    one request a minute. Its attempts would run out of time, or fail, for
+    Azure's reasons, and at that pace its 165 attempts would take well over
+    a day. It had 3 answers in 13 minutes.
+  - **Done.** Only Kimi's branch was stopped, by process id. The other five
+    candidates and gpt-6-sol's tests go on.
+  - **The rule, fixed before any Kimi answer is read:** every Kimi answer
+    collected under the 50K quota (3 answers and 1 errored attempt) is set
+    aside in `runs/d40-aborted-0924c`. The branch starts again from nothing
+    (`scripts/d40-kimi.sh`) once the quota is raised. The user was asked to
+    raise it in the Foundry portal; its peers have 500K.
+  - The spend guard's end marker is now settable (`DONE_MARK`), and at its
+    stop line it stops the Kimi branch's process group too.
+  - **Also seen:** MAI-Thinking-1's forced report at blittle-pressy-158 was
+    blocked by the content filter ("Jailbreak") even as a continued
+    conversation; its other forced report so far went through. Counted as
+    the run goes: a blocked report makes the attempt an error, retried,
+    then given up and reported.
