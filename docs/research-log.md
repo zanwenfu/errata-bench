@@ -6745,3 +6745,21 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     grading.
   - **Blocked forced reports, 23:3x UTC:** MAI-Thinking-1 4,
     DeepSeek-V4-Pro 1, grok-4.6 1.
+- **09-24, 23:22 UTC** — **Kimi-K2.7-Code and DeepSeek-V4-Flash resumed from
+  nothing**, after the user raised every deployment's quota. Kimi is at
+  100K tokens a minute, DeepSeek-V4-Flash at 250K; grok-4.6, DeepSeek-V4-Pro
+  and Mistral-Large-3 at 1M; MAI-Thinking-1 at 500K.
+  - **The watchers' thresholds were not reached.** They were set for no
+    throttling at all (250K and 500K). The question that matters is whether
+    throttling still ends attempts early, and at these limits it should
+    not:
+    - DeepSeek-V4-Flash's 25 requests of about 70K tokens at blittle-pressy-158
+      fit in about 5 of its 10 minutes;
+    - Kimi's requests of about 30K tokens allow about 33 in 10 minutes,
+      more than the 30-turn limit.
+    So both branches were started by hand, each with its own guard
+    (`d40-branch.sh`, `d40-guard2.sh`).
+  - **The check, fixed now:** after about 20 answers each, compare their
+    share of attempts past the deadline or ended by the clock with the
+    other candidates', and probe their remaining quota while they work. If
+    throttling shows, the answers collected under it are set aside again.
