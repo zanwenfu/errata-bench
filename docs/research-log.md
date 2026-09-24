@@ -6131,3 +6131,33 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     laptop takes later-sample, later-cap20 and step2-later, the VPS
     step2-later-vps and step2-first. The first grid's reprocess runs on the
     VPS too (`/root/errata-bench-grid`, ef3fa7d2e).
+- **09-24** — **Scope gate 2's effect, after rebuild and admission: +3
+  admitted tasks** (amytis-82 in later-cap20; gemini-voyager-321 and
+  duckdb-114 in step2-later-vps). No existing task was lost; no row was
+  pruned.
+  - Most of the 34 moments it let in stopped at the next check:
+    - "nothing for the candidate to answer", 15;
+    - edits that do not apply, 9;
+    - hints at trouble, 6;
+    - a tree that differs from its conversation or a printed HEAD, 4;
+    - sub-agent edits, 2.
+  - **The 15 are the same flaw one gate on.** The answerable gate read the
+    developer's message alone, so a bare "yes" to the agent's proposal was
+    "only an acknowledgement". The scope gate rejected those rows first,
+    which hid it.
+- **09-24** — **B-253: the answerable gate reads a reply after the agent's
+  message it answers** (`ANSWERABLE_GATE` 2).
+  - It now also sees the agent's last written message before the developer's.
+    A reply to the agent's question or proposal asks for something; pasted
+    output with no question still does not, unless the agent had just asked
+    for it (moltis's rule, kept).
+  - Guard: section 94 and front_stages_run section 3, 5 pieces each reverted
+    alone and seen red.
+  - Re-screen, dry run, on all step-2 runs: `scripts/rescreen_answerable.py`.
+  - **Validation, fixed now:**
+    - these should become answerable: SprintSpark-157 ("yes" to "Want me to
+      promote to production now?"), gossamer-39, skill-forge-101 and
+      entireio-64;
+    - these must stay not answerable: pasted build failures and stack traces
+      with no question after them, a status update, a compaction summary;
+    - every move is read.
