@@ -5916,3 +5916,15 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     read by Claude. D-39 needs an amendment before any of its answers exists:
     another second judge that the credits cover, or none, with the planned
     human annotation standing in.
+- **09-24** — **Correction to B-250: the base is ranked by author date, as
+  before.** B-250 both filtered and ranked candidate bases by commit date. A
+  dry-run rebuild of runs/later-sample on a copy, which makes no model calls,
+  then lost dipasqualew-vibereq-200. Its base moved from a19f14d4, written and
+  committed 13 minutes before the start and the right tree by the blob test,
+  to 00229106, written earlier and rebased later, and its replay stopped
+  applying.
+  - The commit date now only decides eligibility: a commit that had not
+    entered the history by the start is not a candidate.
+  - Among the candidates, the latest written is the base, as before.
+  - Section 90 holds that shape. The committed ranking failed it in CI
+    (c7bf7e5b8, whose check went in without this fix).

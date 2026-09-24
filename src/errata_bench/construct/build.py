@@ -126,22 +126,27 @@ def base_commit(repo_id: str, session_ns: int | None, commits,
     the session produced, including the fix a candidate is supposed to arrive at
     on its own.
 
-    "Before" is when the commit entered the history, not when it was authored:
-    a rebase or an amend keeps the author date, and 122 of 1,565 bases chosen
-    by it were committed after their session started. And a commit recorded
-    under one of this session's own checkpoints (`own`) is never the base, in
-    whichever order its dates fall: 5 of those 1,565 were.
+    Only a commit that had entered the history before the start is eligible:
+    a rebase or an amend keeps the author date, and 122 of 1,565 bases chosen by
+    it were committed after their session started. Among the eligible, the
+    latest *written* is chosen, as before. Ordered by commit date instead, a
+    commit rebased onto another branch shortly before the session outranked the
+    one the session was working from: dipasqualew-vibereq-200's base moved from
+    a19f14d4 (written and committed 13 minutes before the start, and the
+    right tree by the blob test) to 00229106, and its replay stopped applying.
+    And a commit recorded under one of this session's own checkpoints (`own`)
+    is never the base, in whichever order its dates fall: 5 of those 1,565 were.
     """
     if session_ns is None:
         return None
-    when = lambda c: c.commit_ns if c.commit_ns is not None else c.author_ns
+    entered = lambda c: c.commit_ns if c.commit_ns is not None else c.author_ns
     # By sha: one commit is a row per checkpoint that recorded it.
     mine = {c.commit_sha for c in commits.get(repo_id, []) if c.checkpoint_pk in own}
     earlier = [c for c in commits.get(repo_id, [])
-               if when(c) and when(c) < session_ns and c.commit_sha not in mine]
+               if c.author_ns and entered(c) < session_ns and c.commit_sha not in mine]
     if not earlier:
         return None
-    return max(earlier, key=when).commit_sha
+    return max(earlier, key=lambda c: c.author_ns).commit_sha
 
 
 def subagent_edits_before(session_id: str, turns: list[dict], cut: int) -> list[str]:
