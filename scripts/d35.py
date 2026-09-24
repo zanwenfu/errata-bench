@@ -146,6 +146,37 @@ def admission(run: Path, also: str | None = None) -> set[str]:
     return tasks
 
 
+def regrade_dir(run: Path, judge: str) -> Path:
+    """rejudge/<judge>/ as `judge_paths` names it, without creating it as `Paths` would."""
+    import re
+
+    return Path(run) / "rejudge" / re.sub(r"[^A-Za-z0-9._-]+", "_", judge)
+
+
+def source_of(run: Path, judge: str | None) -> tuple[Path, str | None]:
+    """Where a judge's readings of a run are, and whose rows to keep there.
+
+    Its re-grade under rejudge/<judge>/ where there is one. Otherwise the run's
+    own grading, keeping only the rows that judge graded. D-40's first judge
+    grades the run itself, so read from rejudge/ only, the pre-registered
+    `--first-judge gpt-6-astra` found no rows at all, and the agreement had
+    nothing to compare. With no judge named, the run's own grading, as before.
+    """
+    if not judge:
+        return Paths(run).attempts, None
+    regrade = regrade_dir(run, judge) / "attempts.jsonl"
+    if regrade.exists():
+        return regrade, None
+    return Paths(run).attempts, judge
+
+
+def rows_of(run: Path, judge: str | None) -> list[dict]:
+    """The grade rows `source_of` names, those of the named judge only when it is the run's own grading."""
+    source, only = source_of(run, judge)
+    rows = load(source)
+    return [r for r in rows if r.get("judge_model") == only] if only else rows
+
+
 def readings(run: Path, judge: str | None = None, runs: set[int] | None = None,
              also: str | None = None, *, scoreable_only: bool = True) -> list[dict]:
     """One settled row per attempt of an admitted task, from one judge's grading.
@@ -153,9 +184,8 @@ def readings(run: Path, judge: str | None = None, runs: set[int] | None = None,
     `judge` names a second judge's re-grades under <run>/rejudge/<judge>/; the
     default is the run's own grading. `runs` keeps only those attempt numbers.
     """
-    source = judge_paths(run, judge).attempts if judge else Paths(run).attempts
     keep = admission(run, also)
-    rows = [a for a in settled(load(source), unreadable_attempts(run)) if a.get("task_id") in keep]
+    rows = [a for a in settled(rows_of(run, judge), unreadable_attempts(run)) if a.get("task_id") in keep]
     if runs is not None:
         rows = [a for a in rows if a.get("run") in runs]
     if scoreable_only:

@@ -33,8 +33,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import d35  # noqa: E402
 from annotation_agreement import kappa  # noqa: E402
-from errata_bench.score.rejudge import judge_paths  # noqa: E402
-from errata_bench.store import Paths, load  # noqa: E402
 
 
 def _label(has, asked):
@@ -68,10 +66,9 @@ def between(run: Path, judge: str, runs: set[int] | None, first_judge: str | Non
 
 def within(run: Path, judge: str | None, runs: set[int] | None) -> Pairs:
     """Every pair of one judge's readings of one answer, over the answers it scored."""
-    source = judge_paths(run, judge).attempts if judge else Paths(run).attempts
     counted = {(a["task_id"], a["run"]) for a in d35.readings(run, judge, runs)}
     by: dict[tuple, list[dict]] = defaultdict(list)
-    for r in load(source):
+    for r in d35.rows_of(run, judge):
         if not r.get("error") and (r.get("task_id"), r.get("run")) in counted:
             by[(r["task_id"], r["run"])].append(r)
     out: Pairs = {name: defaultdict(list) for name, _ in QUESTIONS}
@@ -144,7 +141,9 @@ def main(argv: list[str]) -> int:
     first_names = Counter(r.get("judge_model") for run in args.runs
                           for r in d35.readings(run, args.first_judge, which))
     first = ", ".join(str(m) for m in first_names) or "(none)"
-    whose = (f"its re-grade under rejudge/{args.first_judge}" if args.first_judge
+    source, only = d35.source_of(args.runs[0], args.first_judge)
+    whose = (f"its re-grade under rejudge/{source.parent.name}" if args.first_judge and not only
+             else f"the run directory own grading, its rows graded by {only}" if only
              else "each run directory own grading")
     print(f"judge agreement: {first} ({whose}) against {args.judge}; "
           f"attempts: {sorted(which) if which is not None else 'all'}\n")

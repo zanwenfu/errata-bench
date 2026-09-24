@@ -6669,3 +6669,23 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     then given up on. Every attempt given up on for a filter block will be
     run again after the change: the rule is fixed now, and it does not
     depend on what the attempt's answer would have been.
+- **09-24** — **D-40's pre-registered agreement command would have read
+  nothing.** `judge_agreement.py --first-judge gpt-6-astra` (D-40's first
+  instrument criterion) read the first judge from `rejudge/gpt-6-astra/`.
+  That was right for D-36's re-grades, but D-40's gpt-6-astra grades the run
+  itself. It is the flag sample's fault again, in the one place every D-35
+  script chooses its rows.
+  - `d35.source_of` now names where a judge's readings are: its re-grade
+    where there is one, else the run's own grading, keeping only the rows
+    that judge graded.
+  - `readings`, `grid_table.py` and `judge_agreement.py`'s self-agreement
+    all use it, and the agreement's header says which it read. Checking
+    creates no directory.
+  - Guard: section 104, 2 pieces reverted alone, each seen red.
+  - `annotation_agreement.py` keeps the old rule; human annotation is
+    parked.
+  - **Also on the way:** gpt-6-sol's tests finished with no errored row.
+    Calibration holds on 53 of the 55 tasks; controls are 495 readings plus
+    18 trace probes; the probes are 330 rows. gpt-6-sol also admits 39 of
+    the 55 on its own tests, which is the set D-35's sensitivity analysis
+    uses.

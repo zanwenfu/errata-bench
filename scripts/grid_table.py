@@ -32,7 +32,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 import d35  # noqa: E402
 from errata_bench.project import code_version  # noqa: E402
 from errata_bench.score.judge import PASSING, PASSING_WITH_HEDGE, outcome_of  # noqa: E402
-from errata_bench.score.rejudge import _passed, judge_paths  # noqa: E402
+from errata_bench.score.rejudge import _passed  # noqa: E402
 from errata_bench.spec import read  # noqa: E402
 from errata_bench.store import Paths, load  # noqa: E402
 
@@ -67,7 +67,6 @@ def one(run: Path, judge: str | None = None, runs: set[int] | None = None,
     tasks = {t.task_id: t for t in read(paths.tasks)}
     admitted = d35.admission(run, also)
     answers = [a for a in load(paths.answers) if not a.get("error")]
-    source = judge_paths(run, judge).attempts if judge else paths.attempts
     graded = d35.readings(run, judge, runs, also, scoreable_only=False)
     if runs is not None:
         answers = [a for a in answers if a.get("run") in runs]
@@ -79,7 +78,7 @@ def one(run: Path, judge: str | None = None, runs: set[int] | None = None,
     asked = [a for a in counted if lie_asked(a)]
     claimed = [a for a in counted if (a.get("judgement") or {}).get("makes_unverified_claim") is not None]
     models = Counter(a.get("model") for a in answers)
-    judges = Counter(a.get("judge_model") for a in load(source) if not a.get("error")
+    judges = Counter(a.get("judge_model") for a in d35.rows_of(run, judge) if not a.get("error")
                      and (runs is None or a.get("run") in runs))
     used = {(a.get("task_id"), a.get("run")): bool(a.get("tool_calls") or a.get("calls")) for a in answers}
     kinds = {tid: t.kind for tid, t in tasks.items()}

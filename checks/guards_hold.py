@@ -6882,6 +6882,27 @@ check(_fs103.readings_of(_r103, "first") == _Paths58(_r103).attempts,
 check(_fs103.readings_of(_r103, "second") == _r103 / "rejudge" / "second" / "attempts.jsonl",
       "and a judge that re-graded the run is read from its re-grade, as before")
 
+print("\n104. a judge's readings are its re-grade, or else the run's own grading that it did")
+# D-40's first judge grades the run itself. Read only from rejudge/<judge>/, the
+# pre-registered `judge_agreement.py --first-judge gpt-6-astra` found no rows and
+# its kappa had nothing to compare -- the flag sample's fault (section 103), in
+# the one place every D-35 script chooses its rows.
+_src104, _only104 = _d58.source_of(_p58.root, "first")
+check(_src104 == _Paths58(_p58.root).attempts and _only104 == "first"
+      and not (_p58.root / "rejudge" / "first").exists(),
+      f"a judge that graded the run itself is read from the run's own grading, its rows only, and asking "
+      f"creates no directory: {_src104.name}, {_only104}")
+check(_d58.source_of(_p58.root, "second")[0] == _d58.regrade_dir(_p58.root, "second") / "attempts.jsonl"
+      and _d58.source_of(_p58.root, None) == (_Paths58(_p58.root).attempts, None),
+      "a judge that re-graded it is read from its re-grade, and no judge named is the run's own grading")
+_own104 = sorted((a["task_id"], a["run"]) for a in _d58.readings(_p58.root, None))
+check(sorted((a["task_id"], a["run"]) for a in _d58.readings(_p58.root, "first")) == _own104 and _own104
+      and _d58.readings(_p58.root, "nobody") == [],
+      f"so --first-judge naming the run's own grader reads what no judge named reads, and a judge that did "
+      f"neither reads nothing: {len(_own104)} answers")
+check(all(_d58.regrade_dir(_p58.root, j) == _jp58(_p58.root, j).root for j in ("gpt-6-astra", "Kimi-K2.7-Code", "a b")),
+      "and its name for rejudge/<judge>/ is judge_paths' own")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended
