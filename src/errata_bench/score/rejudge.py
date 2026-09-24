@@ -39,7 +39,7 @@ from pathlib import Path
 
 from .judge import HEDGED, PASSING, PASSING_WITH_HEDGE, can_be_scored, line_holds, outcome_of
 from ..store import (
-    Paths, Progress, _gather, _succeeded, append, completed, held, load, replace,
+    Paths, Progress, _gather, _gather_in_turn, _succeeded, append, completed, held, in_turn, load, replace,
 )
 
 # Attempts written before the reply was stored whole kept only its first 4,000
@@ -261,7 +261,11 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int,
         return result.ok and trace_ok
 
     if jobs:
-        results = await _gather([one(t, c, n) for t, c, n in jobs], concurrency)
+        # One control's readings one after another, so the later ones find its
+        # prompt cached (B-256).
+        results = await _gather_in_turn(
+            [[lambda t=t, c=c, n=n: one(t, c, n) for t, c, n in g]
+             for g in in_turn(jobs, lambda j: (j[0].task_id, j[1].name))], concurrency)
         p.produced = sum(1 for r in results if r)
         p.failed = sum(1 for r in results if not r)
 
@@ -353,7 +357,9 @@ async def instrument_all(src: Paths, out: Paths, model: str, concurrency: int,
         return result.ok and trace_ok
 
     if jobs:
-        results = await _gather([one(t, c, n) for t, c, n in jobs], concurrency)
+        results = await _gather_in_turn(
+            [[lambda t=t, c=c, n=n: one(t, c, n) for t, c, n in g]
+             for g in in_turn(jobs, lambda j: (j[0].task_id, j[1].name))], concurrency)
         p.produced = sum(1 for r in results if r)
         p.failed = sum(1 for r in results if not r)
     p.took_s = time.monotonic() - t0
@@ -1016,7 +1022,11 @@ async def regrade_all(
         return True
 
     if todo:
-        results = await _gather([one(a, n) for a, n in todo], concurrency)
+        # An answer's readings one after another, so the later ones find its
+        # prompt cached (B-256).
+        results = await _gather_in_turn(
+            [[lambda a=a, n=n: one(a, n) for a, n in g] for g in in_turn(todo, lambda j: (j[0]["task_id"], j[0]["run"]))],
+            concurrency)
         p.produced = sum(1 for r in results if r)
         p.failed = sum(1 for r in results if not r)
     p.took_s = time.monotonic() - t0

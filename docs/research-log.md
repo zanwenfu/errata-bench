@@ -6343,3 +6343,26 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     crashes the suite.
   - **Not the instrument.** The candidate is asked the same request, and
     the judges read the same things. A third smoke pass runs on this commit.
+- **09-24** — **B-256 fixed: the readings of one answer were sent at once,
+  so none found its prompt cached** (the D-40 smoke run's cost measurement).
+  - **Found.** In smoke pass 2, readings 2 and 3 of each answer came after
+    reading 1 (a separate invocation) and were almost wholly cached: 22,595
+    of 22,601 input tokens. gpt-6-astra bills cached input at $1 per million
+    against $10, so a reading cost $0.08 instead of $0.25.
+  - **Cause.** Grading queued an answer's readings side by side, and
+    `_gather` sent them together. In the full run, reading 1 of all 165
+    answers comes first, then readings 2 and 3 in a later invocation, so
+    they would have missed the cache either way.
+  - **Fix.**
+    - `_gather_in_turn`: the concurrency ceiling counts questions; each
+      question's readings wait for the one before.
+    - Used by the grade stage and by the second judge's grading, controls
+      and trace-check probes. The attempt stage and calibration ask each
+      question once and are unchanged.
+    - `attempt-rounds.sh` takes `GRADE_PASSES`, so all readings are asked
+      in one grade stage.
+    - Same prompts, same number of readings, and the same readings: caching
+      changes the price of reading the prompt, not the sampling.
+  - **Guard:** section 97, 5 pieces reverted alone, each seen red.
+  - **Effect**, estimated from the smoke rows: about $400 less over D-40's
+    990 answers.

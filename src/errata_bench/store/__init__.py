@@ -5,14 +5,14 @@ three, since almost every caller wants `Paths` and one or two row functions.
 """
 
 from .paths import FILES, STAGES, Paths
-from .progress import Progress, _gather
+from .progress import Progress, _gather, _gather_in_turn, in_turn
 from .rows import (
     already_done, append, completed, finished, held, key_of, load, only_one,
     replace, sort_answers, _succeeded,
 )
 
 __all__ = [
-    "FILES", "STAGES", "Paths", "Progress", "_gather", "already_done", "append",
+    "FILES", "STAGES", "Paths", "Progress", "_gather", "_gather_in_turn", "in_turn", "already_done", "append",
     "completed", "finished", "held", "key_of", "load", "only_one", "replace",
     "sort_answers", "_succeeded",
 ]

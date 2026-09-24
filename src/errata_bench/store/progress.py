@@ -84,3 +84,36 @@ async def _gather(coros, limit: int):
     return await asyncio.gather(*(run(c) for c in coros))
 
 
+async def _gather_in_turn(groups, limit: int) -> list:
+    """Run groups of jobs, at most `limit` groups at once, each group's jobs one after another (B-256).
+
+    The readings of one question share one prompt, and the provider caches a
+    prompt it has just read. On the D-40 smoke run gpt-6-astra billed the second
+    and third readings of an answer at a third of the first, because they
+    followed it; sent at once, as `_gather` sends them, all three pay in full.
+    Each group is a list of zero-argument callables that return coroutines.
+    One job that raises is one failure, as in `_gather`, and the group goes on.
+    The results come back flat, group by group.
+    """
+    async def run(jobs):
+        out = []
+        for job in jobs:
+            try:
+                out.append(await job())
+            except Exception as e:  # noqa: BLE001 - one job, not the stage
+                print(f"  ! {type(e).__name__}: {e}", flush=True)
+                out.append(False)
+        return out
+
+    done = await _gather([run(g) for g in groups], limit)
+    return [r for g in done for r in (g if isinstance(g, list) else [g])]
+
+
+def in_turn(jobs: list[tuple], key) -> list[list]:
+    """`jobs` grouped by `key(job)`, in first-seen order: one group per question asked more than once."""
+    groups: dict = {}
+    for job in jobs:
+        groups.setdefault(key(job), []).append(job)
+    return list(groups.values())
+
+

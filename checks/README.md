@@ -39,7 +39,7 @@ directories made before the split, and what happens when a candidate or a
 grading fails. Its ninth section requires that every served-model probe the
 stages made went to its stand-in, so none of it reaches the network.
 
-**`guards_hold.py`** is ninety-six numbered sections, one per guard: what the
+**`guards_hold.py`** is ninety-seven numbered sections, one per guard: what the
 attempt and grade stages refuse to do; the gate asked repeatedly; the
 reference-answer control and when it is not applicable; the clean-pass
 standard and the hedged one priced side by side; permanent git loss; the
@@ -132,7 +132,9 @@ and how the attempt ended, including an attempt that called no tool, and fails
 when a field the attempt reports is missing from the stored row. Section 96 sends
 a request again when the provider answered it with nothing (no output, no tokens),
 keeps an empty reply the model did read, and makes a request never answered an
-error rather than an answer. It closes by asserting it handed production back unpatched, because three
+error rather than an answer. Section 97 asks one question's readings one after
+another -- in the grade stage and in the second judge's grading, controls and
+probes -- so the later readings find the prompt cached. It closes by asserting it handed production back unpatched, because three
 sections restored one module attribute through a name a fourth binds to
 something else. Its fake judge sets the task's kind the way the
 real one does -- left at the default, every task here was graded by the

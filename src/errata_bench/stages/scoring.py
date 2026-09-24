@@ -14,8 +14,8 @@ import time
 
 from ..instrument.control import controlled
 from ..store import (
-    Paths, Progress, _gather, append, completed, finished, held, key_of, load,
-    replace, sort_answers,
+    Paths, Progress, _gather, _gather_in_turn, append, completed, finished, held, in_turn, key_of,
+    load, replace, sort_answers,
 )
 
 
@@ -693,7 +693,11 @@ async def stage_grade(paths: Paths, limit: int, concurrency: int,
     from ..llm import record_served
 
     await record_served(paths.served, grader, "grade", "start")
-    results = await _gather([one(a, n) for a, n in todo], concurrency)
+    # An answer's readings one after another, so the later ones find its prompt
+    # cached (B-256); the ceiling is on answers read at once.
+    results = await _gather_in_turn(
+        [[lambda a=a, n=n: one(a, n) for a, n in g] for g in in_turn(todo, lambda j: (j[0]["task_id"], j[0]["run"]))],
+        concurrency)
     await record_served(paths.served, grader, "grade", "end")
     p.produced = sum(1 for r in results if r)
     p.failed = sum(1 for r in results if not r)

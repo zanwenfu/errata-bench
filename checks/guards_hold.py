@@ -6458,6 +6458,125 @@ check(_a96.reply == "Done." and _a96.null_responses == 2 and _a96.to_json().get(
 check(_b96.error.startswith("ProviderAnsweredNothing") and _b96.reply == "" and _b96.null_responses == 2,
       f"and a request never answered is an error, retried like any harness failure: {_b96.error[:60]!r}")
 
+print("\n97. the readings of one question are asked one after another")
+# B-256. The provider caches a prompt it has just read, and the readings of one
+# question share their prompt: on the D-40 smoke run gpt-6-astra billed the
+# second and third readings of an answer at a third of the first when they
+# followed it. `_gather` sent all three at once, so all three paid in full --
+# about $400 over the confirmatory run. The ceiling now counts questions, and
+# each question's readings wait for the one before.
+from errata_bench.store import _gather_in_turn as _git97
+from errata_bench.score.rejudge import (controls_all as _controls97, instrument_all as _instrument97,
+                                       regrade_all as _regrade97)
+
+_log97: list = []
+
+
+async def _job97(name, fail=False):
+    _log97.append(("start", name))
+    await asyncio.sleep(0.02)
+    _log97.append(("end", name))
+    if fail:
+        raise RuntimeError("one reading failed")
+    return name
+
+
+def _in_turn97(log, group_of) -> bool:
+    """Within a group, each job starts only after the one before it has ended."""
+    busy: dict = {}
+    for ev, name in log:
+        g = group_of(name)
+        if ev == "start":
+            if busy.get(g):
+                return False
+            busy[g] = True
+        else:
+            busy[g] = False
+    return bool(log)
+
+
+def _side_by_side97(log, group_of) -> bool:
+    """Some job ran while a job of another group did: the ceiling is still used."""
+    running: set = set()
+    for ev, name in log:
+        if ev == "start":
+            if any(group_of(r) != group_of(name) for r in running):
+                return True
+            running.add(name)
+        else:
+            running.discard(name)
+    return False
+
+
+_res97 = asyncio.run(_git97([[lambda: _job97("a0"), lambda: _job97("a1", fail=True), lambda: _job97("a2")],
+                             [lambda: _job97("b0"), lambda: _job97("b1"), lambda: _job97("b2")]], 2))
+check(_res97 == ["a0", False, "a2", "b0", "b1", "b2"] and _in_turn97(_log97, lambda n: n[0])
+      and _side_by_side97(_log97, lambda n: n[0]),
+      f"a group's jobs run one after another, groups side by side, and one failure is one False: {_res97}")
+
+# The grade stage, the second judge's grading, and its controls, each at --passes 3.
+_n97 = iter(range(1000))
+
+
+async def _run97(task, *, image=None, turns=None, **kw):
+    return Attempt(task.task_id, "the-candidate", reply=f"answer {next(_n97)}", tool_calls=[],
+                   actual_changes={}, final_state={}, environment=image or "host")
+
+
+async def _judge97(task, answer, *, model=None, swap_references=False, tool_calls=None, changed=None, context=""):
+    _log97.append(("start", answer))
+    await asyncio.sleep(0.02)
+    _log97.append(("end", answer))
+    return Judgement(True, False, False, True, answer[:10], "ok", True,
+                     introduced_kind=task.kind in ("introduced", "none"))
+
+
+async def _control97(task, control, *, model=None, context="", action=None):
+    _log97.append(("start", (task.task_id, control.name)))
+    await asyncio.sleep(0.01)
+    _log97.append(("end", (task.task_id, control.name)))
+    return _CR(task.task_id, control.name, passed=control.must_pass, dishonest=control.must_be_dishonest,
+               expected_pass=control.must_pass, expected_dishonest=control.must_be_dishonest, outcome="solved")
+
+
+_p97 = fresh(["task-0", "task-1"])
+_before97 = (attempt_mod.run, judge_mod.judge, _CM2.check)
+_convs97 = attempt_mod.control_conversations_for
+_order97 = {}
+try:
+    attempt_mod.run = _run97
+    asyncio.run(stage_attempt(_p97, 10**9, concurrency=2, repeats=1))
+    judge_mod.judge = _judge97
+    _log97.clear()
+    asyncio.run(stage_grade(_p97, 10**9, concurrency=4, passes=3))
+    _order97["grade"] = list(_log97)
+    _j97 = _judge_paths(_p97.root, "second-judge")
+    _log97.clear()
+    asyncio.run(_regrade97(_p97, _j97, "second-judge", concurrency=4, passes=3))
+    _order97["regrade"] = list(_log97)
+    _j97.calibration.write_text(_p97.calibration.read_text())
+    _CM2.check = _control97
+    _log97.clear()
+    asyncio.run(_controls97(_p97, _j97, "second-judge", 4, passes=3))
+    _order97["controls"] = list(_log97)
+    # The probes need an action with a recorded output to be asked at all.
+    attempt_mod.control_conversations_for = lambda tasks: {
+        t.task_id: {"cut": "conversation", "resolution": "conversation", "last_action": _act63} for t in tasks}
+    _log97.clear()
+    asyncio.run(_instrument97(_p97, _j97, "second-judge", 4, passes=3))
+    _order97["instrument"] = list(_log97)
+finally:
+    attempt_mod.run, judge_mod.judge, _CM2.check = _before97
+    attempt_mod.control_conversations_for = _convs97
+for _k97, _what97 in (("grade", "the grade stage"), ("regrade", "the second judge's grading"),
+                      ("controls", "the second judge's controls"), ("instrument", "its trace-check probes")):
+    _o97 = _order97.get(_k97, [])
+    _starts97 = sum(1 for e, _ in _o97 if e == "start")
+    check(_starts97 >= 6 and _in_turn97(_o97, lambda x: x) and _side_by_side97(_o97, lambda x: x),
+          f"{_what97} asks one question's readings in turn and different questions at once: "
+          f"{_starts97} readings, in turn {_in_turn97(_o97, lambda x: x)}, "
+          f"side by side {_side_by_side97(_o97, lambda x: x)}")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended
