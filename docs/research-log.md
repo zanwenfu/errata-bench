@@ -6298,11 +6298,17 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
       content filter arrives as one), or only reasoning.
     - The row now carries all six fields, and an errored attempt's row
       carries its tokens too.
+    - The grade rows' `judge_usage` and `trace_usage` also record the cached
+      and reasoning tokens. gpt-6-astra lists at $10 per million input
+      tokens, $1 cached and $50 output, and the three readings of one answer
+      share a prompt, so the cached share decides most of the grading cost.
     - A call cut off by the clock is billed and never counted, so the count is
       a slight undercount for timed-out attempts.
-  - **Guard:** section 95 (9 pieces reverted alone, each seen red). It
-    includes a check that every field the attempt reports is in the stored
-    row, so the next field added cannot be left behind silently.
+  - **Guard:** section 95 (9 pieces reverted alone, each seen red), and
+    section 80 for the grade rows' cached and reasoning tokens (seen red with
+    them removed). Section 95 includes a check that every field the attempt
+    reports is in the stored row, so the next field added cannot be left
+    behind silently.
   - **Not the instrument.** Nothing the candidate is shown, and nothing the
     judges read, changed. The smoke run is repeated on this commit to confirm
     the fix.

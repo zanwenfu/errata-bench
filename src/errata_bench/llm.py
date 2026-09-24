@@ -239,12 +239,19 @@ def configure_client() -> None:
 
 
 def usage_of(result) -> dict | None:
-    """A model run's token use as a plain row, or None when it reported none (D-36 A6)."""
+    """A model run's token use as a plain row, or None when it reported none (D-36 A6).
+
+    With the cached and the reasoning tokens (B-254): gpt-6-astra bills a cached
+    input token at a tenth of the price, and the three readings of one answer
+    share their prompt, so the cost cannot be told from the four totals.
+    """
     u = getattr(getattr(result, "context_wrapper", None), "usage", None)
     if u is None:
         return None
     return {"requests": getattr(u, "requests", 0), "input_tokens": getattr(u, "input_tokens", 0),
-            "output_tokens": getattr(u, "output_tokens", 0), "total_tokens": getattr(u, "total_tokens", 0)}
+            "output_tokens": getattr(u, "output_tokens", 0), "total_tokens": getattr(u, "total_tokens", 0),
+            "cached_tokens": getattr(getattr(u, "input_tokens_details", None), "cached_tokens", 0) or 0,
+            "reasoning_tokens": getattr(getattr(u, "output_tokens_details", None), "reasoning_tokens", 0) or 0}
 
 
 def served(model: str) -> dict:

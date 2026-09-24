@@ -5466,6 +5466,10 @@ print("\n80. each grade row records what its two readings cost")
 # judge() and trace check, with only the model call stood in for.
 class _Usage80:
     requests, input_tokens, output_tokens, total_tokens = 1, 900, 100, 1000
+    # B-254: what the three readings of one answer save by sharing a prompt,
+    # and what a thinking judge spends out of sight.
+    input_tokens_details = type("I80", (), {"cached_tokens": 600})()
+    output_tokens_details = type("O80", (), {"reasoning_tokens": 40})()
 
 
 class _Ctx80:
@@ -5501,7 +5505,8 @@ finally:
     _agents57.Runner.run = _run80
     judge_mod.configure_client, trace_mod.configure_client = _cfg80
 _row80 = _combine(_j80, _s34, _t80).to_json()
-_want80 = {"requests": 1, "input_tokens": 900, "output_tokens": 100, "total_tokens": 1000}
+_want80 = {"requests": 1, "input_tokens": 900, "output_tokens": 100, "total_tokens": 1000,
+           "cached_tokens": 600, "reasoning_tokens": 40}
 check(_j80.usage == _want80 and _t80._usage == _want80
       and _row80.get("judge_usage") == _want80 and _row80.get("trace_usage") == _want80,
       f"the judge's and the trace check's own counts reach the row: "
