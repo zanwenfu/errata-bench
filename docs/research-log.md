@@ -6570,3 +6570,36 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     - `results/d40-tasks-all.json` (55);
     - `results/d40-tasks-new.json` (46, without the first grid's 9).
   - Guard: section 58, seen red with the restriction removed.
+- **09-24** — **B-261 fixed: the forced final report pasted the attempt's
+  record into one message, and Azure's filter blocked it as "Jailbreak"**
+  (smoke passes 3 to 5).
+  - **Found.** Forced reports at Nagi-ovo-gemini-voyager-13 were blocked by
+    the content filter: grok's twice and MAI-Thinking-1's once. DeepSeek-V4-Pro's
+    went through. Handled by B-257, each blocked report makes the attempt an
+    error and, after 3, a `gave_up` that enters no rate. So some of the
+    attempts that ran out would be lost, and those are the ones D-36 A4 added
+    the report for.
+  - **Located, on smoke pass 3's blocked trace.** The conversation with
+    "time is up" answered. The record of calls on its own was blocked. The
+    blocked part lay in calls 63 to 94, but neither half alone tripped the
+    filter: it is an amount of pasted code and output, not one file. Leaving
+    out the agent-instruction files (`CLAUDE.md`, `.claude/`) changed
+    nothing.
+  - **The same content as a continued conversation** (the calls as tool
+    messages, then "time is up" from the developer) answered 2 of 2. The
+    attempt's own 30 turns had carried it the same way without a block.
+  - **Fix.** The report continues the conversation.
+    - At the turn limit, the model library's run data gives the whole
+      conversation, the last turn's results included.
+    - When the clock stops the attempt, there is no run data, so a run hook
+      keeps the conversation as the last model call was sent it.
+    - With neither, the record is pasted as before.
+    - The tools stay listed so the history's calls are valid, with none
+      choosable (`tool_choice="none"`). The deadline has passed, so a call
+      made anyway is refused and recorded, not run.
+    - The report now continues the conversation exactly as the model saw
+      it, not the record as the readers are shown it (results cut to 4,000
+      characters). That is closer to what a harness does.
+  - **Guard:** section 102, 5 pieces reverted alone, each seen red. Sections
+    64, 98 and 101's stand-ins now tell the report from the attempt by its
+    tool choice.

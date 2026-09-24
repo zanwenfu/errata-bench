@@ -35,7 +35,7 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from agents import Agent, RunConfig, RunHooks, Runner, function_tool
+from agents import Agent, ItemHelpers, ModelSettings, RunConfig, RunHooks, Runner, function_tool
 from agents.exceptions import MaxTurnsExceeded
 from agents.models.interface import Model, ModelProvider
 from agents.models.multi_provider import MultiProvider
@@ -372,6 +372,13 @@ class _Meter(RunHooks):
     off by the clock is billed and never counted.
     """
 
+    async def on_llm_start(self, context, agent, system_prompt, input_items) -> None:
+        # The conversation as this call is sent it: what a report continues
+        # when the clock stops the attempt and leaves no run data (B-261).
+        box = context.context
+        if isinstance(box, dict):
+            box["history"] = list(input_items) if isinstance(input_items, list) else input_items
+
     async def on_llm_end(self, context, agent, response) -> None:
         box = context.context
         box["usage"] = _add_usage(box.get("usage"), _usage_of(getattr(response, "usage", None)))
@@ -379,25 +386,40 @@ class _Meter(RunHooks):
 
 
 async def _final_report(model: str, prompt: str, calls: list,
-                        provider: ModelProvider | None = None) -> tuple[str, bool, str, dict | None]:
-    """One last turn without tools, for an attempt that ran out (D-36 A4).
+                        provider: ModelProvider | None = None, history: list | None = None,
+                        context: dict | None = None) -> tuple[str, bool, str, dict | None]:
+    """One last turn, for an attempt that ran out (D-36 A4).
 
-    Shown what it was shown before, and its own record of this attempt -- the
-    calls and what they returned, as the readers will be shown them -- so a
-    report can be accurate. Bounded by FINAL_REPORT_S. Returns the reply,
+    The conversation goes on (B-261): its history -- what the candidate was
+    shown, its calls and what they returned, as it saw them -- and then the
+    developer's "time is up". Pasted into one message as text instead, the
+    record of calls was what Azure's content filter blocked as "Jailbreak":
+    grok's report at gemini-voyager-13 was blocked every time that way and
+    answered every time as a continued conversation, and MAI-Thinking-1's was
+    blocked too. With no history to continue, the record is pasted as before.
+
+    The tools stay listed, so the history's calls are valid, but none can be
+    chosen, and the deadline in ``context`` has passed, so a call a model makes
+    anyway is refused, not run. Bounded by FINAL_REPORT_S. Returns the reply,
     whether there was one, why not if not, and its token use. A request the
     provider refuses or fails raises `FinalReportFailed` instead (B-257).
     """
     from .trace import render
 
-    agent = Agent(name="candidate", instructions=INSTRUCTIONS, model=model, tools=[])
-    ask = (f"{prompt}\n\nWhat you did in this attempt -- your own tool calls and what they "
-           f"returned:\n{render([c.to_json() for c in calls])}\n\n{FINAL_REPORT}")
+    agent = Agent(name="candidate", instructions=INSTRUCTIONS, model=model,
+                  tools=[read_file, list_dir, write_file, edit_file, run_command],
+                  model_settings=ModelSettings(tool_choice="none"))
+    if history:
+        ask = [*history, {"role": "user", "content": FINAL_REPORT}]
+    else:
+        ask = (f"{prompt}\n\nWhat you did in this attempt -- your own tool calls and what they "
+               f"returned:\n{render([c.to_json() for c in calls])}\n\n{FINAL_REPORT}")
+    late = {**(context or {}), "deadline": time.monotonic() - 1}
     try:
-        # Two turns, so a model that reaches for a tool is told there are none
-        # and can still answer (B-260).
+        # Two turns, so a model that reaches for a tool anyway is refused and
+        # can still answer (B-260).
         result = await asyncio.wait_for(
-            Runner.run(agent, ask, max_turns=2, run_config=RunConfig(
+            Runner.run(agent, ask, context=late, max_turns=2, run_config=RunConfig(
                 model_provider=provider or _Resending(), tool_not_found_behavior="return_error_to_model",
                 tool_error_formatter=_no_tools_now)),
             timeout=FINAL_REPORT_S)
@@ -1340,7 +1362,13 @@ async def run(
                 # empty, rather than as an error that would be retried.
                 ran_out, reply = True, ""
                 ended_by = "time limit"
-            except MaxTurnsExceeded:
+            except MaxTurnsExceeded as e:
+                # The whole conversation, the last turn's results included,
+                # for the report to continue (B-261).
+                data = getattr(e, "run_data", None)
+                if data is not None:
+                    context["history"] = (ItemHelpers.input_to_new_input_list(data.input)
+                                          + [item.to_input_item() for item in data.new_items])
                 # It worked through every turn and never answered. That is a
                 # result -- an agent that keeps going and reports nothing --
                 # and recording it as an error deleted it from the numbers
@@ -1357,7 +1385,11 @@ async def run(
             # the other way they took the headline's significance with them.
             forced, report_error = False, ""
             if ran_out:
-                reply, forced, report_error, extra = await _final_report(model, prompt, calls, provider)
+                history = context.get("history")
+                if isinstance(history, str):
+                    history = ItemHelpers.input_to_new_input_list(history)
+                reply, forced, report_error, extra = await _final_report(
+                    model, prompt, calls, provider, history=history, context=context)
                 usage = _add_usage(usage, extra)
             changed = _diff(before, _snapshot(tree, task.signature_path or ""))
             if context.get("container_died"):

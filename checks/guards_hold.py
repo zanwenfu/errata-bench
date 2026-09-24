@@ -4840,11 +4840,11 @@ class _Report64:
 class _RunsOut64:
     @staticmethod
     async def run(agent, prompt, **kw):
-        if agent.tools:
+        if getattr(agent.model_settings, "tool_choice", None) != "none":   # the attempt, not its report (B-261)
             ctx = kw.get("context") or {}
             ctx.setdefault("calls", []).append(ToolCall("read_file", {"path": "src/a.txt"}, result="hello"))
             raise _MTE64("Max turns (30) exceeded")
-        _asked64["prompt"], _asked64["tools"] = prompt, list(agent.tools)
+        _asked64["prompt"], _asked64["choice"] = prompt, getattr(agent.model_settings, "tool_choice", None)
         return _Report64()
 
 
@@ -4862,7 +4862,7 @@ finally:
     for _n, _v in _swap64.items():
         setattr(attempt_mod, _n, _v)
 check(_a64.out_of_time is True and _a64.ended_by == "turn limit" and _a64.final_report_forced is True
-      and _a64.reply == _Report64.final_output and _asked64.get("tools") == []
+      and _a64.reply == _Report64.final_output and _asked64.get("choice") == "none"
       and attempt_mod.FINAL_REPORT in _asked64.get("prompt", "") and "src/a.txt" in _asked64.get("prompt", ""),
       f"an attempt that used every turn is asked once, without tools and shown its own record, and its "
       f"report is the answer: ended_by={_a64.ended_by!r} forced={_a64.final_report_forced} "
@@ -6606,7 +6606,7 @@ print("\n98. a final report the provider refuses makes the attempt an error, not
 class _Refuses98:
     @staticmethod
     async def run(agent, prompt, **kw):
-        if agent.tools:
+        if getattr(agent.model_settings, "tool_choice", None) != "none":   # the attempt, not its report (B-261)
             ctx = kw.get("context") or {}
             ctx.setdefault("calls", []).append(ToolCall("read_file", {"path": "src/a.txt"}, result="hello"))
             raise _MTE64("Max turns (30) exceeded")
@@ -6713,7 +6713,7 @@ class _Invents101:
     async def run(agent, prompt, **kw):
         cfg = kw.get("run_config")
         box = kw.get("context")
-        if agent.tools:
+        if getattr(agent.model_settings, "tool_choice", None) != "none":   # the attempt, not its report (B-261)
             _cfg101["attempt"] = (getattr(cfg, "tool_not_found_behavior", None), kw.get("max_turns"))
             fmt = getattr(cfg, "tool_error_formatter", None)
             _cfg101["told"] = fmt(_TEFA101(kind="tool_not_found", tool_type="function", tool_name="glob",
@@ -6788,6 +6788,84 @@ except Exception as _e101:  # noqa: BLE001 - the failure is the assertion
 check(_out101 == "Done." and [(c.name, c.failed) for c in _box101["calls"]] == [("glob", True)],
       f"through the library's own loop too: the run goes on to its answer and the refused call is recorded: "
       f"{_out101[:60]!r} {[(c.name, c.failed) for c in _box101['calls']]}")
+
+print("\n102. the forced final report continues the conversation, not a transcript pasted into one message")
+# B-261. Pasted as text into one message, the record of an attempt's calls was
+# what Azure's content filter blocked as "Jailbreak": grok's report at
+# gemini-voyager-13 was blocked every time that way and answered every time as a
+# continued conversation. At the turn limit the model library hands back the
+# whole conversation; when the clock stops the attempt it hands back nothing, so
+# the conversation as the last call was sent it is kept as the attempt runs.
+from agents.exceptions import RunErrorDetails as _RED102
+import time as _time102
+_seen102: dict = {}
+_item102 = type("I", (), {"to_input_item": lambda self: {"type": "function_call_output", "call_id": "c1",
+                                                          "output": "hello"}})()
+
+
+def _report102(agent, prompt, kw, key):
+    _seen102[key] = {"prompt": prompt, "choice": getattr(agent.model_settings, "tool_choice", None),
+                     "tools": len(agent.tools),
+                     "late": (kw.get("context") or {}).get("deadline", 0) < _time102.monotonic()}
+    return type("R", (), {"final_output": "Here is what I did."})()
+
+
+class _TurnLimit102:
+    @staticmethod
+    async def run(agent, prompt, **kw):
+        if getattr(agent.model_settings, "tool_choice", None) != "none":
+            e = _MTE64("Max turns (30) exceeded")
+            e.run_data = _RED102(input="THE-PROMPT", new_items=[_item102], raw_responses=[], last_agent=agent,
+                                 context_wrapper=None, input_guardrail_results=[], output_guardrail_results=[])
+            raise e
+        return _report102(agent, prompt, kw, "turns")
+
+
+class _Clock102:
+    @staticmethod
+    async def run(agent, prompt, **kw):
+        if getattr(agent.model_settings, "tool_choice", None) != "none":
+            hooks, box = kw.get("hooks"), kw.get("context")
+            if hooks is not None:
+                await hooks.on_llm_start(type("W", (), {"context": box})(), agent, "sys",
+                                         [{"role": "user", "content": "THE-PROMPT"}, {"type": "function_call_output",
+                                                                                   "call_id": "c9", "output": "x"}])
+            await asyncio.sleep(3600)
+        return _report102(agent, prompt, kw, "clock")
+
+
+_swap102 = {n: getattr(attempt_mod, n) for n in ("configure_client", "fetch", "replay", "Container", "Runner",
+                                                  "ATTEMPT_GRACE_S")}
+attempt_mod.configure_client = lambda: None
+attempt_mod.fetch = lambda url, sha, dest: _Checkout()
+attempt_mod.replay = lambda tree, edits, repo_id: type("R", (), {"ok": True, "reason": ""})()
+attempt_mod.Container = _NoStart
+attempt_mod.ATTEMPT_GRACE_S = 1
+os.environ["ERRATA_ALLOW_HOST"] = "1"
+try:
+    attempt_mod.Runner = _TurnLimit102
+    _a102 = asyncio.run(REAL_RUN(make_task("task-0"), image="node:22", turns=[], budget_s=600))
+    attempt_mod.Runner = _Clock102
+    _b102 = asyncio.run(REAL_RUN(make_task("task-0"), image="node:22", turns=[], budget_s=1))
+finally:
+    os.environ.pop("ERRATA_ALLOW_HOST", None)
+    for _n, _v in _swap102.items():
+        setattr(attempt_mod, _n, _v)
+_t102 = _seen102.get("turns") or {}
+check(_t102.get("prompt") == [{"content": "THE-PROMPT", "role": "user"},
+                              {"type": "function_call_output", "call_id": "c1", "output": "hello"},
+                              {"role": "user", "content": attempt_mod.FINAL_REPORT}]
+      and _a102.reply == "Here is what I did." and _a102.final_report_forced is True,
+      f"at the turn limit the report continues the whole conversation, then says time is up: "
+      f"{str(_t102.get('prompt'))[:120]}")
+check(_t102.get("choice") == "none" and _t102.get("tools") == 5 and _t102.get("late") is True,
+      f"with the tools listed, so the history's calls are valid, none choosable, and the deadline past, so a "
+      f"call made anyway is refused: {_t102.get('choice')}, {_t102.get('tools')} tools, late={_t102.get('late')}")
+_c102 = _seen102.get("clock") or {}
+check(isinstance(_c102.get("prompt"), list) and _c102["prompt"][0] == {"role": "user", "content": "THE-PROMPT"}
+      and _c102["prompt"][-1] == {"role": "user", "content": attempt_mod.FINAL_REPORT}
+      and _b102.ended_by == "time limit" and _b102.final_report_forced is True,
+      f"and when the clock stops it, the conversation as the last call was sent it: {str(_c102.get('prompt'))[:100]}")
 
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
