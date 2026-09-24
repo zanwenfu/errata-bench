@@ -5928,3 +5928,20 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - Among the candidates, the latest written is the base, as before.
   - Section 90 holds that shape. The committed ranking failed it in CI
     (c7bf7e5b8, whose check went in without this fix).
+- **09-24** — **Step 2 launched**, 03:25 UTC, from the pinned worktree at
+  bd13ad757 (gpt-6-astra only; the code refuses Claude).
+  - One chain, one run after another:
+    1. `runs/later-cap20`: screening, then admission;
+    2. `runs/later-sample`: rebuilt from the build on (`FROM=1`);
+    3. `runs/step2-later`: 1,163 moments;
+    4. `runs/step2-first`: 417 moments.
+  - Logs: `runs/step2-chain.log` and each run's `.admit.log`.
+  - Backups: `runs/later-sample.pre-rebuild-0924` and
+    `runs/later-cap20.pre-chain-0924`. later-sample's 56 gate rows were
+    stamped with the fingerprints of the task versions they read before the
+    rebuild.
+  - The rebuild of later-sample, dry-run on a copy first (the build makes no
+    model calls), kept all 8 tasks unchanged and built 2 its old code rejected:
+    - 4gray-iptvnator-351: the stash the git rule flagged was declined at the
+      prompt and never ran;
+    - Pavel401-BugViper-101: a `[REDACTED:SECRET]` line read literally.
