@@ -5879,3 +5879,40 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     carries this entry:** later-cap20 (screen, then admission), later-sample
     rebuilt under the fixed build (its false rejections), step2-later,
     step2-first.
+- **09-24** — **Claude is no longer called.** The user found that the Azure
+  deployment `claude-opus-5` bills their own card, not their Azure credits.
+  - **Audit of the user's machine and the VPS, read-only:** nothing was
+    calling it.
+    - The last calls were the phase-A re-grade, finished 09-23 21:52 UTC.
+    - Claude Code runs on the user's Claude account, not Azure (no Foundry
+      settings).
+    - Codex uses gpt-6-astra on the same Azure resource.
+    - The Lumo app (cue) and taste-is-all-you-need, locally and its two
+      servers on the VPS, use Anthropic's own API with its key, not Azure.
+    - No scheduled job anywhere.
+  - **Why code must refuse it.** The one key this project holds
+    (`AZURE_OPENAI_API_KEY`, also exported by the user's shell and used by
+    Codex) reaches every deployment on `errata-bench-resource`, Claude's
+    included.
+  - **The refusal:**
+    - the HTTP client under every model call refuses a request naming
+      Claude, before anything is sent;
+    - the retry wrapper does not retry it, although the SDK re-raises a
+      hook's error as a connection error;
+    - `ERRATA_MODEL`, `ERRATA_JUDGE_MODEL`, the served-model probe and
+      `run.py rejudge/gate --judge` refuse it where the model is chosen;
+    - `ERRATA_ALLOW_CLAUDE=1` lifts the block, and nothing sets it.
+  - Guard: section 92, 7 parts each reverted alone and seen red. Tested
+    through the real SDK over a mock transport: a Claude request never
+    reaches it, even with the SDK's own retries on.
+  - **Only the user can finish it:** delete the deployment in the Azure
+    portal. There is no Azure CLI here, and the key cannot manage deployments.
+  - **What it changes.** Claude was the second judge:
+    - D-35: a difference must hold under both judges;
+    - D-36 criterion 2: agreement between the judges;
+    - D-39: both judges read the fresh answers.
+
+    The first grid's Claude readings stay as recorded, and nothing new will be
+    read by Claude. D-39 needs an amendment before any of its answers exists:
+    another second judge that the credits cover, or none, with the planned
+    human annotation standing in.

@@ -417,6 +417,12 @@ def main() -> None:
         # candidate and writes only under <run>/rejudge/<judge>/.
         if not args.judge:
             ap.error("rejudge needs --judge <model or deployment name>")
+        from errata_bench.llm import ClaudeRefused, refuse_claude
+
+        try:
+            refuse_claude(args.judge)
+        except ClaudeRefused as e:
+            ap.error(str(e))
         from errata_bench.store import only_one
         from errata_bench.score.rejudge import judge_paths, rejudge
 
@@ -439,6 +445,12 @@ def main() -> None:
         # is taken repeatedly instead of once. No candidate runs.
         if not args.judge:
             ap.error("gate needs --judge <model or deployment name>")
+        from errata_bench.llm import ClaudeRefused, refuse_claude
+
+        try:
+            refuse_claude(args.judge)
+        except ClaudeRefused as e:
+            ap.error(str(e))
         from errata_bench.store import only_one
         from errata_bench.instrument.gate import measure, report
 

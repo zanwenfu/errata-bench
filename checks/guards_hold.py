@@ -5907,6 +5907,13 @@ _rebased90 = _c90("b" * 40, 200, 400, "o/r#else")      # written before the star
 _mine90 = [_c90("c" * 40, 250, 260, "o/r#own"), _c90("c" * 40, 250, 260, "o/r#shared")]
 check(_B43w.base_commit("o/r", 300, {"o/r": [_older90, _rebased90]}) == "a" * 40,
       "a commit that entered the history after the start is not the base, whatever its author date")
+# Among those that had, the latest written wins, as before: ranked by commit
+# date, a commit rebased onto another branch just before the session took
+# dipasqualew-vibereq-200's base from a19f14d4, the right tree, to 00229106.
+_right90 = _c90("f" * 40, 280, 285, "o/r#else")
+_moved90 = _c90("9" * 40, 150, 295, "o/r#else")      # written earlier, rebased later, before the start
+check(_B43w.base_commit("o/r", 300, {"o/r": [_right90, _moved90]}) == "f" * 40,
+      "and among the commits that had, the latest written is the base, not the latest rebased")
 check(_B43w.base_commit("o/r", 300, {"o/r": [_older90, _rebased90] + _mine90}, {"o/r#own"}) == "a" * 40
       and _B43w.base_commit("o/r", 300, {"o/r": [_older90] + _mine90}) == "c" * 40,
       "nor the session's own commit, by sha -- one commit is a row per checkpoint that recorded it")
@@ -6075,6 +6082,91 @@ check(len(_rows91) == 2 and _rows91[-1].get("task_fingerprint") == _fp91(_read91
       and observations(_g91.root, "the-judge") == {"steady": [True]},
       f"a reading of an older version is neither done nor counted, and a new one is stamped: "
       f"{len(_rows91)} rows, {observations(_g91.root, 'the-judge')}")
+
+print("\n92. no request reaches a Claude deployment")
+# 09-24: Claude on Azure bills the user's own card, not the Azure credits, and
+# the project's one key reaches every deployment on the resource. So the HTTP
+# client every model call goes through refuses a request that names Claude,
+# before anything is sent -- and the SDK, which re-raises a hook's error as a
+# connection error, is not allowed to retry it.
+import httpx2 as _hx92
+from openai import AsyncOpenAI as _AO92
+_sent92 = []
+
+
+def _answer92(request):
+    _sent92.append(json.loads(request.content)["model"])
+    return _hx92.Response(200, json={"id": "c", "object": "chat.completion", "created": 0, "model": "m", "choices": [
+        {"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "fine"}}]})
+
+
+_cl92 = _AO92(api_key="k", base_url="https://example.invalid/v1", max_retries=2,
+              http_client=reader._http_client(transport=_hx92.MockTransport(_answer92)))
+_ask92 = lambda m: _cl92.chat.completions.create(model=m, messages=[{"role": "user", "content": "hi"}])
+_ok92 = asyncio.run(_ask92("gpt-6-astra")).choices[0].message.content
+try:
+    asyncio.run(_ask92("claude-opus-5"))
+    _claude92 = "answered"
+except Exception as _e92:  # noqa: BLE001
+    _claude92 = "refused" if reader._refused(_e92) else type(_e92).__name__
+try:
+    asyncio.run(reader.resilient(lambda: _ask92("Claude-Fable-5-1"), pause=0))
+    _res92 = "answered"
+except Exception as _e92b:  # noqa: BLE001
+    _res92 = type(_e92b).__name__
+check(_ok92 == "fine" and _claude92 == "refused" and _res92 == "ClaudeRefused" and _sent92 == ["gpt-6-astra"],
+      f"through the SDK, a Claude request is refused unsent, and not retried: sent {_sent92}, "
+      f"claude {_claude92}, through resilient {_res92}")
+# And configure_client puts that client under every call.
+import agents as _ag92
+import openai as _oa92
+_cap92: dict = {}
+_saved92 = (_oa92.AsyncOpenAI, _ag92.set_default_openai_client, _ag92.set_tracing_disabled,
+            _ag92.set_default_openai_api, reader._client_configured, dict(os.environ))
+_oa92.AsyncOpenAI = lambda **kw: _cap92.update(kw) or "client"
+_ag92.set_default_openai_client = _ag92.set_tracing_disabled = _ag92.set_default_openai_api = lambda *a, **k: None
+os.environ.update({"ERRATA_PROVIDER": "azure", "AZURE_OPENAI_BASE_URL": "https://example.invalid/openai/v1",
+                   "AZURE_OPENAI_API_KEY": "k"})
+reader._client_configured = False
+try:
+    reader.configure_client()
+finally:
+    (_oa92.AsyncOpenAI, _ag92.set_default_openai_client, _ag92.set_tracing_disabled,
+     _ag92.set_default_openai_api, reader._client_configured) = _saved92[:5]
+    os.environ.clear()
+    os.environ.update(_saved92[5])
+_hooks92 = getattr(_cap92.get("http_client"), "event_hooks", {}) or {}
+check(reader._refuse_claude_request in (_hooks92.get("request") or []),
+      f"configure_client installs the refusing client: {sorted(_cap92)}")
+_env92 = dict(os.environ)
+try:
+    os.environ["ERRATA_MODEL"] = "claude-opus-5"
+    try:
+        reader.model_name()
+        _named92 = "allowed"
+    except reader.ClaudeRefused:
+        _named92 = "refused"
+    os.environ["ERRATA_ALLOW_CLAUDE"] = "1"
+    _lifted92 = reader.model_name()
+finally:
+    os.environ.clear()
+    os.environ.update(_env92)
+_probe92 = REAL_SERVED("claude-opus-5")
+_argv92 = sys.argv[:]
+sys.argv = ["run.py", "rejudge", "--run", str(Path(tempfile.mkdtemp()) / "r"), "--judge", "claude-opus-5"]
+_err92 = _io60.StringIO()
+try:
+    with _ctx60.redirect_stderr(_err92), _ctx60.redirect_stdout(_io60.StringIO()):
+        _run_mod.main()
+    _cli92 = "ran"
+except SystemExit as _x92:
+    _cli92 = f"exit {_x92.code}"
+finally:
+    sys.argv = _argv92
+check(_named92 == "refused" and _lifted92 == "claude-opus-5" and "refused" in (_probe92.get("error") or "")
+      and _cli92 == "exit 2" and "bills the user's own card" in _err92.getvalue(),
+      f"and it is refused where a model is chosen -- ERRATA_MODEL {_named92}, the served probe, "
+      f"`run.py rejudge --judge` {_cli92} -- unless ERRATA_ALLOW_CLAUDE=1: {_lifted92}")
 
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every

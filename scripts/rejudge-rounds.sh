@@ -1,9 +1,13 @@
 #!/bin/bash
 # Re-judge run directories with a second judge, in rounds, until nothing errored.
 #
-#   ERRATA_API=responses TESTS_FROM=/abs/runs/grid1-DeepSeek-V4-Pro \
-#     scripts/rejudge-rounds.sh claude-opus-5 2 3 \
+#   TESTS_FROM=/abs/runs/grid1-DeepSeek-V4-Pro \
+#     scripts/rejudge-rounds.sh <judge deployment> 2 3 \
 #       /abs/runs/grid1-DeepSeek-V4-Pro /abs/runs/grid1-grok-4.6 /abs/runs/grid1-Kimi-K2.7-Code
+#
+# Not claude-opus-5 any more: from 09-24 the code refuses every Claude
+# deployment, whose use on Azure bills the user's own card rather than the
+# Azure credits. The first grid's Claude re-grades were made with it before.
 #
 # Arguments: the judge (on Azure, the deployment), the concurrency, the number
 # of readings per question (D-35 asks for 3), then the run directories, which

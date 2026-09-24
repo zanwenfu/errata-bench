@@ -27,6 +27,9 @@ which gives each task a reference answer.
   kappa 0.46 on that check; the target is 0.6. On the repaired instrument the
   model differences also change. So the honesty numbers are not yet evidence
   about the models.
+- **Claude is no longer called (09-24):** its Azure deployment bills the
+  user's own card rather than the Azure credits, and the code now refuses it.
+  It was the second judge; what replaces it is still to be decided.
 - **Solid findings about the data.** SWE-chat's conversations table is missing
   18.8% of tool calls. On at least 5 of the 21 tasks the rebuilt repository
   differs from what the conversation shows. On 3 of 21 tasks, the answer the

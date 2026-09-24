@@ -88,6 +88,7 @@ def model_name() -> str:
     import os
 
     _load_dotenv()
+    refuse_claude(os.environ.get("ERRATA_MODEL") or MODEL)
     return os.environ.get("ERRATA_MODEL") or MODEL
 
 
@@ -103,7 +104,58 @@ def judge_model() -> str:
     import os
 
     _load_dotenv()
+    refuse_claude(os.environ.get("ERRATA_JUDGE_MODEL"))
     return os.environ.get("ERRATA_JUDGE_MODEL") or model_name()
+
+
+# No request goes to a Claude deployment. On Azure it is billed to the user's
+# own card, not to the Azure credits (09-24), and the one key this project
+# holds reaches every deployment on the resource, Claude's included. So the
+# model a request names is read in the HTTP client, and a Claude one is
+# refused before anything is sent -- whoever asks: a stage, a judge, a
+# re-grade, a probe. ERRATA_ALLOW_CLAUDE=1 lifts it; nothing here sets it.
+class ClaudeRefused(RuntimeError):
+    """A call to a Claude deployment, refused before anything was sent."""
+
+
+def refuse_claude(model) -> None:
+    """Raise if ``model`` names a Claude deployment and nobody has lifted the block."""
+    if model and "claude" in str(model).lower() and os.environ.get("ERRATA_ALLOW_CLAUDE") != "1":
+        raise ClaudeRefused(
+            f"refused to call {model}: a Claude deployment on Azure bills the user's own card, "
+            "not the Azure credits. Set ERRATA_ALLOW_CLAUDE=1 to override.")
+
+
+def _refused(e: BaseException) -> ClaudeRefused | None:
+    """The refusal behind an exception, if any: the SDK re-raises a hook's error as a connection error."""
+    seen = set()
+    while e is not None and id(e) not in seen:
+        if isinstance(e, ClaudeRefused):
+            return e
+        seen.add(id(e))
+        e = e.__cause__ or e.__context__
+    return None
+
+
+async def _refuse_claude_request(request) -> None:
+    """The HTTP client's request hook: the model named in the body or the URL."""
+    import json
+
+    refuse_claude(str(request.url) if "claude" in str(request.url).lower() else None)
+    try:
+        body = json.loads(request.content or b"{}")
+    except Exception:  # noqa: BLE001 - a streamed or unreadable body names no model to refuse
+        return
+    if isinstance(body, dict):
+        refuse_claude(body.get("model"))
+
+
+def _http_client(transport=None):
+    """The HTTP client every model call goes through, with the Claude refusal on it."""
+    from openai import DefaultAsyncHttpxClient
+
+    return DefaultAsyncHttpxClient(event_hooks={"request": [_refuse_claude_request]},
+                                   **({"transport": transport} if transport is not None else {}))
 
 
 def configure_client() -> None:
@@ -149,6 +201,7 @@ def configure_client() -> None:
             base_url=base.rstrip("/"),
             timeout=timeout,
             max_retries=retries,
+            http_client=_http_client(),
         )
         # The SDK uploads a trace of every run to OpenAI's dashboard by
         # default, whichever provider answered. On Azure that sends the
@@ -164,7 +217,7 @@ def configure_client() -> None:
                 "OPENAI_API_KEY is not set and no .env supplies it. Refusing to run: "
                 "a missing credential otherwise reads as a batch of unusable data."
             )
-        client = AsyncOpenAI(api_key=key, timeout=timeout, max_retries=retries)
+        client = AsyncOpenAI(api_key=key, timeout=timeout, max_retries=retries, http_client=_http_client())
     set_default_openai_client(client)
 
     # Which API surface the SDK uses. The default is unchanged -- the Responses
@@ -209,6 +262,10 @@ def served(model: str) -> dict:
 
     row = {"deployment": model,
            "at": datetime.datetime.now(datetime.timezone.utc).isoformat(timespec="seconds")}
+    try:
+        refuse_claude(model)
+    except ClaudeRefused as e:
+        return {**row, "error": str(e)}
     _load_dotenv()
     azure = os.environ.get("ERRATA_PROVIDER", "").lower() == "azure"
     key = os.environ.get("AZURE_OPENAI_API_KEY" if azure else "OPENAI_API_KEY")
@@ -328,6 +385,10 @@ async def resilient(make_call, *, attempts: int = 4, pause: float = 60.0):
         try:
             return await make_call()
         except Exception as e:  # noqa: BLE001 - re-raised below unless transient
+            # A refused Claude call reaches here as a connection error; it is
+            # not one, and waiting will not change the answer.
+            if _refused(e):
+                raise _refused(e) from e
             message = str(e).lower()
             # Two transient answers from a busy endpoint: an empty 200, which
             # is how Azure signals throttling, and a plain 429, which survived

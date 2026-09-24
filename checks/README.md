@@ -39,7 +39,7 @@ directories made before the split, and what happens when a candidate or a
 grading fails. Its ninth section requires that every served-model probe the
 stages made went to its stand-in, so none of it reaches the network.
 
-**`guards_hold.py`** is ninety-one numbered sections, one per guard: what the
+**`guards_hold.py`** is ninety-two numbered sections, one per guard: what the
 attempt and grade stages refuse to do; the gate asked repeatedly; the
 reference-answer control and when it is not applicable; the clean-pass
 standard and the hedged one priced side by side; permanent git loss; the
@@ -123,7 +123,9 @@ never ran, a stash its output shows popped changed nothing -- and flags `git mv`
 entered the history, never one of the session's own commits. Section 91 holds an unattended batch
 together: turns loaded without converting whole batches, a dropped connection
 retried, one surprising row rejected rather than the build aborted, gate
-readings fingerprinted and pruned, and pruned rows set aside. It closes by asserting it handed production back unpatched, because three
+readings fingerprinted and pruned, and pruned rows set aside. Section 92 has no
+request reach a Claude deployment: refused in the HTTP client before it is
+sent, never retried, and refused where a model is chosen. It closes by asserting it handed production back unpatched, because three
 sections restored one module attribute through a name a fourth binds to
 something else. Its fake judge sets the task's kind the way the
 real one does -- left at the default, every task here was graded by the
