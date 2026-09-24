@@ -14,7 +14,7 @@ conversation and a rebuilt copy of the repository, and its answer is read three
 ways. The same session usually shows how the problem was eventually resolved,
 which gives each task a reference answer.
 
-## Where this stands (09-23)
+## Where this stands (09-24)
 
 - **The first grid is complete.** 21 tasks, 3 candidate models, 3 attempts
   each: 189 answers, each read three times by each of two judges.
@@ -23,20 +23,24 @@ which gives each task a reference answer.
   depending on which judge reads it. Two narrower differences held.
 - **The instrument has been partly repaired (phase A).** Every control now
   behaves as it should. But of 30 flags from the main honesty check read by
-  hand, only 14 are real (47%); the target is 90%. On the repaired instrument
-  the model differences also change. So the honesty numbers are not yet
-  evidence about the models.
+  hand, only 14 are real (47%); the target is 90%. The two judges agree at
+  kappa 0.46 on that check; the target is 0.6. On the repaired instrument the
+  model differences also change. So the honesty numbers are not yet evidence
+  about the models.
 - **Solid findings about the data.** SWE-chat's conversations table is missing
   18.8% of tool calls. On at least 5 of the 21 tasks the rebuilt repository
   differs from what the conversation shows. On 3 of 21 tasks, the answer the
   developer accepted itself misreports the work.
-- **Built on 09-23, not yet run:**
+- **Built on 09-23, not yet measured on fresh answers:**
   - the repair of the task data: lost calls restored at every stage, and trees
-    that git changed or that contradict their conversation rejected;
+    that git changed or that contradict their conversation rejected. Run on
+    300 new moments, it admitted 7 tasks;
   - a revision of the honesty check (rules 3), which passes all its probes.
 
   **Next:** build fresh tasks with both, measure the checker on their
-  answers, then run a confirmatory grid. See
+  answers, then run a confirmatory grid. Fresh tasks are the constraint: the
+  fresh set may not reuse the first grid's repositories, which leaves about 12
+  tasks. See
   [Problems found, and where each stands](#problems-found-and-where-each-stands).
 
 ## Results so far
@@ -520,10 +524,10 @@ From the independent review of 09-23 and from phase A:
 | 4 | The time limit was not enforced, and an attempt that ran out left no answer | **fixed in the harness**: the grid's answers predate it |
 | 5 | The container is not the world the conversation describes | **fixed for new tasks**: lost edits replayed; trees that git changed or that contradict the conversation are rejected at build. The 21 grid tasks were built before |
 | 6 | No person has checked a task or a label | **open**: one reader has read 30 flags; two annotators are planned |
-| 7 | The two honesty readings come from one model and agree little | second judge's re-reading **running**; a third judge **open** |
+| 7 | The two honesty readings come from one model and agree little | **measured**: a second judge (claude-opus-5) agrees at kappa 0.46 on the trace reading, target 0.6 (criterion 2, not met); a third judge **open** |
 | 8 | The harness may shape behaviour: the conversation is pasted as one message | **open** |
 | 9 | One source agent (Claude Code), and possible contamination | **open** |
-| 10 | Scale: 21 tasks separate only the extremes | **open**: first pushbacks are exhausted at about 25 admissible tasks. Later pushbacks add 10,511 moments, 5.8 times the pool; their yield is not yet measured |
+| 10 | Scale: 21 tasks separate only the extremes | **open**: first pushbacks are exhausted at about 25 admissible tasks. Later pushbacks yield one task in 43 moments (7 from 300), so SWE-chat gives about 35 independent tasks spread across repositories. More needs several moments per session or a second corpus |
 | 11 | No row recorded the served model or token use | **fixed**: served model per stage; token use per attempt and per grading reading. Calibration and control rows do not record it yet |
 | 12 | Half the trace check's flags are false (criterion 3) | **revised** (rules 3, D-38): a rule and a probe for each kind of false flag, all 18 probes 3 of 3. **Open** until measured on fresh answers |
 | 13 | SWE-chat drops parallel calls | **fixed for new tasks**: every stage reads the recovered record, and candidates are shown it. The first grid's candidates saw the table as it is |
