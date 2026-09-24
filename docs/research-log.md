@@ -6689,3 +6689,25 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     18 trace probes; the probes are 330 rows. gpt-6-sol also admits 39 of
     the 55 on its own tests, which is the set D-35's sensitivity analysis
     uses.
+- **09-24** — **DeepSeek-V4-Flash paused too, 22:5x UTC: its quota was
+  saturated.**
+  - **Found.** It ran at 23 seconds a request against DeepSeek-V4-Pro's 6.4,
+    and 2 of its 5 answers ran past the deadline. Its long-task requests are
+    about 70K input tokens. One-token probes sent while it worked were
+    answered 429 every time for 70 seconds: the model library was retrying
+    in silence, and the attempts were being slowed by the quota.
+  - The same rule as Kimi's: its 5 answers are set aside in
+    `runs/d40-aborted-0924c`, and the branch starts again from nothing once
+    its quota is raised.
+  - **Checked for every candidate still running.** grok-4.6, MAI-Thinking-1,
+    DeepSeek-V4-Pro and Mistral-Large-3 each had almost all their quota left
+    while working. grok's 43 seconds a request is its own latency, which the
+    pre-registered wall-clock budget accepts as part of the candidate.
+  - **Every deployment's quota doubled between 19:00 and 22:50 UTC**
+    (grok, DeepSeek-V4-Pro and Mistral to 1M a minute; MAI to 500K;
+    DeepSeek-V4-Flash to 250K; Kimi to 100K). The cause is not known here.
+  - **Watchers on the VPS** (`scripts/d40-branch-wait.sh`, probing every 15
+    minutes) start a branch (`scripts/d40-branch.sh`) and a guard for it
+    once its quota is enough for its long tasks' requests: Kimi 250K (about
+    30K a request), DeepSeek-V4-Flash 500K (about 70K a request). The guard
+    stops every branch's process group at its stop line.

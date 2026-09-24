@@ -13,8 +13,8 @@ while true; do
   if [ $? -eq 3 ]; then
     echo "=== STOP LINE REACHED; stopping the run $(date -u +%FT%TZ)" >> "$LOG"
     echo "=== stopped by the spend guard at \$$STOP $(date -u +%FT%TZ)" >> runs/d40-chain.log
-    # The chain's process group, and the Kimi branch's when it runs apart.
-    groups=$(cat runs/d40-chain.pid runs/d40-kimi.pid 2>/dev/null)
+    # The chain's process group, and every branch's run apart from it.
+    groups=$(cat runs/d40-chain.pid runs/d40-kimi.pid runs/d40-branch-*.pid 2>/dev/null)
     for pgid in $groups; do kill -TERM -- "-$pgid" 2>/dev/null; done
     sleep 30
     for pgid in $groups; do kill -KILL -- "-$pgid" 2>/dev/null; done
