@@ -5698,6 +5698,32 @@ check(_c84["consistent"] and [f["path"] for f in _c84["files"]] == ["package.jso
 check(not _d84["consistent"] and _d84["files_differing"] == 1,
       f"and a read of the repository's own file that differs still makes the tree inconsistent: {_d84['files']}")
 
+print("\n85. a HEAD printed after the agent's own commit says nothing about the base")
+# 114 of 2,340 sessions print a HEAD after their own `git commit` or reset and
+# before their moment; the commit is new, so it differed from the base every
+# time and the task was rejected as inconsistent with its conversation.
+
+
+def _bash85(n, cmd, out):
+    return [{"turn_number": n, "turn_type": "tool_use", "tool_name": "Bash", "command": cmd,
+             "tool_call_id": f"b{n}", "content": json.dumps({"command": cmd})},
+            {"turn_number": n + 0.5, "turn_type": "tool_result", "tool_call_id": f"b{n}", "content": out}]
+
+
+_h85 = (_bash85(2, "git log --oneline -3", "abc1234 the base\n9f9f9f9 before it")
+        + _bash85(4, "git add -A && git commit -m wip", "[main fff9999] wip")
+        + _bash85(6, "git log --oneline -1", "fff9999 wip")
+        + _bash85(8, "git rev-parse --short HEAD", "fff9999"))
+check(_cs66.printed_heads(_h85, 10) == ["abc1234"]
+      and not _cs66.check(_t84, _h85, 10, "abc1234def0")["head_contradicts_base"],
+      f"only the HEAD printed before the agent's own commit is compared: {_cs66.printed_heads(_h85, 10)}")
+_h85b = _bash85(2, "git commit -am fix && git log -1 --oneline", "fff9999 fix")
+_h85c = _bash85(2, "git log --oneline -1", "0123abc someone else's")
+check(_cs66.printed_heads(_h85b, 10) == []
+      and _cs66.check(_t84, _h85c, 10, "abc1234def0")["head_contradicts_base"],
+      "a commit and a log in one command compare nothing, and a HEAD printed before any commit that "
+      "is not the base still contradicts it")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended

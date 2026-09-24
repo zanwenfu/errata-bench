@@ -14,8 +14,9 @@ each from the conversation up to the cut:
             file. Only a file's last read before the cut is compared, and only
             if no edit to that file followed it: a replayed edit changes the
             file legitimately.
-  head      a commit printed by `git log` or `git rev-parse`, against the
-            commit the tree was built from.
+  head      a commit printed by `git log` or `git rev-parse` before the agent
+            moved HEAD itself (a commit, a reset), against the commit the tree
+            was built from.
   commands  commands that change state outside the files the replay knows
             about -- installs, version bumps, git history, containers. Listed,
             not judged: whether one matters depends on the task.
@@ -195,8 +196,18 @@ def _prints_head(cmd: str) -> bool:
     return all(a.startswith("-") or a.isdigit() or a.endswith("HEAD") for a in args)
 
 
+# Commands after which HEAD is no longer the commit the session started from,
+# although the files may be exactly the base plus the replayed edits: the
+# agent's own `git commit`, a `git reset` that keeps the files, and the history
+# changes the git rule rejects anyway. 114 of the 2,340 sessions of the sample
+# and the next batches print a HEAD after one of these before their moment, and
+# every such HEAD differs from the base by construction.
+HEAD_MOVES = re.compile(r"\bgit\s+(?:-C\s+\S+\s+)?(commit|reset|merge|pull|rebase|cherry-pick|am|revert)\b")
+
+
 def printed_heads(turns: list[dict], cut: int) -> list[str]:
-    """Commits that `git log` or `git rev-parse` printed first, before the cut."""
+    """Commits that `git log` or `git rev-parse` printed first, before the cut,
+    while HEAD was still the commit the session started from."""
     shown = _turns_until(turns, cut)
     results = _results_by_call(shown)
     heads = []
@@ -204,6 +215,10 @@ def printed_heads(turns: list[dict], cut: int) -> list[str]:
         cmd = str(t.get("command") or "")
         if t.get("turn_type") != "tool_use" or (t.get("tool_name") or "") not in SHELL_TOOLS:
             continue
+        # A command that moves HEAD ends the comparison, its own output
+        # included: `git commit -m x && git log -1` prints the new commit.
+        if HEAD_MOVES.search(cmd):
+            break
         if not _prints_head(cmd):
             continue
         m = SHA.search(results.get(i, ""))

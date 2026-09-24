@@ -5655,3 +5655,20 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     - 1 of 4,922 sessions works inside `~/.claude` itself, and its paths
       resolve in the tree before the rule is consulted.
   - Guard: section 84, each half reverted alone and seen red.
+- **09-24** — **B-246 fixed: a HEAD printed after the agent's own commit was
+  read as a wrong base.**
+  - The consistency check compares every HEAD that `git log` or `git
+    rev-parse` printed before the cut with the base commit.
+  - After the agent's own `git commit` (or a reset that keeps the files), HEAD
+    is a new commit while the files are still the base plus the replayed
+    edits. So such a HEAD differed from the base every time, and the task was
+    rejected.
+  - 114 of the 2,340 sessions of the sample and the next batches print a HEAD
+    after such a command, before their moment.
+  - Now the comparison stops at the first command that moves HEAD, including
+    that command's own output.
+  - Guard: section 85, reverted alone and seen red.
+  - savanna-vet-go, the sample's one head rejection, is not this. Its HEAD,
+    `fab751e` (a merged pull request), was printed by a recovered `git log`
+    before any commit, while the build had chosen an older commit from
+    commits.parquet. That is a wrong base: the next thing examined.
