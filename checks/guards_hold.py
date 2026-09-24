@@ -5648,6 +5648,56 @@ check(bool(_self83) and all("no answers to compare" in l for l in _self83),
 check("its re-grade under rejudge/fourth" in _said83.getvalue() and _same83 == "refused",
       f"the header says which grading is first, and a judge is not compared with itself: {_same83}")
 
+print("\n84. the agent's own files -- plans, memory, scratch -- are not the repository's")
+# balkhaev/yep was rejected at build because its agent wrote a plan to
+# ~/.claude/plans/ before the cut; 159 of the next batches' 2,137 sessions edit
+# such a path. And the consistency check matched a read of /tmp/clone/x by
+# suffix, so a scratch clone's package.json was compared with the tree's.
+_t84 = Path(tempfile.mkdtemp()) / "tree"
+(_t84 / "src").mkdir(parents=True)
+(_t84 / "src" / "a.py").write_text("x = 1\n")
+(_t84 / "package.json").write_text('{"name": "proj"}\n')
+_own84 = ["/Users/dev/.claude/plans/plan.md", "/tmp/scratch/notes.md",
+          "/Users/dev/.claude/projects/-Users-dev-proj/memory/m.md"]
+_r84 = replay_edits(_t84, [
+    {"turn": 3, "tool": "Write", "args": {"file_path": _own84[0], "content": "# plan\n"}},
+    {"turn": 5, "tool": "Edit", "args": {"file_path": "/Users/dev/proj/src/a.py",
+                                          "old_string": "x = 1", "new_string": "x = 2"}},
+    {"turn": 7, "tool": "Write", "args": {"file_path": _own84[1], "content": "notes\n"}},
+    {"turn": 9, "tool": "Write", "args": {"file_path": _own84[2], "content": "memory\n"}},
+], "dev/proj")
+check(_r84.ok and _r84.applied == 1 and _r84.verified == 1 and _r84.outside == _own84
+      and (_t84 / "src" / "a.py").read_text() == "x = 2\n"
+      and not any(p.name in ("plan.md", "notes.md", "m.md") for p in _t84.rglob("*")),
+      f"a plan, a scratch file and a memory file are skipped and recorded, the repository's edit applied: "
+      f"ok={_r84.ok} applied={_r84.applied} outside={_r84.outside} reason={_r84.reason!r}")
+_x84 = replay_edits(_t84, [{"turn": 4, "tool": "Write",
+                            "args": {"file_path": "/Users/dev/other/b.py", "content": "y\n"}}], "dev/proj")
+_p84 = replay_edits(_t84, [{"turn": 4, "tool": "Write",
+                            "args": {"file_path": "/Users/dev/elsewhere/.claude/commands/c.md", "content": "y\n"}}],
+                    "dev/proj")
+check(not _x84.ok and "is not inside the repository" in _x84.reason and not _x84.outside
+      and not _p84.ok and not _p84.outside,
+      f"a path elsewhere still rejects -- another checkout, or another project's .claude/: "
+      f"{_x84.reason!r} / {_p84.reason!r}")
+
+
+def _read84(n, path, shown):
+    return [{"turn_number": n, "turn_type": "tool_use", "tool_name": "Read", "file_path": path,
+             "tool_call_id": f"r{n}", "content": json.dumps({"file_path": path})},
+            {"turn_number": n + 0.5, "turn_type": "tool_result", "tool_call_id": f"r{n}",
+             "content": f"     1→{shown}"}]
+
+
+_c84 = _cs66.check(_t84, _read84(2, "/tmp/clone/package.json", '{"name": "other"}')
+                   + _read84(4, "/Users/dev/proj/package.json", '{"name": "proj"}'), 10, "abc1234")
+_d84 = _cs66.check(_t84, _read84(4, "/Users/dev/proj/package.json", '{"name": "other"}'), 10, "abc1234")
+check(_c84["consistent"] and [f["path"] for f in _c84["files"]] == ["package.json"]
+      and _c84["files"][0]["lines_differing"] == 0,
+      f"a read of a scratch clone is not compared with the tree: {_c84['files']}")
+check(not _d84["consistent"] and _d84["files_differing"] == 1,
+      f"and a read of the repository's own file that differs still makes the tree inconsistent: {_d84['files']}")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended

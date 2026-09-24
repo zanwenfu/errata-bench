@@ -34,6 +34,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from .edits import OUTSIDE
+
 READ_TOOLS = frozenset({"Read", "read_file"})
 EDIT_TOOLS = frozenset({"Edit", "MultiEdit", "Write", "NotebookEdit", "edit_file", "write_file"})
 SHELL_TOOLS = frozenset({"Bash", "run_command"})
@@ -259,6 +261,11 @@ def check(tree: Path, turns: list[dict], cut: int, base_sha: str,
     """
     files = []
     for path, lines in sorted(observed_lines(turns, cut).items()):
+        # The agent's own files (a plan, a scratch clone in /tmp) are not the
+        # repository's. Matched by suffix, /tmp/clone/package.json would be
+        # compared with the tree's package.json and differ from it.
+        if OUTSIDE.match(path):
+            continue
         rel = relative(path, tree)
         if rel is None:
             files.append({"path": path, "found": False})

@@ -13,7 +13,10 @@ So the edits are replayed. Every Edit, Write and MultiEdit call before the cut
 is applied in order, with the semantics the agent's own tool had. An edit that
 does not apply -- old_string not found, path outside the repository -- means
 the base commit is not what the agent was working on, and the task is rejected
-rather than shipped with a tree that is half one thing and half another.
+rather than shipped with a tree that is half one thing and half another. The
+exception is a file that belongs to the agent's machine rather than to any
+repository (`OUTSIDE`): its plans, its memory, a scratch file. Nothing in the
+tree could hold it, so it is skipped and recorded, not held against the commit.
 
 Only edits before the cut are replayed. The failing answer and everything after
 it are exactly what the candidate must not see.
@@ -22,12 +25,28 @@ it are exactly what the candidate must not see.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
 
 from ..corpus.timeline import to_repo_relative
 
 EDIT_TOOLS = {"Edit", "Write", "MultiEdit"}
+
+# Files of the agent's machine, never of a repository: the user's ~/.claude
+# (Claude Code writes its plans to ~/.claude/plans/ and its memory to
+# ~/.claude/projects/), and the temporary directories. balkhaev/yep was
+# rejected because its agent wrote a plan to
+# /Users/balkhaev/.claude/plans/quizzical-forging-robin.md before the cut, and
+# of the 2,137 sessions of the next batches whose working directory is known,
+# 159 edit such a path before their moment: plans 222 edits, memory 76, skills,
+# settings and scratch files the rest. Deliberately narrow. A project's own
+# .claude/ directory is inside its checkout and is mapped like any other path
+# before this is consulted, and a path elsewhere -- another checkout, a
+# worktree under another name -- still rejects, because it may be this
+# repository under a name the replay cannot place.
+OUTSIDE = re.compile(r"^(?:/(?:Users|home)/[^/]+|/root|[A-Za-z]:/Users/[^/]+)/\.claude/"
+                     r"|^/(?:private/)?(?:tmp|var/folders)/")
 
 # What this cannot reconstruct: the agent changing the tree by other means.
 # ravencloak-org/ravencloak runs `git checkout main && git merge
@@ -60,6 +79,8 @@ class Replay:
     # says how much was really examined.
     verified: int = 0
     files: set[str] = field(default_factory=set)
+    # Edits to the agent's own files (`OUTSIDE`), skipped rather than applied.
+    outside: list[str] = field(default_factory=list)
     failed_at: int | None = None  # turn number
     reason: str = ""
 
@@ -212,6 +233,9 @@ def replay(tree: Path, edits: list[dict], repo_id: str) -> Replay:
     for e in edits:
         args = e["args"]
         target = _target(tree, args.get("file_path", ""), repo_id, root)
+        if target is None and OUTSIDE.match(args.get("file_path") or ""):
+            r.outside.append(args.get("file_path") or "")
+            continue
         if target is None:
             r.failed_at = e["turn"]
             r.reason = f"turn {e['turn']}: path {args.get('file_path','')!r} is not inside the repository"

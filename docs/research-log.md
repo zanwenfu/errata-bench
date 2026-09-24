@@ -5633,3 +5633,25 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - The 6 whose in-session edits do not apply to the base commit all have
     timestamped transcripts (91 to 97% of entries), so they are the build
     loss to examine next for yield.
+- **09-24** — **B-245 fixed: the build rejected sessions whose agent saved its
+  own files.**
+  - The replay rejects any edit it cannot place in the repository, and Claude
+    Code writes files outside every repository: plans to `~/.claude/plans/`,
+    memory to `~/.claude/projects/`. balkhaev/yep was rejected for a plan
+    written before the cut.
+  - Of the 2,137 sessions of the sample and the next batches whose working
+    directory is known, 159 edit such a path before their moment: plans 222
+    edits, memory 76, the rest skills, settings, and scratch files in `/tmp`.
+  - The consistency check had the same blind spot: it matches a file read by
+    the longest suffix that exists in the tree, so a read of
+    `/tmp/<clone>/package.json` was compared with the tree's `package.json`.
+  - Now both skip `edits.OUTSIDE` (the user's `~/.claude/`, `/tmp`,
+    `/var/folders`), and the replay records what it skipped.
+  - Deliberately narrow:
+    - a project's own `.claude/`, including every one of the corpus's 2,090
+      worktree paths, is inside its checkout and mapped first;
+    - a path elsewhere (another checkout, a worktree under another name) still
+      rejects;
+    - 1 of 4,922 sessions works inside `~/.claude` itself, and its paths
+      resolve in the tree before the rule is consulted.
+  - Guard: section 84, each half reverted alone and seen red.

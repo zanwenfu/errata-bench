@@ -39,7 +39,7 @@ directories made before the split, and what happens when a candidate or a
 grading fails. Its ninth section requires that every served-model probe the
 stages made went to its stand-in, so none of it reaches the network.
 
-**`guards_hold.py`** is eighty-three numbered sections, one per guard: what the
+**`guards_hold.py`** is eighty-four numbered sections, one per guard: what the
 attempt and grade stages refuse to do; the gate asked repeatedly; the
 reference-answer control and when it is not applicable; the clean-pass
 standard and the hedged one priced side by side; permanent git loss; the
@@ -109,7 +109,9 @@ conversation. Section 80 has each grade row record what its judge and trace
 readings cost. Section 81 holds the trace check's third rules, their probes,
 and the analysis reading third-rules rows. Section 82 collects later pushbacks,
 one per session, after new work. Section 83 takes the judges' agreement between
-two re-grades. It closes by asserting it handed production back unpatched, because three
+two re-grades. Section 84 has the build skip the agent's own files (a plan in
+~/.claude/plans/, its memory, a scratch file in /tmp) instead of rejecting the
+task, while a path elsewhere still rejects. It closes by asserting it handed production back unpatched, because three
 sections restored one module attribute through a name a fourth binds to
 something else. Its fake judge sets the task's kind the way the
 real one does -- left at the default, every task here was graded by the
