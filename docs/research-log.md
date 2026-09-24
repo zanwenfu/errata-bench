@@ -6449,3 +6449,23 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     no hard spending limit. So the run must fit inside the remaining credit
     balance, with margin, and before the credits expire. Only the user can
     see that balance.
+- **09-24** — **D-40's confirmatory run started, 19:07 UTC** (VPS,
+  `/root/errata-bench-d40` at 9d6631410; the user approved it and has about
+  $8,000 of credits left).
+  - **Chain** (`scripts/d40-chain.sh`):
+    - `runs/d40-<candidate>` × 6, and `runs/d40-soltests`, each copied from
+      `d40-base`.
+    - Each candidate: 55 tasks × 3 attempts, then gpt-6-astra's 3 readings
+      per answer, asked in turn (`GRADE_PASSES=3`). Then gpt-6-sol's 3
+      readings, with its tests copied from `d40-soltests`.
+    - Containers: 3 for grok-4.6, 1 for each other candidate.
+  - **Rate limits, read first** (tokens per minute): gpt-6-astra 1M;
+    gpt-6-sol, grok-4.6, DeepSeek-V4-Pro and Mistral-Large-3 500K each;
+    MAI-Thinking-1 250K; DeepSeek-V4-Flash 125K; Kimi-K2.7-Code 50K. Kimi's
+    63 first-grid attempts ran under the same limit without an error.
+  - **Spend guard** (`scripts/d40-guard.sh` and `scripts/d40_spend.py`).
+    - Every 10 minutes it totals the spend from the rows' token counts. The
+      total is an upper bound: gpt-6-sol is priced as gpt-6-astra, and
+      gpt-6-sol's tests are counted once, where they are asked.
+    - At $1,600 (about 25% over the upper estimate) it stops the chain's
+      process group and its containers.
