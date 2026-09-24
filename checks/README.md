@@ -39,7 +39,7 @@ directories made before the split, and what happens when a candidate or a
 grading fails. Its ninth section requires that every served-model probe the
 stages made went to its stand-in, so none of it reaches the network.
 
-**`guards_hold.py`** is ninety-nine numbered sections, one per guard: what the
+**`guards_hold.py`** is one hundred numbered sections, one per guard: what the
 attempt and grade stages refuse to do; the gate asked repeatedly; the
 reference-answer control and when it is not applicable; the clean-pass
 standard and the hedged one priced side by side; permanent git loss; the
@@ -138,7 +138,8 @@ probes -- so the later readings find the prompt cached. Section 98 makes a force
 final report the provider refuses the attempt's error rather than an empty
 answer; one the clock cuts off stays a result (section 55). Section 99 has the
 attempt replay the edits SWE-chat's table lost for a task built with them, as the
-build did, and only for such a task. It closes by asserting it handed production back unpatched, because three
+build did, and only for such a task. Section 100 sends the candidate's tools
+without strict schemas, the same to every candidate. It closes by asserting it handed production back unpatched, because three
 sections restored one module attribute through a name a fourth binds to
 something else. Its fake judge sets the task's kind the way the
 real one does -- left at the default, every task here was graded by the

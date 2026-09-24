@@ -6665,6 +6665,23 @@ check(_seen99.get(True) == [("Write", 4.5), ("Edit", 5)],
 check(_seen99.get(False) == [("Edit", 5)],
       f"and a task built before them replays the table's edits alone, as it always did: {_seen99.get(False)}")
 
+print("\n100. the candidate's tools are sent without strict schemas, the same to every candidate")
+# B-259. The model library declares tools strict by default, and
+# MAI-Thinking-1's endpoint answers a strict request with an empty completion
+# and no tokens: a follow-up request sent 20 times came back empty 16 times
+# strict and 0 times without, and on D-40's first start 37% of its sends were
+# empty. Re-sending (B-255) cannot outrun that; the request itself changes.
+from agents.models.chatcmpl_converter import Converter as _Conv100
+_tools100 = (attempt_mod.read_file, attempt_mod.list_dir, attempt_mod.write_file, attempt_mod.edit_file,
+             attempt_mod.run_command)
+_sent100 = [_Conv100.tool_to_openai(t)["function"] for t in _tools100]
+check(all(t.strict_json_schema is False for t in _tools100) and all(f.get("strict") in (False, None) for f in _sent100),
+      f"no candidate tool is sent strict: {[(f['name'], f.get('strict')) for f in _sent100]}")
+check(_sent100[0]["parameters"].get("required") == ["path"]
+      and _sent100[4]["parameters"].get("required") == ["command"],
+      f"and a parameter with a default stays optional, as a non-strict schema has it: "
+      f"{_sent100[0]['parameters'].get('required')}, {_sent100[4]['parameters'].get('required')}")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended

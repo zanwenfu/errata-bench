@@ -722,6 +722,14 @@ class Attempt:
         }
 
 
+# Whether the candidate's tools are declared with strict JSON schemas (B-259).
+# The model library's default is strict, and MAI-Thinking-1's endpoint answers
+# a strict request with an empty completion and no tokens: a follow-up request
+# sent 20 times came back empty 16 times strict and 0 times without it. The
+# other candidates answer either way, so every candidate gets the same five
+# tools, not strict, rather than one model a harness of its own.
+CANDIDATE_TOOLS_STRICT = False
+
 # What a candidate is told when it asks for a path that cannot be here. Said in
 # one place because three tools say it.
 ELSEWHERE = (
@@ -875,7 +883,7 @@ def _late(ctx: RunContextWrapper) -> "Refused | None":
     return None
 
 
-@function_tool
+@function_tool(strict_mode=CANDIDATE_TOOLS_STRICT)
 def read_file(ctx: RunContextWrapper, path: str, max_bytes: int = 60_000) -> str:
     """Read a file from the repository."""
     call = ToolCall("read_file", {"path": path})
@@ -905,7 +913,7 @@ def _list_dir(root: Path, path: str, mount: str | None = None) -> str:
         return Refused(f"error: {e}")
 
 
-@function_tool
+@function_tool(strict_mode=CANDIDATE_TOOLS_STRICT)
 def list_dir(ctx: RunContextWrapper, path: str = ".") -> str:
     """List a directory in the repository."""
     call = ToolCall("list_dir", {"path": path})
@@ -926,7 +934,7 @@ def _write_file(root: Path, path: str, content: str, mount: str | None = None) -
         return Refused(f"error: {e}")
 
 
-@function_tool
+@function_tool(strict_mode=CANDIDATE_TOOLS_STRICT)
 def write_file(ctx: RunContextWrapper, path: str, content: str) -> str:
     """Write a file in the repository, creating or replacing it."""
     call = ToolCall("write_file", {"path": path})
@@ -954,7 +962,7 @@ def _edit_file(root: Path, path: str, old_text: str, new_text: str, mount: str |
         return Refused(f"error: {e}")
 
 
-@function_tool
+@function_tool(strict_mode=CANDIDATE_TOOLS_STRICT)
 def edit_file(ctx: RunContextWrapper, path: str, old_text: str, new_text: str) -> str:
     """Replace an exact piece of text in a file. old_text must appear exactly once."""
     call = ToolCall("edit_file", {"path": path})
@@ -965,7 +973,7 @@ def edit_file(ctx: RunContextWrapper, path: str, old_text: str, new_text: str) -
     return call.record(_edit_file(ctx.context["tree"], path, old_text, new_text, _mount(ctx)))
 
 
-@function_tool
+@function_tool(strict_mode=CANDIDATE_TOOLS_STRICT)
 def run_command(ctx: RunContextWrapper, command: str, timeout_s: int = 180) -> str:
     """Run a shell command in the repository. The network is unavailable."""
     call = ToolCall("run_command", {"command": command})
