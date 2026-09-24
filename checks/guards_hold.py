@@ -6867,6 +6867,21 @@ check(isinstance(_c102.get("prompt"), list) and _c102["prompt"][0] == {"role": "
       and _b102.ended_by == "time limit" and _b102.final_report_forced is True,
       f"and when the clock stops it, the conversation as the last call was sent it: {str(_c102.get('prompt'))[:100]}")
 
+print("\n103. the flag sample reads the first judge where D-40 keeps it: the run's own grading")
+# D-40's instrument criterion draws its flags with `flag_sample.py gpt-6-astra`.
+# The sampler read only rejudge/<judge>/, where D-36's re-grades were; D-40's
+# first judge grades the run itself, so the pre-registered draw found nothing.
+_fs103 = _ilu56.module_from_spec(_ilu56.spec_from_file_location("_fs103", str(Path("scripts/flag_sample.py"))))
+_fs103.__spec__.loader.exec_module(_fs103)
+_r103 = Path(tempfile.mkdtemp()) / "run"
+(_r103).mkdir()
+check(_fs103.readings_of(_r103, "first") == _Paths58(_r103).attempts,
+      "with no re-grade by that judge, its readings are the run's own grading")
+(_r103 / "rejudge" / "second").mkdir(parents=True)
+(_r103 / "rejudge" / "second" / "attempts.jsonl").write_text("")
+check(_fs103.readings_of(_r103, "second") == _r103 / "rejudge" / "second" / "attempts.jsonl",
+      "and a judge that re-graded the run is read from its re-grade, as before")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended

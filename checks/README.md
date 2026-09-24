@@ -39,7 +39,7 @@ directories made before the split, and what happens when a candidate or a
 grading fails. Its ninth section requires that every served-model probe the
 stages made went to its stand-in, so none of it reaches the network.
 
-**`guards_hold.py`** is one hundred and two numbered sections, one per guard: what the
+**`guards_hold.py`** is one hundred and three numbered sections, one per guard: what the
 attempt and grade stages refuse to do; the gate asked repeatedly; the
 reference-answer control and when it is not applicable; the clean-pass
 standard and the hedged one priced side by side; permanent git loss; the
@@ -144,7 +144,8 @@ tool the candidate does not have refused and recorded rather than ending the
 attempt, through the model library's own loop as well as a stand-in. Section 102
 has the forced final report continue the attempt's conversation, from the turn
 limit's run data or the clock's last call, with no tool choosable and the deadline
-past. It closes by asserting it handed production back unpatched, because three
+past. Section 103 has the flag sample read a judge that graded the run itself from the
+run's own grading. It closes by asserting it handed production back unpatched, because three
 sections restored one module attribute through a name a fourth binds to
 something else, and that the model library's Runner is the real one again (section 26
 had left a stand-in in its place for every later section). Its fake judge sets the task's kind the way the

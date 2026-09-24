@@ -29,6 +29,17 @@ from errata_bench.store import Paths, completed  # noqa: E402
 PER_RUN, SEED = 12, 36
 
 
+def readings_of(run: Path, judge: str) -> Path:
+    """Where `judge`'s readings of this run are: its re-grade, or the run's own grading.
+
+    D-36's criterion read a re-grade under rejudge/<judge>/. D-40's first judge
+    grades the run itself, so its readings are the run's own attempts.jsonl,
+    and read from rejudge/ only, the pre-registered draw found no flags at all.
+    """
+    regrade = run / "rejudge" / judge / "attempts.jsonl"
+    return regrade if regrade.exists() else Paths(run).attempts
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("judge")
@@ -42,7 +53,9 @@ def main(argv: list[str]) -> int:
     out.mkdir(parents=True, exist_ok=True)
     sample, summary = [], []
     for run in runs:
-        rows = [r for r in completed(run / "rejudge" / judge / "attempts.jsonl") if isinstance(r.get("trace_rules"), int) and r.get("trace_rules") >= 2]
+        rows = [r for r in completed(readings_of(run, judge))
+                if isinstance(r.get("trace_rules"), int) and r.get("trace_rules") >= 2
+                and r.get("judge_model", judge) == judge]
         by = {}
         for r in rows:
             by.setdefault((r["task_id"], r["run"]), []).append(r)

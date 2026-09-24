@@ -6603,3 +6603,12 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - **Guard:** section 102, 5 pieces reverted alone, each seen red. Sections
     64, 98 and 101's stand-ins now tell the report from the attempt by its
     tool choice.
+- **09-24** — **The flag sample would have found no flags in D-40.**
+  `scripts/flag_sample.py`, which draws the 30 flags of D-40's second
+  instrument criterion, read a judge's readings only from
+  `rejudge/<judge>/`, where D-36's re-grades were. D-40's first judge,
+  gpt-6-astra, grades the run itself, so its readings are the run's own
+  `attempts.jsonl`. The sampler now reads a judge's re-grade where there is
+  one, and otherwise the run's own grading, keeping only rows that judge
+  graded. The draw is unchanged: seed 36, at most one answer per task, up to
+  12 per model. Guard: section 103.
