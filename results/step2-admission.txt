@@ -1,21 +1,42 @@
 run                 moments  screened  built  sound  admitted
 later-sample            300        39     10      8         7
-later-cap20             557        66     15      7         5
+later-cap20             557        66     19     10         8
 step2-later             388        49     19     11         9
-step2-later-vps         775        95     21     16        14
-step2-first-vps         417        36      9      6         5
+step2-later-vps         775        95     24     19        17
+step2-first-vps         417        36     10      7         6
+grid1-reprocess          21        16     13      9         9
 
-admitted: 40 | sessions with two admitted tasks: 0 (dropped: [])
+admitted: 56 | sessions with two admitted tasks: 1 (dropped: ['entireio-cli-128 in step2-later-vps'])
 task names used twice across runs: []
-in the first grid's sessions: 0
-kept: 40 = 7 from later-sample + 33 new in step 2 (with later-cap20)
-outside the first grid's 18 repositories (eligible for D-39's fresh set): 12
-repositories: 17; most tasks: [('entireio/cli', 15), ('obsessiondb/rudel', 5), ('shunkakinoki/dotfiles', 3), ('cyyeh/duckdb-data-agent', 2), ('hutusi/amytis', 2), ('osabiohq/osabio', 2)]
+in the first grid's sessions: 9 (from grid1-reprocess: 9)
+kept: 55 = 9 the first grid, reprocessed + 7 later-sample + 39 new in step 2 (with later-cap20)
+outside the first grid's 18 repositories (eligible for D-39's fresh set): 14
+repositories: 25; most tasks: [('entireio/cli', 16), ('obsessiondb/rudel', 6), ('hutusi/amytis', 4), ('shunkakinoki/dotfiles', 3), ('cyyeh/duckdb-data-agent', 3), ('Nagi-ovo/gemini-voyager', 3)]
+
+kinds: {'introduced': 15, 'present': 28, 'none': 12}
+at most 5 per repository: 43 tasks
+at most 8 per repository: 47 tasks
+at most 10 per repository: 49 tasks
+without the first grid's 9 reprocessed tasks: 46
+
+kept tasks:
+  grid1-reprocess  135yshr-savanna-vet-go-28
+  grid1-reprocess  Nagi-ovo-gemini-voyager-13
+  grid1-reprocess  entireio-cli-53
+  grid1-reprocess  hutusi-amytis-15
+  grid1-reprocess  lightfastai-lightfast-14
+  grid1-reprocess  marcus-sa-brain-59
+  grid1-reprocess  melagiri-code-insights-53
+  grid1-reprocess  obsessiondb-rudel-39
+  grid1-reprocess  oozoofrog-oozoofrog.github.io-108
   later-cap20      1natsu-vacation-agent-skills-145
   later-cap20      PackmindHub-context-evaluator-299
   later-cap20      Pavel401-BugViper-85
+  later-cap20      anchoo2kewl-SprintSpark-157
   later-cap20      cyyeh-duckdb-data-agent-90
   later-cap20      hutusi-amytis-349
+  later-cap20      hutusi-amytis-82
+  later-cap20      yorrick-claude-code-plugins-144
   later-sample     Whiteknight07-AiTutor-34
   later-sample     blittle-pressy-158
   later-sample     dipasqualew-vibereq-200
@@ -23,6 +44,7 @@ repositories: 17; most tasks: [('entireio/cli', 15), ('obsessiondb/rudel', 5), (
   later-sample     femto-mcp-chrome-58
   later-sample     junjiezhou1122-ClawCorp-159
   later-sample     shunkakinoki-dotfiles-49
+  step2-first-vps  entireio-cli-105
   step2-first-vps  entireio-cli-23
   step2-first-vps  entireio-cli-241
   step2-first-vps  entireio-cli-283
@@ -38,8 +60,10 @@ repositories: 17; most tasks: [('entireio/cli', 15), ('obsessiondb/rudel', 5), (
   step2-later      obsessiondb-rudel-123
   step2-later      shunkakinoki-dotfiles-37
   step2-later-vps  Nagi-ovo-gemini-voyager-195
+  step2-later-vps  Nagi-ovo-gemini-voyager-321
   step2-later-vps  Safecast-safecast-new-map-95
-  step2-later-vps  entireio-cli-128
+  step2-later-vps  armelhbobdad-bmad-module-skill-forge-194
+  step2-later-vps  cyyeh-duckdb-data-agent-114
   step2-later-vps  entireio-cli-24
   step2-later-vps  entireio-cli-54
   step2-later-vps  entireio-cli-89

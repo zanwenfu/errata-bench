@@ -22,7 +22,10 @@ from errata_bench.score.rejudge import admitted
 from errata_bench.spec import read
 
 RUNS = [("later-sample", "later"), ("later-cap20", "later"), ("step2-later", "later"),
-        ("step2-later-vps", "later"), ("step2-first-vps", "first")]
+        ("step2-later-vps", "later"), ("step2-first-vps", "first"),
+        # The first grid's 21 moments through the current pipeline (09-24): first
+        # pushbacks, and the tasks the checker's rules were developed on.
+        ("grid1-reprocess", "first")]
 grid = {t.session_id: t.repo_id for t in read(Path("runs/phaseA-grid1-DeepSeek-V4-Pro/tasks.jsonl"))}
 grid_repos = set(grid.values())
 rows, funnel = [], []
@@ -50,9 +53,12 @@ names = Counter(r["task_id"] for r in kept)
 print(f"\nadmitted: {len(rows)} | sessions with two admitted tasks: {len(dropped)} "
       f"(dropped: {[d['task_id'] + ' in ' + d['run'] for d in dropped]})")
 print(f"task names used twice across runs: {[n for n, c in names.items() if c > 1]}")
-print(f"in the first grid's sessions: {sum(1 for r in kept if r['session_id'] in grid)}")
-new = [r for r in kept if r["run"] != "later-sample"]
-print(f"kept: {len(kept)} = {len(kept) - len(new)} from later-sample + {len(new)} new in step 2 (with later-cap20)")
+print(f"in the first grid's sessions: {sum(1 for r in kept if r['session_id'] in grid)} "
+      f"(from grid1-reprocess: {sum(1 for r in kept if r['run'] == 'grid1-reprocess')})")
+groups = {"the first grid, reprocessed": [r for r in kept if r["run"] == "grid1-reprocess"],
+          "later-sample": [r for r in kept if r["run"] == "later-sample"],
+          "new in step 2 (with later-cap20)": [r for r in kept if r["run"] not in ("grid1-reprocess", "later-sample")]}
+print("kept: " + str(len(kept)) + " = " + " + ".join(f"{len(v)} {k}" for k, v in groups.items()))
 fresh = [r for r in kept if r["repo_id"] not in grid_repos]
 print(f"outside the first grid's 18 repositories (eligible for D-39's fresh set): {len(fresh)}")
 repos = Counter(r["repo_id"] for r in kept)

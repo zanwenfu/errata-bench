@@ -6185,3 +6185,32 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - **Applied** with backups (`screened.pre-answerable2.jsonl`,
     `*.pre-answerable2-0924`). Rebuild and admission running for later-cap20
     and step2-later (laptop) and step2-later-vps and step2-first (VPS).
+- **09-24** — **Answerable gate 2's effect: +4 admitted** (SprintSpark-157 and
+  claude-code-plugins-144 in later-cap20; skill-forge-194 in step2-later-vps;
+  entireio-105 in step2-first). No row errored and no task was lost.
+- **09-24** — **The first grid's 21 moments through the current pipeline: 9
+  admitted** (`runs/grid1-reprocess`, VPS, ef3fa7d2e; answerable gate 2 moved
+  none).
+  - 5 no longer located as a genuine agent error, 3 rejected at build, 4 not
+    sound in calibration.
+  - The earlier estimate of 13 sound first-grid tasks was on the older
+    pipeline.
+- **09-24** — **The task set: 55 valid tasks, every one from the current
+  pipeline** (`results/step2-admission.txt`):
+  - 9 from the first grid, reprocessed;
+  - 7 from the later-pushback sample;
+  - 39 new today: later-cap20, step 2, and the two gate fixes.
+  - **One task per session.** 56 were admitted; entireio-cli-128 (a later
+    moment) gave way to its session's first pushback. No task name is used
+    twice.
+  - **Kinds:** 28 present, 15 introduced, 12 none.
+  - **Concentration.** 25 repositories; entireio/cli 16, obsessiondb/rudel 6,
+    hutusi/amytis 4. At most 5 per repository would leave 43 tasks, at most 10
+    would leave 49. 46 without the first grid's 9. 14 are outside the first
+    grid's 18 repositories.
+  - **Pending, for the user:**
+    - the second judge now that Claude is out;
+    - a per-repository cap;
+    - the plan of the confirmatory run. D-39's fresh set cannot reach its 20
+      (14 eligible) and names Claude as its second judge.
+    - which candidate deployments the Azure credits cover.

@@ -12,9 +12,9 @@
    "later-cap20",
    557,
    66,
-   15,
-   7,
-   5
+   19,
+   10,
+   8
   ],
   [
    "step2-later",
@@ -28,17 +28,25 @@
    "step2-later-vps",
    775,
    95,
-   21,
-   16,
-   14
+   24,
+   19,
+   17
   ],
   [
    "step2-first-vps",
    417,
    36,
+   10,
+   7,
+   6
+  ],
+  [
+   "grid1-reprocess",
+   21,
+   16,
+   13,
    9,
-   6,
-   5
+   9
   ]
  ],
  "kept": [
@@ -115,6 +123,13 @@
   {
    "run": "later-cap20",
    "kind": "later",
+   "task_id": "anchoo2kewl-SprintSpark-157",
+   "session_id": "d6a5c177-a08e-4371-8f03-d1dfbbe30ae2",
+   "repo_id": "anchoo2kewl/SprintSpark"
+  },
+  {
+   "run": "later-cap20",
+   "kind": "later",
    "task_id": "cyyeh-duckdb-data-agent-90",
    "session_id": "1704a59a-1896-4437-b65a-c103091d77e3",
    "repo_id": "cyyeh/duckdb-data-agent"
@@ -125,6 +140,20 @@
    "task_id": "hutusi-amytis-349",
    "session_id": "368801ca-a471-4a08-89fb-332864d72c15",
    "repo_id": "hutusi/amytis"
+  },
+  {
+   "run": "later-cap20",
+   "kind": "later",
+   "task_id": "hutusi-amytis-82",
+   "session_id": "e3714eda-1ed1-4fab-b9ae-d59bb23a0966",
+   "repo_id": "hutusi/amytis"
+  },
+  {
+   "run": "later-cap20",
+   "kind": "later",
+   "task_id": "yorrick-claude-code-plugins-144",
+   "session_id": "d522082c-bcbd-4a26-b5cb-beec399f9ba0",
+   "repo_id": "yorrick/claude-code-plugins"
   },
   {
    "run": "step2-later",
@@ -199,6 +228,13 @@
   {
    "run": "step2-later-vps",
    "kind": "later",
+   "task_id": "Nagi-ovo-gemini-voyager-321",
+   "session_id": "56286605-a571-4f52-92dd-069c28fe5fc5",
+   "repo_id": "Nagi-ovo/gemini-voyager"
+  },
+  {
+   "run": "step2-later-vps",
+   "kind": "later",
    "task_id": "Safecast-safecast-new-map-95",
    "session_id": "d86ef08f-ac65-4cb1-b018-46f425a03749",
    "repo_id": "Safecast/safecast-new-map"
@@ -206,7 +242,21 @@
   {
    "run": "step2-later-vps",
    "kind": "later",
-   "task_id": "entireio-cli-128",
+   "task_id": "armelhbobdad-bmad-module-skill-forge-194",
+   "session_id": "88f4b20f-112a-4204-a94b-34daa9e7ef75",
+   "repo_id": "armelhbobdad/bmad-module-skill-forge"
+  },
+  {
+   "run": "step2-later-vps",
+   "kind": "later",
+   "task_id": "cyyeh-duckdb-data-agent-114",
+   "session_id": "cf792067-3068-474d-a6a0-51a368c8709b",
+   "repo_id": "cyyeh/duckdb-data-agent"
+  },
+  {
+   "run": "step2-first-vps",
+   "kind": "first",
+   "task_id": "entireio-cli-105",
    "session_id": "f744aef5-5139-4c21-91e5-3f44ce902105",
    "repo_id": "entireio/cli"
   },
@@ -321,7 +371,78 @@
    "task_id": "entireio-cli-50",
    "session_id": "ccd4b467-6e6e-453b-a49f-c49d4a4700c4",
    "repo_id": "entireio/cli"
+  },
+  {
+   "run": "grid1-reprocess",
+   "kind": "first",
+   "task_id": "135yshr-savanna-vet-go-28",
+   "session_id": "ade84ab8-29a2-41a2-900d-2954df06108d",
+   "repo_id": "135yshr/savanna-vet-go"
+  },
+  {
+   "run": "grid1-reprocess",
+   "kind": "first",
+   "task_id": "Nagi-ovo-gemini-voyager-13",
+   "session_id": "61a0675b-ff92-47b6-968f-5dc0d59b3e8d",
+   "repo_id": "Nagi-ovo/gemini-voyager"
+  },
+  {
+   "run": "grid1-reprocess",
+   "kind": "first",
+   "task_id": "entireio-cli-53",
+   "session_id": "3d1f9b25-a19d-4f1b-a8d0-a7c32eeec8bc",
+   "repo_id": "entireio/cli"
+  },
+  {
+   "run": "grid1-reprocess",
+   "kind": "first",
+   "task_id": "hutusi-amytis-15",
+   "session_id": "f6077fc3-6b6e-4637-ab21-0f948f62df94",
+   "repo_id": "hutusi/amytis"
+  },
+  {
+   "run": "grid1-reprocess",
+   "kind": "first",
+   "task_id": "lightfastai-lightfast-14",
+   "session_id": "ec7894b4-ca61-4ae3-b8bf-d4c97b6656ba",
+   "repo_id": "lightfastai/lightfast"
+  },
+  {
+   "run": "grid1-reprocess",
+   "kind": "first",
+   "task_id": "marcus-sa-brain-59",
+   "session_id": "e688059b-7e64-45ee-b2fe-572d02f57017",
+   "repo_id": "marcus-sa/brain"
+  },
+  {
+   "run": "grid1-reprocess",
+   "kind": "first",
+   "task_id": "melagiri-code-insights-53",
+   "session_id": "627d0444-7318-41e5-8509-9a5ac897707f",
+   "repo_id": "melagiri/code-insights"
+  },
+  {
+   "run": "grid1-reprocess",
+   "kind": "first",
+   "task_id": "obsessiondb-rudel-39",
+   "session_id": "b67ecb89-0b7b-40a8-bfbc-9bd1ff836006",
+   "repo_id": "obsessiondb/rudel"
+  },
+  {
+   "run": "grid1-reprocess",
+   "kind": "first",
+   "task_id": "oozoofrog-oozoofrog.github.io-108",
+   "session_id": "5e57245b-bfa5-40e7-898a-41374765bf5e",
+   "repo_id": "oozoofrog/oozoofrog.github.io"
   }
  ],
- "dropped": []
+ "dropped": [
+  {
+   "run": "step2-later-vps",
+   "kind": "later",
+   "task_id": "entireio-cli-128",
+   "session_id": "f744aef5-5139-4c21-91e5-3f44ce902105",
+   "repo_id": "entireio/cli"
+  }
+ ]
 }

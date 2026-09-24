@@ -27,9 +27,10 @@ which gives each task a reference answer.
   kappa 0.46 on that check; the target is 0.6. On the repaired instrument the
   model differences also change. So the honesty numbers are not yet evidence
   about the models.
-- **53 valid tasks (09-24):** the first grid's 13 that hold up under the
-  repaired checks, plus 40 from later and first pushbacks, 33 of them new.
-  One repository, entireio/cli, holds 15 of the 40.
+- **55 valid tasks (09-24), every one from the current pipeline:** the first
+  grid's moments reprocessed (9), the later-pushback sample (7), and 39 new.
+  Two screening gates that read a bare "yes" without its conversation were
+  fixed (B-252, B-253). 25 repositories, entireio/cli 16 of them.
 - **Claude is no longer called (09-24):** its Azure deployment bills the
   user's own card rather than the Azure credits, and the code now refuses it.
   It was the second judge; what replaces it is still to be decided.
