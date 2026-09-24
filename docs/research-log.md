@@ -6612,3 +6612,19 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   one, and otherwise the run's own grading, keeping only rows that judge
   graded. The draw is unchanged: seed 36, at most one answer per task, up to
   12 per model. Guard: section 103.
+- **09-24** — **D-40 started a third time, 22:22 UTC**, at 7cb78498e.
+  - The run code is 9c4506662's, which smoke pass 6 checked: all six
+    candidates, both tasks, no error. grok's attempt at gemini-voyager-13 ran
+    to the time limit (104 calls), and its forced report, blocked every time
+    before B-261, went through as a continued conversation: "Version bump
+    got as far as 1.3.8, then I got stuck on the required changelog".
+  - gpt-6-sol's tests resume in `d40-soltests`: calibration 55 of 55 and
+    controls 446 of 990 were done at the restart.
+  - **Spend guard's stop raised to $2,500.** Its upper bound prices every
+    gpt-6-sol call, and each of its 1,375 test rows, at gpt-6-astra's price.
+    That puts the whole run near $1,500, too close to $1,600 for a runaway
+    stop, which could have halted the run in its last phase. The user has
+    about $8,000 of credits.
+  - The flag sample (section 103's fix) was run on smoke pass 3's own
+    grading, with no model call. It found and packeted the two flagged
+    answers.
