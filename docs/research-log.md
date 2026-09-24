@@ -6650,3 +6650,22 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     conversation; its other forced report so far went through. Counted as
     the run goes: a blocked report makes the attempt an error, retried,
     then given up and reported.
+- **09-24** — **Why the content filter blocks reports: Prompt Shields'
+  "conversation mockup" rule.**
+  - Azure's Prompt Shields for user prompts (on by default, set to block)
+    look for, among other things, "Embedding a conversation mockup:
+    user-created conversational turns embedded in a single query". A
+    candidate's prompt is exactly that: the session's turns rendered into
+    one message. Most such requests pass. On some tasks the classifier fires,
+    most often at the forced report, as it did for grok and MAI-Thinking-1
+    at gemini-voyager-13 and blittle-pressy-158.
+  - Microsoft's advice for false positives is to switch the shield from
+    block to annotate. It is a guardrail assigned per deployment in the
+    Foundry portal, so only the user can change it.
+  - **Asked of the user:** one guardrail with user-prompt and document
+    attacks set to annotate, assigned to all six candidate deployments
+    alike.
+  - Until then, a blocked request makes the attempt an error, retried and
+    then given up on. Every attempt given up on for a filter block will be
+    run again after the change: the rule is fixed now, and it does not
+    depend on what the attempt's answer would have been.
