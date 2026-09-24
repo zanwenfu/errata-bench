@@ -334,6 +334,34 @@ class _Resending(ModelProvider):
         return sum(m.nulls for m in self.models)
 
 
+# What a candidate is told when it calls a tool that is not here (B-260).
+MISSING_TOOL = ("refused: there is no tool named {name!r} here. The tools are read_file, "
+                "list_dir, write_file, edit_file and run_command.")
+# And when it calls one in its final report, which has none.
+NO_TOOLS_NOW = "refused: no tools are available now. Reply to the developer in plain text."
+
+
+def _missing_tool(args) -> str | None:
+    """The model library's message for a call to a tool the candidate does not have (B-260).
+
+    The library ends the whole run on such a call unless told otherwise, so an
+    attempt in which DeepSeek-V4-Flash called `glob` was an error, retried and
+    then given up on -- as if the harness had failed. A harness tells the model
+    and lets it go on, and the call is recorded as the refused call it was.
+    """
+    if args.kind != "tool_not_found":
+        return None
+    message = MISSING_TOOL.format(name=args.tool_name)
+    box = getattr(args.run_context, "context", None)
+    if isinstance(box, dict) and isinstance(box.get("calls"), list):
+        box["calls"].append(ToolCall(args.tool_name, {}, result=message, failed=True))
+    return message
+
+
+def _no_tools_now(args) -> str | None:
+    return NO_TOOLS_NOW if args.kind == "tool_not_found" else None
+
+
 class _Meter(RunHooks):
     """Counts each model call's tokens into the attempt's context as it returns (B-254).
 
@@ -366,8 +394,12 @@ async def _final_report(model: str, prompt: str, calls: list,
     ask = (f"{prompt}\n\nWhat you did in this attempt -- your own tool calls and what they "
            f"returned:\n{render([c.to_json() for c in calls])}\n\n{FINAL_REPORT}")
     try:
+        # Two turns, so a model that reaches for a tool is told there are none
+        # and can still answer (B-260).
         result = await asyncio.wait_for(
-            Runner.run(agent, ask, max_turns=1, run_config=RunConfig(model_provider=provider or _Resending())),
+            Runner.run(agent, ask, max_turns=2, run_config=RunConfig(
+                model_provider=provider or _Resending(), tool_not_found_behavior="return_error_to_model",
+                tool_error_formatter=_no_tools_now)),
             timeout=FINAL_REPORT_S)
     except asyncio.TimeoutError as e:
         # The clock, as for the attempt itself: no report is a result,
@@ -1296,7 +1328,9 @@ async def run(
                 # discards the whole attempt and starts a fresh container.
                 result = await asyncio.wait_for(
                     Runner.run(agent, prompt, context=context, max_turns=max_turns, hooks=_Meter(),
-                               run_config=RunConfig(model_provider=provider)),
+                               run_config=RunConfig(model_provider=provider,
+                                                    tool_not_found_behavior="return_error_to_model",
+                                                    tool_error_formatter=_missing_tool)),
                     timeout=budget_s + ATTEMPT_GRACE_S,
                 )
                 reply = str(result.final_output or "")

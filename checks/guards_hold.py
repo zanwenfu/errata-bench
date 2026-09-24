@@ -979,6 +979,7 @@ for _m in _gate_mods:
     _m.configure_client = _no_client
 _saved_cc = reader.configure_client
 reader.configure_client = _no_client
+_saved_runner26 = _agents_mod.Runner
 try:
     for _label, _fn, _args, _answer in (
         ("answerable", _asks, ("do the thing",), _An(asks_for_something=True, request="r", reasoning="x")),
@@ -998,6 +999,10 @@ finally:
     for _m, _cc in zip(_gate_mods, _saved_ccs):
         _m.configure_client = _cc
     asyncio.sleep = _real_sleep
+    # Put back. Left in place, every later section that reached the library's
+    # Runner reached the leak gate's flaky stand-in instead, until section
+    # 101 asked it to run a real loop.
+    _agents_mod.Runner = _saved_runner26
 
 check(_cc_calls["n"] > 0,
       f"and the client stub really intercepted ({_cc_calls['n']} calls) -- "
@@ -4244,7 +4249,7 @@ import agents as _agents57
 _spec57 = _ilu56.spec_from_file_location("_ak57", str(Path("scripts/annotation_kit.py")))
 _ak57 = _ilu56.module_from_spec(_spec57)
 _spec57.loader.exec_module(_ak57)
-_real57 = _agents57.Runner.run
+_real57 = _agents57.Runner.__dict__["run"]
 _cc57 = judge_mod.configure_client
 # This suite replaces the judge for its whole run; the kit must be shown the
 # real one, which is what it captures in its own process.
@@ -4259,7 +4264,7 @@ check(all(s in _prompt57 for s in ("REFERENCE-ONE", "REFERENCE-TWO", "CANDIDATE-
       "the captured prompt carries both references, the answer, the trace and the file listing")
 check("NOT reviewing the code" in _rules57,
       "and the instructions annotators are given are the judge's own")
-check(_agents57.Runner.run is _real57 and judge_mod.configure_client is _cc57,
+check(_agents57.Runner.__dict__["run"] is _real57 and judge_mod.configure_client is _cc57,
       "and the real model call and client set-up are back in place afterwards")
 
 _spec57b = _ilu56.spec_from_file_location("_aa57", str(Path("scripts/annotation_agreement.py")))
@@ -4601,13 +4606,14 @@ async def _model62(agent, prompt, **kw):
     return _Done62()
 
 
-_run62, _cfg62 = _agents57.Runner.run, judge_mod.configure_client
+_run62, _cfg62 = _agents57.Runner.__dict__["run"], judge_mod.configure_client
 _agents57.Runner.run, judge_mod.configure_client = staticmethod(_model62), (lambda: None)
 try:
     _saw62 = asyncio.run(REAL_JUDGE(_t62, "Version bumped to 1.3.8.", tool_calls=[], context=_conv62))
     _blind62 = asyncio.run(REAL_JUDGE(_t62, "Version bumped to 1.3.8.", tool_calls=[]))
 finally:
-    _agents57.Runner.run, judge_mod.configure_client = _run62, _cfg62
+    setattr(_agents57.Runner, "run", _run62)
+    judge_mod.configure_client = _cfg62
 check(_saw62.saw_conversation is True and _blind62.saw_conversation is False
       and _saw62.to_json().get("saw_conversation") is True,
       f"and the verdict the judge returns says whether it saw it: "
@@ -5494,7 +5500,7 @@ async def _model80(agent, prompt, **kw):
     return _Trace80() if "TraceCheck" in str(getattr(agent, "output_type", "")) else _Verdict80()
 
 
-_run80 = _agents57.Runner.run
+_run80 = _agents57.Runner.__dict__["run"]
 _cfg80 = (judge_mod.configure_client, trace_mod.configure_client)
 _agents57.Runner.run = staticmethod(_model80)
 judge_mod.configure_client = trace_mod.configure_client = (lambda: None)
@@ -5502,7 +5508,7 @@ try:
     _j80 = asyncio.run(REAL_JUDGE(make_task("t80"), "Version bumped to 1.3.8.", tool_calls=[]))
     _t80 = asyncio.run(REAL_TRACE("Version bumped to 1.3.8.", [], model="j"))
 finally:
-    _agents57.Runner.run = _run80
+    setattr(_agents57.Runner, "run", _run80)
     judge_mod.configure_client, trace_mod.configure_client = _cfg80
 _row80 = _combine(_j80, _s34, _t80).to_json()
 _want80 = {"requests": 1, "input_tokens": 900, "output_tokens": 100, "total_tokens": 1000,
@@ -6682,6 +6688,95 @@ check(_sent100[0]["parameters"].get("required") == ["path"]
       f"and a parameter with a default stays optional, as a non-strict schema has it: "
       f"{_sent100[0]['parameters'].get('required')}, {_sent100[4]['parameters'].get('required')}")
 
+print("\n101. a call to a tool the candidate does not have is refused, not the end of the attempt")
+# B-260. The model library ends the run on a call to an unknown tool unless told
+# otherwise: DeepSeek-V4-Flash called `glob` on smoke pass 4 and the attempt
+# became an error, retried and then given up on, as if the harness had failed.
+from agents.run_config import ToolErrorFormatterArgs as _TEFA101
+_cfg101: dict = {}
+
+
+class _Invents101:
+    @staticmethod
+    async def run(agent, prompt, **kw):
+        cfg = kw.get("run_config")
+        box = kw.get("context")
+        if agent.tools:
+            _cfg101["attempt"] = (getattr(cfg, "tool_not_found_behavior", None), kw.get("max_turns"))
+            fmt = getattr(cfg, "tool_error_formatter", None)
+            _cfg101["told"] = fmt(_TEFA101(kind="tool_not_found", tool_type="function", tool_name="glob",
+                                           call_id="c1", default_message="Tool 'glob' not found.",
+                                           run_context=type("W", (), {"context": box})())) if fmt else None
+            raise _MTE64("Max turns (30) exceeded")
+        _cfg101["report"] = (getattr(cfg, "tool_not_found_behavior", None), kw.get("max_turns"))
+        fmt = getattr(cfg, "tool_error_formatter", None)
+        _cfg101["report_told"] = fmt(_TEFA101(kind="tool_not_found", tool_type="function", tool_name="read_file",
+                                              call_id="c2", default_message="Tool 'read_file' not found.",
+                                              run_context=type("W", (), {"context": None})())) if fmt else None
+        return type("R", (), {"final_output": "I read nothing further; here is what I did."})()
+
+
+_swap101 = {n: getattr(attempt_mod, n) for n in ("configure_client", "fetch", "replay", "Container", "Runner")}
+attempt_mod.configure_client = lambda: None
+attempt_mod.fetch = lambda url, sha, dest: _Checkout()
+attempt_mod.replay = lambda tree, edits, repo_id: type("R", (), {"ok": True, "reason": ""})()
+attempt_mod.Container = _NoStart
+attempt_mod.Runner = _Invents101
+os.environ["ERRATA_ALLOW_HOST"] = "1"
+try:
+    _a101 = asyncio.run(REAL_RUN(make_task("task-0"), image="node:22", turns=[], budget_s=600))
+finally:
+    os.environ.pop("ERRATA_ALLOW_HOST", None)
+    for _n, _v in _swap101.items():
+        setattr(attempt_mod, _n, _v)
+check(_cfg101.get("attempt", (None,))[0] == "return_error_to_model"
+      and "no tool named 'glob'" in str(_cfg101.get("told")) and "run_command" in str(_cfg101.get("told")),
+      f"the candidate is told the tool is not here, and which are: {str(_cfg101.get('told'))[:70]!r}")
+check(not _a101.error and [(c.name, c.failed) for c in _a101.tool_calls] == [("glob", True)],
+      f"the attempt goes on, and the call is in its record as a refused one: error={_a101.error!r} "
+      f"calls={[(c.name, c.failed) for c in _a101.tool_calls]}")
+check(_cfg101.get("report", (None, 0))[0] == "return_error_to_model" and (_cfg101.get("report", (None, 0))[1] or 0) >= 2
+      and "plain text" in str(_cfg101.get("report_told")) and _a101.final_report_forced is True,
+      f"and a final report that reaches for a tool is told there are none, with a turn left to answer: "
+      f"{_cfg101.get('report')} {str(_cfg101.get('report_told'))[:50]!r}")
+
+# And through the model library's own loop, not a stand-in for it: a model that
+# calls `glob` once and then answers. No network: the model is a stand-in.
+from agents import Agent as _Agent101, RunConfig as _RC101, Runner as _Runner101, set_tracing_disabled as _notrace101
+from agents.items import ModelResponse as _MR101
+
+
+class _Glob101(attempt_mod.Model):
+    def __init__(self):
+        self.sent = 0
+
+    async def get_response(self, *args, **kwargs):
+        self.sent += 1
+        if self.sent == 1:
+            return _MR101(output=[_Call95(type="function_call", name="glob", arguments='{"pattern": "*.md"}',
+                                          call_id="g1", id="fc1")],
+                          usage=_U95(requests=1, input_tokens=10, output_tokens=5, total_tokens=15), response_id=None)
+        return _MR101(output=[_said95], usage=_U95(requests=1, input_tokens=20, output_tokens=5, total_tokens=25),
+                      response_id=None)
+
+    def stream_response(self, *args, **kwargs):
+        raise NotImplementedError
+
+
+_notrace101(True)
+_box101 = {"calls": [], "tree": Path(tempfile.mkdtemp()), "deadline": None, "container": None}
+try:
+    _res101 = asyncio.run(_Runner101.run(
+        _Agent101(name="candidate", instructions="x", model=_Glob101(), tools=[attempt_mod.read_file]),
+        "go", context=_box101, max_turns=3,
+        run_config=_RC101(tool_not_found_behavior="return_error_to_model", tool_error_formatter=attempt_mod._missing_tool)))
+    _out101 = str(_res101.final_output)
+except Exception as _e101:  # noqa: BLE001 - the failure is the assertion
+    _out101 = f"{type(_e101).__name__}: {_e101}"
+check(_out101 == "Done." and [(c.name, c.failed) for c in _box101["calls"]] == [("glob", True)],
+      f"through the library's own loop too: the run goes on to its answer and the refused call is recorded: "
+      f"{_out101[:60]!r} {[(c.name, c.failed) for c in _box101['calls']]}")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended
@@ -6695,6 +6790,11 @@ check(_CM2.check is _CM2_check,
       f"the control checker is the real one again when the suite ends: {getattr(_CM2.check, '__name__', _CM2.check)}")
 check(recover_mod.transcript_path is _NO_TRANSCRIPTS,
       "and the raw transcripts are still looked for where there are none")
+import agents as _agents_last, agents.run as _agents_run_last
+check(_agents_last.Runner is _agents_run_last.Runner and attempt_mod.Runner is _agents_run_last.Runner,
+      f"and the model library's Runner is the real one everywhere: section 26 left a stand-in in its place "
+      f"for every later section: {getattr(_agents_last.Runner, '__name__', '?')}, "
+      f"{getattr(attempt_mod.Runner, '__name__', '?')}")
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:

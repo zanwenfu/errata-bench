@@ -6502,3 +6502,60 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     four minutes. They are set aside in `runs/d40-aborted-0924` on the VPS,
     and none is used. gpt-6-sol's 40 calibration rows in `d40-soltests` do
     not depend on the tree and are kept; its tests resume from them.
+- **09-24** — **B-259 fixed: MAI-Thinking-1 answers strict tool schemas with
+  nothing** (D-40's second start, 19:20 UTC, stopped at 19:43 for it).
+  - **Found.** One MAI attempt failed with `ProviderAnsweredNothing` (B-255's
+    5 sends used up). Across MAI's attempts, 18 of 49 sends had come back
+    empty, 37%. No other candidate had any empty response in 192 sends.
+  - **Isolated, three probes, all on the same request:**
+    - a follow-up request sent raw came back empty 0 of 10 times;
+    - the model library's own request (tools declared `"strict": true`),
+      with 5 tool calls of history, came back empty 16 of 20 times, and 0
+      of 20 with `strict` removed;
+    - the first request came back empty 1 of 10 times strict and 0 of 10
+      without.
+    So re-sending could not outrun it: the request itself had to change.
+  - **Fix.** The five candidate tools are declared non-strict
+    (`CANDIDATE_TOOLS_STRICT = False`) for every candidate. No model gets a
+    harness of its own. A parameter with a default is now optional in the
+    schema (`max_bytes`, `timeout_s`, `path` of `list_dir`).
+    - Live, as the library now sends it (`"strict": false`): 0 of 20 empty
+      on the follow-up request.
+  - **Guard:** section 100, seen red with strict restored. Smoke pass 4
+    (attempts only, all six candidates) runs on this commit before the
+    restart.
+  - **The second start's answers** are set aside, like the first's, and
+    none is used. gpt-6-sol's calibration and controls in `d40-soltests` do
+    not involve the candidate's tools and are kept.
+- **09-24** — **B-260 fixed: a call to a tool the candidate does not have
+  ended the attempt** (smoke pass 4, on B-259's commit).
+  - **Found.** DeepSeek-V4-Flash called `glob` at Nagi-ovo-gemini-voyager-13.
+    The model library ends a run on an unknown tool unless told otherwise
+    (`ModelBehaviorError`). The attempt was an error, retried and then given
+    up on, as if the harness had failed.
+  - **Fix.** The candidate's run is told `return_error_to_model`. The model
+    hears "refused: there is no tool named 'glob' here. The tools are
+    read_file, list_dir, write_file, edit_file and run_command", the attempt
+    goes on, and the call is recorded as a refused one. The forced final
+    report, which has no tools, gets two turns: a model that reaches for a
+    tool there is told to answer in plain text.
+  - **Guard:** section 101, 3 pieces reverted alone, each seen red. Its last
+    check runs the model library's own loop, with a stand-in model that
+    calls `glob` and then answers, and no network.
+  - **What that check found in the suite itself.** Section 26 swapped the
+    library's `Runner` for a flaky stand-in and never put it back. Every
+    later section that reached `agents.Runner` reached the stand-in.
+    - Sections 57, 62 and 80 patched the stand-in's `run`, and their "put
+      back" check compared bound methods, which only held for the stand-in.
+    - They and `scripts/annotation_kit.py` now save and restore the class's
+      own attribute.
+    - The suite's last section asserts the real `Runner` is back. Seen red
+      with section 26's restore removed.
+  - **Seen on the same smoke pass, not changed.** grok's forced report at
+    Nagi-13 was blocked by Azure's content filter ("Jailbreak") again, in
+    two different attempts. Three forms of the report prompt were tried on
+    the blocked trace, twice each: without tools, with tools offered and
+    none callable, and reworded. All three were blocked. So it is the
+    provider's filter on grok's reply to that task's content. B-257 retries
+    the attempt (pass 2's got through) and then gives up; the count per
+    model is reported.

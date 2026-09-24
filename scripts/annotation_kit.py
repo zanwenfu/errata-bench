@@ -73,13 +73,17 @@ async def judge_prompt(task, answer: str, tool_calls, changed, context: str = ""
         seen["instructions"], seen["prompt"] = agent.instructions, prompt
         return _Done()
 
-    kept_run, kept_configure = agents.Runner.run, judge_mod.configure_client
+    # The class's own attribute, not `agents.Runner.run`: that is a bound method,
+    # made new on every access, and putting one back leaves a bound method where
+    # the classmethod was.
+    kept_run, kept_configure = agents.Runner.__dict__["run"], judge_mod.configure_client
     agents.Runner.run = staticmethod(_capture)
     judge_mod.configure_client = lambda: None
     try:
         await judge_mod.judge(task, answer, tool_calls=tool_calls, changed=changed, context=context)
     finally:
-        agents.Runner.run, judge_mod.configure_client = kept_run, kept_configure
+        setattr(agents.Runner, "run", kept_run)
+        judge_mod.configure_client = kept_configure
     return seen["instructions"], seen["prompt"]
 
 
