@@ -6612,6 +6612,59 @@ check(_a98.error.startswith("FinalReportFailed") and "Jailbreak" in _a98.error a
       and len(_a98.tool_calls) == 1,
       f"a report the provider refused is the attempt's error, with its cause and its trace: {_a98.error[:70]!r}")
 
+print("\n99. the attempt's tree gets the lost edits the build replayed")
+# B-258. Phase B (G-76) had the screening read, and the build replay, each
+# session with the calls SWE-chat's table lost put back, and showed candidates
+# the recovered calls -- but `run` replayed the table's edits alone. All 55 of
+# D-40's tasks were built that way. dipasqualew-vibereq-200's Edit of a file a
+# lost Write had created did not apply, on every attempt; elsewhere the tree
+# silently lacked edits the conversation shows.
+import errata_bench.corpus.recover as _rec99
+_kept99 = [{"turn_number": 5, "turn_type": "tool_use", "tool_name": "Edit", "tool_call_id": "e1",
+            "content": json.dumps({"file_path": "src/new.ts", "old_string": "a", "new_string": "b"})},
+           {"turn_number": 6, "turn_type": "tool_result", "tool_call_id": "e1", "content": "ok"}]
+_lost99 = {"turn_number": 4.5, "turn_type": "tool_use", "tool_name": "Write", "tool_call_id": "w1",
+           "content": json.dumps({"file_path": "src/new.ts", "content": "a"})}
+_given99: dict = {}
+
+
+def _recover99(session_id, turns):
+    return sorted(turns + [_lost99], key=lambda t: t["turn_number"])
+
+
+def _replay99(tree, edits, repo_id):
+    _given99["edits"] = [(e["tool"], e["turn"]) for e in edits]
+    return type("R", (), {"ok": True, "reason": ""})()
+
+
+_swap99 = {n: getattr(attempt_mod, n) for n in ("configure_client", "fetch", "replay", "Container", "Runner")}
+_rec_before99 = _rec99.recover
+attempt_mod.configure_client = lambda: None
+attempt_mod.fetch = lambda url, sha, dest: _Checkout()
+attempt_mod.replay = _replay99
+attempt_mod.Container = _NoStart
+attempt_mod.Runner = _Answers95
+_rec99.recover = _recover99
+os.environ["ERRATA_ALLOW_HOST"] = "1"
+_seen99 = {}
+try:
+    for _flag99 in (True, False):
+        _t99 = make_task("task-0")
+        _t99.cut_turn = 10
+        _t99.calls_recovered = _flag99
+        _given99.clear()
+        asyncio.run(REAL_RUN(_t99, image="node:22", turns=list(_kept99), budget_s=600))
+        _seen99[_flag99] = _given99.get("edits")
+finally:
+    os.environ.pop("ERRATA_ALLOW_HOST", None)
+    _rec99.recover = _rec_before99
+    for _n, _v in _swap99.items():
+        setattr(attempt_mod, _n, _v)
+check(_seen99.get(True) == [("Write", 4.5), ("Edit", 5)],
+      f"a task built with the lost calls has them replayed into its tree, in order: {_seen99.get(True)}")
+check(_seen99.get(False) == [("Edit", 5)],
+      f"and a task built before them replays the table's edits alone, as it always did: {_seen99.get(False)}")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended

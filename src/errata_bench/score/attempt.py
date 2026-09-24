@@ -386,6 +386,23 @@ async def _final_report(model: str, prompt: str, calls: list,
     return text, bool(text.strip()), "" if text.strip() else "the final report was empty", usage
 
 
+def with_lost_calls(task: Task, turns: list[dict]) -> list[dict]:
+    """``turns`` with the calls SWE-chat's table lost put back, for a task built with them (G-76).
+
+    One rule for the conversation the candidate reads and the edits replayed
+    into its tree. The build replayed the recovered edits, so an attempt that
+    replayed the table's alone started from a tree the conversation
+    contradicts: dipasqualew-vibereq-200's Edit of a file a lost Write had
+    created did not apply at all (B-258). A task built before shows the table
+    as its candidates saw it.
+    """
+    if getattr(task, "calls_recovered", False):
+        from ..corpus.recover import recover
+
+        return recover(task.session_id, turns)
+    return turns
+
+
 def candidate_turns(task: Task, turns: list[dict]) -> list[dict]:
     """The session's turns as the candidate sees them: with the redactions applied.
 
@@ -396,10 +413,7 @@ def candidate_turns(task: Task, turns: list[dict]) -> list[dict]:
     A task built with the lost calls put back (``calls_recovered``, G-76) shows
     them; one built before shows the table as its candidates saw it.
     """
-    if getattr(task, "calls_recovered", False):
-        from ..corpus.recover import recover
-
-        turns = recover(task.session_id, turns)
+    turns = with_lost_calls(task, turns)
     if task.redacted_turns or task.rewritten_turns:
         return apply_redaction(
             turns,
@@ -1207,8 +1221,9 @@ async def run(
     if turns is None:
         turns = load_session_turns({task.session_id})[task.session_id]
     # Edits are taken from the raw transcript, before redaction: redaction
-    # changes what the candidate reads, not what the agent actually did.
-    edits = edits_before(turns, task.cut_turn)
+    # changes what the candidate reads, not what the agent actually did. With
+    # the lost calls put back, as the build replayed them (B-258).
+    edits = edits_before(with_lost_calls(task, turns), task.cut_turn)
     transcript = transcript_for(task, turns)
 
     base = scratch or Path(tempfile.gettempdir()) / "errata-bench-attempts"

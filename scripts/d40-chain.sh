@@ -11,10 +11,16 @@ echo $$ > runs/d40-chain.pid
 say() { echo "=== $* $(date -u +%FT%TZ)" >> "$LOG"; }
 C="grok-4.6 Kimi-K2.7-Code DeepSeek-V4-Pro DeepSeek-V4-Flash Mistral-Large-3 MAI-Thinking-1"
 say "D-40 start at $(git rev-parse --short HEAD)"
-for d in soltests $C; do
+for d in $C; do
   if [ -e "runs/d40-$d" ]; then say "runs/d40-$d exists; stopping"; exit 1; fi
 done
+# d40-soltests resumes if it is there: the second judge's tests depend on the
+# tasks alone, and it holds no answers.
+if [ -e runs/d40-soltests ] && ! cmp -s runs/d40-soltests/tasks.jsonl runs/d40-base/tasks.jsonl; then
+  say "runs/d40-soltests holds other tasks; stopping"; exit 1
+fi
 for d in soltests $C; do
+  [ -e "runs/d40-$d" ] && continue
   mkdir -p "runs/d40-$d" && cp runs/d40-base/{tasks,calibration,controls,gate}.jsonl "runs/d40-$d/"
 done
 

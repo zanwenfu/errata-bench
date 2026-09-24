@@ -1,0 +1,552 @@
+[
+ {
+  "task_id": "Whiteknight07-AiTutor-34",
+  "edits_before_fix": 2,
+  "edits_after_fix": 3,
+  "lost_edits": 1,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "blittle-pressy-158",
+  "edits_before_fix": 8,
+  "edits_after_fix": 8,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "dipasqualew-vibereq-200",
+  "edits_before_fix": 9,
+  "edits_after_fix": 22,
+  "lost_edits": 13,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": false,
+  "old_reason": "turn 66 (Edit apps/cli/src/lib/transcript.ts): file does not exist in the tree"
+ },
+ {
+  "task_id": "entireio-cli-163",
+  "edits_before_fix": 2,
+  "edits_after_fix": 2,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "femto-mcp-chrome-58",
+  "edits_before_fix": 0,
+  "edits_after_fix": 0,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "junjiezhou1122-ClawCorp-159",
+  "edits_before_fix": 11,
+  "edits_after_fix": 11,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "shunkakinoki-dotfiles-49",
+  "edits_before_fix": 3,
+  "edits_after_fix": 3,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "1natsu-vacation-agent-skills-145",
+  "edits_before_fix": 4,
+  "edits_after_fix": 4,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "PackmindHub-context-evaluator-299",
+  "edits_before_fix": 28,
+  "edits_after_fix": 28,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "Pavel401-BugViper-85",
+  "edits_before_fix": 4,
+  "edits_after_fix": 4,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "anchoo2kewl-SprintSpark-157",
+  "edits_before_fix": 1,
+  "edits_after_fix": 1,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "cyyeh-duckdb-data-agent-90",
+  "edits_before_fix": 2,
+  "edits_after_fix": 2,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "hutusi-amytis-349",
+  "edits_before_fix": 37,
+  "edits_after_fix": 37,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "hutusi-amytis-82",
+  "edits_before_fix": 8,
+  "edits_after_fix": 8,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "yorrick-claude-code-plugins-144",
+  "edits_before_fix": 2,
+  "edits_after_fix": 2,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "cyyeh-duckdb-data-agent-64",
+  "edits_before_fix": 4,
+  "edits_after_fix": 4,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "entireio-cli-106",
+  "edits_before_fix": 18,
+  "edits_after_fix": 18,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "entireio-cli-253",
+  "edits_before_fix": 8,
+  "edits_after_fix": 8,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "entireio-cli-44",
+  "edits_before_fix": 0,
+  "edits_after_fix": 0,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "entireio-cli-57",
+  "edits_before_fix": 3,
+  "edits_after_fix": 3,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "entireio-cli-65",
+  "edits_before_fix": 12,
+  "edits_after_fix": 12,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "hutusi-amytis-18",
+  "edits_before_fix": 0,
+  "edits_after_fix": 0,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "obsessiondb-rudel-123",
+  "edits_before_fix": 1,
+  "edits_after_fix": 1,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "shunkakinoki-dotfiles-37",
+  "edits_before_fix": 1,
+  "edits_after_fix": 2,
+  "lost_edits": 1,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "Nagi-ovo-gemini-voyager-195",
+  "edits_before_fix": 12,
+  "edits_after_fix": 12,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "Nagi-ovo-gemini-voyager-321",
+  "edits_before_fix": 18,
+  "edits_after_fix": 26,
+  "lost_edits": 8,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "Safecast-safecast-new-map-95",
+  "edits_before_fix": 2,
+  "edits_after_fix": 2,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "armelhbobdad-bmad-module-skill-forge-194",
+  "edits_before_fix": 5,
+  "edits_after_fix": 12,
+  "lost_edits": 7,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "cyyeh-duckdb-data-agent-114",
+  "edits_before_fix": 5,
+  "edits_after_fix": 5,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "entireio-cli-105",
+  "edits_before_fix": 5,
+  "edits_after_fix": 5,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "entireio-cli-24",
+  "edits_before_fix": 0,
+  "edits_after_fix": 0,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "entireio-cli-54",
+  "edits_before_fix": 1,
+  "edits_after_fix": 1,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "entireio-cli-89",
+  "edits_before_fix": 0,
+  "edits_after_fix": 0,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "obsessiondb-rudel-112",
+  "edits_before_fix": 0,
+  "edits_after_fix": 1,
+  "lost_edits": 1,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "obsessiondb-rudel-196",
+  "edits_before_fix": 11,
+  "edits_after_fix": 11,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "obsessiondb-rudel-317",
+  "edits_before_fix": 5,
+  "edits_after_fix": 15,
+  "lost_edits": 10,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": false,
+  "old_reason": "turn 293 (Edit apps/api/src/auth.ts): file does not exist in the tree"
+ },
+ {
+  "task_id": "obsessiondb-rudel-362",
+  "edits_before_fix": 10,
+  "edits_after_fix": 13,
+  "lost_edits": 3,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "oddessentials-ado-git-repo-insights-69",
+  "edits_before_fix": 0,
+  "edits_after_fix": 0,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "osabiohq-osabio-139",
+  "edits_before_fix": 2,
+  "edits_after_fix": 2,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "osabiohq-osabio-74",
+  "edits_before_fix": 0,
+  "edits_after_fix": 0,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "shunkakinoki-dotfiles-98",
+  "edits_before_fix": 5,
+  "edits_after_fix": 5,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "entireio-cli-23",
+  "edits_before_fix": 0,
+  "edits_after_fix": 0,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "entireio-cli-241",
+  "edits_before_fix": 25,
+  "edits_after_fix": 25,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "entireio-cli-283",
+  "edits_before_fix": 18,
+  "edits_after_fix": 18,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "entireio-cli-38",
+  "edits_before_fix": 0,
+  "edits_after_fix": 0,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "entireio-cli-50",
+  "edits_before_fix": 1,
+  "edits_after_fix": 1,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "135yshr-savanna-vet-go-28",
+  "edits_before_fix": 4,
+  "edits_after_fix": 4,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "Nagi-ovo-gemini-voyager-13",
+  "edits_before_fix": 0,
+  "edits_after_fix": 0,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "entireio-cli-53",
+  "edits_before_fix": 0,
+  "edits_after_fix": 0,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "hutusi-amytis-15",
+  "edits_before_fix": 0,
+  "edits_after_fix": 0,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "lightfastai-lightfast-14",
+  "edits_before_fix": 0,
+  "edits_after_fix": 0,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "marcus-sa-brain-59",
+  "edits_before_fix": 0,
+  "edits_after_fix": 0,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "melagiri-code-insights-53",
+  "edits_before_fix": 0,
+  "edits_after_fix": 0,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "obsessiondb-rudel-39",
+  "edits_before_fix": 0,
+  "edits_after_fix": 0,
+  "lost_edits": 0,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ },
+ {
+  "task_id": "oozoofrog-oozoofrog.github.io-108",
+  "edits_before_fix": 2,
+  "edits_after_fix": 4,
+  "lost_edits": 2,
+  "fixed_replay_ok": true,
+  "fixed_reason": "",
+  "old_replay_ok": true,
+  "old_reason": ""
+ }
+]

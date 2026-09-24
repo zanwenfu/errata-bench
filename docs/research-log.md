@@ -6469,3 +6469,36 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
       gpt-6-sol's tests are counted once, where they are asked.
     - At $1,600 (about 25% over the upper estimate) it stops the chain's
       process group and its containers.
+- **09-24** — **B-258 fixed: the attempt replayed only the edits SWE-chat's
+  table kept, while the build had replayed the lost ones too** (found four
+  minutes into D-40's run, which was stopped for it at 19:11 UTC).
+  - **Found.** All three of Mistral-Large-3's attempts at
+    dipasqualew-vibereq-200 failed at once: "turn 66 (Edit
+    apps/cli/src/lib/transcript.ts): file does not exist in the tree". It
+    reproduced on the laptop, so the cause was the code, not the VPS.
+  - **Cause.** Phase B (09-23, G-76) had the screening read, and the build
+    replay, every session with the lost calls put back. Candidates are
+    shown the recovered calls (`candidate_turns`). But `attempt.run`
+    computed the edits to replay from the table's turns alone. All 55 of
+    D-40's tasks were built with recovered calls.
+  - **Measured on all 55, no model calls** (`results/b258-replay-d40.json`):
+    - 9 tasks had edits the table lost before the cut, 46 edits in all.
+    - 2 (vibereq-200, 9 → 22 edits; obsessiondb-rudel-317, 5 → 15) did not
+      replay at all. Every model would have given up on them, and both would
+      have dropped out.
+    - The other 7 replayed without complaint while lacking edits the
+      conversation shows: gemini-voyager-321 8 of 26, skill-forge-194 7 of
+      12, rudel-362 3 of 13, oozoofrog-108 2 of 4, and one each on AiTutor-34,
+      dotfiles-37 and rudel-112. Their candidates would have worked on trees
+      the conversation contradicts.
+    - With the fix, all 55 replay. Neither smoke task was affected.
+  - **Fix.** `with_lost_calls` holds the one rule. The conversation the
+    candidate reads and the edits replayed into its tree both follow it:
+    lost calls are put back for a task built with them, and only for such a
+    task.
+  - **Guard:** section 99 (2 pieces reverted alone, each seen red). No
+    existing guard noticed.
+  - **The aborted start.** 39 answers were collected on the old code, over
+    four minutes. They are set aside in `runs/d40-aborted-0924` on the VPS,
+    and none is used. gpt-6-sol's 40 calibration rows in `d40-soltests` do
+    not depend on the tree and are kept; its tests resume from them.
