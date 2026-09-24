@@ -6903,6 +6903,26 @@ check(sorted((a["task_id"], a["run"]) for a in _d58.readings(_p58.root, "first")
 check(all(_d58.regrade_dir(_p58.root, j) == _jp58(_p58.root, j).root for j in ("gpt-6-astra", "Kimi-K2.7-Code", "a b")),
       "and its name for rejudge/<judge>/ is judge_paths' own")
 
+print("\n105. the paired tests give an interval resampling repositories beside the one resampling tasks")
+# D-40: "Intervals by bootstrap, clustered by task, and by repository beside it."
+# The tests resampled tasks only; tasks of one repository are not independent.
+import math as _math105
+import shutil as _shutil105
+_nan105 = _pt58.cluster_bootstrap_ci({}, {}, 100, 0)
+_one105 = _pt58.cluster_bootstrap_ci({"a": 1.0, "b": 0.0, "c": 0.5}, {"a": "r", "b": "r", "c": "r"}, 200, 0)
+check(all(_math105.isnan(x) for x in _nan105) and _one105 == (0.5, 0.5),
+      f"no tasks, no interval; every task in one repository, every draw is that repository's mean: {_one105}")
+_two105 = _pt58.cluster_bootstrap_ci({"a": 1.0, "b": 1.0, "c": 0.0}, {"a": "r1", "b": "r1", "c": "r2"}, 400, 0)
+check(_two105[0] == 0.0 and _two105[1] == 1.0,
+      f"and with two repositories the draws range from one's mean to the other's: {_two105}")
+_q105 = Path(tempfile.mkdtemp()) / "twin"
+_shutil105.copytree(_p58.root, _q105)
+_out105 = _io60.StringIO()
+with _ctx60.redirect_stdout(_out105):
+    _pt58.main([str(_p58.root), str(_q105), "--resamples", "50"])
+check("by repository" in _out105.getvalue() and "by task" in _out105.getvalue(),
+      f"and the tests print both: {[l.strip()[:90] for l in _out105.getvalue().splitlines() if 'by repository' in l][:1]}")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended

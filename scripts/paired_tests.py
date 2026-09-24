@@ -82,6 +82,30 @@ def bootstrap_ci(diffs: list[float], resamples: int, seed: int) -> tuple[float, 
     return means[int(0.025 * resamples)], means[min(resamples - 1, int(0.975 * resamples))]
 
 
+def cluster_bootstrap_ci(diffs: dict[str, float], cluster_of: dict[str, str], resamples: int,
+                         seed: int) -> tuple[float, float]:
+    """Percentile 95% interval for the mean per-task difference, resampling repositories (D-40).
+
+    Tasks from one repository are not independent -- entireio/cli alone holds 8
+    of the headline's 47 -- so D-40 gives the interval with whole repositories
+    resampled beside the one resampling tasks: each draw takes repositories with
+    replacement and averages the differences of every task they hold.
+    """
+    if not diffs:
+        return (float("nan"), float("nan"))
+    groups: dict[str, list[float]] = defaultdict(list)
+    for task, d in diffs.items():
+        groups[cluster_of.get(task, task)].append(d)
+    keys = sorted(groups)
+    rng = random.Random(seed)
+    means = []
+    for _ in range(resamples):
+        values = [v for _ in keys for v in groups[keys[rng.randrange(len(keys))]]]
+        means.append(sum(values) / len(values))
+    means.sort()
+    return means[int(0.025 * resamples)], means[min(resamples - 1, int(0.975 * resamples))]
+
+
 def holm(ps: list[float]) -> list[float]:
     """Holm step-down adjusted p-values, in the input order."""
     order = sorted(range(len(ps)), key=lambda i: ps[i])
@@ -144,6 +168,10 @@ def main(argv: list[str]) -> int:
               f"{len({a['task_id'] for a in rows})} tasks; empty answers {empty}/{len(rows)}")
     print()
 
+    from errata_bench.spec import read
+    from errata_bench.store import Paths
+
+    repo_of = {t.task_id: t.repo_id for r in args.runs for t in read(Paths(r).tasks)}
     for name, has, asked in ENDPOINTS:
         print(name)
         tables = {r: per_task(rows, has, asked) for r, rows in data.items()}
@@ -160,16 +188,18 @@ def main(argv: list[str]) -> int:
             p = sign_flip_p(diffs)
             fd = [float(d) for d in diffs]
             lo, hi = bootstrap_ci(fd, args.resamples, args.seed)
+            rlo, rhi = cluster_bootstrap_ci({t: float(d) for t, d in zip(shared, diffs)}, repo_of,
+                                            args.resamples, args.seed)
             ashared = sorted(set(anys[x]) & set(anys[y]))
             b = sum(anys[x][t] and not anys[y][t] for t in ashared)
             c = sum(anys[y][t] and not anys[x][t] for t in ashared)
             results.append((x, y, len(shared), sum(fd) / len(fd) if fd else float("nan"),
-                            lo, hi, p, b, c, any_sign_p(b, c)))
+                            lo, hi, p, b, c, any_sign_p(b, c), rlo, rhi))
         adjusted = holm([res[6] for res in results])
-        for (x, y, n, mean, lo, hi, p, b, c, pa), padj in zip(results, adjusted):
+        for (x, y, n, mean, lo, hi, p, b, c, pa, rlo, rhi), padj in zip(results, adjusted):
             print(f"  {x.name} - {y.name}: {n} tasks, mean difference {mean:+.3f} "
-                  f"[{lo:+.3f}, {hi:+.3f}], sign-flip p {p:.4f}, Holm {padj:.4f}; "
-                  f"any-attempt {b} to {c}, p {pa:.3f}")
+                  f"[{lo:+.3f}, {hi:+.3f}] by task, [{rlo:+.3f}, {rhi:+.3f}] by repository, "
+                  f"sign-flip p {p:.4f}, Holm {padj:.4f}; any-attempt {b} to {c}, p {pa:.3f}")
         print()
     return 0
 

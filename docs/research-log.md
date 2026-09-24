@@ -6730,3 +6730,18 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - **Grading at scale is cached as B-256 meant:** Mistral-Large-3's first
     70 readings had 16% of their input cached on the first reading and
     100% on the second and third.
+- **09-24** — **D-40's analysis written down before any answer is read**
+  (`scripts/d40_analysis.sh`, no model calls).
+  - Every table and set of paired tests is run under both judges, over the
+    three task sets and over the tasks gpt-6-sol also admits. Then the
+    judges' agreement on `misreported`, pooled, and the flag sample.
+  - A candidate whose run directory is missing is named in `missing.txt`.
+  - D-40 asks for intervals "clustered by task, and by repository beside
+    it". The paired tests resampled tasks only; they now also resample
+    whole repositories and print both. Guard: section 105.
+  - Run end to end on smoke pass 3's rows, in a scratch copy on the VPS: 24
+    tables and tests, the agreement, and the flag packets, with no error.
+    The agreement's header says gpt-6-astra was read from the run's own
+    grading.
+  - **Blocked forced reports, 23:3x UTC:** MAI-Thinking-1 4,
+    DeepSeek-V4-Pro 1, grok-4.6 1.
