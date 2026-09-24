@@ -6202,6 +6202,47 @@ check("conversation so far" not in _q93 and "create the pull request" in _q93,
 check('A "yes" approves what the agent had just proposed' in (_cap93.get("instructions") or ""),
       "and it is told a bare reply means what the conversation had arrived at")
 
+print("\n94. the answerable gate reads a reply after the agent's message it answers")
+# B-253: "yes" to "Want me to promote to production now?" was read alone, as an
+# acknowledgement asking for nothing -- 6 of the 13 moments scope gate 2 let in
+# on the laptop were then rejected for it.
+import errata_bench.find.answerable as _an94
+_t94 = [{"turn_number": 1, "turn_type": "user_prompt", "content": "ship the fix"},
+        {"turn_number": 2, "turn_type": "assistant_response", "content": "Shall I run the tests first?"},
+        {"turn_number": 3, "turn_type": "tool_use", "tool_name": "Bash", "content": "{}"},
+        {"turn_number": 4, "turn_type": "assistant_response", "content": "Want me to promote to production now?"},
+        {"turn_number": 5, "turn_type": "user_prompt", "content": "yes"},
+        {"turn_number": 6, "turn_type": "assistant_response", "content": "Promoted."}]
+check(_an94.agent_message_before(_t94, _t94[4]) == "Want me to promote to production now?"
+      and _an94.agent_message_before(_t94, _t94[0]) == "",
+      "the agent's last written message before the reply is the one it answers, and a first message has none")
+_cap94: dict = {"inputs": []}
+
+
+async def _run94(agent, shown, **kw):
+    _cap94["inputs"].append(shown)
+    _cap94["instructions"] = agent.instructions
+    return type("R94", (), {"final_output": _an94.Answerable(asks_for_something=True, request="r", reasoning="r")})()
+
+
+_keep94 = (_ag93.Runner.__dict__["run"], _an94.configure_client)
+_ag93.Runner.run = _run94
+_an94.configure_client = lambda: None
+try:
+    asyncio.run(_an94.asks_for_something("yes", before="Want me to promote to production now?"))
+    asyncio.run(_an94.asks_for_something("build log: 3 passed, 1 failed"))
+finally:
+    setattr(_ag93.Runner, "run", _keep94[0])
+    _an94.configure_client = _keep94[1]
+_i94, _j94 = _cap94["inputs"]
+check("Want me to promote to production now?" in _i94 and _i94.index("promote") < _i94.index("developer's message"),
+      f"the agent's message comes before the reply: {_i94[:80]!r}")
+check("just before it" not in _j94 and "build log" in _j94,
+      "and without one the message is read alone, as before")
+check('"yes" after "Shall I deploy to production?" asks the agent to deploy' in (_cap94.get("instructions") or "")
+      and "Pasted output is still not a request" in (_cap94.get("instructions") or ""),
+      "and it is told a reply to the agent's question asks for something, and pasted output still does not")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended

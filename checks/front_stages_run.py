@@ -154,7 +154,12 @@ async def fake_derive(defect, resolution, *, repo_id="", **kw):
 
 async def fake_asks(message, **kw):
     records("asks_for_something")
+    SEEN_ASKS["kwargs"] = dict(kw)
     return Answerable(asks_for_something=True, request=message[:40], reasoning="a request")
+
+
+# What the answerable gate was handed, for section 3 (B-253).
+SEEN_ASKS: dict = {}
 
 
 # What the scope and leak gates were handed, for section 3 (B-252).
@@ -254,6 +259,13 @@ def main() -> int:
           f"the scope gate is handed the conversation the leak gate reads: "
           f"{str(SEEN.get('scope_conversation'))[:40]!r}")
     check(row.get("scope_gate") == 2, f"and the row records the scope gate's version: {row.get('scope_gate')!r}")
+    # B-253: the answerable gate read the developer's message alone, and a bare
+    # "yes" to the agent's proposal asked for nothing. It is now handed the
+    # agent's message before it -- here there is none, the request being the
+    # conversation's first message -- and the row says which gate judged it.
+    check(isinstance((SEEN_ASKS.get("kwargs") or {}).get("before"), str),
+          f"the answerable gate is handed the agent's message before the request: {SEEN_ASKS.get('kwargs')}")
+    check(row.get("answerable_gate") == 2, f"and the row records its version: {row.get('answerable_gate')!r}")
 
     print("\n4. the gates are asked --passes times and settled by majority")
     # A gate that changes its mind is settled by what most of its readings say,

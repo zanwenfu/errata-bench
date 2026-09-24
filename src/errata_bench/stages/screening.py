@@ -395,7 +395,7 @@ async def _agree(ask, passes: int, keep_on: bool, reading) -> tuple[bool, str, o
 
 async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int = 1) -> Progress:
     """Check each conversation is answerable, and repair it if it leaks."""
-    from ..find.answerable import asks_for_something
+    from ..find.answerable import ANSWERABLE_GATE, agent_message_before, asks_for_something
     from ..construct.build import last_user_message
     from ..find.leakage import signals_trouble
     from ..corpus.turns import build_excerpt, load_session_turns
@@ -467,13 +467,17 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
                 out["asks_for_something"] = False
                 out["request_reason"] = "no user message before the cut"
             else:
+                # Read after the agent's last message: a bare "yes" answers it
+                # (B-253).
+                before = agent_message_before(ts, message)
                 verdict, tally, a = await _agree(
-                    lambda: asks_for_something(message.get("content") or ""),
+                    lambda: asks_for_something(message.get("content") or "", before=before),
                     passes, keep_on=True,
                     reading=lambda x: x.asks_for_something)
                 out["asks_for_something"] = verdict
                 out["asks_for_something_held"] = tally
                 out["request_reason"] = a.request or a.reasoning
+                out["answerable_gate"] = ANSWERABLE_GATE
 
             # Is the defect even reachable from what was asked? nsega-mcp-todoist
             # asked "create the pull request" and its defect is a linter version
