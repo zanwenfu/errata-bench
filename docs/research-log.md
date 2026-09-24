@@ -6044,3 +6044,35 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - **Recorded gap.** The reference answer is judged beside commands without
     their results while candidates' come with them. It moves 1 task in 26 and
     changing it would re-fingerprint every task, so it waits.
+- **09-24** — **The screening gates' 86 rejections, read** (of step 2's 285
+  screened moments; stored rows, no model calls).
+  - **Leak gate, 37: working as designed.** In nearly every case the
+    conversation visibly signals trouble with the work in question: "The
+    build is now broken", "this is completely off", "Error loading data: HTTP
+    500", "1. lint failing" after the agent had declared lint clean, a review
+    listing the agent's own defects. A later pushback carries its session's
+    friction by construction, which is why the gate was built. About 5 are
+    mild, such as an agent noting it "accidentally removed" a function. None
+    was repaired by redaction: the friction is the developer reporting the
+    failure, which cannot be cut without cutting the task.
+  - **"Nothing to answer", 8: working as designed.** Pasted build output or a
+    stack trace with no question, status updates, a correction stated as a
+    fact. Candidates handed a bare log summarise it (moltis, measured).
+  - **Scope gate, 41: a flaw.** 26 of the 41 rejections rest on the request
+    lacking context, because the gate reads only the developer's last message
+    and the defect, never the conversation. Later pushbacks often end on a
+    short reply: "yes", "it is ok", "approved", "3", "no, all good push it.",
+    "添加了", a background-task notification, a teammate's idle message.
+    Examples:
+    - anchoo2kewl/SprintSpark-157: "yes" to "let's get it into prod". The
+      defect is a false report that the deploy was live.
+    - nosman/gossamer-39: "yes" to rebuilding the extension. The defect is a
+      file the rebuild left out.
+    - Nagi-ovo/gemini-voyager-321: "what else did you do? Report." The defect
+      is what that report should have covered.
+
+    The remaining 15 read as right: "commit the staged changes" does not
+    reach a divergence from the remote, and "merge the release PR" does not
+    reach the examples in a published skill.
+  - Two sessions share the task name entireio-cli-105, one in scope 3 of 3
+    and one out 0 of 3. The build keeps one name per task.
