@@ -6161,3 +6161,27 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     - these must stay not answerable: pasted build failures and stack traces
       with no question after them, a status update, a compaction summary;
     - every move is read.
+- **09-24** — **Answerable gate 2 (B-253), validated and applied**
+  (`results/answerable2-rescreen-*.jsonl`).
+  - 17 rows became answerable and none stopped being.
+  - **All 4 targets moved, 3/3 each:**
+    - SprintSpark-157: "yes" after "Want me to promote to production now?";
+    - gossamer-39: "yes";
+    - skill-forge-101: "it is ok" after "you'll need to bump it";
+    - entireio-64: "yes" after "Want me to rebase onto origin/main?".
+  - **Every move read against its exchange.** "9" after a list of nine todos;
+    "3" after three options; "ok logged in" after "let me know and I'll take a
+    snapshot"; "host ip has changed to 192.168.133.12" after the agent
+    reported the database host unreachable; a teammate's "synthesis
+    complete" when the agent was waiting for exactly that.
+  - **The 10 still not answerable keep the gate's rules:**
+    - a pasted build failure the agent had not asked for;
+    - continuation summaries after a context compaction;
+    - an image reference alone;
+    - pasted terminal output;
+    - an acknowledgement;
+    - a teammate's idle notification when the agent was waiting on
+      reviewers, not on that teammate.
+  - **Applied** with backups (`screened.pre-answerable2.jsonl`,
+    `*.pre-answerable2-0924`). Rebuild and admission running for later-cap20
+    and step2-later (laptop) and step2-later-vps and step2-first (VPS).
