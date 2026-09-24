@@ -48,6 +48,30 @@ EDIT_TOOLS = {"Edit", "Write", "MultiEdit"}
 OUTSIDE = re.compile(r"^(?:/(?:Users|home)/[^/]+|/root|[A-Za-z]:/Users/[^/]+)/\.claude/"
                      r"|^/(?:private/)?(?:tmp|var/folders)/")
 
+# Tools that change files and that the replay does not read. Claude Code driven
+# through Zed's ACP adapter names its tools mcp__acp__Edit, Write and Bash, with
+# Claude Code's own arguments: 7 sessions, and e1b2ec72 has 28 such writes
+# before its moment, none of which a tree built today would contain, while the
+# replay reports success. With them: a notebook edit, serena's symbol edits,
+# GitButler moving branches, and the other agents' editors (OpenCode's
+# apply_patch/edit/write, Gemini's replace/write_file), whose sessions the
+# timestamp gate stops first. A session that used one before the cut is
+# rejected: its tree is neither the commit nor what the agent had.
+UNREPLAYED = re.compile(
+    r"^(?:NotebookEdit|mcp__acp__(?:Edit|Write|MultiEdit|Bash)|apply_patch|edit|write|patch|replace"
+    r"|write_file|edit_file|create_file|str_replace_editor|str_replace_based_edit_tool)$"
+    r"|__(?:replace_symbol_body|insert_after_symbol|insert_before_symbol|replace_regex|replace_content"
+    r"|create_text_file|delete_lines|replace_lines|insert_at_line)$"
+    r"|^mcp__gitbutler__")
+
+
+def unreplayed_writes(turns: list[dict], cut_turn: int) -> list[str]:
+    """The tools, up to the cut, that changed files in a way the replay does not reproduce."""
+    return sorted({t.get("tool_name") or "" for t in turns
+                   if t.get("turn_type") == "tool_use" and (t.get("turn_number") or 0) <= cut_turn
+                   and UNREPLAYED.search(t.get("tool_name") or "")})
+
+
 # What this cannot reconstruct: the agent changing the tree by other means.
 # ravencloak-org/ravencloak runs `git checkout main && git merge
 # feat/frontend-catalyst-redesign`, then `git pull`, `git commit` and `git push`

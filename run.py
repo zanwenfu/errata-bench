@@ -145,12 +145,21 @@ def find_moments(
         first = _later_moments(conv, pushes, repo_of, min_agent_turns)
     need = {m["session_id"]: m["turn_number"] for m in first.values()}
     acted: dict[str, int] = {s: 0 for s in need}
+    # And whether any turn of the session carries a timestamp. The build finds
+    # the commit a session started from by its first timestamp and rejects a
+    # session with none -- after triage, reading, locating and screening have
+    # spent their calls on it. None of the 623 OpenCode sessions has one (nor
+    # a tool result), and they were 173 of the next batches' 1,774 moments.
+    stamped: set[str] = set()
     for batch in conv.iter_batches(
-        batch_size=200_000, columns=["session_id", "turn_number", "turn_type"]
+        batch_size=200_000, columns=["session_id", "turn_number", "turn_type", "timestamp"]
     ):
-        cols = {n: batch.column(n).to_pylist() for n in batch.schema.names}
+        cols = {n: batch.column(n).to_pylist() for n in ("session_id", "turn_number", "turn_type")}
+        valid = batch.column("timestamp").is_valid().to_pylist()
         for i in range(len(cols["session_id"])):
             session = cols["session_id"][i]
+            if valid[i] and session in need:
+                stamped.add(session)
             cutoff = need.get(session)
             if cutoff is None or cols["turn_number"][i] >= cutoff:
                 continue
@@ -167,6 +176,11 @@ def find_moments(
         and m["agent_turns_before"] >= min_agent_turns
         and can_be_sandboxed(languages.get(m["repo_id"]))
     ]
+    unstamped = sum(1 for m in fresh if m["session_id"] not in stamped)
+    fresh = [m for m in fresh if m["session_id"] in stamped]
+    if unstamped:
+        print(f"  {unstamped} moments left out: no turn in their session carries a timestamp, "
+              "so the build could not find the commit it started from", flush=True)
     # Counted over the same rows `fresh` considers -- moments not already
     # collected. Counted over all of them it reported every moment any earlier
     # run had taken, every time: 456 printed where 68 were newly withheld, a

@@ -25,10 +25,10 @@ import re
 import tempfile
 from pathlib import Path
 
-from ..corpus.recover import has_transcript, recovered
+from ..corpus.recover import foreign_transcript, has_transcript, recovered, subagent_edits
 from ..corpus.sessions import load_repos
 from .consistency import check as consistency_check, tree_changing_git, why_inconsistent
-from .edits import edits_before, replay
+from .edits import OUTSIDE, edits_before, replay, unreplayed_writes
 from .presence import check, repo_url
 from ..corpus.turns import load_session_turns
 from ..find.signature import Signature
@@ -133,6 +133,23 @@ def base_commit(repo_id: str, session_ns: int | None, commits) -> str | None:
     if not earlier:
         return None
     return max(earlier, key=lambda c: c.author_ns).commit_sha
+
+
+def subagent_edits_before(session_id: str, turns: list[dict], cut: int) -> list[str]:
+    """Files the session's sub-agents edited before the cut, which the replay does not apply.
+
+    Placed by the main agent's call that spawned the sub-agent. A spawning call
+    the record does not hold cannot be placed, so it is not assumed to come
+    after the cut. The agent's own files (`OUTSIDE`) are not the repository's.
+    """
+    at = {str(t["tool_call_id"]): t["turn_number"] for t in turns
+          if t.get("turn_type") == "tool_use" and t.get("tool_call_id") and t.get("turn_number") is not None}
+    out = []
+    for e in subagent_edits(session_id):
+        when = at.get(str(e["spawned_by"]))
+        if (when is None or when <= cut) and not OUTSIDE.match(e["file_path"] or ""):
+            out.append(e["file_path"] or "(no path)")
+    return out
 
 
 def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
@@ -318,6 +335,27 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
         if git:
             reject(f"the agent changed its files with git before the cut, which no replay "
                    f"reproduces: {git[0][:90]}")
+            continue
+        # The same for files changed by a tool the replay does not read, or by
+        # a sub-agent, whose calls only the raw transcript records. Either way
+        # the replay would report success on a tree lacking the agent's work.
+        unread = unreplayed_writes(turns, row["cut"])
+        if unread:
+            reject(f"the agent changed files before the cut with a tool the replay does not "
+                   f"read: {', '.join(unread)[:90]}")
+            continue
+        by_subagent = subagent_edits_before(row["session_id"], turns, row["cut"])
+        if by_subagent:
+            reject(f"a sub-agent edited files before the cut, which the replay does not "
+                   f"reproduce: {by_subagent[0][:90]}")
+            continue
+        # A transcript in another agent's format: the table may hold none of
+        # the session's calls (a Copilot session's has no tool rows, while its
+        # transcript records 14 edits before the moment), and nothing here can
+        # read the transcript to tell.
+        if foreign_transcript(row["session_id"]):
+            reject("the session's transcript is not in Claude Code's format, so its calls "
+                   "cannot be checked against the table")
             continue
 
         base = scratch or Path(tempfile.gettempdir()) / "errata-bench-build"

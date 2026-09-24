@@ -37,9 +37,41 @@ def transcript_path(session_id: str) -> Path:
     return CORPUS / "transcripts" / f"{session_id}.jsonl"
 
 
+# The entry types of Claude Code's transcripts, measured over the corpus's
+# 4,927 transcripts of sessions labelled Claude Code, "unknown" or "Agent" (the
+# last two are Claude Code recorded by development builds of the Entire CLI).
+# Other agents' transcripts sit in the same directory under the same name:
+# OpenCode's is one pretty-printed JSON object, Codex's opens with
+# `session_meta`, Copilot's with `session.start`, Cursor's carries no type.
+CLAUDE_CODE_TYPES = frozenset({
+    "user", "assistant", "system", "summary", "progress", "file-history-snapshot",
+    "queue-operation", "permission-mode", "custom-title", "ai-title", "pr-link",
+    "attachment", "last-prompt", "agent-name"})
+
+
 def has_transcript(session_id: str) -> bool:
-    """Whether this session's lost calls can be put back here."""
-    return transcript_path(session_id).is_file()
+    """Whether this session's lost calls can be put back here: a transcript in Claude Code's format.
+
+    Any file was enough before, so screening marked all 623 OpenCode rows
+    `calls_recovered` although `raw_calls` reads nothing from them.
+    """
+    path = transcript_path(session_id)
+    if not path.is_file():
+        return False
+    with path.open() as fh:
+        for line in fh:
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                continue
+            if isinstance(entry, dict) and entry.get("type") is not None:
+                return entry["type"] in CLAUDE_CODE_TYPES
+    return False
+
+
+def foreign_transcript(session_id: str) -> bool:
+    """Whether a transcript is here in another agent's format, which nothing here can read."""
+    return transcript_path(session_id).is_file() and not has_transcript(session_id)
 
 
 def recovered(turns_by_session: dict[str, list[dict]]) -> dict[str, list[dict]]:
@@ -125,3 +157,57 @@ def recover(session_id: str, turns: list[dict]) -> list[dict]:
     if not added:
         return turns
     return sorted(turns + added, key=lambda t: t["turn_number"] if t.get("turn_number") is not None else 0)
+
+
+# What a sub-agent writes. Its calls are recorded only as `progress` entries of
+# the main agent's call that spawned it (data.type "agent_progress", the call's
+# id in `parentToolUseID`); the conversations table has no rows for them and
+# `raw_calls` leaves them out, so the replay never applies them. 125 of the next
+# batches' 1,601 buildable moments have sub-agent edits before them, 3,592 calls
+# in all; in 40 the main agent made no edit of its own, and the replay reported
+# a tree it had applied nothing to.
+SUBAGENT_WRITES = frozenset({"Edit", "Write", "MultiEdit", "NotebookEdit"})
+
+
+def subagent_edits(session_id: str) -> list[dict]:
+    """File edits the session's sub-agents made, each with the main agent's call that spawned it.
+
+    `spawned_by` is that call's id: a sub-agent's own sub-agent is followed up
+    to the main agent's call.
+    """
+    path = transcript_path(session_id)
+    if not path.is_file():
+        return []
+    parent: dict[str, str | None] = {}
+    edits: list[dict] = []
+    with path.open() as fh:
+        for line in fh:
+            if '"agent_progress"' not in line:
+                continue
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                continue
+            data = entry.get("data") if isinstance(entry, dict) else None
+            if not isinstance(data, dict) or data.get("type") != "agent_progress":
+                continue
+            outer = data.get("message")
+            message = outer.get("message") if isinstance(outer, dict) else None
+            if not isinstance(message, dict) or not isinstance(message.get("content"), list):
+                continue
+            for block in message["content"]:
+                if not (isinstance(block, dict) and block.get("type") == "tool_use" and block.get("id")):
+                    continue
+                parent[block["id"]] = entry.get("parentToolUseID")
+                if block.get("name") in SUBAGENT_WRITES:
+                    given = block.get("input") if isinstance(block.get("input"), dict) else {}
+                    edits.append({"id": block["id"], "tool": block["name"],
+                                  "file_path": given.get("file_path") or given.get("notebook_path"),
+                                  "parent": entry.get("parentToolUseID")})
+    for e in edits:
+        top, seen = e["parent"], set()
+        while top in parent and top not in seen:
+            seen.add(top)
+            top = parent[top]
+        e["spawned_by"] = top
+    return edits

@@ -2024,7 +2024,8 @@ _turns38 = [(sid, n, kind, push) for sid in _langs38 for n, kind, push in (
     (4, "assistant_response", None), (5, "user_prompt", "correction"))]
 _pq.write_table(_pa.table({
     "session_id": [t[0] for t in _turns38], "turn_number": [t[1] for t in _turns38],
-    "turn_type": [t[2] for t in _turns38], "prompt_pushback": [t[3] for t in _turns38]}),
+    "turn_type": [t[2] for t in _turns38], "prompt_pushback": [t[3] for t in _turns38],
+    "timestamp": _pa.array([1_700_000_000_000_000 + t[1] for t in _turns38], _pa.timestamp("us", tz="UTC"))}),
     _corpus38 / "conversations.parquet")
 _keep_corpus = (_sessions_mod.CORPUS, _sessions_mod.load_repos)
 _sessions_mod.CORPUS = _corpus38
@@ -5585,7 +5586,9 @@ _rows82 = [("s-multi", n, *kp) for n, kp in enumerate([
 _rows82 += [("s-once", n, *kp) for n, kp in enumerate([
     ("user_prompt", "non_pushback"), _A82, _A82, _A82, ("user_prompt", "correction")], start=1)]
 _pq.write_table(_pa.table({"session_id": [r[0] for r in _rows82], "turn_number": [r[1] for r in _rows82],
-                           "turn_type": [r[2] for r in _rows82], "prompt_pushback": [r[3] for r in _rows82]}),
+                           "turn_type": [r[2] for r in _rows82], "prompt_pushback": [r[3] for r in _rows82],
+                           "timestamp": _pa.array([1_700_000_000_000_000 + r[1] for r in _rows82],
+                                                  _pa.timestamp("us", tz="UTC"))}),
                 _corpus82 / "conversations.parquet")
 _keep82 = (_sessions_mod.CORPUS, _sessions_mod.load_repos)
 _sessions_mod.CORPUS, _sessions_mod.load_repos = _corpus82, REAL_LOAD_REPOS
@@ -5723,6 +5726,103 @@ check(_cs66.printed_heads(_h85b, 10) == []
       and _cs66.check(_t84, _h85c, 10, "abc1234def0")["head_contradicts_base"],
       "a commit and a log in one command compare nothing, and a HEAD printed before any commit that "
       "is not the base still contradicts it")
+
+print("\n86. a moment whose session has no timestamp is left out before any call is spent on it")
+# The build finds the commit a session started from by its first timestamp and
+# rejects a session with none, after four stages have spent calls on it. No
+# OpenCode session has one; they were 173 of the next batches' 1,774 moments.
+_corpus86 = Path(tempfile.mkdtemp())
+_langs86 = {"s-stamped": "TypeScript", "s-bare": "TypeScript"}
+_pq.write_table(_pa.table({"session_id": list(_langs86), "repo_id": [f"o/{k}" for k in _langs86]}),
+                _corpus86 / "sessions.parquet")
+_pq.write_table(_pa.table({
+    "repo_id": [f"o/{k}" for k in _langs86], "url": ["u"] * 2, "license_type": ["mit"] * 2,
+    "repo_github_metadata": [json.dumps({"language": v}) for v in _langs86.values()]}),
+    _corpus86 / "repositories.parquet")
+_rows86 = [(sid, n, kind, push) for sid in _langs86 for n, kind, push in (
+    (1, "user_prompt", "non_pushback"), (2, "assistant_response", None), (3, "tool_use", None),
+    (4, "assistant_response", None), (5, "user_prompt", "correction"))]
+_pq.write_table(_pa.table({
+    "session_id": [r[0] for r in _rows86], "turn_number": [r[1] for r in _rows86],
+    "turn_type": [r[2] for r in _rows86], "prompt_pushback": [r[3] for r in _rows86],
+    "timestamp": _pa.array([1_700_000_000_000_000 + r[1] if r[0] == "s-stamped" else None for r in _rows86],
+                           _pa.timestamp("us", tz="UTC"))}),
+    _corpus86 / "conversations.parquet")
+_keep86 = (_sessions_mod.CORPUS, _sessions_mod.load_repos)
+_sessions_mod.CORPUS, _sessions_mod.load_repos = _corpus86, REAL_LOAD_REPOS
+try:
+    _out86, _said86 = Path(tempfile.mkdtemp()) / "m.jsonl", _io38.StringIO()
+    with _contextlib38.redirect_stdout(_said86):
+        _run_mod.find_moments(10, _out86)
+finally:
+    _sessions_mod.CORPUS, _sessions_mod.load_repos = _keep86
+check([r["session_id"] for r in load(_out86)] == ["s-stamped"]
+      and "1 moments left out: no turn in their session carries a timestamp" in " ".join(_said86.getvalue().split()),
+      f"of two sessions with the same objection, the one with no timestamp is left out, and said so: "
+      f"{[r['session_id'] for r in load(_out86)]} {_said86.getvalue().strip()[:90]!r}")
+
+print("\n87. the build rejects edits it cannot replay: other tools', sub-agents', other agents' transcripts")
+# Claude Code through Zed names its tools mcp__acp__Edit and Write: e1b2ec72 has
+# 28 such writes before its moment. Sub-agents' edits are only in the raw
+# transcript, as progress entries of the call that spawned them: 125 of 1,601
+# buildable moments. And a Copilot session's table has no tool rows at all.
+# Each would have been built as a tree lacking the agent's work, replay "ok".
+
+
+def _sub87(parent, path):
+    return json.dumps({"type": "progress", "parentToolUseID": parent, "toolUseID": "agent_msg_1",
+                       "data": {"type": "agent_progress", "agentId": "a1", "message": {"message": {"content": [
+                           {"type": "tool_use", "id": f"sub-{parent}-{path[-6:]}", "name": "Write",
+                            "input": {"file_path": path, "content": "x"}}]}}}})
+
+
+_task87 = lambda n, cid: _T63(n, "tool_use", tool_name="Task", tool_call_id=cid,
+                              content=json.dumps({"prompt": "write the helper"}))
+_cc87 = [_entry70("m2", "e2", "Edit", {"file_path": "/home/dev/up/src/b.py", "old_string": "y", "new_string": "z"})]
+_kept87 = {n: getattr(_B43w, n) for n in _kept79}
+
+
+def _with87(lines, turns):
+    (_dir70 / "s79.jsonl").write_text("\n".join(lines) + "\n")
+    return _build79(turns)
+
+
+recover_mod.transcript_path = lambda sid: _dir70 / f"{sid}.jsonl"
+try:
+    _acp87 = _with87(_cc87, _turns79() + [_T63(5, "tool_use", tool_name="mcp__acp__Edit", tool_call_id="z1",
+                                                content=json.dumps({"file_path": "/home/dev/up/src/a.py"}))])
+    _subin87 = _with87(_cc87 + [_sub87("t1", "/home/dev/up/src/helper.py")], _turns79() + [_task87(5, "t1")])
+    _subout87 = _with87(_cc87 + [_sub87("t2", "/home/dev/up/src/helper.py")], _turns79() + [_task87(11, "t2")])
+    _subplan87 = _with87(_cc87 + [_sub87("t3", "/home/dev/.claude/plans/p.md")], _turns79() + [_task87(5, "t3")])
+    # A sub-agent's own sub-agent: its edit is placed by the main agent's call,
+    # two levels up -- here after the cut, so the task stands.
+    _spawn87 = json.dumps({"type": "progress", "parentToolUseID": "t4", "data": {
+        "type": "agent_progress", "message": {"message": {"content": [
+            {"type": "tool_use", "id": "st4", "name": "Task", "input": {"prompt": "go deeper"}}]}}}})
+    _nested87 = _with87(_cc87 + [_spawn87, _sub87("st4", "/home/dev/up/src/deep.py")],
+                        _turns79() + [_task87(11, "t4")])
+    _copilot87 = _with87([json.dumps({"type": "session.start", "data": {}})], _turns79())
+    (_dir70 / "s87-open.jsonl").write_text('{\n  "info": {"id": "ses_1"},\n  "messages": []\n}\n')
+    _formats87 = (recover_mod.has_transcript("s79"), recover_mod.has_transcript("s87-open"),
+                  recover_mod.has_transcript("s87-none"))
+    (_dir70 / "s79.jsonl").write_text("\n".join(_cc87) + "\n")
+    _formats87 += (recover_mod.has_transcript("s79"),)
+finally:
+    recover_mod.transcript_path = _NO_TRANSCRIPTS
+    for _n87, _v87 in _kept87.items():
+        setattr(_B43w, _n87, _v87)
+check(not _acp87.tasks and any("a tool the replay does not read: mcp__acp__Edit" in w for w in _why79(_acp87)),
+      f"a write through Zed's mcp__acp__Edit before the cut is rejected: {_why79(_acp87)}")
+check(not _subin87.tasks and any("a sub-agent edited files before the cut" in w and "helper.py" in w
+                                 for w in _why79(_subin87)),
+      f"so is a sub-agent's edit, placed by the call that spawned it: {_why79(_subin87)}")
+check(len(_subout87.tasks) == 1 and len(_subplan87.tasks) == 1 and len(_nested87.tasks) == 1,
+      f"but not one spawned after the cut, even two levels down, nor a sub-agent's plan: "
+      f"{_why79(_subout87)} {_why79(_subplan87)} {_why79(_nested87)}")
+check(not _copilot87.tasks and any("not in Claude Code's format" in w for w in _why79(_copilot87))
+      and _formats87 == (False, False, False, True),
+      f"and a transcript in another agent's format is rejected, not read as having no calls: "
+      f"{_why79(_copilot87)} formats={_formats87}")
 
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every

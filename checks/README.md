@@ -39,7 +39,7 @@ directories made before the split, and what happens when a candidate or a
 grading fails. Its ninth section requires that every served-model probe the
 stages made went to its stand-in, so none of it reaches the network.
 
-**`guards_hold.py`** is eighty-five numbered sections, one per guard: what the
+**`guards_hold.py`** is eighty-seven numbered sections, one per guard: what the
 attempt and grade stages refuse to do; the gate asked repeatedly; the
 reference-answer control and when it is not applicable; the clean-pass
 standard and the hedged one priced side by side; permanent git loss; the
@@ -112,7 +112,10 @@ one per session, after new work. Section 83 takes the judges' agreement between
 two re-grades. Section 84 has the build skip the agent's own files (a plan in
 ~/.claude/plans/, its memory, a scratch file in /tmp) instead of rejecting the
 task, while a path elsewhere still rejects. Section 85 compares only a HEAD printed
-before the agent's own commit or reset with the base. It closes by asserting it handed production back unpatched, because three
+before the agent's own commit or reset with the base. Section 86 leaves out a
+moment whose session has no timestamp before any call is spent on it; section 87
+has the build reject edits it cannot replay: a tool it does not read (Zed's
+mcp__acp__Edit), a sub-agent's, or a session whose transcript is another agent's. It closes by asserting it handed production back unpatched, because three
 sections restored one module attribute through a name a fourth binds to
 something else. Its fake judge sets the task's kind the way the
 real one does -- left at the default, every task here was graded by the

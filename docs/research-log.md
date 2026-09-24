@@ -5672,3 +5672,73 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     `fab751e` (a merged pull request), was printed by a recovered `git log`
     before any commit, while the build had chosen an older commit from
     commits.parquet. That is a wrong base: the next thing examined.
+- **09-24** — **Which agents' sessions can become tasks** (a read-only audit of
+  all 5,851 sessions).
+  - SWE-chat is not only Claude Code: 4,852 Claude Code, 623 OpenCode, 213
+    Codex, 59 Gemini CLI, 52 "unknown", 24 "Agent", 19 Cursor, plus a handful
+    of others.
+  - "unknown", "Agent" and 3 of the "Gemini CLI" sessions are Claude Code,
+    recorded by development builds of the Entire CLI.
+  - No OpenCode session has a turn timestamp (nor a tool result), so the build
+    rejects every one, after four stages have spent calls on it: 173 of the
+    next batches' 1,774 moments, 169 of them from dayhaysoos/nimbus.
+  - Codex and Cursor sessions have no tool rows to build from.
+  - All 58 tasks ever built are Claude Code sessions with timestamps, and none
+    had an unreplayed write before its cut.
+  - The one non-"Claude Code" label, entireio-cli-182, was built before the
+    replay existed and belongs to the already-void R-10.
+- **09-24** — **B-247 fixed: four ways a tree lacked the agent's own work
+  while the replay reported success.**
+  1. **Zed's adapter.** Claude Code driven through Zed's ACP adapter names its
+     tools `mcp__acp__Edit`, `Write` and `Bash`, which the replay, the
+     consistency check and the git rule all ignore: 7 sessions, and e1b2ec72
+     has 28 such writes before its moment.
+  2. **Sub-agents.** Their calls exist only as `progress` entries of the call
+     that spawned them, which neither the table nor the recovery reads. 125 of
+     the next batches' 1,601 buildable moments have sub-agent edits before
+     them (3,592 calls). In 40 of those the main agent edited nothing itself.
+  3. **Another agent's transcript.** A Copilot session's table has no tool rows
+     at all, while its transcript records 14 edits before the moment.
+  4. **Moments with no timestamp** reached screening although the build must
+     reject them.
+
+  Now:
+  - the build rejects a session that used a tool the replay does not read
+    (`edits.UNREPLAYED`);
+  - it rejects a sub-agent edit before the cut, placed by the main agent's
+    call that spawned it (followed up through nested sub-agents; the agent's
+    own files excepted);
+  - it rejects a transcript in another agent's format;
+  - `has_transcript` now requires Claude Code's format, so the 623 OpenCode
+    rows are no longer marked `calls_recovered`;
+  - `run.py moments` leaves out sessions with no timestamp and says how many.
+
+  Guards: sections 86 and 87, each of the 8 fixes reverted alone and seen red.
+
+  Not done:
+  - replaying sub-agents' edits instead of rejecting them (placement, parallel
+    sub-agents and worktree isolation make it a separate piece of work);
+  - reading commands run through the context-mode plugin, which the git rule
+    does not see. 328 such calls before the next batches' moments, none
+    running tree-changing git.
+- **09-24** — **Why the build rejects sessions for the wrong base** (a
+  read-only audit of 13 base-related rejections, with a blob test: a file the
+  conversation read in full, hashed and matched against every patch's `index`
+  line).
+  - The branch is the cause in 1 of 13 (ClusterCockpit-35).
+  - Uncommitted work other sessions left in the checkout is the cause in 5 or
+    6, and no base choice fixes it.
+  - commits.parquet holds a median 10% of each repository's commits and none
+    of GitHub's merge or squash commits, and 36% of its rows are
+    `commit_not_found`. So "the last corpus commit before the session" is
+    often stale: savanna-vet-go's real HEAD, printed by the conversation, is a
+    squash merge the corpus lacks.
+  - Found along the way, over the next batches' 1,503 sessions:
+    - edits the user rejected or that errored are replayed (29 and 148
+      sessions; ccw-140's cause);
+    - `[REDACTED:<KIND>]` placeholders are not wildcards in the consistency
+      check (147 sessions; BugViper-101);
+    - 5 chosen bases are the session's own checkpointed commits;
+    - 122 were authored before the start but committed after it;
+    - the start is the earliest entry rather than the first prompt (savanna:
+      a 6-minute gap in which the developer merged and switched branch).
