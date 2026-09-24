@@ -33,7 +33,21 @@ which gives each task a reference answer.
   fixed (B-252, B-253). 25 repositories, entireio/cli 16 of them.
 - **Claude is no longer called (09-24):** its Azure deployment bills the
   user's own card rather than the Azure credits, and the code now refuses it.
-  It was the second judge; what replaces it is still to be decided.
+  gpt-6-sol replaces it as the second judge (D-40). All eight deployments D-40
+  uses are "sold by Azure" and paid from the credits (checked against
+  Microsoft's documents).
+- **The confirmatory run, D-40, is running (from 09-24 22:22 UTC):** the 55
+  tasks, 6 candidates, 3 attempts each, graded 3 times by gpt-6-astra and 3
+  times by gpt-6-sol, with the analysis fixed in advance
+  (`scripts/d40_analysis.sh`).
+  - Six smoke passes first found eight harness bugs (B-254 to B-261). Among
+    them: no answer recorded its tokens; MAI-Thinking-1's empty responses
+    were taken as answers; the attempt's tree lacked the edits SWE-chat's
+    table lost; strict tool schemas; a forced report pasted as text, which
+    Azure's content filter blocked.
+  - Kimi-K2.7-Code and DeepSeek-V4-Flash are paused: their Azure quotas, not
+    the models, were ending long attempts. They rerun from nothing once the
+    quotas are raised.
 - **Solid findings about the data.** SWE-chat's conversations table is missing
   18.8% of tool calls. On at least 5 of the 21 tasks the rebuilt repository
   differs from what the conversation shows. On 3 of 21 tasks, the answer the
