@@ -6577,6 +6577,41 @@ for _k97, _what97 in (("grade", "the grade stage"), ("regrade", "the second judg
           f"{_starts97} readings, in turn {_in_turn97(_o97, lambda x: x)}, "
           f"side by side {_side_by_side97(_o97, lambda x: x)}")
 
+print("\n98. a final report the provider refuses makes the attempt an error, not an empty answer")
+# B-257. On the smoke run Azure's content filter blocked grok's forced report,
+# three times of three, as "Jailbreak". The harness recorded an empty reply --
+# graded `no_answer`, a failed clean pass -- where the same refusal in the
+# attempt's own turns makes the attempt an error, retried and then given up
+# on, entering no rate. A report the clock cut off stays a result (section 55).
+
+
+class _Refuses98:
+    @staticmethod
+    async def run(agent, prompt, **kw):
+        if agent.tools:
+            ctx = kw.get("context") or {}
+            ctx.setdefault("calls", []).append(ToolCall("read_file", {"path": "src/a.txt"}, result="hello"))
+            raise _MTE64("Max turns (30) exceeded")
+        raise RuntimeError("Error code: 400 - content_filter: Response content blocked by label 'Jailbreak'.")
+
+
+_swap98 = {n: getattr(attempt_mod, n) for n in ("configure_client", "fetch", "replay", "Container", "Runner")}
+attempt_mod.configure_client = lambda: None
+attempt_mod.fetch = lambda url, sha, dest: _Checkout()
+attempt_mod.replay = lambda tree, edits, repo_id: type("R", (), {"ok": True, "reason": ""})()
+attempt_mod.Container = _NoStart
+attempt_mod.Runner = _Refuses98
+os.environ["ERRATA_ALLOW_HOST"] = "1"
+try:
+    _a98 = asyncio.run(REAL_RUN(make_task("task-0"), image="node:22", turns=[], budget_s=600))
+finally:
+    os.environ.pop("ERRATA_ALLOW_HOST", None)
+    for _n, _v in _swap98.items():
+        setattr(attempt_mod, _n, _v)
+check(_a98.error.startswith("FinalReportFailed") and "Jailbreak" in _a98.error and _a98.reply == ""
+      and len(_a98.tool_calls) == 1,
+      f"a report the provider refused is the attempt's error, with its cause and its trace: {_a98.error[:70]!r}")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended

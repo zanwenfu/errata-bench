@@ -6366,3 +6366,59 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - **Guard:** section 97, 5 pieces reverted alone, each seen red.
   - **Effect**, estimated from the smoke rows: about $400 less over D-40's
     990 answers.
+- **09-24** — **B-257 fixed: a forced final report the provider refused was
+  recorded as an empty answer** (smoke pass 3).
+  - **Found.** grok's attempt at Nagi-ovo-gemini-voyager-13 ran to the turn
+    limit (126 calls). Its forced report came back as HTTP 400,
+    `finish_reason: content_filter`, "Response content blocked by label
+    'Jailbreak'": 3 of 3 replays of that report were blocked. In pass 2 the
+    same task's report went through.
+  - **Why it matters.** The report's failure was recorded, and the reply
+    left empty. It was graded `no_answer`: out of the primary endpoint's
+    denominator, but a failed clean pass caused by the provider. The same
+    refusal in an attempt's own turns makes the attempt an error, retried
+    and then given up on (`gave_up`, in no rate).
+  - **Fix.** Any failure of the report's request other than the clock
+    raises `FinalReportFailed`, so the attempt is an error, retried with a
+    fresh container and given up on after 3. A report cut off by
+    `FINAL_REPORT_S` is still a result, as D-36 A4 has it.
+  - **Guard:** section 98, and section 55 for the clock (2 pieces reverted
+    alone, each seen red).
+- **09-24** — **R: the D-40 smoke run, three passes** (answers excluded from
+  every analysis, as D-40 says).
+  - **Setup.** 2 tasks (entireio-cli-105, Go; Nagi-ovo-gemini-voyager-13,
+    TypeScript) × 6 candidates × 1 attempt. gpt-6-astra and gpt-6-sol, 3
+    readings each.
+    - Pass 1: 13b19dc. Pass 2: B-254 (edae661). Pass 3: B-255 and B-256
+      (eb06ee9).
+  - **What D-40 asked of it, all shown by pass 3:**
+    - every model completed its attempts in its container (node:22,
+      golang:1.26);
+    - both judges' readings parse, with 0 errored rows;
+    - usage is recorded on every attempt and grade row.
+    - gpt-6-sol's tests were copied by `TESTS_FROM` to every directory.
+  - **Found on the way:** B-254 (no answer recorded its tokens), B-255
+    (MAI-Thinking-1's null responses taken as answers), B-256 (readings sent
+    together, so none was cached), B-257 (a refused report taken as an empty
+    answer).
+    - Live checks: B-255, MAI's TypeScript attempt had 1 null response
+      re-sent and went on to a 465-character reply. B-256, readings 2 and 3
+      were 23,087 of 23,093 input tokens cached.
+  - **Measured at list prices** (prices.azure.com, Global Standard; gpt-6-sol
+    is not listed and is priced as gpt-5.6-sol, $4 / $0.40 / $20 per million):
+    - one gpt-6-astra answer, 3 readings, on a task of the 55's mean length:
+      about $0.43 ($0.26 for the first, $0.08 for each cached one);
+    - candidates per attempt: grok-4.6 $0.50 on average and $1.05 at most
+      (126 calls, 1.4M input tokens, 89% cached); the other five $0.003 to
+      $0.06.
+    - The three passes cost about $25 in all.
+  - **The full run, projected** (`d40_cost.py` over passes 2 and 3):
+    - candidates, 990 attempts: about $90 (at most about $200);
+    - gpt-6-astra: about $420;
+    - gpt-6-sol with its tests on the 55 tasks: about $310 at the assumed
+      price, about $790 if priced like gpt-6-astra.
+    - **About $830 in all, up to about $1,300.** Before B-256 the readings
+      would have cost about $400 more.
+  - **Time.** grok's attempts take about 9 minutes each; 3 containers for it
+    and 1 for each other model gives about 10 to 12 hours.
+  - **Put to the user before the full run starts**, as D-40 requires.

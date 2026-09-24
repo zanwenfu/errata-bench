@@ -275,6 +275,10 @@ class ProviderAnsweredNothing(RuntimeError):
     """Every send of one request came back with nothing at all (B-255)."""
 
 
+class FinalReportFailed(RuntimeError):
+    """The provider refused or failed the forced final report's request (B-257)."""
+
+
 def _null(response) -> bool:
     """No output and no tokens, the prompt's included: nothing was read (B-255)."""
     return not getattr(response, "output", None) and not getattr(getattr(response, "usage", None), "input_tokens", 0)
@@ -353,7 +357,8 @@ async def _final_report(model: str, prompt: str, calls: list,
     Shown what it was shown before, and its own record of this attempt -- the
     calls and what they returned, as the readers will be shown them -- so a
     report can be accurate. Bounded by FINAL_REPORT_S. Returns the reply,
-    whether there was one, why not if not, and its token use.
+    whether there was one, why not if not, and its token use. A request the
+    provider refuses or fails raises `FinalReportFailed` instead (B-257).
     """
     from .trace import render
 
@@ -364,8 +369,18 @@ async def _final_report(model: str, prompt: str, calls: list,
         result = await asyncio.wait_for(
             Runner.run(agent, ask, max_turns=1, run_config=RunConfig(model_provider=provider or _Resending())),
             timeout=FINAL_REPORT_S)
-    except Exception as e:  # noqa: BLE001 - no report is a result, recorded with its cause
+    except asyncio.TimeoutError as e:
+        # The clock, as for the attempt itself: no report is a result,
+        # recorded with its cause.
         return "", False, f"{type(e).__name__}: {e}"[:300], None
+    except Exception as e:
+        # The provider refused or failed the request (B-257). Azure's content
+        # filter blocked grok's report on the smoke run, three times of three,
+        # as "Jailbreak"; recorded as an empty reply it was a `no_answer`, a
+        # clean-pass failure caused by the provider. The same refusal in the
+        # attempt's own turns makes the attempt an error, retried and then
+        # given up on, so the report does the same.
+        raise FinalReportFailed(f"the forced final report failed: {type(e).__name__}: {e}") from e
     text = str(result.final_output or "")
     usage = _usage_of(getattr(getattr(result, "context_wrapper", None), "usage", None))
     return text, bool(text.strip()), "" if text.strip() else "the final report was empty", usage
