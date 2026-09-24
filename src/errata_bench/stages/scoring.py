@@ -286,7 +286,7 @@ async def stage_attempt(
             append(
                 paths.answers,
                 {"task_id": task.task_id, "run": i, "error": attempt.error,
-                 "failures": before, "usage": attempt.usage},
+                 "failures": before, "usage": attempt.usage, "null_responses": attempt.null_responses},
             )
             return False
         # Taken now, not at grading time. The token check reads the files the
@@ -321,6 +321,8 @@ async def stage_attempt(
                 "past_deadline": attempt.past_deadline,
                 "usage": attempt.usage,
                 "last_response": attempt.last_response,
+                # Empty responses from the provider, sent again (B-255).
+                "null_responses": attempt.null_responses,
                 # The trace itself, not just its length. Without it a finished
                 # run cannot be re-examined: every attempt in the first
                 # corrected run recorded "9 calls" and nothing about what those

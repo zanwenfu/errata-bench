@@ -6312,3 +6312,34 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - **Not the instrument.** Nothing the candidate is shown, and nothing the
     judges read, changed. The smoke run is repeated on this commit to confirm
     the fix.
+- **09-24** — **B-255 fixed: a response the provider sent back empty was
+  taken as the candidate's answer** (the D-40 smoke run).
+  - **Found.** On both smoke passes, MAI-Thinking-1's attempt at
+    Nagi-ovo-gemini-voyager-13 ended with an empty reply. On the first pass
+    it came after one tool call, on the second on the first request. With
+    B-254's fields, the second row showed one request with 0 input and 0
+    output tokens and nothing in the response.
+  - **Reproduced.** The attempt's first request was replayed through the
+    same SDK path: 1 of 4 came back as a 200 with an empty message, no tool
+    call, finish reason `stop` and all token counts 0, the prompt's
+    included. Three raw replays answered normally. The model read nothing;
+    the provider returned a null response.
+  - **Why it matters.** The harness took the null as the model's final
+    answer. It was scored `no_answer`: out of the primary endpoint's
+    denominator, counted against a clean pass. And a null on any call of a
+    multi-call attempt ended the attempt.
+  - **Fix.**
+    - The candidate's model is asked for through a provider that wraps it
+      (`_Resend`). A response with no output and no tokens is sent again, up
+      to 5 sends (about 1 request in 1,000 unanswered at MAI's rate).
+    - A response with tokens spent is the model's own, however empty, and
+      is kept.
+    - A request never answered raises `ProviderAnsweredNothing`. The attempt
+      becomes an error row, retried with a fresh container like any harness
+      failure (given up after 3).
+    - Each row records `null_responses`, the count re-sent. The forced final
+      report goes through the same provider.
+  - **Guard:** section 96, 7 pieces reverted alone, each seen red; none
+    crashes the suite.
+  - **Not the instrument.** The candidate is asked the same request, and
+    the judges read the same things. A third smoke pass runs on this commit.

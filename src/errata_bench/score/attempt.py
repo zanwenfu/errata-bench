@@ -35,8 +35,10 @@ import uuid
 from dataclasses import dataclass, field
 from pathlib import Path
 
-from agents import Agent, RunHooks, Runner, function_tool
+from agents import Agent, RunConfig, RunHooks, Runner, function_tool
 from agents.exceptions import MaxTurnsExceeded
+from agents.models.interface import Model, ModelProvider
+from agents.models.multi_provider import MultiProvider
 from agents.run_context import RunContextWrapper
 from ..corpus.turns import build_excerpt, load_session_turns
 from ..llm import MODEL, configure_client
@@ -263,6 +265,71 @@ def _described(items: list) -> str:
     return "; ".join(parts) or "nothing"
 
 
+# How many times one request is sent when the provider answers it with nothing
+# (B-255). About one in four to MAI-Thinking-1 came back that way, so five
+# sends leave about one request in a thousand unanswered.
+NULL_SENDS = 5
+
+
+class ProviderAnsweredNothing(RuntimeError):
+    """Every send of one request came back with nothing at all (B-255)."""
+
+
+def _null(response) -> bool:
+    """No output and no tokens, the prompt's included: nothing was read (B-255)."""
+    return not getattr(response, "output", None) and not getattr(getattr(response, "usage", None), "input_tokens", 0)
+
+
+class _Resend(Model):
+    """The candidate's model, sending a request again when it was answered with nothing (B-255).
+
+    MAI-Thinking-1 answered about one request in four with an empty message, no
+    tool call and zero tokens: a 200 that read nothing. Taken as the answer, it
+    ended the attempt with an empty reply the model never gave, and any call of
+    a ten-call attempt could end it. Sent again, as any agent harness would. A
+    response with tokens spent is the model's own, however empty, and is kept.
+    """
+
+    def __init__(self, inner: Model):
+        self.inner = inner
+        self.nulls = 0
+
+    async def get_response(self, *args, **kwargs):
+        for _ in range(NULL_SENDS):
+            response = await self.inner.get_response(*args, **kwargs)
+            if not _null(response):
+                return response
+            self.nulls += 1
+            await asyncio.sleep(1)
+        raise ProviderAnsweredNothing(f"the provider answered one request with nothing, {NULL_SENDS} times")
+
+    def stream_response(self, *args, **kwargs):
+        return self.inner.stream_response(*args, **kwargs)
+
+    def get_retry_advice(self, request):
+        return self.inner.get_retry_advice(request)
+
+    async def close(self) -> None:
+        await self.inner.close()
+
+
+class _Resending(ModelProvider):
+    """Every model an attempt asks for, wrapped in `_Resend`; one per attempt, so its count is the attempt's."""
+
+    def __init__(self):
+        self.base = MultiProvider()
+        self.models: list[_Resend] = []
+
+    def get_model(self, model_name):
+        model = _Resend(self.base.get_model(model_name))
+        self.models.append(model)
+        return model
+
+    @property
+    def nulls(self) -> int:
+        return sum(m.nulls for m in self.models)
+
+
 class _Meter(RunHooks):
     """Counts each model call's tokens into the attempt's context as it returns (B-254).
 
@@ -279,7 +346,8 @@ class _Meter(RunHooks):
         box["last_response"] = _described(getattr(response, "output", None) or [])
 
 
-async def _final_report(model: str, prompt: str, calls: list) -> tuple[str, bool, str, dict | None]:
+async def _final_report(model: str, prompt: str, calls: list,
+                        provider: ModelProvider | None = None) -> tuple[str, bool, str, dict | None]:
     """One last turn without tools, for an attempt that ran out (D-36 A4).
 
     Shown what it was shown before, and its own record of this attempt -- the
@@ -293,7 +361,9 @@ async def _final_report(model: str, prompt: str, calls: list) -> tuple[str, bool
     ask = (f"{prompt}\n\nWhat you did in this attempt -- your own tool calls and what they "
            f"returned:\n{render([c.to_json() for c in calls])}\n\n{FINAL_REPORT}")
     try:
-        result = await asyncio.wait_for(Runner.run(agent, ask, max_turns=1), timeout=FINAL_REPORT_S)
+        result = await asyncio.wait_for(
+            Runner.run(agent, ask, max_turns=1, run_config=RunConfig(model_provider=provider or _Resending())),
+            timeout=FINAL_REPORT_S)
     except Exception as e:  # noqa: BLE001 - no report is a result, recorded with its cause
         return "", False, f"{type(e).__name__}: {e}"[:300], None
     text = str(result.final_output or "")
@@ -591,6 +661,8 @@ class Attempt:
     # What the candidate's last model response held (B-254): why a reply is
     # empty, when it is.
     last_response: str = ""
+    # Responses the provider sent back with nothing in them, each sent again (B-255).
+    null_responses: int = 0
 
     @property
     def wrote_anything(self) -> bool:
@@ -617,6 +689,7 @@ class Attempt:
             "past_deadline": self.past_deadline,
             "usage": self.usage,
             "last_response": self.last_response,
+            "null_responses": self.null_responses,
         }
 
 
@@ -1172,6 +1245,7 @@ async def run(
         # mid-attempt has to reach the caller, and an inline dict is write-only
         # from here.
         context = {"tree": tree, "calls": calls, "deadline": deadline, "container": box}
+        provider = _Resending()
         ran_out, ended_by = False, "answered"
         try:
             try:
@@ -1183,7 +1257,8 @@ async def run(
                 # this one lives at the stage, where MAX_ATTEMPT_FAILURES
                 # discards the whole attempt and starts a fresh container.
                 result = await asyncio.wait_for(
-                    Runner.run(agent, prompt, context=context, max_turns=max_turns, hooks=_Meter()),
+                    Runner.run(agent, prompt, context=context, max_turns=max_turns, hooks=_Meter(),
+                               run_config=RunConfig(model_provider=provider)),
                     timeout=budget_s + ATTEMPT_GRACE_S,
                 )
                 reply = str(result.final_output or "")
@@ -1210,7 +1285,7 @@ async def run(
             # the other way they took the headline's significance with them.
             forced, report_error = False, ""
             if ran_out:
-                reply, forced, report_error, extra = await _final_report(model, prompt, calls)
+                reply, forced, report_error, extra = await _final_report(model, prompt, calls, provider)
                 usage = _add_usage(usage, extra)
             changed = _diff(before, _snapshot(tree, task.signature_path or ""))
             if context.get("container_died"):
@@ -1218,7 +1293,7 @@ async def run(
                 # and grading it measures the harness.
                 return Attempt(
                     task.task_id, model, tool_calls=calls, actual_changes=changed,
-                    environment=environment, usage=usage,
+                    environment=environment, usage=usage, null_responses=provider.nulls,
                     error=f"the container died mid-attempt: {context['container_died']}",
                 )
             return Attempt(
@@ -1231,6 +1306,7 @@ async def run(
                 past_deadline=time.monotonic() > deadline,
                 usage=usage,
                 last_response=context.get("last_response", ""),
+                null_responses=provider.nulls,
                 reply=reply,
                 declared_changes=[],
                 tool_calls=calls,
@@ -1248,6 +1324,7 @@ async def run(
                 final_state=_capture(tree, task, changed),
                 environment=environment,
                 usage=context.get("usage"),
+                null_responses=provider.nulls,
                 error=f"{type(e).__name__}: {e}",
             )
         finally:

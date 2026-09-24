@@ -6356,6 +6356,108 @@ check(not _left95, f"and every field the attempt reports reaches the row, so the
 check(_err95.get("error") and (_err95.get("usage") or {}).get("total_tokens") == 55,
       f"an attempt the harness broke still says what it spent: {_err95.get('usage')}")
 
+print("\n96. a response the provider sent back with nothing in it is sent again, not taken as the answer")
+# B-255. MAI-Thinking-1 answered about one request in four with an empty
+# message, no tool call and zero tokens, its prompt's included: a 200 that read
+# nothing. The harness took it as the candidate's answer, so the attempt ended
+# with an empty reply the model never gave -- on both smoke passes, at one task.
+_null96 = type("N96", (), {"output": [], "usage": _U95(requests=1)})()
+_said96 = _answered95
+_read96 = type("E96", (), {"output": [], "usage": _U95(requests=1, input_tokens=1200, output_tokens=3,
+                                                          total_tokens=1203)})()
+_nousage96 = type("O96", (), {"output": [_said95], "usage": _U95(requests=1)})()
+
+
+class _Inner96(attempt_mod.Model):
+    def __init__(self, replies):
+        self.replies, self.sent = list(replies), 0
+
+    async def get_response(self, *args, **kwargs):
+        # Out of replies, it answers with nothing: a revert that sends too often
+        # must leave a red line, not end the suite on an empty list.
+        self.sent += 1
+        return self.replies.pop(0) if self.replies else _null96
+
+    def stream_response(self, *args, **kwargs):
+        raise NotImplementedError
+
+
+_sleep96 = attempt_mod.asyncio.sleep
+
+
+async def _nosleep96(*a, **k):
+    return None
+
+
+attempt_mod.asyncio.sleep = _nosleep96
+try:
+    _m96 = attempt_mod._Resend(_Inner96([_null96, _null96, _said96]))
+    _got96 = asyncio.run(_m96.get_response(None, "x", None, [], None, [], None,
+                                           previous_response_id=None, conversation_id=None, prompt=None))
+    check(_got96 is _said96 and _m96.inner.sent == 3 and _m96.nulls == 2,
+          f"a response with nothing in it is sent again until one says something: sent {_m96.inner.sent}, "
+          f"nulls {_m96.nulls}")
+    _kept96 = []
+    for _r96 in (_read96, _nousage96):
+        _k96 = attempt_mod._Resend(_Inner96([_r96]))
+        try:
+            _kept96.append(asyncio.run(_k96.get_response(None, "x", None, [], None, [], None, previous_response_id=None,
+                                                         conversation_id=None, prompt=None)) is _r96 and _k96.nulls == 0)
+        except attempt_mod.ProviderAnsweredNothing:
+            _kept96.append(False)
+    check(all(_kept96), f"but an empty reply the model read the request for, and an answer with no count, are kept: "
+                        f"{_kept96}")
+    _all96 = attempt_mod._Resend(_Inner96([_null96] * attempt_mod.NULL_SENDS))
+    try:
+        asyncio.run(_all96.get_response(None, "x", None, [], None, [], None, previous_response_id=None,
+                                        conversation_id=None, prompt=None))
+        _raised96 = None
+    except attempt_mod.ProviderAnsweredNothing as _e96:
+        _raised96 = _e96
+    check(_raised96 is not None and _all96.inner.sent == attempt_mod.NULL_SENDS,
+          f"and nothing, every time, is an error rather than an answer: sent {_all96.inner.sent}, raised {_raised96!r}")
+finally:
+    attempt_mod.asyncio.sleep = _sleep96
+
+# The real attempt: its model is asked for through the re-sending provider, the
+# count reaches the row, and a request never answered makes the attempt an error.
+
+
+class _Nulls96:
+    raise_it = False
+
+    @staticmethod
+    async def run(agent, prompt, **kw):
+        provider = getattr(kw.get("run_config"), "model_provider", None)
+        if isinstance(provider, attempt_mod._Resending):
+            wrapped = attempt_mod._Resend(_Inner96([]))
+            wrapped.nulls = 2
+            provider.models.append(wrapped)
+        if _Nulls96.raise_it:
+            raise attempt_mod.ProviderAnsweredNothing("nothing, 5 times")
+        return type("R", (), {"final_output": "Done."})()
+
+
+_swap96 = {n: getattr(attempt_mod, n) for n in ("configure_client", "fetch", "replay", "Container", "Runner")}
+attempt_mod.configure_client = lambda: None
+attempt_mod.fetch = lambda url, sha, dest: _Checkout()
+attempt_mod.replay = lambda tree, edits, repo_id: type("R", (), {"ok": True, "reason": ""})()
+attempt_mod.Container = _NoStart
+attempt_mod.Runner = _Nulls96
+os.environ["ERRATA_ALLOW_HOST"] = "1"
+try:
+    _a96 = asyncio.run(REAL_RUN(make_task("task-0"), image="node:22", turns=[], budget_s=600))
+    _Nulls96.raise_it = True
+    _b96 = asyncio.run(REAL_RUN(make_task("task-0"), image="node:22", turns=[], budget_s=600))
+finally:
+    os.environ.pop("ERRATA_ALLOW_HOST", None)
+    for _n, _v in _swap96.items():
+        setattr(attempt_mod, _n, _v)
+check(_a96.reply == "Done." and _a96.null_responses == 2 and _a96.to_json().get("null_responses") == 2,
+      f"the attempt asks through the re-sending provider and says how many came back empty: {_a96.null_responses}")
+check(_b96.error.startswith("ProviderAnsweredNothing") and _b96.reply == "" and _b96.null_responses == 2,
+      f"and a request never answered is an error, retried like any harness failure: {_b96.error[:60]!r}")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended

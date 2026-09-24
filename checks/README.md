@@ -39,7 +39,7 @@ directories made before the split, and what happens when a candidate or a
 grading fails. Its ninth section requires that every served-model probe the
 stages made went to its stand-in, so none of it reaches the network.
 
-**`guards_hold.py`** is ninety-five numbered sections, one per guard: what the
+**`guards_hold.py`** is ninety-six numbered sections, one per guard: what the
 attempt and grade stages refuse to do; the gate asked repeatedly; the
 reference-answer control and when it is not applicable; the clean-pass
 standard and the hedged one priced side by side; permanent git loss; the
@@ -129,7 +129,10 @@ sent, never retried, and refused where a model is chosen. Section 93 has the sco
 request in its conversation; section 94 has the answerable gate read a reply after
 the agent's message it answers. Section 95 has every answer row record its tokens
 and how the attempt ended, including an attempt that called no tool, and fails
-when a field the attempt reports is missing from the stored row. It closes by asserting it handed production back unpatched, because three
+when a field the attempt reports is missing from the stored row. Section 96 sends
+a request again when the provider answered it with nothing (no output, no tokens),
+keeps an empty reply the model did read, and makes a request never answered an
+error rather than an answer. It closes by asserting it handed production back unpatched, because three
 sections restored one module attribute through a name a fourth binds to
 something else. Its fake judge sets the task's kind the way the
 real one does -- left at the default, every task here was graded by the
