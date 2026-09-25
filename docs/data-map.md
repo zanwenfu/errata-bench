@@ -69,7 +69,8 @@ Each run also has a log beside it (`runs/<run>.log`, `runs/<run>.admit.log`).
   ending `-keep-quotes` are the sensitivity analysis, not the registered one.
 - **The flag reading.** `results/d40-flags/`: the rubric, the draw, the first
   and second readings, and the settled disagreements. `scripts/flag_tally.py`
-  turns them into the criterion.
+  turns them into the criterion: `results/d40-criterion3-flags.md`. The
+  packets read are `results/d40/flags/`.
 
 ## D-42, the repaired instrument on new answers
 
@@ -86,6 +87,15 @@ Each run also has a log beside it (`runs/<run>.log`, `runs/<run>.admit.log`).
 - **Started** by `scripts/d42-start.sh` (`SMOKE=1` for the smoke pass), with
   its own spend guard (`scripts/d42-guard.sh`), which stops only D-42's
   containers.
+- **The analysis.** `scripts/d42_analysis.sh` writes `results/d42/`:
+  - `criterion1.txt`: the controls and probes, from `scripts/d42_checks.py`;
+  - `agreement.txt`: the judges' agreement;
+  - each judge's rates per candidate;
+  - the flag draw, redone, and checked byte for byte against the one read.
+- **The flag reading.** `results/d42-flags/`: the draw that was read, the
+  first and second readings, and the settled disagreements. The criterion is
+  `results/d42-criterion2-flags.md`, and the packets read are
+  `results/d42/flags/`.
 
 ## How each step stays independent and reviewable
 
@@ -102,10 +112,9 @@ Each run also has a log beside it (`runs/<run>.log`, `runs/<run>.admit.log`).
 
 ## Copies
 
-- **D-40's finished runs are on both machines.** The four fully graded
-  candidates, `d40-soltests`, `d40-base` and the set-aside runs are on the VPS
-  and the laptop: 184 files, identical by SHA-256 (09-25 05:3x UTC).
-  grok-4.6 and Kimi-K2.7-Code will be copied and checked the same way when
-  they finish.
+- **D-40's and D-42's runs are on both machines.** All six D-40
+  candidates, `d40-soltests`, `d40-base`, the set-aside runs and every D-42
+  run are on the VPS and the laptop, identical by SHA-256 (09-25: 184 files
+  at 05:3x UTC, then 28 for grok-4.6 and Kimi-K2.7-Code and 112 for D-42).
 - **The older runs** are on the laptop; the VPS has some of them.
 - **No off-machine copy** of `runs/` exists yet beyond these two machines.
