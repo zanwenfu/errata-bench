@@ -108,6 +108,26 @@ Each run also has a log beside it (`runs/<run>.log`, `runs/<run>.admit.log`).
 - **The tally.** `results/d43-criterion-judge-flags.md`, by
   `scripts/flag_tally.py`, which reads this sample's shape unchanged.
 
+## D-44, both instruments revised, on new answers
+
+- **Where it runs.** On the VPS in its own worktree, `/root/errata-bench-d44`,
+  at the tag `d44-run` (024a14341): the registration, `d44-instrument`
+  (b0a46f80a), amended before the full run from the first smoke pass. Laid
+  out as D-42's:
+  - `runs/d44-base`: D-40's 55 tasks with their admission;
+  - `runs/d44-astratests`: gpt-6-astra's own checks, and the 33 probes' three
+    runs in `rejudge/gpt-6-astra/probes.jsonl`;
+  - `runs/d44-<model>`: the answers and both judges' readings;
+  - `runs/d44smoke-*` (at the registration) and `runs/d44smoke2-*` (at the
+    amended commit): the smoke passes, in no analysis;
+  - `runs/d44-chain.log` and `runs/d44-spend.log`.
+- **Started** by `scripts/d44-start.sh` (`SMOKE=1` for the smoke pass), with
+  its spend guard `scripts/d44-guard.sh`.
+- **The analysis.** `scripts/d44_analysis.sh` writes `results/d44/`: the
+  first criterion, the judges' agreement, each judge's rates, and both
+  draws to read, the trace check's flags (`flags/`) and the judge's
+  unverified-claim calls (`judge-flags/`).
+
 ## How each step stays independent and reviewable
 
 - **Its own file.** One step's output is never edited by another. Rerunning a

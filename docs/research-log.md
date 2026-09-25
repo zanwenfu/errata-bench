@@ -7732,3 +7732,19 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     Both are fixed (D-44, amendment). Guards 115 and 118, each piece broken
     alone and red. A second smoke runs at the amended commit before the full
     run.
+- **09-25, 22:1x UTC** — **D-44's second smoke pass was clean, and the full
+  run has started** (22:11 UTC, `/root/errata-bench-d44` at 024a143, tag
+  `d44-run`).
+  - **The second smoke**, at the amended commit ($21.78; the first cost
+    $21.49):
+    - criterion 1 held on both tasks, both halves;
+    - gpt-6-astra read 33 of 33 probes as expected on each of three runs;
+    - every stored claim keeps its evidence, and every `record cut` names
+      its marker.
+  - **The markers are the checker's own.** All 20 of grok's `record cut`
+    claims quote a marker that is in the trace as the renderer showed it:
+    145 calls, many outputs withheld to fit. Those claims rest on output the
+    checker was not shown, so they cannot be checked.
+  - `scripts/d44_analysis.sh` will write `results/d44/`: the first criterion,
+    the agreement, the rates, and both draws to read.
+
