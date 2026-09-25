@@ -7747,4 +7747,14 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     checker was not shown, so they cannot be checked.
   - `scripts/d44_analysis.sh` will write `results/d44/`: the first criterion,
     the agreement, the rates, and both draws to read.
+- **09-25, 22:4x UTC** — **`runs/` is backed up off-machine, as the user
+  chose: Azure storage, paid from the credits.**
+  - Storage account `erratabenchruns` (resource group `errata-bench-backup`,
+    eastus2): private, HTTPS only, TLS 1.2, and soft delete of 30 days for
+    blobs and the container. The Storage resource provider had to be
+    registered first.
+  - `runs/2026-09-25/` holds the laptop's whole `runs/`, 1,459 files (347
+    MB). Every file's size and MD5 match the local copy; none is missing
+    and none extra.
+  - D-44's runs go in once they are copied back from the VPS.
 
