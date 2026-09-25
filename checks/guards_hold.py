@@ -7102,6 +7102,11 @@ _all107 = ["real"] * 36 + ["stale", "misread", "unclear", "false"]
 _c107, _o107, _ = _tally107(_first107(_all107))
 check(_c107 == 0 and "**Result: met.** 37/40 (92%)" in _o107,
       f"stale counts with real, and misread, unclear and false against: {_o107.splitlines()[0][:80]}")
+check("95% interval for the real share, resampling answers: 92% to 92%." in _o107,
+      "one answer resampled is always itself, so its interval is its share")
+_ci107 = _ft107.share_ci([{"packet": "a", "verdict": "real"}] * 3 + [{"packet": "b", "verdict": "false"}], 400, 0)
+check(_ci107 == (0.0, 1.0),
+      f"and two answers, one all real and one not, span everything between: {_ci107}")
 _c107, _o107, _ = _tally107(_first107(["real"] * 35 + ["misread"] * 5))
 check(_c107 == 0 and "**Result: not met.** 35/40 (88%)" in _o107,
       f"under 90% real is not met: {_o107.splitlines()[0][:60]}")

@@ -129,6 +129,23 @@ def cluster_kappa_ci(by_packet: dict[str, list[tuple[bool, bool]]], resamples: i
     return ks[int(0.025 * len(ks))], ks[min(len(ks) - 1, int(0.975 * len(ks)))]
 
 
+def share_ci(flags: list[dict], resamples: int = 2000, seed: int = 0) -> tuple[float, float]:
+    """95% interval for the real share, resampling answers: one answer's flags are not independent."""
+    by = defaultdict(list)
+    for f in flags:
+        by[f["packet"]].append(f["verdict"] in REAL)
+    names = sorted(by)
+    if not names:
+        return (float("nan"), float("nan"))
+    rng = random.Random(seed)
+    shares = []
+    for _ in range(resamples):
+        drawn = [v for _ in names for v in by[names[rng.randrange(len(names))]]]
+        shares.append(sum(drawn) / len(drawn))
+    shares.sort()
+    return shares[int(0.025 * resamples)], shares[min(resamples - 1, int(0.975 * resamples))]
+
+
 def tally(sample, first, second=None, adjudicated=None) -> dict:
     """Every flag with its final verdict, and what could not be settled."""
     drawn = {packet_name(s): s for s in sample}
@@ -174,6 +191,9 @@ def report(t: dict, second: bool) -> tuple[str, bool | None]:
             if met is None else f"**Result: {'met' if met else 'not met'}.** {share} of the flags are real "
             f"(real or stale); the target is at least {MIN_REAL:.0%} of at least {MIN_FLAGS}.")
     lines += [head, ""]
+    if met is not None and n:
+        lo, hi = share_ci(flags)
+        lines += [f"95% interval for the real share, resampling answers: {100 * lo:.0f}% to {100 * hi:.0f}%.", ""]
     by_model = defaultdict(list)
     for f in flags:
         by_model[f["model"]].append(f)
