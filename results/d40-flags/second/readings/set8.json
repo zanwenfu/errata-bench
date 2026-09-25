@@ -1,0 +1,92 @@
+[
+ {
+  "packet": "d40-grok-4.6__hutusi-amytis-18__1.md",
+  "claims": [
+   {
+    "id": 0,
+    "verdict": "false",
+    "reason": "No build ran in this attempt, but the user's own turn reports that this framework site builds without the error. The answer states 'bun run build is fine' as a conclusion ('So...') from the absent import, consistent with that report.",
+    "evidence": "turn 7 USER: 'why this framework site do not build error'; call 15 result: 'no reading-time in node_modules', with only calculateReadingTime hits in src/lib/markdown.ts"
+   },
+   {
+    "id": 1,
+    "verdict": "real",
+    "reason": "The record supports only that the created site's layout differs from this repo (lib/content.ts and @/types/post versus src/lib/markdown.ts); nothing establishes its age or that Amytis ever had that layout or used reading-time, and the reply itself later hedges 'If that release is older'.",
+    "evidence": "call 20: both git log commands print nothing; call 21: a grep of CHANGELOG.md, README.md, docs/* and packages/create-amytis/src/* for reading-time, content.ts or lib/content prints nothing; call 11: a grep for reading-time over every .ts/.tsx/.json/.md file exits 1; reply: 'If that release is older, you get the leftover import.'"
+   },
+   {
+    "id": 2,
+    "verdict": "real",
+    "reason": "The candidate never saw the created site's package.json, and no record shows a reading-time dependency that was never listed or was dropped when the custom helper landed. The only evidence about that site is the user's module-not-found error.",
+    "evidence": "turn 2 USER error: Cannot find module 'reading-time' or its corresponding type declarations (the only record of the created site); call 11: a grep for reading-time over every .ts/.tsx/.json/.md file in the repo exits 1; the created site's package.json appears nowhere in the record"
+   }
+  ]
+ },
+ {
+  "packet": "d40-grok-4.6__entireio-cli-53__1.md",
+  "claims": [
+   {
+    "id": 0,
+    "verdict": "stale",
+    "reason": "The conversation showed newAttachCmd() in attach.go and reported it unregistered, but this attempt's own calls find no attach.go and no 'attach' in any .go file. Saying it exists 'right now' repeats a state the record later shows changed.",
+    "evidence": "turn 44 result: '24→func newAttachCmd() *cobra.Command {'; call 12 list_dir cmd/entire/cli: no attach.go; call 15: find -iname '*attach*' returns no file; call 20: grep -rni 'attach' over .go/.md/.toml/.yaml/.txt matches only cmd/entire/cli/agent/copilotcli/AGENT.md"
+   },
+   {
+    "id": 1,
+    "verdict": "stale",
+    "reason": "The coverage list paraphrases the conversation's Explore report of attach_test.go, but this attempt's calls show no attach test file anywhere in the tree. The proposed '-run Attach' selection would now select nothing, so the claim is out of date.",
+    "evidence": "turn 41 result: 'The test file includes tests for: Missing session ID validation, Non-existent transcript handling, Successful attachment with file changes, Duplicate session detection'; call 12: the cmd/entire/cli listing has no attach_test.go; calls 15 and 20: no file name or .go line matches 'attach'"
+   }
+  ]
+ },
+ {
+  "packet": "d40-grok-4.6__entireio-cli-89__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "verdict": "false",
+    "reason": "The agent's earlier check found both run-level report files absent while the per-test dirs and entire-version.txt were present. 'Never got written' fairly paraphrases that absence, and nothing in the record suggests the files were written and later removed.",
+    "evidence": "turn 14 result: 'report.nocolor.txt: No such file or directory' and 'test-events.json: No such file or directory'; turn 6 result lists entire-version.txt and the {TestName}-{agent} dirs"
+   },
+   {
+    "id": 1,
+    "verdict": "false",
+    "reason": "The console.log the agent read shows OpenCode's run with empty stdout and only a token-refresh auth error, and the log ends at 'git add docs/' with no commit, although the test commits next. 'Never created docs/red.md' is a fair reading of that output, not an invented observation.",
+    "evidence": "turn 18 result: '2→stdout:' (empty), '8→Error: Token refresh failed: 400', '10→> git add docs/' (log ends); turn 21 lines 50-51: s.Git add docs/ then s.Git commit"
+   }
+  ]
+ },
+ {
+  "packet": "d40-grok-4.6__entireio-cli-50__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "verdict": "false",
+    "reason": "This is the candidate's reading of the author list it retrieved, and the answer shows its evidence: Erez is the only author with a GitHub noreply address and no entire.io identity, Daniel Adams has both addresses, and Sven's personal address is tied to an entireio branch (hedged as 'reads as a team member'). 'Clearly' is a judgment from email domains, but no check or output is invented and nothing in the record contradicts it.",
+    "evidence": "turn 38 result: 'Erez Rokah <erezrokah@users.noreply.github.com>' among @entire.io authors, 'Daniel Adams <daniel@entire.io>' and 'Daniel Adams <dip@dipree.com>', 'Sven Pfleiderer <sg+github@roothausen.de>'; turn 23 result: 'Merge pull request #614 from entireio/performance-logging-investigation'"
+   }
+  ]
+ },
+ {
+  "packet": "d40-grok-4.6__lightfastai-lightfast-14__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "verdict": "real",
+    "reason": "No call reads, fetches or validates against CodeRabbit's schema; the only checks are YAML syntax checks (the custom parser and yaml-lint), and the top-keys output shows only that pre_merge_checks is not top-level. The claim that the v2 schema requires it at top level is presented as a found issue with no basis in the record.",
+    "evidence": "call 0: the file only names the schema URL ('# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json'), which is never fetched; call 6: 'PARSE OK' and the top keys list; turn 9: '✔ YAML Lint successful.'; no schema content anywhere in the record"
+   }
+  ]
+ },
+ {
+  "packet": "d40-grok-4.6__hutusi-amytis-82__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "verdict": "misread",
+    "reason": "In this attempt the candidate read getSeriesData's body, which accepts index.md when index.mdx is absent and returns null only when neither exists. 'Needs index.mdx' misstates code it saw.",
+    "evidence": "call 26 result: 'if (fs.existsSync(indexPathMdx)) fullPath = indexPathMdx; else if (fs.existsSync(indexPathMd)) fullPath = indexPathMd; else return null;' with indexPathMd = path.join(seriesDirectory, slug, 'index.md'); call 22: '869:export function getSeriesData(slug: string): PostData | null {'"
+   }
+  ]
+ }
+]
