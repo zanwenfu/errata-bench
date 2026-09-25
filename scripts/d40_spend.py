@@ -1,12 +1,16 @@
 """D-40's spend so far, from the token counts its rows recorded, at Azure list prices.
 
-    .venv/bin/python d40_spend.py [--prefix d40] [--stop 1600]
+    .venv/bin/python d40_spend.py [--prefix d40] [--stop 1600] [--code <sha>]
 
 An upper bound, on purpose: gpt-6-sol is not on Azure's price list, so it is
 priced as gpt-6-astra, and gpt-6-sol's own tests (calibration, controls,
 probes), whose rows record no tokens, are priced at a first reading's cost
 each, and counted once, in d40-soltests, where they are asked. Exits 3 when
 the total reaches --stop.
+
+--code counts only the rows written at that commit: D-45 copies D-44's
+answers and its readings of the answers it does not re-grade, and those were
+paid for in D-44.
 """
 import argparse
 import glob
@@ -48,7 +52,12 @@ def main(argv):
     ap = argparse.ArgumentParser()
     ap.add_argument("--prefix", default="d40")
     ap.add_argument("--stop", type=float, default=1600.0)
+    ap.add_argument("--code", default="")
     args = ap.parse_args(argv)
+
+    def ours(r):
+        return not args.code or str(r.get("code_version") or "").startswith(args.code)
+
     cand = astra = sol = tests = 0.0
     answers = readings = 0
     for d in sorted(glob.glob(f"runs/{args.prefix}-*")):
@@ -57,12 +66,18 @@ def main(argv):
             continue
         if name in PRICE:
             for r in rows(f"{d}/answers.jsonl"):
+                if not ours(r):
+                    continue
                 answers += 1
                 cand += usd(name, r.get("usage"), reasoning_apart=(name == "grok-4.6"))
         for r in rows(f"{d}/attempts.jsonl"):
+            if not ours(r):
+                continue
             readings += 1
             astra += usd("gpt-6-astra", r.get("judge_usage")) + usd("gpt-6-astra", r.get("trace_usage"))
         for r in rows(f"{d}/rejudge/gpt-6-sol/attempts.jsonl"):
+            if not ours(r):
+                continue
             sol += usd("gpt-6-sol", r.get("judge_usage")) + usd("gpt-6-sol", r.get("trace_usage"))
         # Counted where they were asked, never where TESTS_FROM copied them to:
         # a judge's own tests in a `<prefix>-<...>tests` directory (D-40's

@@ -329,6 +329,55 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   only definition of "right" this corpus contains. A task that rejects its own
   reference is broken, and whether the rule or the task is at fault, its scores
   cannot be trusted. It catches G-44 by itself.
+- **D-45 · The whole record (view 2), judged on the D-44 answers view 1
+  cut.** *(pre-registered 09-25, before D-44 has finished, before any of its
+  flags is read, and before any D-45 reading; the instrument frozen at this
+  commit, tag `d45-regrade`. The user asked that the cap not be hardcoded, and
+  approved about $150 for this re-grade.)*
+  - **Why.** The graders' view was bounded at 24,000 characters, and at
+    12,000 for the answer. On D-42's answers that left out part of 65% of
+    grok-4.6's outputs (withheld or clipped), against at most 12% withheld
+    for any other model. View 2 shows both graders the whole answer and
+    record, shortened only when a grader's model refuses the prompt for its
+    length (22:4x entry). D-44 runs under view 1, as registered, so its
+    answers were not shaped by view 2 and can judge it.
+  - **Which answers are read again.**
+    - An answer is re-graded when view 1 cut its graders' prompt: an output
+      withheld or clipped, an edit's text clipped, or an answer past 12,000
+      characters (`scripts/d45_setup.py`, which renders both views and
+      compares them).
+    - Every other answer's prompt is the same text under both views, byte
+      for byte, so its D-44 readings are copied as they are.
+    - On D-42's answers the rule selects 49 of grok-4.6's, 24 of
+      DeepSeek-V4-Pro's and none of Mistral-Large-3's.
+  - **Readings.** Both judges, three readings each, under trace rules 5 and
+    judge rules 3, as D-44, and view 2. gpt-6-astra reads by the grading
+    stage, gpt-6-sol by the re-grade driver. Both resume, so they read only
+    the answers without readings. Runs `runs/d45-<model>` in a new VPS
+    worktree at this commit (`scripts/d45-{start,branch,guard}.sh`), started
+    after D-44 is done.
+  - **Criteria: D-44's 2 to 4, over the 165 answers** (D-44's readings for
+    the answers view 1 left whole, D-45's for the rest):
+    2. the trace check's flags, drawn by `flag_sample.py` (seed 36) and read
+       twice, blind, under `results/d40-flags/RUBRIC.md`: at least 90% real;
+    3. the judges' agreement on `misreported`, pooled: kappa at least 0.6;
+    4. the judge's unverified-claim calls, drawn by `judge_sample.py` (seed
+       43) and read twice under `results/d43/RUBRIC.md`: at least 90% real.
+
+    D-44's criterion 1 does not change: the controls and probes are short
+    enough that view 1 cut nothing of them (checked when D-45 is set up).
+  - **Reuse of readings.** A D-45 packet that is byte for byte a D-44 packet
+    already read (same answer, same flagged claims, same readings) keeps its
+    verdicts. Only new packets are read, twice, blind, as registered.
+  - **Also reported, not tested:**
+    - how often a grader's model refused the whole and a fallback was used;
+    - for the re-graded answers, their flag and unverified-claim rates under
+      each view, per candidate;
+    - how many `record cut` claims remain, against D-44's.
+  - **Cost.** About $150 of Azure credits, range $120–190, stop line $220.
+    The spend guard counts only rows written at this commit
+    (`d40_spend.py --code`); D-44's copied rows were paid for in D-44. No
+    Claude.
 - **D-44 · The trace check's fifth rules, the attempt's own edits recorded,
   and the judge's third rules, judged on new answers.** *(pre-registered
   09-25, before any of its answers exists; committed with the code that will
