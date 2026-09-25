@@ -6763,3 +6763,38 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     share of attempts past the deadline or ended by the clock with the
     other candidates', and probe their remaining quota while they work. If
     throttling shows, the answers collected under it are set aside again.
+- **09-25, 01:2x UTC** — **B-262 fixed: the time a provider kept an attempt
+  waiting counted against the candidate's budget.**
+  - **Found** by the check fixed at 23:22. Kimi-K2.7-Code's quota (100K
+    tokens a minute) was saturated while it worked: every probe for 60
+    seconds was answered 429. Its long attempts ran past the deadline or
+    ended by the clock: blittle-pressy-158 (all three runs) and
+    hutusi-amytis-82.
+    - The model library's client retried each 429 itself (up to 5 times),
+      sleeping where nothing could see it.
+    - DeepSeek-V4-Flash passed: 5.7 seconds a request, 1 of 72 past the
+      deadline.
+    - The budget bounds the candidate's own work, and a model whose quota
+      is the ceiling (Kimi's stayed at 100K after the user raised every
+      quota) could not otherwise be measured on its long tasks.
+  - **Fix.**
+    - Candidate calls go through a client that retries nothing
+      (`llm.candidate_client`). `_Resend` sends a request again itself:
+      after a 429, waiting what the provider asks (up to 30 times); after a
+      dropped connection or a server error, waiting 2, 4, ... up to 60
+      seconds (up to 6 times).
+    - Every wait, and the 1 second after an empty send (B-255), moves the
+      attempt's deadline by that much, and the report's clock when it is
+      the report waiting.
+    - The attempt is held to a deadline read again as it moves
+      (`_within_deadline`, in place of `asyncio.wait_for`). The row
+      records the time given back (`throttled_s`).
+    - A refused Claude call is never sent again.
+    - For a candidate that is never throttled, nothing changes.
+  - **Guard:** section 106, 7 pieces reverted alone, each seen red (one
+    first crashed the suite and now reports red instead). The suite passes
+    with no credentials in the environment, as in CI: the client is made on
+    the first model asked for.
+  - **Kimi's branch paused again**, its 35 answers set aside in
+    `runs/d40-aborted-0925a` by the 23:22 rule. It is run again from
+    nothing on this commit.

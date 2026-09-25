@@ -41,7 +41,7 @@ from agents.models.interface import Model, ModelProvider
 from agents.models.multi_provider import MultiProvider
 from agents.run_context import RunContextWrapper
 from ..corpus.turns import build_excerpt, load_session_turns
-from ..llm import MODEL, configure_client
+from ..llm import MODEL, _refused, candidate_client, configure_client
 from ..construct.container import MOUNT, Container, host_allowed
 from ..construct.edits import edits_before, replay
 from ..find.redact import apply as apply_redaction
@@ -269,6 +269,62 @@ def _described(items: list) -> str:
 # (B-255). About one in four to MAI-Thinking-1 came back that way, so five
 # sends leave about one request in a thousand unanswered.
 NULL_SENDS = 5
+# And when the provider throttles it or drops it (B-262), with the longest wait
+# between sends. Every wait is added to the attempt's deadline: it is the
+# provider's time, not the candidate's.
+THROTTLED_SENDS = 30
+DROPPED_SENDS = 6
+WAIT_CAP_S = 60
+
+
+def _transient(e: BaseException) -> str | None:
+    """"throttled" for a rate limit, "dropped" for a connection or server failure, else None."""
+    import openai
+
+    if isinstance(e, openai.RateLimitError) or "429" in str(e)[:200]:
+        return "throttled"
+    if isinstance(e, (openai.APIConnectionError, openai.InternalServerError)):
+        return "dropped"
+    return None
+
+
+def _retry_after(e: BaseException) -> float | None:
+    """The wait a throttled response asks for, in seconds, capped at WAIT_CAP_S."""
+    headers = getattr(getattr(e, "response", None), "headers", None) or {}
+    for name, scale in (("retry-after-ms", 1000.0), ("retry-after", 1.0)):
+        try:
+            value = float(headers.get(name))
+        except (TypeError, ValueError):
+            continue
+        if value >= 0:
+            return min(value / scale, WAIT_CAP_S)
+    return None
+
+
+async def _within_deadline(coro, clock: dict, grace: float = 0.0):
+    """Await ``coro`` until ``clock["deadline"]`` plus ``grace``, read again as it moves (B-262).
+
+    `asyncio.wait_for` fixes its timeout when it starts, so the time a
+    candidate's provider spent throttling it could not be given back. Raises
+    asyncio.TimeoutError when the (possibly extended) deadline passes, with the
+    work cancelled, exactly as `wait_for` did.
+    """
+    task = asyncio.ensure_future(coro)
+    try:
+        while True:
+            left = clock["deadline"] + grace - time.monotonic()
+            if left <= 0:
+                raise asyncio.TimeoutError()
+            done, _ = await asyncio.wait({task}, timeout=left)
+            if done:
+                return task.result()
+    finally:
+        if not task.done():
+            task.cancel()
+            try:
+                await task
+            except BaseException:  # noqa: BLE001 - cancelled on purpose
+                pass
 
 
 class ProviderAnsweredNothing(RuntimeError):
@@ -294,18 +350,45 @@ class _Resend(Model):
     response with tokens spent is the model's own, however empty, and is kept.
     """
 
-    def __init__(self, inner: Model):
+    def __init__(self, inner: Model, clock: dict | None = None):
         self.inner = inner
+        self.clock = clock
         self.nulls = 0
 
+    async def _wait(self, seconds: float) -> None:
+        """Wait on the provider, and give the attempt the time back (B-262)."""
+        await asyncio.sleep(seconds)
+        if self.clock is not None:
+            self.clock["deadline"] = self.clock.get("deadline", time.monotonic()) + seconds
+            self.clock["throttled_s"] = self.clock.get("throttled_s", 0.0) + seconds
+
     async def get_response(self, *args, **kwargs):
-        for _ in range(NULL_SENDS):
-            response = await self.inner.get_response(*args, **kwargs)
+        throttled = dropped = nulls = 0
+        while True:
+            try:
+                response = await self.inner.get_response(*args, **kwargs)
+            except Exception as e:
+                # A refused Claude call arrives as a connection error; it is not
+                # one, and waiting will not change the answer.
+                if _refused(e):
+                    raise _refused(e) from e
+                kind = _transient(e)
+                if kind == "throttled" and throttled < THROTTLED_SENDS:
+                    throttled += 1
+                    await self._wait(_retry_after(e) or min(2.0 ** throttled, WAIT_CAP_S))
+                    continue
+                if kind == "dropped" and dropped < DROPPED_SENDS:
+                    dropped += 1
+                    await self._wait(min(2.0 ** dropped, WAIT_CAP_S))
+                    continue
+                raise
             if not _null(response):
                 return response
             self.nulls += 1
-            await asyncio.sleep(1)
-        raise ProviderAnsweredNothing(f"the provider answered one request with nothing, {NULL_SENDS} times")
+            nulls += 1
+            if nulls >= NULL_SENDS:
+                raise ProviderAnsweredNothing(f"the provider answered one request with nothing, {NULL_SENDS} times")
+            await self._wait(1)
 
     def stream_response(self, *args, **kwargs):
         return self.inner.stream_response(*args, **kwargs)
@@ -318,14 +401,24 @@ class _Resend(Model):
 
 
 class _Resending(ModelProvider):
-    """Every model an attempt asks for, wrapped in `_Resend`; one per attempt, so its count is the attempt's."""
+    """Every model an attempt asks for, wrapped in `_Resend`; one per attempt, so its count is the attempt's.
 
-    def __init__(self):
-        self.base = MultiProvider()
+    Through a client that retries nothing itself, so every throttled or dropped
+    send passes through `_Resend`, which waits and moves ``clock``'s deadline
+    by the wait (B-262).
+    """
+
+    def __init__(self, clock: dict | None = None):
+        # Made on the first model asked for, not here: a run whose model is a
+        # stand-in never needs a credential, and CI has none.
+        self.base: MultiProvider | None = None
+        self.clock = clock
         self.models: list[_Resend] = []
 
     def get_model(self, model_name):
-        model = _Resend(self.base.get_model(model_name))
+        if self.base is None:
+            self.base = MultiProvider(openai_client=candidate_client())
+        model = _Resend(self.base.get_model(model_name), self.clock)
         self.models.append(model)
         return model
 
@@ -415,14 +508,18 @@ async def _final_report(model: str, prompt: str, calls: list,
         ask = (f"{prompt}\n\nWhat you did in this attempt -- your own tool calls and what they "
                f"returned:\n{render([c.to_json() for c in calls])}\n\n{FINAL_REPORT}")
     late = {**(context or {}), "deadline": time.monotonic() - 1}
+    # The report's own clock, which its provider's waits move (B-262).
+    clock = {"deadline": time.monotonic() + FINAL_REPORT_S}
+    provider = provider or _Resending()
+    kept_clock, provider.clock = getattr(provider, "clock", None), clock
     try:
         # Two turns, so a model that reaches for a tool anyway is refused and
         # can still answer (B-260).
-        result = await asyncio.wait_for(
+        result = await _within_deadline(
             Runner.run(agent, ask, context=late, max_turns=2, run_config=RunConfig(
-                model_provider=provider or _Resending(), tool_not_found_behavior="return_error_to_model",
+                model_provider=provider, tool_not_found_behavior="return_error_to_model",
                 tool_error_formatter=_no_tools_now)),
-            timeout=FINAL_REPORT_S)
+            clock)
     except asyncio.TimeoutError as e:
         # The clock, as for the attempt itself: no report is a result,
         # recorded with its cause.
@@ -435,6 +532,12 @@ async def _final_report(model: str, prompt: str, calls: list,
         # attempt's own turns makes the attempt an error, retried and then
         # given up on, so the report does the same.
         raise FinalReportFailed(f"the forced final report failed: {type(e).__name__}: {e}") from e
+    finally:
+        # The provider's own clock back, and the report's waits counted with
+        # the attempt's (B-262).
+        provider.clock = kept_clock
+        if context is not None and clock.get("throttled_s"):
+            context["throttled_s"] = context.get("throttled_s", 0.0) + clock["throttled_s"]
     text = str(result.final_output or "")
     usage = _usage_of(getattr(getattr(result, "context_wrapper", None), "usage", None))
     return text, bool(text.strip()), "" if text.strip() else "the final report was empty", usage
@@ -746,6 +849,9 @@ class Attempt:
     last_response: str = ""
     # Responses the provider sent back with nothing in them, each sent again (B-255).
     null_responses: int = 0
+    # Seconds the provider kept the attempt waiting -- throttled, dropped or
+    # empty sends -- and added to its deadline (B-262).
+    throttled_s: float = 0.0
 
     @property
     def wrote_anything(self) -> bool:
@@ -773,6 +879,7 @@ class Attempt:
             "usage": self.usage,
             "last_response": self.last_response,
             "null_responses": self.null_responses,
+            "throttled_s": self.throttled_s,
         }
 
 
@@ -1337,7 +1444,9 @@ async def run(
         # mid-attempt has to reach the caller, and an inline dict is write-only
         # from here.
         context = {"tree": tree, "calls": calls, "deadline": deadline, "container": box}
-        provider = _Resending()
+        # On the attempt's clock: a throttled or dropped send moves the
+        # deadline by the wait (B-262).
+        provider = _Resending(context)
         ran_out, ended_by = False, "answered"
         try:
             try:
@@ -1348,12 +1457,12 @@ async def run(
                 # would start from a tree the first one changed. The retry for
                 # this one lives at the stage, where MAX_ATTEMPT_FAILURES
                 # discards the whole attempt and starts a fresh container.
-                result = await asyncio.wait_for(
+                result = await _within_deadline(
                     Runner.run(agent, prompt, context=context, max_turns=max_turns, hooks=_Meter(),
                                run_config=RunConfig(model_provider=provider,
                                                     tool_not_found_behavior="return_error_to_model",
                                                     tool_error_formatter=_missing_tool)),
-                    timeout=budget_s + ATTEMPT_GRACE_S,
+                    context, ATTEMPT_GRACE_S,
                 )
                 reply = str(result.final_output or "")
             except asyncio.TimeoutError:
@@ -1407,7 +1516,8 @@ async def run(
                 ended_by=ended_by,
                 final_report_forced=forced,
                 final_report_error=report_error,
-                past_deadline=time.monotonic() > deadline,
+                past_deadline=time.monotonic() > context["deadline"],
+                throttled_s=round(context.get("throttled_s", 0.0), 1),
                 usage=usage,
                 last_response=context.get("last_response", ""),
                 null_responses=provider.nulls,

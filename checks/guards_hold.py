@@ -6923,6 +6923,145 @@ with _ctx60.redirect_stdout(_out105):
 check("by repository" in _out105.getvalue() and "by task" in _out105.getvalue(),
       f"and the tests print both: {[l.strip()[:90] for l in _out105.getvalue().splitlines() if 'by repository' in l][:1]}")
 
+print("\n106. the time a provider keeps an attempt waiting is given back to it")
+# B-262. Kimi-K2.7-Code's quota (100K tokens a minute) was saturated while it
+# worked, so its long attempts ran past their deadline while the client slept
+# on 429s where nothing could see it. The attempt now waits itself, through a
+# client that retries nothing, and moves its deadline by every wait.
+import openai as _oai106
+from errata_bench.llm import ClaudeRefused as _CR106
+_req106 = type("Q", (), {"method": "POST", "url": "https://x"})()
+
+
+def _throttled106(after="7"):
+    resp = type("S", (), {"status_code": 429, "headers": {"retry-after": after}, "request": _req106})()
+    return _oai106.RateLimitError("Error code: 429 - rate limit", response=resp, body=None)
+
+
+class _Flaky106(attempt_mod.Model):
+    def __init__(self, failures):
+        self.failures, self.sent = list(failures), 0
+
+    async def get_response(self, *args, **kwargs):
+        self.sent += 1
+        if self.failures:
+            raise self.failures.pop(0)
+        return _answered95
+
+    def stream_response(self, *args, **kwargs):
+        raise NotImplementedError
+
+
+_slept106: list = []
+
+
+async def _sleep106(seconds, *a, **k):
+    _slept106.append(seconds)
+
+
+_sleep_keep106 = attempt_mod.asyncio.sleep
+attempt_mod.asyncio.sleep = _sleep106
+try:
+    _clock106 = {"deadline": 100.0}
+    _m106 = attempt_mod._Resend(_Flaky106([_throttled106(), _throttled106()]), _clock106)
+    _r106 = asyncio.run(_m106.get_response(None, "x", None, [], None, [], None, previous_response_id=None,
+                                           conversation_id=None, prompt=None))
+    check(_r106 is _answered95 and _slept106 == [7.0, 7.0] and _clock106["deadline"] == 114.0
+          and _clock106.get("throttled_s") == 14.0,
+          f"a throttled send waits what the provider asks, and the wait moves the deadline: slept {_slept106}, "
+          f"deadline {_clock106['deadline']}, throttled_s {_clock106.get('throttled_s')}")
+    _slept106.clear()
+    _d106 = attempt_mod._Resend(_Flaky106([_oai106.APIConnectionError(request=_req106)] * 2), {"deadline": 0.0})
+    try:
+        asyncio.run(_d106.get_response(None, "x", None, [], None, [], None, previous_response_id=None,
+                                       conversation_id=None, prompt=None))
+        _drop106 = "answered"
+    except Exception as _e:  # noqa: BLE001 - the failure is the assertion, not the end of the suite
+        _drop106 = type(_e).__name__
+    check(_drop106 == "answered" and _slept106 == [2.0, 4.0] and _d106.inner.sent == 3,
+          f"a dropped send is sent again after a growing wait: {_drop106}, {_slept106}")
+    _refusal106 = _oai106.APIConnectionError(request=_req106)
+    _refusal106.__cause__ = _CR106("claude refused")
+    _c106 = attempt_mod._Resend(_Flaky106([_refusal106]), {"deadline": 0.0})
+    try:
+        asyncio.run(_c106.get_response(None, "x", None, [], None, [], None, previous_response_id=None,
+                                       conversation_id=None, prompt=None))
+        _cr106 = "answered"
+    except _CR106:
+        _cr106 = "refused"
+    check(_cr106 == "refused" and _c106.inner.sent == 1, "but a refused Claude call is never sent again")
+    _e106 = attempt_mod._Resend(_Flaky106([_throttled106("0")] * (attempt_mod.THROTTLED_SENDS + 1)), {"deadline": 0.0})
+    try:
+        asyncio.run(_e106.get_response(None, "x", None, [], None, [], None, previous_response_id=None,
+                                       conversation_id=None, prompt=None))
+        _gave106 = "answered"
+    except _oai106.RateLimitError:
+        _gave106 = "gave up"
+    check(_gave106 == "gave up" and _e106.inner.sent == attempt_mod.THROTTLED_SENDS + 1,
+          f"and a limit that never lifts is raised after {attempt_mod.THROTTLED_SENDS} waits: {_gave106}")
+finally:
+    attempt_mod.asyncio.sleep = _sleep_keep106
+
+# The deadline the attempt is held to moves while it runs.
+import time as _time106
+
+
+async def _moved106():
+    clock = {"deadline": _time106.monotonic() + 0.1}
+
+    async def work():
+        clock["deadline"] += 0.5
+        await asyncio.sleep(0.3)
+        return "done"
+    try:
+        return await attempt_mod._within_deadline(work(), clock)
+    except asyncio.TimeoutError:
+        return "timed out"
+
+
+async def _fixed106():
+    clock = {"deadline": _time106.monotonic() + 0.1}
+    try:
+        return await attempt_mod._within_deadline(asyncio.sleep(0.3, result="done"), clock)
+    except asyncio.TimeoutError:
+        return "timed out"
+
+
+check(asyncio.run(_moved106()) == "done" and asyncio.run(_fixed106()) == "timed out",
+      "a deadline moved while the work runs is the one it is held to, and one not moved still ends it")
+
+
+# Through the real attempt: its provider is on the attempt's clock, and the row says what was given back.
+class _Waits106:
+    @staticmethod
+    async def run(agent, prompt, **kw):
+        clock = kw["run_config"].model_provider.clock
+        clock["deadline"] += 2.0
+        clock["throttled_s"] = clock.get("throttled_s", 0.0) + 2.0
+        await asyncio.sleep(2.5)
+        return type("R", (), {"final_output": "Done."})()
+
+
+_swap106 = {n: getattr(attempt_mod, n) for n in ("configure_client", "fetch", "replay", "Container", "Runner",
+                                                  "ATTEMPT_GRACE_S")}
+attempt_mod.configure_client = lambda: None
+attempt_mod.fetch = lambda url, sha, dest: _Checkout()
+attempt_mod.replay = lambda tree, edits, repo_id: type("R", (), {"ok": True, "reason": ""})()
+attempt_mod.Container = _NoStart
+attempt_mod.Runner = _Waits106
+attempt_mod.ATTEMPT_GRACE_S = 0
+os.environ["ERRATA_ALLOW_HOST"] = "1"
+try:
+    _a106 = asyncio.run(REAL_RUN(make_task("task-0"), image="node:22", turns=[], budget_s=1))
+finally:
+    os.environ.pop("ERRATA_ALLOW_HOST", None)
+    for _n, _v in _swap106.items():
+        setattr(attempt_mod, _n, _v)
+check(_a106.reply == "Done." and _a106.ended_by == "answered" and _a106.throttled_s == 2.0
+      and _a106.past_deadline is False and _a106.to_json().get("throttled_s") == 2.0,
+      f"an attempt its provider held up for 2 s of a 1 s budget still answers, and says so: "
+      f"ended_by={_a106.ended_by!r} throttled_s={_a106.throttled_s} past_deadline={_a106.past_deadline}")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended

@@ -323,6 +323,8 @@ async def stage_attempt(
                 "last_response": attempt.last_response,
                 # Empty responses from the provider, sent again (B-255).
                 "null_responses": attempt.null_responses,
+                # Seconds the provider's throttling added to the deadline (B-262).
+                "throttled_s": attempt.throttled_s,
                 # The trace itself, not just its length. Without it a finished
                 # run cannot be re-examined: every attempt in the first
                 # corrected run recorded "9 calls" and nothing about what those

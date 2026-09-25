@@ -158,6 +158,32 @@ def _http_client(transport=None):
                                    **({"transport": transport} if transport is not None else {}))
 
 
+def candidate_client():
+    """An API client for a candidate's own calls: set up as `configure_client`'s, retrying nothing.
+
+    The attempt re-sends a throttled or dropped request itself (B-262), so it can
+    take the wait off the candidate's time. The client's own retries slept where
+    nothing could see them: Kimi-K2.7-Code's attempts ran past their deadline
+    on its quota, not its work.
+    """
+    import os
+
+    from openai import AsyncOpenAI
+
+    _load_dotenv()
+    timeout = float(os.environ.get("ERRATA_TIMEOUT") or REQUEST_TIMEOUT_S)
+    if os.environ.get("ERRATA_PROVIDER", "").lower() == "azure":
+        base, key = os.environ.get("AZURE_OPENAI_BASE_URL"), os.environ.get("AZURE_OPENAI_API_KEY")
+        if not base or not key:
+            raise RuntimeError("ERRATA_PROVIDER=azure needs AZURE_OPENAI_BASE_URL and AZURE_OPENAI_API_KEY.")
+        return AsyncOpenAI(api_key=key, base_url=base.rstrip("/"), timeout=timeout, max_retries=0,
+                           http_client=_http_client())
+    key = os.environ.get("OPENAI_API_KEY")
+    if not key:
+        raise RuntimeError("OPENAI_API_KEY is not set and no .env supplies it.")
+    return AsyncOpenAI(api_key=key, timeout=timeout, max_retries=0, http_client=_http_client())
+
+
 def configure_client() -> None:
     """Install an API client that fails fast instead of hanging.
 
