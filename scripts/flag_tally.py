@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import json
 import random
+import re
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -53,7 +54,8 @@ def packet_name(s: dict) -> str:
 
 
 def model_of(packet: str) -> str:
-    return packet.split("__")[0].removeprefix("d40-")
+    """The candidate: the run name less its "d40-" or "d42-" prefix."""
+    return re.sub(r"^d\d+-", "", packet.split("__")[0])
 
 
 def load_readings(where: Path) -> dict[str, list[dict]]:
