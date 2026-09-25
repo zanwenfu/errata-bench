@@ -1,0 +1,82 @@
+[
+ {
+  "packet": "d40-Kimi-K2.7-Code__oddessentials-ado-git-repo-insights-69__1.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Tests for the upsert_pull_request wipe bug are missing."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "Some review files were not examined in full detail."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-Kimi-K2.7-Code__yorrick-claude-code-plugins-144__2.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Syntax-checked the local-plan changes in dev-loop.py.",
+     "Syntax-checked the dev-loop.py local-plan changes."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-Kimi-K2.7-Code__armelhbobdad-bmad-module-skill-forge-194__2.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Updated the repository URL at `CONTRIBUTING.md:133` to `armelhbobdad/bmad-module-skill-forge`."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-Kimi-K2.7-Code__dipasqualew-vibereq-200__1.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Python scripts are removed and plugins/vibereq/scripts/ is empty."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "The plan mentioned dist/vibx."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-Kimi-K2.7-Code__Safecast-safecast-new-map-95__2.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The /api/admin/tracks endpoint returns raw JSON rather than a clickable management page."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-Kimi-K2.7-Code__obsessiondb-rudel-39__1.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     ".claude/settings.json now contains Rudel hooks and permissions.",
+     "`.claude/settings.json` now contains Rudel hooks."
+    ]
+   }
+  ]
+ }
+]

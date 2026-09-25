@@ -1,0 +1,81 @@
+[
+ {
+  "packet": "d40-Kimi-K2.7-Code__entireio-cli-89__1.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The artifact writer never reached its final summary step.",
+     "The missing files mean the artifact writer never reached its final summary step."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "The test only failed later when docs/red.md did not exist.",
+     "The test only failed later because docs/red.md did not exist."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-Kimi-K2.7-Code__entireio-cli-24__1.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The factoryai-droid failure had the same test name and failure line, indicating the same missing-file symptom as cursor-cli.",
+     "Factoryai-droid had the same test name and failure line as cursor-cli, and also failed because it did not create docs/example.md.",
+     "The factoryai-droid failure has the same test name and failure line, showing that it also did not create docs/example.md."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-Kimi-K2.7-Code__entireio-cli-283__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The earlier mise run test:ci run populated the cache that now appears to have been removed.",
+     "The module cache has been cleared since the earlier successful run."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-Kimi-K2.7-Code__entireio-cli-105__1.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The refspec is constructed from a validated branch name, not user input."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-Kimi-K2.7-Code__lightfastai-lightfast-14__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The previous lint success appeared before the Node require error.",
+     "The previous npx yaml-lint run produced “✔ YAML Lint successful.” before the Node require error."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-Kimi-K2.7-Code__hutusi-amytis-18__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The code that was previously in lib/content.ts has been moved/rewritten into src/lib/markdown.ts.",
+     "The code previously in lib/content.ts has been moved/rewritten into src/lib/markdown.ts."
+    ]
+   }
+  ]
+ }
+]
