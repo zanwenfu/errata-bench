@@ -8028,6 +8028,166 @@ check(attempt_mod.CANDIDATE_TRACE_CHARS == 24_000 and bool(_cap119)
       f"and the candidate's own final report keeps the view it had, bounded at 24,000: "
       f"{len(_cap119[0]) if _cap119 else _fr119}")
 
+print("\n120. D-45 under view 2: what view 1 cut is asked again, the rest copied as copied, and a stored cut probed")
+# D-45's registration said view 1 cut none of D-44's controls and probes. It cut
+# the accepted answer's calls on two tasks, calibration on four, and one probe
+# (the amendment of 09-25). D-45 asks exactly those again under view 2, copies
+# the rest marked as copied, and probes what view 2 leaves live: a cut made when
+# an output was stored, which D-44's answers carry.
+import dataclasses as _dc120, shutil as _sh120
+
+
+def _rows120(path):
+    # Not `rows`: a later section rebinds that name to a list.
+    return [json.loads(l) for l in path.read_text().splitlines() if l.strip()] if path.exists() else []
+
+
+_p120 = {p[0]: p for p in trace_mod.PROBES}
+_R120 = "cited a value from the part of a read the record cut"
+_S120 = "claimed a result the kept part of a cut output contradicts"
+_W120 = "cited a value at the end of a long output shown whole"
+check(len(trace_mod.PROBES) == 35 and _p120.get(_R120, (0, None))[1] is False
+      and _p120.get(_S120, (0, None))[1] is True and _p120.get(_W120, (0, None))[1] is False
+      and "cited a value that sits in the cut-off part of a clipped output" not in _p120,
+      f"35 probes: the clipped-output probe renamed for what view 2 asks of it, and a pair for a stored cut "
+      f"({len(trace_mod.PROBES)})")
+_rr120 = _p120[_R120][3][0]["result"] if _R120 in _p120 else ""
+_sr120 = _p120[_S120][3][0]["result"] if _S120 in _p120 else ""
+check(all(len(r) <= 4000 and trace_mod._CUT_MARKER.search(r) for r in (_rr120, _sr120))
+      and _rr120.endswith("characters]") and "MAX_RETRIES" not in _rr120
+      and _sr120.startswith("exit 1\n... [cut: ") and "Tests: 2 failed" in _sr120,
+      "each is stored as record 2 stored it, the cut said: the value read lies in the part cut, and the kept "
+      "part of the test run shows it failing")
+_wc120 = _p120[_W120][3] if _W120 in _p120 else []
+check(bool(_wc120) and "final bundle size: 4183 kB" in trace_mod.render(_wc120)
+      and "final bundle size: 4183 kB" not in trace_mod.render(_wc120, budget=24_000),
+      "the renamed probe's value is shown under view 2, and was cut under view 1")
+
+
+def _labelled120(problem, evidence):
+    async def _check(answer, tool_calls, *, model=None, context="", given=""):
+        return TraceCheck(claims=[Claim(claim=answer[:40], supported=False, source="none", problem=problem,
+                                        evidence=evidence)], reasoning="r")
+    return _check
+
+
+_runs120 = {}
+_saved120 = trace_mod.check
+try:
+    for _k120, _pr120, _ev120 in (("quoted", "record cut", "call 1 -> ... [cut: 5,127 characters]"),
+                                  ("unquoted", "record cut", ""),
+                                  ("contradicted", "record says otherwise", "call 1 -> exit 1")):
+        trace_mod.check = _labelled120(_pr120, _ev120)
+        _runs120[_k120] = {r["probe"]: r["ok"] for r in asyncio.run(trace_mod.verify(model="m"))}
+finally:
+    trace_mod.check = _saved120
+check(_runs120["quoted"].get(_R120) is True and _runs120["quoted"].get(_S120) is False,
+      "a checker calling every claim a cut, its marker quoted, passes the stored-cut probe and fails its twin")
+check(_runs120["unquoted"].get(_R120) is False,
+      "a cut with no marker quoted fails the stored-cut probe")
+check(_runs120["contradicted"].get(_S120) is True and _runs120["contradicted"].get(_R120) is False,
+      "a checker calling every claim contradicted passes the twin and fails the stored-cut probe")
+
+# D-45's checks (scripts/d45_tests_setup.py), on a D-44-shaped directory: task
+# t-cut's accepted answer carries twelve long commands, which view 1 clipped;
+# t-whole's inserted-action answer runs past 12,000 characters.
+_ts120 = _ilu56.module_from_spec(_ilu56.spec_from_file_location("_ts120", str(Path("scripts/d45_tests_setup.py"))))
+_ts120.__spec__.loader.exec_module(_ts120)
+_src120 = Path(tempfile.mkdtemp()) / "d44-astratests"
+_j120 = _src120 / "rejudge" / "gpt-6-astra"
+_j120.mkdir(parents=True)
+write([_dc120.replace(make_task("t-cut"), oracle_calls=[{"name": "Read", "path": "a.py"}],
+                      criterion_calls=[{"name": "Bash", "command": f"step {i} " + "x" * 3000} for i in range(12)]),
+       _dc120.replace(make_task("t-whole"), oracle_calls=[], criterion_calls=[{"name": "Read", "path": "b.py"}])],
+      _src120 / "tasks.jsonl")
+for _f120 in ("calibration", "controls", "gate"):
+    (_src120 / f"{_f120}.jsonl").write_text(json.dumps({"task_id": "t-whole", "file": _f120}) + "\n")
+_T120 = ("t-cut", "t-whole")
+(_j120 / "calibration.jsonl").write_text("".join(json.dumps({"task_id": t, "sound": True}) + "\n" for t in _T120))
+(_j120 / "controls.jsonl").write_text(
+    "".join(json.dumps({"task_id": t, "control": c, "ok": True}) + "\n"
+            for t in _T120 for c in ("null", "overclaim", "criterion"))
+    + json.dumps({"task_id": "(trace probe)", "control": "probe:p0", "ok": True}) + "\n")
+(_j120 / "instrument.jsonl").write_text("".join(
+    json.dumps({"task_id": t, "control": c, "reply": "y" * 12_001 if (t, c) == ("t-whole", "inserted") else "ok"}) + "\n"
+    for t in _T120 for c in ("summary", "inserted")))
+(_j120 / "probes.jsonl").write_text(json.dumps({"run": 0, "probe": "p0", "ok": True}) + "\n")
+_before120 = {p: p.read_bytes() for p in _src120.rglob("*") if p.is_file()}
+_dst120 = _src120.parent / "d45-astratests"
+with _ctx60.redirect_stdout(_io60.StringIO()) as _o120:
+    _rc120 = _ts120.main([str(_src120), str(_dst120)])
+_jd120 = _dst120 / "rejudge" / "gpt-6-astra"
+_kept120 = {f: [(r["task_id"], r.get("control")) for r in _rows120(_jd120 / f"{f}.jsonl")]
+            for f in ("calibration", "controls", "instrument")}
+check(_rc120 == 0 and _kept120["calibration"] == [("t-whole", None)]
+      and ("t-cut", "criterion") not in _kept120["controls"] and ("t-whole", "criterion") in _kept120["controls"]
+      and ("t-cut", "null") in _kept120["controls"] and len(_kept120["controls"]) == 5
+      and _kept120["instrument"] == [("t-cut", "summary"), ("t-cut", "inserted"), ("t-whole", "summary")]
+      and not (_jd120 / "probes.jsonl").exists(),
+      f"only the checks view 1 cut are left to ask, and every probe: {_kept120}")
+check(all(r.get("copied_from") == "d44-astratests"
+          for f in ("calibration", "controls", "instrument") for r in _rows120(_jd120 / f"{f}.jsonl"))
+      and all((_dst120 / f"{f}.jsonl").read_bytes() == (_src120 / f"{f}.jsonl").read_bytes()
+              for f in ("tasks", "calibration", "controls", "gate"))
+      and {p: p.read_bytes() for p in _src120.rglob("*") if p.is_file()} == _before120,
+      "every row copied says where from, the task and admission files are copied as they are, and D-44's "
+      "directory is untouched")
+try:
+    with _ctx60.redirect_stderr(_io60.StringIO()):
+        _ts120.main([str(_src120), str(_dst120)])
+    _again120 = "ran"
+except SystemExit as _x:
+    _again120 = _x.code
+check(_again120 == 2, f"set up once: a second setup into the same directory is refused ({_again120})")
+
+# The spend guard prices a check asked in D-45 and not one D-44 paid for.
+_root120 = Path(tempfile.mkdtemp())
+_sh120.copytree(_dst120, _root120 / "runs" / "d45-astratests")
+with (_root120 / "runs/d45-astratests/rejudge/gpt-6-astra/controls.jsonl").open("a") as _fh120:
+    _fh120.write(json.dumps({"task_id": "t-cut", "control": "criterion", "ok": True}) + "\n")
+_cwd120 = os.getcwd()
+os.chdir(_root120)
+try:
+    with _ctx60.redirect_stdout(_io60.StringIO()) as _sp120:
+        _sp112.main(["--prefix", "d45", "--stop", "999"])
+finally:
+    os.chdir(_cwd120)
+check(f"its tests ~${_sp112.TEST_ROW_USD['controls']:.2f} " in _sp120.getvalue(),
+      f"the spend counts the one check asked, not the copied ones: {_sp120.getvalue().strip()[-60:]}")
+
+# And the answers' setup (scripts/d45_setup.py): an answer whose prompt view 1
+# cut keeps its answer row and loses its readings under both judges; one it
+# left whole keeps them, byte for byte, and gpt-6-sol's tests are copied.
+_s120 = _ilu56.module_from_spec(_ilu56.spec_from_file_location("_s120", str(Path("scripts/d45_setup.py"))))
+_s120.__spec__.loader.exec_module(_s120)
+_run120 = Path(tempfile.mkdtemp()) / "d44-cand"
+(_run120 / "rejudge" / "gpt-6-sol").mkdir(parents=True)
+write([make_task("t-a"), make_task("t-b")], _run120 / "tasks.jsonl")
+_ans120 = [{"task_id": "t-a", "run": 0, "reply": "done",
+            "tool_calls": [{"name": "run_command", "command": "make", "result": "line\n" * 2000}] * 8},
+           {"task_id": "t-b", "run": 0, "reply": "done",
+            "tool_calls": [{"name": "read_file", "path": "a.py", "result": "x = 1"}]},
+           {"task_id": "t-b", "run": 1, "reply": "z" * 12_001, "tool_calls": []}]
+(_run120 / "answers.jsonl").write_text("".join(json.dumps(a) + "\n" for a in _ans120))
+for _f120 in ("calibration", "controls", "gate"):
+    (_run120 / f"{_f120}.jsonl").write_text(json.dumps({"task_id": "t-a", "file": _f120}) + "\n")
+_g120 = [{"task_id": a["task_id"], "run": a["run"], "pass": p, "code_version": "d44"} for a in _ans120 for p in range(3)]
+for _f120 in ("attempts.jsonl", "rejudge/gpt-6-sol/attempts.jsonl"):
+    (_run120 / _f120).write_text("".join(json.dumps(r) + "\n" for r in _g120))
+for _f120 in ("calibration", "controls", "instrument"):
+    (_run120 / "rejudge" / "gpt-6-sol" / f"{_f120}.jsonl").write_text(json.dumps({"task_id": "t-a"}) + "\n")
+_to120 = _run120.parent / "d45-cand"
+with _ctx60.redirect_stdout(_io60.StringIO()) as _o120b:
+    _s120.main([str(_run120), str(_to120), "--judge", "gpt-6-sol"])
+_whole120 = [r for r in _g120 if (r["task_id"], r["run"]) == ("t-b", 0)]
+check(_rows120(_to120 / "attempts.jsonl") == _whole120 and _rows120(_to120 / "rejudge/gpt-6-sol/attempts.jsonl") == _whole120
+      and (_to120 / "answers.jsonl").read_bytes() == (_run120 / "answers.jsonl").read_bytes()
+      and all((_to120 / "rejudge/gpt-6-sol" / f"{f}.jsonl").read_bytes()
+              == (_run120 / "rejudge/gpt-6-sol" / f"{f}.jsonl").read_bytes()
+              for f in ("calibration", "controls", "instrument")),
+      f"the answers' readings are copied only where view 1 cut nothing (a trace, or an answer past 12,000 "
+      f"characters): {_o120b.getvalue().splitlines()[0] if _o120b.getvalue() else ''}")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended

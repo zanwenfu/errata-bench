@@ -11,7 +11,7 @@ while true; do
   if [ $? -eq 3 ]; then
     echo "=== STOP LINE REACHED; stopping D-45 $(date -u +%FT%TZ)" >> "$LOG"
     echo "=== stopped by the spend guard at \$$STOP $(date -u +%FT%TZ)" >> "$CHAIN"
-    groups=$(cat runs/"$prefix"-branch-*.pid 2>/dev/null)
+    groups=$(cat "runs/$prefix-tests.pid" runs/"$prefix"-branch-*.pid 2>/dev/null)
     # Each run.py names its containers errata-<its pid>-...: collect the pids of
     # these groups before they are killed, and stop only their containers.
     pids=$(for g in $groups; do pgrep -g "$g"; done | paste -sd'|' -)
@@ -21,7 +21,7 @@ while true; do
     [ -n "$pids" ] && docker ps --format '{{.Names}}' | grep -E "^errata-($pids)-" | xargs -r docker stop >> "$LOG" 2>&1
     exit 0
   fi
-  if [ "$(grep -c '^=== D-45 .* done' "$CHAIN" 2>/dev/null)" -ge $branches ]; then
+  if [ "$(grep -c '^=== D-45 .* done' "$CHAIN" 2>/dev/null)" -ge $((branches + 1)) ]; then
     echo "=== run finished; guard ends $(date -u +%FT%TZ)" >> "$LOG"
     exit 0
   fi

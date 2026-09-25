@@ -113,8 +113,15 @@ which gives each task a reference answer.
   - As D-42: 3 candidates × 55 tasks × 1 attempt, both judges, about $350 of
     credits. The bars are D-42's, plus D-43's for the judge.
 
-  **Next:** read D-44's flags and the judge's calls, and write it up. The
-  second judge will be a Claude model once funding allows. See
+- **D-45, the graders shown the whole record, is registered to follow D-44.**
+  Until 09-25 both graders saw at most 24,000 characters of a candidate's
+  record. That hid part of 65% of grok-4.6's outputs, far more than any
+  other model's. The cap is gone. D-45 re-grades the D-44 answers it cut
+  (about 73), re-runs the few checks it cut, and adds two probes for outputs
+  cut when they were stored. About $175 of credits.
+
+  **Next:** read D-44's flags and the judge's calls, run D-45, and write
+  both up. The second judge will be a Claude model once funding allows. See
   [Problems found, and where each stands](#problems-found-and-where-each-stands).
 
 ## Results so far

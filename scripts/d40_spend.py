@@ -10,7 +10,8 @@ the total reaches --stop.
 
 --code counts only the rows written at that commit: D-45 copies D-44's
 answers and its readings of the answers it does not re-grade, and those were
-paid for in D-44.
+paid for in D-44. Test rows record no code version; a copied one is marked
+`copied_from` and not counted.
 """
 import argparse
 import glob
@@ -81,10 +82,12 @@ def main(argv):
             sol += usd("gpt-6-sol", r.get("judge_usage")) + usd("gpt-6-sol", r.get("trace_usage"))
         # Counted where they were asked, never where TESTS_FROM copied them to:
         # a judge's own tests in a `<prefix>-<...>tests` directory (D-40's
-        # gpt-6-sol in soltests, D-42's gpt-6-astra in astratests).
+        # gpt-6-sol in soltests, D-42's gpt-6-astra in astratests). Nor rows
+        # a setup copied in and marked so (`d45_tests_setup.py`): D-44 paid for them.
         if name.endswith("tests"):
             for kind, each in TEST_ROW_USD.items():
-                tests += each * sum(1 for f in sorted(glob.glob(f"{d}/rejudge/*/{kind}.jsonl")) for _ in rows(f))
+                tests += each * sum(1 for f in sorted(glob.glob(f"{d}/rejudge/*/{kind}.jsonl"))
+                                    for r in rows(f) if not r.get("copied_from"))
     total = cand + astra + sol + tests
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     print(f"{now} answers {answers} readings {readings} | candidates ${cand:.2f} | gpt-6-astra ${astra:.2f} | "

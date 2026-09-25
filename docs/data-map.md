@@ -128,6 +128,30 @@ Each run also has a log beside it (`runs/<run>.log`, `runs/<run>.admit.log`).
   draws to read, the trace check's flags (`flags/`) and the judge's
   unverified-claim calls (`judge-flags/`).
 
+## D-45, D-44's answers re-graded under the whole record (view 2)
+
+- **Where it runs.** On the VPS in its own worktree, `/root/errata-bench-d45`,
+  at the tag `d45-run`, started by `scripts/d45-start.sh` once D-44 is done.
+  `d45-regrade` is the registration, and the amendment is described in the
+  research log. It reads D-44's directories and writes nothing there.
+  - `runs/d45-<model>`: all of D-44's answers. The readings of answers view 1
+    left whole are copied, and they carry D-44's `code_version`. The answers
+    it cut are read again, by both judges (`scripts/d45_setup.py`,
+    `scripts/d45-branch.sh`).
+  - `runs/d45-astratests`: gpt-6-astra's checks. Those view 1 left whole are
+    copied, each row marked `copied_from`, since check rows carry no code
+    version. Those it cut are asked again, along with all 35 probes
+    (`scripts/d45_tests_setup.py`, `scripts/d45-tests.sh`).
+  - `runs/d45-setup.txt`: what each setup copied and what it left to ask,
+    and why. `runs/d45-chain.log` and `runs/d45-spend.log`, from
+    `scripts/d45-guard.sh`, which counts only rows written at the run's
+    commit and no copied check.
+- **The analysis.** `scripts/d45_analysis.sh` writes `results/d45/`, laid out
+  as D-44's, plus `extras.txt` (`scripts/d45_extras.py`). Each draw's
+  `reuse.json` (`scripts/packet_reuse.py`) lists which packets match D-44's
+  byte for byte, apart from the run name, and so keep their verdicts, and
+  which are new and must be read.
+
 ## How each step stays independent and reviewable
 
 - **Its own file.** One step's output is never edited by another. Rerunning a

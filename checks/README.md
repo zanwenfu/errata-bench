@@ -181,7 +181,12 @@ claim's evidence and, for a cut, whether it named one, the flag sample draw only
 path build a stored claim by hand (B-265); section 119 has the graders shown the whole answer and
 record, shortened only when their model refuses a prompt for its length (to the first fallback it
 accepts, never on any other error), each grade row say what each grader saw, a read stored exactly
-as the candidate was shown it, and the candidate's own final report keep its old bounded view.
+as the candidate was shown it, and the candidate's own final report keep its old bounded view;
+section 120 has D-45's setups ask again under view 2 exactly the checks and answers view 1 cut
+(calibration on either answer, a control, an instrument check's long answer, and every probe), copy
+the rest marked `copied_from` and leave D-44's directory untouched, the spend guard price only
+what was asked, and its 35 probes include a pair for an output cut when it was stored, which no
+checker can pass by calling every claim cut or every claim contradicted.
 Section 0 has the suite
 start as CI does, with no credential in its environment and `.env` never read (B-264: a
 stand-in corpus that gave every session a turn let section 41 call the model provider with the

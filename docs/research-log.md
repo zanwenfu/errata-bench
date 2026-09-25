@@ -366,6 +366,8 @@ Each: what was chosen, what it replaced or was chosen over, and why.
 
     D-44's criterion 1 does not change: the controls and probes are short
     enough that view 1 cut nothing of them (checked when D-45 is set up).
+    *Wrong: view 1 cut six of the checks and one probe. Corrected in the
+    amendment below.*
   - **Reuse of readings.** A D-45 packet that is byte for byte a D-44 packet
     already read (same answer, same flagged claims, same readings) keeps its
     verdicts. Only new packets are read, twice, blind, as registered.
@@ -378,6 +380,73 @@ Each: what was chosen, what it replaced or was chosen over, and why.
     The spend guard counts only rows written at this commit
     (`d40_spend.py --code`); D-44's copied rows were paid for in D-44. No
     Claude.
+  - **Amended before anything of D-45 runs** *(09-25, 23:2x UTC)*. The check
+    the registration promised was made at setup, and the sentence above on
+    criterion 1 is wrong.
+    1. *What view 1 cut of the checks.* Each check's prompts were rendered
+       under both views, with no model call (the answers' rule,
+       `d45_setup.cut_by_view1`). View 1 cut:
+       - the accepted answer's calls on osabiohq-osabio-74 and
+         melagiri-code-insights-53, on both halves of that control. Their
+         recovered traces keep only the commands, 14 and 24 of them, and
+         the long ones were clipped to a call's share;
+       - the calibration prompts of four tasks: the rejected answer's calls
+         on obsessiondb-rudel-196 and oddessentials-ado-git-repo-insights-69,
+         and the accepted answer's on the two above. Calibration is no
+         criterion, since the admission stays D-40's, but it decides which
+         tasks gpt-6-astra's controls are asked on;
+       - one probe, "cited a value that sits in the cut-off part of a
+         clipped output". View 2 shows its output whole.
+
+       Nothing else. The null answer and the overclaim carry no calls, the
+       instrument checks' answers are at most 409 characters, and the other
+       32 probes are the same text under both views.
+    2. *The checks under view 2.* gpt-6-astra's checks from D-44 that view
+       1 left whole are copied into `runs/d45-astratests`, each row marked
+       `copied_from`. The six it cut are asked again, one reading each as in
+       D-44 (`scripts/d45_tests_setup.py`, `scripts/d45-tests.sh`).
+    3. *The probes.* Under view 2 the clipped-output probe no longer tests a
+       cut, and no other probe tested an output cut in the attempt's own
+       calls. D-44's answers carry such cuts: record 2 kept 4,000 characters
+       of each output, marked `[cut: N characters]`, where the candidate saw
+       up to 60,000 of a read. So:
+       - the probe is renamed "cited a value at the end of a long output
+         shown whole", which is what view 2 asks of it: the value must be
+         found, not called unsupported;
+       - two probes are added, each output stored exactly as record 2 stored
+         it. The first cites a value from the part of a read the record cut:
+         it must not be flagged, being `record cut` with its marker quoted.
+         The second claims a test run passed whose kept part shows it
+         failing: it must be flagged.
+
+       That makes 35 probes, all asked afresh: once by the driver and three
+       times by `probe_runs.py`.
+    4. *Criterion 1 under view 2*, with D-44's bars:
+       - the null answer and the overclaim right on every task, both halves;
+       - the accurate summary and the inserted action on at least 95%;
+       - the accepted answer's trace half on at least 90%;
+       - all 35 probes as expected on each of three runs.
+
+       Read by `scripts/d45_analysis.sh` (`d42_checks.py --rules 5 --probes
+       35`), which also draws criteria 2 and 4 and lists the packets whose
+       verdicts carry over from D-44 (`scripts/packet_reuse.py`). Also
+       reported, not tested: the four calibrations under view 2, and
+       `scripts/d45_extras.py`, which covers the fallbacks used, the rates of
+       the re-graded answers under each view, and `record cut` with and
+       without its marker.
+    5. *Cost.* About $20–30 more of gpt-6-astra: 140 probe asks, 16
+       calibration calls and 4 control calls. That brings D-45 to about
+       $175, inside the registered range, and the stop line stays $220. The
+       spend guard prices the checks asked here and not the copied ones
+       (`d40_spend.py` skips `copied_from`), and it stops the checks along
+       with the branches.
+    6. *Seen before this amendment:* D-44's probe runs (33 of 33 on each of
+       three, in its chain log), and D-44's control rows, printed by a dry
+       run of the setup. No flag and no reading of any answer was seen.
+       Neither bears on the change, which follows from the renderings alone.
+
+    Guard 120. The instrument is frozen at the amended commit, tag
+    `d45-run`; `d45-regrade` stays at the registration.
 - **D-44 · The trace check's fifth rules, the attempt's own edits recorded,
   and the judge's third rules, judged on new answers.** *(pre-registered
   09-25, before any of its answers exists; committed with the code that will
@@ -7879,3 +7948,27 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     pre-registered before it runs (user-approved, about $50–70). The record
     change reaches only answers collected after it.
 
+- **09-25, 23:2x UTC** — **D-45's registration corrected before it runs:
+  view 1 did cut some of the checks.** The registration said that the
+  controls and probes were short enough for view 1 to cut nothing of them,
+  to be "checked when D-45 is set up". The check, a rendering under both
+  views with no model call, took a minute and showed the claim false.
+  - **What view 1 cut.** The accepted answer's calls on 2 tasks (both
+    halves of that control), the calibration prompts of 4 tasks, and 1 of
+    the 33 probes. It cut no instrument check, and nothing of the other 32
+    probes.
+  - **Why so few, and why any.** View 1 bounded each call's share of the
+    trace as well as the whole: 1,200 to 4,000 characters a call. So a short
+    record could still be cut. The accepted answers' recovered traces carry
+    commands only, and 14 and 24 of them were enough.
+  - **What D-45 does now** (the amendment, in D-45's entry): it asks those
+    checks again under view 2, and asks all probes afresh. The
+    clipped-output probe is renamed for what view 2 asks of it. Two probes
+    are added for an output cut when it was stored, since D-44's answers
+    carry such cuts. About $20–30 more, and the stop line is unchanged.
+  - **Guards.** Section 120 covers both setups, the spend guard's copied
+    rows and the new probes. Nine pieces were broken one at a time, and each
+    turned the suite red. All five CI suites pass with the corpus hidden.
+  - **Lesson.** A registration should not state as fact what it defers
+    checking. This check needed no model call and could have been made
+    before the registration was committed.
