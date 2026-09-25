@@ -7790,7 +7790,7 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     graders see, so it would be judged on answers it was not drawn from.
     D-44's own answers qualify, re-graded (proposed to the user, not
     registered).
-- **09-25, 23:0x UTC** — **The graders see the whole record, and it keeps
+- **09-25, 22:4x UTC** — **The graders see the whole record, and it keeps
   what the candidate saw (view 2, calls record 3).** As the user asked: "we
   should not hardcode this cap".
   - **Why the cap was there.** It came in on 09-19, when both graders were
