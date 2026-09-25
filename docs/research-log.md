@@ -6992,3 +6992,19 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   The readings agree on 104 of 118 verdicts, and on real-or-not at kappa 0.81
   [0.67, 0.92]. grok-4.6 and Kimi-K2.7-Code are read once gpt-6-astra has
   graded them.
+- **09-25, 05:5x UTC** — **D-41.3 done: the judges quote exact passages, and
+  the quote check takes an ellipsis as a break.**
+  - The judge's prompt and its `quote` field ask for passages copied character
+    for character, each on its own line, never joined with "..." or
+    reformatted, and say why: the quote is checked word for word and a reading
+    whose quote is not found is discarded.
+  - `quote_appears` splits a quote at an ellipsis as it already did at a line
+    break. Every fragment must still be in the answer, so an invented one still
+    sinks the reading. Bold and code marks were already ignored.
+  - Every judgement now records `judge_rules` (2). Rows written before carry no
+    field: rules 1.
+  - Guard: section 109, including the grade row the stage stores. Four pieces
+    broken alone, each red.
+  - D-40 is untouched: its answers and readings were written at tag
+    `d40-instrument`, and its analysis runs from `d40-analysis`.
+  - To be checked on a Claude judge when there is one (D-41.5).

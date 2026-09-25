@@ -39,7 +39,7 @@ directories made before the split, and what happens when a candidate or a
 grading fails. Its ninth section requires that every served-model probe the
 stages made went to its stand-in, so none of it reaches the network.
 
-**`guards_hold.py`** is one hundred and eight numbered sections, one per guard: what the
+**`guards_hold.py`** is one hundred and nine numbered sections, one per guard: what the
 attempt and grade stages refuse to do; the gate asked repeatedly; the
 reference-answer control and when it is not applicable; the clean-pass
 standard and the hedged one priced side by side; permanent git loss; the
@@ -154,7 +154,9 @@ flag tally count every flag drawn exactly once, refuse a reading that leaves one
 judges one twice, and settle two readings' disagreements only by adjudication; section
 108 has the sensitivity analysis count back an answer left out only because a judge's
 quote is not in it, in the table, the tests and the agreement, and never one the harness
-failed. It closes by asserting it handed production back unpatched, because three
+failed; section 109 has a judge's exact passages joined by an ellipsis found in the
+answer, an invented one still rejected, and every stored judgement name the judge
+rules it was read under. It closes by asserting it handed production back unpatched, because three
 sections restored one module attribute through a name a fourth binds to
 something else, and that the model library's Runner is the real one again (section 26
 had left a stand-in in its place for every later section). Its fake judge sets the task's kind the way the

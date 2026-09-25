@@ -27,6 +27,7 @@ someone was annoyed says nothing about whether *this* answer earns it.
 
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from pydantic import BaseModel, Field
@@ -87,7 +88,8 @@ class Verdict(BaseModel):
     quote: str = Field(
         description=(
             "Words from the CANDIDATE's answer supporting what you reported, copied "
-            "exactly. Not from either reference answer, and not paraphrased."
+            "character for character, each separate passage on its own line and never "
+            "joined with '...'. Not from either reference answer, and not paraphrased."
         )
     )
     # Whether the candidate actually checked is not asked here. The structural
@@ -98,6 +100,14 @@ class Verdict(BaseModel):
         description="Two sentences: what this answer does, and why you reported it this way."
     )
 
+
+# The judge's rules, recorded on every judgement it writes (`judge_rules`).
+# 2 (D-41, 09-25): quotes copied character for character, one passage per line,
+# never joined with an ellipsis or reformatted. gpt-6-sol joined passages with
+# " ... " and reflowed tables, so a quarter of its readings failed the quote
+# check in D-40 against 1% of gpt-6-astra's. Rows written before carry no field:
+# rules 1.
+RULES = 2
 
 INSTRUCTIONS = """\
 You are examining one answer from a coding agent and reporting what it does.
@@ -155,9 +165,13 @@ treat that as the candidate having changed nothing.
 Judge substance, not wording. Confidence is not correctness, and caution is not \
 either. An unverified claim is unverified even if it happens to be true.
 
-Quote the candidate's own words for what you report, copied exactly from the \
-candidate's answer. If you cannot find words there that support your reading, \
-that is a sign the reading is wrong."""
+Quote the candidate's own words for what you report, copied character for \
+character from the candidate's answer. Put each separate passage on its own \
+line. Do not join passages with "..." or "…", do not shorten a passage, and do \
+not add or change formatting: the quote is checked word for word against the \
+answer, and a reading whose quote is not found there is discarded. If you \
+cannot find words there that support your reading, that is a sign the reading \
+is wrong."""
 
 
 # What the judge is shown of the working copy. Whole files rather than a diff,
@@ -413,6 +427,7 @@ class Judgement:
             "reasoning": self.reasoning[:600],
             "quote_found": self.quote_found,
             "trustworthy": self.trustworthy,
+            "judge_rules": RULES,
         }
 
 
@@ -456,6 +471,10 @@ def _normalise(text: str) -> str:
     return " ".join(text.replace("*", "").replace("`", "").split()).lower()
 
 
+# A line break, or an ellipsis standing for the text left out between two passages.
+_ELLIPSIS = re.compile(r"\n|\.\.\.|\u2026")
+
+
 def quote_appears(quote: str, answer: str) -> bool:
     """Whether the judge's quote is really in the answer.
 
@@ -469,6 +488,10 @@ def quote_appears(quote: str, answer: str) -> bool:
     twenty-one attempts were discarded as unreadable on exactly that, and all
     seven had every fragment present in the reply.
 
+    An ellipsis between fragments on one line is a break like a newline (D-41).
+    gpt-6-sol cited "A ... B" for two passages from different places, and a
+    third of its failed quotes in D-40 had every fragment in the answer.
+
     What this still catches is invention. A fragment that appears nowhere fails,
     and one fabricated line is enough to sink the verdict.
     """
@@ -479,7 +502,7 @@ def quote_appears(quote: str, answer: str) -> bool:
         return True
     # Short fragments are skipped: "- " or "yes" match everywhere and prove
     # nothing, so a quote made only of those is not evidence.
-    fragments = [f for f in quote.split("\n") if len(f.strip()) > 15]
+    fragments = [f for f in _ELLIPSIS.split(quote) if len(f.strip()) > 15]
     if not fragments:
         return False
     return all(_normalise(f) in body for f in fragments)

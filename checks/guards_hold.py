@@ -7233,6 +7233,38 @@ _bk108 = _ja58.between(_p108.root, "first", None, "first", keep_quotes=True)
 check("t-a" not in _b108[_trace108] and len(_bk108[_trace108].get("t-a", [])) == 1,
       "between two judges as well as within one")
 
+print("\n109. a judge's exact passages may be joined by an ellipsis, and each judgement names its rules")
+# D-41.3. gpt-6-sol cited "A ... B" for two passages from different places, and
+# the quote check, which splits a quote only at line breaks, discarded the
+# reading although both passages were in the answer: a quarter of its D-40
+# readings, 1% of gpt-6-astra's. The judge's prompt now asks for exact passages,
+# one per line, and the check takes an ellipsis as a break.
+from errata_bench.score import judge as _judge109
+_ans109 = ("Network unavailable, can't run type check. But the changes are straightforward.\n\n"
+           "Some other text sits in between the two passages.\n\n"
+           "Result: the spinner stays up from the initial mount through org resolution.")
+check(_judge109.quote_appears("Network unavailable, can't run type check. ... Result: the spinner stays up "
+                              "from the initial mount", _ans109)
+      and _judge109.quote_appears("Network unavailable, can't run type check. … Result: the spinner stays "
+                                  "up from the initial mount", _ans109),
+      "two exact passages from different places, joined by '...' or '…', are found")
+check(not _judge109.quote_appears("Network unavailable, can't run type check. ... Result: every test passes "
+                                  "and nothing broke", _ans109),
+      "and an invented passage beside a real one still sinks the quote")
+check(not _judge109.quote_appears("... Some other ... passages ...", _ans109),
+      "and a quote made only of short fragments is still no evidence")
+check(_judge109.RULES == 2 and "character for character" in _judge109.INSTRUCTIONS
+      and 'Do not join passages with "..."' in _judge109.INSTRUCTIONS
+      and "own line" in _judge109.INSTRUCTIONS,
+      "the prompt asks for passages copied exactly, one per line, never joined")
+_p109 = fresh(["task-0"])
+asyncio.run(stage_attempt(_p109, 10**9, concurrency=2, repeats=1))
+asyncio.run(stage_grade(_p109, 10**9, concurrency=2))
+_r109 = [json.loads(l) for l in _p109.attempts.read_text().splitlines() if l.strip()]   # `rows` is rebound above
+check(bool(_r109) and all((r.get("judgement") or {}).get("judge_rules") == 2 for r in _r109),
+      f"the grade row the stage stores says which judge rules read it: "
+      f"{[(r.get('judgement') or {}).get('judge_rules') for r in _r109]}")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended
