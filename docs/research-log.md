@@ -6945,3 +6945,14 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     (`*-keep-quotes.txt`), for all three task sets and both judges, with the
     agreement.
   - Guard: section 108, six pieces broken alone, each red.
+- **09-25, 06:4x UTC** — **DeepSeek-V4-Flash's flags read a second time: the
+  two readings agree on all 21 claims.** Over the four models read so far,
+  both readings and the 14 settlements give:
+  - 69 of 118 flags real (58%, 95% interval 44% to 73%, resampling answers);
+  - 33 of the 48 answers have at least one real flag;
+  - DeepSeek-V4-Flash 57%, DeepSeek-V4-Pro 43%, MAI-Thinking-1 63%,
+    Mistral-Large-3 63%.
+
+  The readings agree on 104 of 118 verdicts, and on real-or-not at kappa 0.81
+  [0.67, 0.92]. grok-4.6 and Kimi-K2.7-Code are read once gpt-6-astra has
+  graded them.
