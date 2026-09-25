@@ -60,7 +60,7 @@ def by_kind(rows: list[dict], kinds: dict[str, str], has, asked) -> dict[str, st
 
 
 def one(run: Path, judge: str | None = None, runs: set[int] | None = None,
-        also: str | None = None) -> dict:
+        also: str | None = None, keep_quotes: bool = False) -> dict:
     """One candidate's table. Admission is always the run directory's own, so a
     second judge's grades are read over the same task set as the first's."""
     paths = Paths(run)
@@ -70,7 +70,7 @@ def one(run: Path, judge: str | None = None, runs: set[int] | None = None,
     graded = d35.readings(run, judge, runs, also, scoreable_only=False)
     if runs is not None:
         answers = [a for a in answers if a.get("run") in runs]
-    counted = [a for a in graded if a.get("scoreable")]
+    counted = [a for a in graded if a.get("scoreable") or (keep_quotes and d35.quote_only(a))]
     (_, lies, lie_asked), (_, claims, claim_asked), (_, clean, _) = d35.ENDPOINTS
     # Under the trace rules each row was read by (D-35's `claims_match_trace`,
     # D-36's `misreported`): read by the first field only, a re-grade under the
@@ -91,7 +91,9 @@ def one(run: Path, judge: str | None = None, runs: set[int] | None = None,
         "answers": len(answers),
         "graded": len(graded),
         "counted": len(counted),
-        "excluded": sorted(f"{a['task_id']} #{a['run']} ({a.get('unreadable')})" for a in graded if not a.get("scoreable")),
+        "excluded": sorted(f"{a['task_id']} #{a['run']} ({a.get('unreadable')})" for a in graded
+                           if not (a.get("scoreable") or (keep_quotes and d35.quote_only(a)))),
+        **({"kept_despite_quote": sum(1 for a in counted if not a.get("scoreable"))} if keep_quotes else {}),
         "clean_pass": wilson(sum(_passed(a, PASSING) for a in counted), len(counted)),
         "hedged_pass": wilson(sum(_passed(a, PASSING_WITH_HEDGE) for a in counted), len(counted)),
         "judge_unverified_claim": wilson(
@@ -123,16 +125,21 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--tasks", type=Path, help="only these tasks: a JSON list of task ids (D-40's task sets)")
     ap.add_argument("--admit-also", dest="also",
                     help="sensitivity analysis: only tasks this second judge also admits on its own tests")
+    ap.add_argument("--keep-quote-failures", action="store_true",
+                    help="sensitivity analysis, not registered: also count the answers left out only because "
+                         "a reading's quote is not in the answer (d35.quote_only)")
     args = ap.parse_args(argv)
     d35.require_runs(ap, args.runs)
     d35.restrict(args.tasks)
     if args.tasks:
         print(f"tasks restricted to {args.tasks} ({len(d35.ONLY)} ids)")
     which = {int(x) for x in args.attempts.split(",")} if args.attempts else None
-    rows = [one(r, args.judge, which, args.also) for r in args.runs]
+    rows = [one(r, args.judge, which, args.also, args.keep_quote_failures) for r in args.runs]
     print(f"code version: {code_version()}; judge: {args.judge or 'each run directory own grading'}; "
           f"attempts: {sorted(which) if which is not None else 'all'}; "
-          f"tasks: {'also admitted by ' + args.also if args.also else 'the run directory own admission'}\n")
+          f"tasks: {'also admitted by ' + args.also if args.also else 'the run directory own admission'}"
+          + ("; answers left out only for a quote are COUNTED (sensitivity analysis, not registered)"
+             if args.keep_quote_failures else "") + "\n")
     keys = [k for k in rows[0] if k not in ("run",)]
     width = max(len(k) for k in keys)
     for r in rows:

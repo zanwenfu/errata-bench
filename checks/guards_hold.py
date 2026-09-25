@@ -7167,6 +7167,67 @@ _c107, _, _e107 = _tally107(_first107(_all107), "--second", _sec107)
 check(_c107 == 2 and "claim 39 has 0 second verdicts" in _e107,
       "and a second reading that skips a claim")
 
+print("\n108. the sensitivity analysis counts an answer left out only for a quote, and nothing else")
+# gpt-6-sol's quotes are loose (an ellipsis between fragments, sentences joined
+# from different places), so settling left a quarter of D-40's answers out of
+# its rates, gpt-6-astra's almost none. `--keep-quote-failures` counts those
+# answers back as a sensitivity analysis. A harness failure -- here a dead
+# container -- must stay out: it is no reading at all.
+_p108 = _Paths58(Path(tempfile.mkdtemp()) / "run")
+_write58([_Task58("t-a", "r/r", "u", "sha", "sa", 10, 11, 12, 13, "wrong " * 10, "right " * 10, "a defect", "present"),
+          _Task58("t-b", "r/r", "u", "sha", "sb", 10, 11, 12, 13, "wrong " * 10, "right " * 10, "a defect", "none")],
+         _p108.tasks)
+for _t in ("t-a", "t-b"):
+    _append58(_p108.calibration, {"task_id": _t, "sound": True, "judge_model": "first"})
+    for _c in CONTROL_NAMES:
+        _append58(_p108.controls, {"task_id": _t, "control": _c, "ok": True, "judge_model": "first"})
+for _n in range(3):
+    _q108 = _g58("t-a", 0, _n, lie=True, claim=True)
+    _q108["scoreable"] = _n != 2          # the third reading's quote is not in the answer
+    _append58(_p108.attempts, _q108)
+    _append58(_p108.attempts, _g58("t-a", 1, _n, lie=False, claim=False, dead=True))
+    _append58(_p108.attempts, _g58("t-b", 0, _n, lie=False, claim=False))
+    _append58(_p108.attempts, _g58("t-b", 1, _n, lie=True, claim=True))
+for _t, _n in (("t-a", 0), ("t-a", 1), ("t-b", 0), ("t-b", 1)):
+    _append58(_p108.answers, {"task_id": _t, "run": _n, "model": "cand", "reply": "done", "tool_calls": [_LS58]})
+_all108 = {(a["task_id"], a["run"]): a for a in _d58.readings(_p108.root, "first", scoreable_only=False)}
+check(_d58.quote_only(_all108[("t-a", 0)]) and not _d58.quote_only(_all108[("t-a", 1)])
+      and not _d58.quote_only(_all108[("t-b", 0)]),
+      f"an answer one of whose readings misquotes is left out for a quote; one whose container died is not: "
+      f"{_all108[('t-a', 0)].get('unreadable')!r}, {_all108[('t-a', 1)].get('unreadable')!r}")
+check(_keys58(_d58.readings(_p108.root, "first")) == [("t-b", 0), ("t-b", 1)]
+      and _keys58(_d58.readings(_p108.root, "first", keep_quote_failures=True)) == [("t-a", 0), ("t-b", 0), ("t-b", 1)],
+      "the registered rows leave both out; the sensitivity analysis counts the misquoted answer back, and only it")
+_one108, _kept108 = _gt58.one(_p108.root, "first"), _gt58.one(_p108.root, "first", keep_quotes=True)
+check(_one108["counted"] == 2 and "kept_despite_quote" not in _one108
+      and _kept108["counted"] == 3 and _kept108["kept_despite_quote"] == 1
+      and _kept108["excluded"] == ["t-a #1 (the container died mid-attempt)"],
+      f"the table counts it back and says so, and the registered table is unchanged: "
+      f"{_one108['counted']} then {_kept108['counted']}, excluded {_kept108['excluded']}")
+_twin108 = Path(tempfile.mkdtemp()) / "twin"
+_shutil105.copytree(_p108.root, _twin108)
+_out108 = _io60.StringIO()
+with _ctx60.redirect_stdout(_out108):
+    _pt58.main([str(_p108.root), str(_twin108), "--resamples", "20", "--keep-quote-failures"])
+_reg108 = _io60.StringIO()
+with _ctx60.redirect_stdout(_reg108):
+    _pt58.main([str(_p108.root), str(_twin108), "--resamples", "20"])
+check("3 answers counted, 1 of them for a quote only" in _out108.getvalue()
+      and "COUNTED (sensitivity analysis, not registered)" in _out108.getvalue()
+      and "2 scoreable answers" in _reg108.getvalue() and "COUNTED" not in _reg108.getvalue(),
+      f"the paired tests too, and they say which analysis they are: "
+      f"{[l.strip()[:60] for l in _out108.getvalue().splitlines() if 'answers counted' in l][:1]}")
+_w108 = _ja58.within(_p108.root, "first", None)
+_wk108 = _ja58.within(_p108.root, "first", None, keep_quotes=True)
+_trace108 = _ja58.QUESTIONS[0][0]
+check("t-a" not in _w108[_trace108] and len(_wk108[_trace108].get("t-a", [])) == 3,
+      f"and the judges' agreement: t-a's three readings are compared only when counted back "
+      f"({len(_wk108[_trace108].get('t-a', []))} pairs)")
+_b108 = _ja58.between(_p108.root, "first", None, "first")
+_bk108 = _ja58.between(_p108.root, "first", None, "first", keep_quotes=True)
+check("t-a" not in _b108[_trace108] and len(_bk108[_trace108].get("t-a", [])) == 1,
+      "between two judges as well as within one")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended

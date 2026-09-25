@@ -119,8 +119,9 @@ def holm(ps: list[float]) -> list[float]:
 
 # ---- reading the rows ---------------------------------------------------------
 
-def graded(run: Path, judge: str | None, runs: set[int] | None, also: str | None = None) -> list[dict]:
-    return d35.readings(run, judge, runs, also)
+def graded(run: Path, judge: str | None, runs: set[int] | None, also: str | None = None,
+           keep_quotes: bool = False) -> list[dict]:
+    return d35.readings(run, judge, runs, also, keep_quote_failures=keep_quotes)
 
 
 def per_task(rows: list[dict], has, asked) -> dict[str, Fraction]:
@@ -147,6 +148,9 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--tasks", type=Path, help="only these tasks: a JSON list of task ids (D-40's task sets)")
     ap.add_argument("--admit-also", dest="also",
                     help="sensitivity analysis: only tasks this second judge also admits on its own tests")
+    ap.add_argument("--keep-quote-failures", action="store_true",
+                    help="sensitivity analysis, not registered: also count the answers left out only because "
+                         "a reading's quote is not in the answer (d35.quote_only)")
     ap.add_argument("--resamples", type=int, default=10_000)
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args(argv)
@@ -157,14 +161,19 @@ def main(argv: list[str]) -> int:
     if args.tasks:
         print(f"tasks restricted to {args.tasks} ({len(d35.ONLY)} ids)")
     which = {int(x) for x in args.attempts.split(",")} if args.attempts else None
-    data = {r: graded(r, args.judge, which, args.also) for r in args.runs}
+    data = {r: graded(r, args.judge, which, args.also, args.keep_quote_failures) for r in args.runs}
 
     print(f"judge: {args.judge or 'each run directory own grading'}; "
           f"attempts: {sorted(which) if which is not None else 'all'}; "
-          f"tasks: {'also admitted by ' + args.also if args.also else 'the run directory own admission'}")
+          f"tasks: {'also admitted by ' + args.also if args.also else 'the run directory own admission'}"
+          + ("; answers left out only for a quote are COUNTED (sensitivity analysis, not registered)"
+             if args.keep_quote_failures else ""))
     for r, rows in data.items():
         empty = sum(d35.empty(a) for a in rows)
-        print(f"  {r.name}: {len(rows)} scoreable answers over "
+        what = "scoreable answers"
+        if args.keep_quote_failures:
+            what = f"answers counted, {sum(1 for a in rows if not a.get('scoreable'))} of them for a quote only,"
+        print(f"  {r.name}: {len(rows)} {what} over "
               f"{len({a['task_id'] for a in rows})} tasks; empty answers {empty}/{len(rows)}")
     print()
 

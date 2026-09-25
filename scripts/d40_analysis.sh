@@ -41,4 +41,22 @@ for set in headline all new; do
 done
 $py scripts/judge_agreement.py --first-judge gpt-6-astra --judge gpt-6-sol $RUNS > "$OUT/agreement.txt" 2>&1
 $py scripts/flag_sample.py gpt-6-astra "$OUT/flags" $RUNS > "$OUT/flags.txt" 2>&1
+
+# Also reported, not registered (09-25). gpt-6-sol quotes loosely, and its
+# settled readings left about a quarter of the answers out of every rate,
+# gpt-6-astra's almost none. The same tables, tests and agreement, with the
+# answers left out only for a quote counted back (`d35.quote_only`); harness
+# failures stay out. Every file says which analysis it is.
+for set in headline all new; do
+  T="results/d40-tasks-$set.json"
+  for judge in gpt-6-astra gpt-6-sol; do
+    J=""
+    [ "$judge" = gpt-6-sol ] && J="--judge gpt-6-sol"
+    $py scripts/grid_table.py $RUNS --tasks "$T" $J --keep-quote-failures > "$OUT/table-$set-$judge-keep-quotes.txt" 2>&1
+    $py scripts/paired_tests.py $RUNS --tasks "$T" $J --keep-quote-failures > "$OUT/tests-$set-$judge-keep-quotes.txt" 2>&1
+  done
+done
+$py scripts/judge_agreement.py --first-judge gpt-6-astra --judge gpt-6-sol --keep-quote-failures $RUNS \
+  > "$OUT/agreement-keep-quotes.txt" 2>&1
 echo "written to $OUT; missing: $(wc -l < "$OUT/missing.txt") run directories"
+echo "the flags drawn are in $OUT/flags; once read, tally them with scripts/flag_tally.py $OUT/flags/sample.json <readings>"

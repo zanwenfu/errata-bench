@@ -45,7 +45,8 @@ QUESTIONS = [(name, _label(has, asked)) for name, has, asked in d35.ENDPOINTS]
 Pairs = dict[str, dict[str, list[tuple[bool, bool]]]]   # question -> task -> pairs
 
 
-def between(run: Path, judge: str, runs: set[int] | None, first_judge: str | None = None) -> Pairs:
+def between(run: Path, judge: str, runs: set[int] | None, first_judge: str | None = None,
+            keep_quotes: bool = False) -> Pairs:
     """(first judge, second judge) on every answer both could score, by task.
 
     The first judge is the run's own grading unless ``first_judge`` names a
@@ -53,8 +54,8 @@ def between(run: Path, judge: str, runs: set[int] | None, first_judge: str | Non
     rules; against the run's own grading, the first grid's second-rules
     re-grades would be compared with readings taken under the first rules.
     """
-    first = {(a["task_id"], a["run"]): a for a in d35.readings(run, first_judge, runs)}
-    second = {(a["task_id"], a["run"]): a for a in d35.readings(run, judge, runs)}
+    first = {(a["task_id"], a["run"]): a for a in d35.readings(run, first_judge, runs, keep_quote_failures=keep_quotes)}
+    second = {(a["task_id"], a["run"]): a for a in d35.readings(run, judge, runs, keep_quote_failures=keep_quotes)}
     out: Pairs = {name: defaultdict(list) for name, _ in QUESTIONS}
     for key in sorted(set(first) & set(second), key=str):
         for name, label in QUESTIONS:
@@ -64,9 +65,9 @@ def between(run: Path, judge: str, runs: set[int] | None, first_judge: str | Non
     return out
 
 
-def within(run: Path, judge: str | None, runs: set[int] | None) -> Pairs:
+def within(run: Path, judge: str | None, runs: set[int] | None, keep_quotes: bool = False) -> Pairs:
     """Every pair of one judge's readings of one answer, over the answers it scored."""
-    counted = {(a["task_id"], a["run"]) for a in d35.readings(run, judge, runs)}
+    counted = {(a["task_id"], a["run"]) for a in d35.readings(run, judge, runs, keep_quote_failures=keep_quotes)}
     by: dict[tuple, list[dict]] = defaultdict(list)
     for r in d35.rows_of(run, judge):
         if not r.get("error") and (r.get("task_id"), r.get("run")) in counted:
@@ -126,6 +127,9 @@ def main(argv: list[str]) -> int:
                                           "instead of the run's own grading")
     ap.add_argument("--runs", dest="attempts", help="restrict to these attempt numbers, e.g. 0 or 0,1,2")
     ap.add_argument("--tasks", type=Path, help="only these tasks: a JSON list of task ids (D-40's task sets)")
+    ap.add_argument("--keep-quote-failures", action="store_true",
+                    help="sensitivity analysis, not registered: also count the answers left out only because "
+                         "a reading's quote is not in the answer (d35.quote_only)")
     ap.add_argument("--resamples", type=int, default=10_000)
     ap.add_argument("--seed", type=int, default=0)
     args = ap.parse_args(argv)
@@ -146,10 +150,13 @@ def main(argv: list[str]) -> int:
              else f"the run directory own grading, its rows graded by {only}" if only
              else "each run directory own grading")
     print(f"judge agreement: {first} ({whose}) against {args.judge}; "
-          f"attempts: {sorted(which) if which is not None else 'all'}\n")
+          f"attempts: {sorted(which) if which is not None else 'all'}"
+          + ("; answers left out only for a quote are COUNTED (sensitivity analysis, not registered)"
+             if args.keep_quote_failures else "") + "\n")
 
-    pairs = {run: between(run, args.judge, which, args.first_judge) for run in args.runs}
-    selfs = {j: {run: within(run, args.first_judge if j == "first" else args.judge, which)
+    keep = args.keep_quote_failures
+    pairs = {run: between(run, args.judge, which, args.first_judge, keep) for run in args.runs}
+    selfs = {j: {run: within(run, args.first_judge if j == "first" else args.judge, which, keep)
                  for run in args.runs}
              for j in ("first", "second")}
     for name, _ in QUESTIONS:

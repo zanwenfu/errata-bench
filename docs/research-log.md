@@ -6932,3 +6932,16 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - **Early agreement, three candidates** (DeepSeek-V4-Pro, Mistral-Large-3,
     MAI-Thinking-1; D-40's criterion pools all six): kappa on `misreported`
     0.67 [0.58, 0.76]; on the unverified claim, 0.72.
+- **09-25, 06:1x UTC** — **The sensitivity analysis for gpt-6-sol's loose
+  quotes, written before any D-40 table is run.**
+  - `grid_table.py`, `paired_tests.py` and `judge_agreement.py` take
+    `--keep-quote-failures`. It counts back the answers left out only because
+    a reading's quote is not in the answer (`d35.quote_only`). Answers the
+    harness gave up on, whose context could not be rebuilt, or whose
+    container died stay out. The registered output is unchanged, and every
+    output with the flag says it is the sensitivity analysis, not the
+    registered one.
+  - `d40_analysis.sh` writes these beside the registered files
+    (`*-keep-quotes.txt`), for all three task sets and both judges, with the
+    agreement.
+  - Guard: section 108, six pieces broken alone, each red.
