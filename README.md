@@ -635,6 +635,9 @@ not reach into `stages`.
 
 ## Documents
 
+- [`docs/data-map.md`](docs/data-map.md): where every step's output is (git,
+  the laptop's `runs/`, the VPS), what file each step writes, and how the
+  copies are kept.
 - [`docs/research-log.md`](docs/research-log.md): the running record of every
   bug, decision, assumption, result and open gap, with its evidence. Updated
   in the same commit as the change. The first slice (09-22) is R-34 there.
