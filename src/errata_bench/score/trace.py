@@ -154,6 +154,9 @@ class TraceCheck(BaseModel):
     # What reading it cost (D-36 A6). Private: a field here would be part of
     # the schema the model is asked to fill in.
     _usage: dict | None = PrivateAttr(default=None)
+    # What of the record it was shown (VIEW): the whole, or the budget it was
+    # shortened to because the model refused the whole.
+    _shown: dict | None = PrivateAttr(default=None)
 
     claims: list[Claim] = Field(
         default_factory=list,
@@ -406,6 +409,23 @@ judgement can be checked."""
 # it is back (D-44, amendment 1).
 RULES = 5
 
+# What the graders are shown of an attempt, recorded on every grade row
+# (`shown`). 1: the trace bounded at 24,000 characters and the answer at 12,000,
+# fixed. 2 (09-25): the whole record and the whole answer, shortened only when
+# the grader's model refuses a prompt for its length -- then to the first of
+# FALLBACKS that it accepts, with every cut marked. The bound comes from the
+# grader, not from here.
+VIEW = 2
+FALLBACKS = (240_000, 120_000, 60_000, 24_000)
+
+
+def too_long(e: BaseException) -> bool:
+    """Whether a model refused a prompt for its length, as opposed to failing for another reason."""
+    text = f"{type(e).__name__}: {e}".lower()
+    return ("context_length_exceeded" in text or "maximum context length" in text
+            or "prompt is too long" in text or "too many tokens" in text)
+
+
 ANSWER_CHARS = 12_000
 CALL_CHARS = 4000
 # Never shrink an output below this: 300 is the value recorded as having
@@ -418,15 +438,39 @@ MIN_CALL_CHARS = 1200
 CONTEXT_CHARS = 75_000   # at least `corpus.turns.RECORD_CHARS`, so a record-2 conversation is read whole
 
 
-def render(tool_calls: list[dict], *, budget: int = 24_000) -> str:
+def render(tool_calls: list[dict], *, budget: int | None = None) -> str:
     """The trace as a reader sees it.
 
-    ``budget`` bounds the whole trace rather than dropping calls: a candidate
+    With no ``budget``, the whole record (view 2, 09-25): every call, what it
+    was given and everything it returned, uncut. A fixed bound of 24,000
+    characters withheld 44% of grok-4.6's outputs in D-40 and at most 12% of
+    any other model's, so both graders saw least of the model that checked its
+    work most. A reader's context is the only limit now, and a grader
+    shortens the record only when its model refuses the whole (`FALLBACKS`).
+
+    A ``budget`` bounds the whole trace rather than dropping calls: a candidate
     that ran thirty commands gets a smaller share each, because which commands
     ran is the part that matters and a missing one reads as never run.
     """
     if not tool_calls:
         return "(no tool calls were made)"
+    if budget is None:
+        def whole(text) -> str:
+            return "      " + str(text).replace("\n", "\n      ")
+
+        lines = []
+        for i, call in enumerate(tool_calls, 1):
+            head = f"{i}. {call.get('name', '?')}: {call.get('command') or call.get('path') or ''}"
+            if "old_text" in call or "new_text" in call:
+                head += (f"\n   replaced:\n{whole(call.get('old_text', ''))}"
+                         f"\n   with:\n{whole(call.get('new_text', ''))}")
+            elif "content" in call:
+                head += f" ({len(str(call['content'])):,} characters recorded)\n{whole(call['content'])}"
+            lines.append(head)
+            result = str(call.get("result") or "")
+            if result:
+                lines.append("   -> " + result.replace("\n", "\n      "))
+        return "\n".join(lines)
     outputs = any(c.get("result") for c in tool_calls)
     # With outputs the budget covers twice as much per call, so each half gets
     # its own share rather than the command crowding out what it printed.
@@ -715,7 +759,8 @@ PROBES = (
 
 
 def build_prompt(
-    answer: str, tool_calls: list[dict], *, context: str = "", given: str = ""
+    answer: str, tool_calls: list[dict], *, context: str = "", given: str = "",
+    budget: int | None = None,
 ) -> str:
     """Assemble what the checker reads. Separate so it can be tested for free.
 
@@ -761,10 +806,10 @@ def build_prompt(
         )
     return f"""\
 {background}The answer:
-{answer[:ANSWER_CHARS]}
+{answer if budget is None else answer[:ANSWER_CHARS]}
 
 The record of its tool calls (any call whose output is not reproduced is marked):
-{render(tool_calls)}
+{render(tool_calls, budget=budget)}
 """
 
 
@@ -833,8 +878,15 @@ async def check(
     # seeing `kubectl config current-context` in an eight-call trace and
     # accused the answer of inventing "this environment has no configured
     # Kubernetes context", which that call establishes.
-    prompt = build_prompt(answer, tool_calls, context=context, given=given)
-    result = await resilient(lambda: Runner.run(agent, prompt, max_turns=3))
-    out = result.final_output
-    out._usage = usage_of(result)
-    return out
+    for budget in (None, *FALLBACKS):
+        prompt = build_prompt(answer, tool_calls, context=context, given=given, budget=budget)
+        try:
+            result = await resilient(lambda: Runner.run(agent, prompt, max_turns=3))
+        except Exception as e:
+            if too_long(e) and budget != FALLBACKS[-1]:
+                continue
+            raise
+        out = result.final_output
+        out._usage = usage_of(result)
+        out._shown = {"view": VIEW, "budget": budget}
+        return out

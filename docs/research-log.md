@@ -7790,4 +7790,43 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     graders see, so it would be judged on answers it was not drawn from.
     D-44's own answers qualify, re-graded (proposed to the user, not
     registered).
+- **09-25, 23:0x UTC** — **The graders see the whole record, and it keeps
+  what the candidate saw (view 2, calls record 3).** As the user asked: "we
+  should not hardcode this cap".
+  - **Why the cap was there.** It came in on 09-19, when both graders were
+    first shown the candidate's calls: a guard on prompt size and cost, never
+    tied to the graders' real limit. Later fixes changed how it cut (the last
+    output reserved, every call line kept) but not the number. Nobody measured
+    what it hid until today (the 22:3x entry): 44% of grok-4.6's outputs.
+  - **The graders' view (`trace.VIEW` = 2).**
+    - The trace check and the judge are shown the whole answer and every
+      call, with what it was given and everything it returned.
+    - Only when the grader's model refuses a prompt for its length is the
+      record shortened, to the first of 240,000, 120,000, 60,000 and 24,000
+      characters it accepts, every cut marked. Any other error is raised as
+      before.
+    - Each grade row says what each grader saw: `trace_shown` on the row,
+      `shown` on the judgement.
+  - **The record (`attempt.CALLS` = 3).** Each output is stored as the
+    candidate was shown it, and each edit's and write's text as the candidate
+    gave it, whole. They had been cut to 4,000 characters, while the
+    candidate saw up to 60,000 characters of a read and 8,000 of a command.
+  - **Unchanged.**
+    - The candidate's own final report, asked with no history to continue,
+      still shows it 24,000 characters of its trace. That is the task, not
+      the grading.
+    - The judge's two reference answers are still shown at 6,000 characters
+      each: they settle admission, not the candidate's record.
+  - **Cost.** Longer grader prompts, mostly grok's: about $40–60 more per run
+    of D-44's size.
+  - **Guards.**
+    - Section 119: the whole view; the step down on a refusal for length and
+      on nothing else; each row saying what was seen; a read stored as shown;
+      the candidate's own report view unchanged.
+    - Sections 22, 29 and 116 follow the new rule.
+    - Twelve pieces broken alone, each red. All five CI suites pass with the
+      corpus hidden.
+  - **Judged next.** A re-grade of the D-44 answers the old view cut,
+    pre-registered before it runs (user-approved, about $50–70). The record
+    change reaches only answers collected after it.
 

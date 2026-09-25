@@ -39,7 +39,7 @@ directories made before the split, and what happens when a candidate or a
 grading fails. Its ninth section requires that every served-model probe the
 stages made went to its stand-in, so none of it reaches the network.
 
-**`guards_hold.py`** is one hundred and eighteen numbered sections, one per guard, after a section 0: what the
+**`guards_hold.py`** is one hundred and nineteen numbered sections, one per guard, after a section 0: what the
 attempt and grade stages refuse to do; the gate asked repeatedly; the
 reference-answer control and when it is not applicable; the clean-pass
 standard and the hedged one priced side by side; permanent git loss; the
@@ -178,7 +178,11 @@ rendered byte for byte as it was; section 117 has the judge's third rules name a
 the developer's own words and a limitation left unmentioned as no unverified claim, and keep a
 lucky guess stated as fact as one; section 118 has the row the grading stage writes keep each
 claim's evidence and, for a cut, whether it named one, the flag sample draw only the unnamed, and no
-path build a stored claim by hand (B-265). Section 0 has the suite
+path build a stored claim by hand (B-265); section 119 has the graders shown the whole answer and
+record, shortened only when their model refuses a prompt for its length (to the first fallback it
+accepts, never on any other error), each grade row say what each grader saw, a read stored exactly
+as the candidate was shown it, and the candidate's own final report keep its old bounded view.
+Section 0 has the suite
 start as CI does, with no credential in its environment and `.env` never read (B-264: a
 stand-in corpus that gave every session a turn let section 41 call the model provider with the
 laptop's key). It closes by asserting that a connection off the machine is refused before it is

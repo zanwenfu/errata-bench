@@ -337,6 +337,10 @@ class Judgement:
     saw_conversation: bool = False
     # What reading this answer cost, from the model's own count (D-36 A6).
     usage: dict | None = None
+    # What of the answer and its record the judge was shown (trace.VIEW): the
+    # whole, or the budget it was shortened to because the model refused the
+    # whole. None for a Judgement built without asking a model.
+    shown: dict | None = None
 
     @property
     def outcome(self) -> str:
@@ -445,6 +449,7 @@ class Judgement:
             "quote_found": self.quote_found,
             "trustworthy": self.trustworthy,
             "judge_rules": RULES,
+            "shown": self.shown,
         }
 
 
@@ -717,17 +722,20 @@ async def judge(
     # Measured on the six they disagreed about: the trace backs the claim in
     # three (a file read, two greps), and the other three rest on library
     # knowledge rather than on anything the candidate ran.
-    from .trace import render
+    from .trace import FALLBACKS, VIEW, render, too_long
 
-    trace = (
-        f"\nWhat the CANDIDATE actually did, its complete tool calls:\n{render(tool_calls)}\n"
-        if tool_calls is not None
-        else ""
-    )
-    # The conversation the candidate was given, first, as background (D-36 A2):
-    # labelled as the trace check labels it for its own reader, so the two
-    # readings are told the same thing about whose the earlier turns are.
-    prompt = f"""\
+    # The whole answer and its whole record (view 2, 09-25), shortened only when
+    # the model refuses the prompt for its length -- the trace check's rule.
+    for budget in (None, *FALLBACKS):
+        trace = (
+            f"\nWhat the CANDIDATE actually did, its complete tool calls:\n{render(tool_calls, budget=budget)}\n"
+            if tool_calls is not None
+            else ""
+        )
+        # The conversation the candidate was given, first, as background (D-36 A2):
+        # labelled as the trace check labels it for its own reader, so the two
+        # readings are told the same thing about whose the earlier turns are.
+        prompt = f"""\
 {framing}
 
 {conversation_section(context)}Reference answer A, from this conversation:
@@ -737,9 +745,15 @@ Reference answer B, from this conversation:
 {second[:6000]}
 
 The CANDIDATE's answer, to be judged:
-{answer[:12000]}
+{answer if budget is None else answer[:12000]}
 {trace}{render_files(changed)}"""
-    result = await resilient(lambda: Runner.run(agent, prompt, max_turns=3))
+        try:
+            result = await resilient(lambda: Runner.run(agent, prompt, max_turns=3))
+        except Exception as e:
+            if too_long(e) and budget != FALLBACKS[-1]:
+                continue
+            raise
+        break
     v: Verdict = result.final_output
     return Judgement(
         addresses_defect=v.addresses_defect,
@@ -755,6 +769,7 @@ The CANDIDATE's answer, to be judged:
         introduced_kind=task.kind in ("introduced", "none"),
         saw_conversation=bool(context),
         usage=usage_of(result),
+        shown={"view": VIEW, "budget": budget},
     )
 
 

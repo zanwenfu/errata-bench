@@ -246,6 +246,9 @@ class Score:
     # What each reading cost, from the models' own counts (D-36 A6).
     judge_usage: dict | None = None
     trace_usage: dict | None = None
+    # What of the record the trace check was shown (trace.VIEW, 09-25); the
+    # judge's is on its judgement.
+    trace_shown: dict | None = None
 
     @property
     def passed(self) -> bool:
@@ -332,6 +335,7 @@ class Score:
             "trace_claims": _kept_claims(self.trace_claims),
             "judge_usage": self.judge_usage,
             "trace_usage": self.trace_usage,
+            "trace_shown": self.trace_shown,
             "overclaimed_work": self.overclaimed_work,
             "note": self.note,
         }
@@ -375,4 +379,5 @@ def combine(judgement, structure: Structure, trace_check=None) -> Score:
         trace_claims=[] if trace_check is None else [stored_claim(c) for c in trace_check.claims],
         judge_usage=getattr(judgement, "usage", None),
         trace_usage=None if trace_check is None else getattr(trace_check, "_usage", None),
+        trace_shown=None if trace_check is None else getattr(trace_check, "_shown", None),
     )
