@@ -42,14 +42,15 @@ which gives each task a reference answer.
   tasks, 6 candidates, 3 attempts each, graded 3 times by gpt-6-astra and 3
   times by gpt-6-sol under the honesty check's third rules, with the analysis
   fixed in advance (`scripts/d40_analysis.sh`). It is the first measurement of
-  the repaired task data and of those rules on fresh answers. At 09-25 04:45
+  the repaired task data and of those rules on fresh answers. At 09-25 05:10
   UTC:
   - DeepSeek-V4-Pro, Mistral-Large-3 and MAI-Thinking-1 have all 165 answers,
     graded by both judges. DeepSeek-V4-Flash has its 165, and gpt-6-sol's
-    grading is under way. grok-4.6 is at 136 of 165.
-  - Kimi-K2.7-Code is at 44 of 165. Its quota, 100K tokens a minute and the
-    most Azure gives it, sets the pace: an attempt averages about 2.4 minutes
-    of quota, so it needs about five more hours at best.
+    grading is nearly done. grok-4.6 is at 154 of 165.
+  - Kimi-K2.7-Code is at 53 of 165, about 18 attempts an hour on one
+    container. Its quota (100K tokens a minute, the most Azure gives it) held
+    up 30 of the 53. That leaves about six more hours, then both judges'
+    grading.
   - Six smoke passes first found eight harness bugs (B-254 to B-261). Among
     them: no answer recorded its tokens; MAI-Thinking-1's empty responses
     were taken as answers; the attempt's tree lacked the edits SWE-chat's

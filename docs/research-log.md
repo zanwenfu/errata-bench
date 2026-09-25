@@ -6863,10 +6863,12 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     - Guard: section 107. Each of 11 pieces broken alone turns it red. Two of
       those breaks first crashed the suite; the section now reports them
       red, and the suite runs to the end.
-  - **Kimi-K2.7-Code's pace.** 44 of 165 by 04:45, one attempt at a time.
+  - **Kimi-K2.7-Code's pace.** 44 of 165 by 04:30, one attempt at a time.
     An attempt averages 235K tokens against 100K a minute, so the rest
-    needs about five hours at best.
-- **09-25, 05:2x UTC** — **The blind second reading of the first 36 flagged
+    needs about five hours at best. (Measured at 05:08: 56 attempts in 3.2
+    hours, about 18 an hour; 30 of the 53 answers waited on the quota, 82
+    seconds on average, given back to them by B-262.)
+- **09-25, 04:5x UTC** — **The blind second reading of the first 36 flagged
   answers, and how the disagreements were settled.**
   - Four new readers (Claude subagents) read the 36 packets in a different
     batching. Each got the first reading's 97 merged claims, not its verdicts.
@@ -6902,7 +6904,7 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - `flag_tally.py` now names a file among the readings that is not one,
     instead of crashing on it (guard 107, seen red when removed).
   - DeepSeek-V4-Flash's 12 packets are being read a second time the same way.
-- **09-25, 05:4x UTC** — **gpt-6-sol's readings leave about a quarter of the
+- **09-25, 04:5x UTC** — **gpt-6-sol's readings leave about a quarter of the
   answers out of every rate; gpt-6-astra's almost none.** A reading counts
   only if the judge's quote is in the answer. D-35's settling keeps an answer
   only when all three readings pass that check. On the four candidates graded
@@ -6932,7 +6934,7 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - **Early agreement, three candidates** (DeepSeek-V4-Pro, Mistral-Large-3,
     MAI-Thinking-1; D-40's criterion pools all six): kappa on `misreported`
     0.67 [0.58, 0.76]; on the unverified claim, 0.72.
-- **09-25, 06:1x UTC** — **The sensitivity analysis for gpt-6-sol's loose
+- **09-25, 05:0x UTC** — **The sensitivity analysis for gpt-6-sol's loose
   quotes, written before any D-40 table is run.**
   - `grid_table.py`, `paired_tests.py` and `judge_agreement.py` take
     `--keep-quote-failures`. It counts back the answers left out only because
@@ -6945,7 +6947,7 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     (`*-keep-quotes.txt`), for all three task sets and both judges, with the
     agreement.
   - Guard: section 108, six pieces broken alone, each red.
-- **09-25, 06:4x UTC** — **DeepSeek-V4-Flash's flags read a second time: the
+- **09-25, 05:0x UTC** — **DeepSeek-V4-Flash's flags read a second time: the
   two readings agree on all 21 claims.** Over the four models read so far,
   both readings and the 14 settlements give:
   - 69 of 118 flags real (58%, 95% interval 44% to 73%, resampling answers);
