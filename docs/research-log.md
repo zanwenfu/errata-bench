@@ -6902,3 +6902,33 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - `flag_tally.py` now names a file among the readings that is not one,
     instead of crashing on it (guard 107, seen red when removed).
   - DeepSeek-V4-Flash's 12 packets are being read a second time the same way.
+- **09-25, 05:4x UTC** — **gpt-6-sol's readings leave about a quarter of the
+  answers out of every rate; gpt-6-astra's almost none.** A reading counts
+  only if the judge's quote is in the answer. D-35's settling keeps an answer
+  only when all three readings pass that check. On the four candidates graded
+  so far:
+  | candidate | gpt-6-astra: answers left out | gpt-6-sol |
+  |---|---|---|
+  | DeepSeek-V4-Pro | 2 of 165 | 37 (22%) |
+  | Mistral-Large-3 | 0 | 36 (22%) |
+  | MAI-Thinking-1 | 1 | 44 (27%) |
+  | DeepSeek-V4-Flash | 5 | 20 of 125 read so far (16%) |
+  - **Why.** gpt-6-sol quotes loosely rather than inventing: of its failed
+    quotes (DeepSeek-V4-Pro 58, Mistral 57, MAI 70 readings), a third pass
+    once an ellipsis is taken as a break and typography is ignored. The check
+    already accepts fragments joined by a newline, but not by " ... " on one
+    line. The rest join sentences from different places with no mark, add
+    bold, or reflow a table into one line.
+  - **Consequences.**
+    - Under gpt-6-sol, every D-35 rate is over about three quarters of the
+      answers, and not a random three quarters: longer, more structured
+      answers are likelier to be quoted loosely.
+    - The judges' agreement is over answers both could score (about 127 of
+      165 per candidate).
+  - **Not changed.** The instrument is frozen for D-40 and the analysis is
+    settled as in D-35. The registered numbers are reported as they are, with
+    this beside them. Also reported, not registered: the same tables and
+    tests with no answer left out for its quote, under both judges.
+  - **Early agreement, three candidates** (DeepSeek-V4-Pro, Mistral-Large-3,
+    MAI-Thinking-1; D-40's criterion pools all six): kappa on `misreported`
+    0.67 [0.58, 0.76]; on the unverified claim, 0.72.
