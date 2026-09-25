@@ -7538,8 +7538,12 @@ def _outcome113(fn):
         return f"{type(_e).__name__}: {_e}"
 
 
-_saved113 = turns_mod.load_session_turns
-turns_mod.load_session_turns = lambda ids: {}
+# Both names: `attempt` binds `load_session_turns` when it is imported, so
+# replacing the corpus module's alone left control_conversations_for and `run`
+# reading the real corpus -- which passed on a machine that has one, and failed
+# in CI, which has none.
+_saved113 = (turns_mod.load_session_turns, attempt_mod.load_session_turns)
+turns_mod.load_session_turns = attempt_mod.load_session_turns = lambda ids: {}
 try:
     _tf113 = _outcome113(lambda: REAL_TRANSCRIPTS_FOR([_t113]))
     _cc113 = _outcome113(lambda: REAL_CONTROL_CONVERSATIONS_FOR([_t113]))
@@ -7552,7 +7556,7 @@ try:
     _p113 = fresh(["task-0"])
     _stage113 = _outcome113(lambda: asyncio.run(stage_attempt(_p113, 10**9, concurrency=2, repeats=1)))
 finally:
-    turns_mod.load_session_turns = _saved113
+    turns_mod.load_session_turns, attempt_mod.load_session_turns = _saved113
 check(_tf113 == "refused" and _cc113 == "refused" and _run113 == "refused",
       f"the transcripts that grading and the flag sample rebuild, the controls' conversations, and an attempt "
       f"that loads its own turns are refused, not rendered empty: {_tf113}, {_cc113}, {_run113}")
