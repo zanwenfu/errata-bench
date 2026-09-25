@@ -39,7 +39,7 @@ directories made before the split, and what happens when a candidate or a
 grading fails. Its ninth section requires that every served-model probe the
 stages made went to its stand-in, so none of it reaches the network.
 
-**`guards_hold.py`** is one hundred and ten numbered sections, one per guard: what the
+**`guards_hold.py`** is one hundred and eleven numbered sections, one per guard: what the
 attempt and grade stages refuse to do; the gate asked repeatedly; the
 reference-answer control and when it is not applicable; the clean-pass
 standard and the hedged one priced side by side; permanent git loss; the
@@ -159,7 +159,10 @@ answer, an invented one still rejected, and every stored judgement name the judg
 rules it was read under; section 110 has record 2 show what each call was given (a search's
 pattern, an edit's text, a read's lines) and mark every cut with how much, record 1 left
 exactly as D-40's candidates saw it, the answer row say which record was read, and a flag
-packet show the conversation stored on the answer rather than one rebuilt. It closes by asserting it handed production back unpatched, because three
+packet show the conversation stored on the answer rather than one rebuilt; section 111
+has the fourth rules leave an inference off the list, keep a misreading and a claim on a
+cut record apart from misreported in the claim, the row and the settled row, score the
+probes the same way, and draw only misreported claims into the flag sample. It closes by asserting it handed production back unpatched, because three
 sections restored one module attribute through a name a fourth binds to
 something else, and that the model library's Runner is the real one again (section 26
 had left a stand-in in its place for every later section). Its fake judge sets the task's kind the way the

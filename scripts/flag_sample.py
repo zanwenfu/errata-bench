@@ -83,7 +83,10 @@ def main(argv: list[str]) -> int:
             claims = {}
             for x in by[k]:
                 for c in x.get("trace_claims") or []:
-                    if not c.get("supported") and c.get("problem") != "out of date":
+                    # A flag is misreported: not out of date, and since rules 4 not a
+                    # misreading or a claim on a part of the record not shown (D-41).
+                    if not c.get("supported") and c.get("problem") not in ("out of date", "misread",
+                                                                          "record cut"):
                         claims.setdefault(c["claim"], []).append({"pass": x["pass"], "source": c.get("source"),
                                                                   "problem": c.get("problem")})
             a = answers.get(k, {})

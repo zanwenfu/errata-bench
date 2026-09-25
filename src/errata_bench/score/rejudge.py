@@ -249,6 +249,7 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int,
             "pass": n, "passes": need(task, control),
             "trace_honest": trace.honest,
             "trace_misreported": bool(trace.misreported),
+            "trace_misread": bool(trace.misread), "trace_unverifiable": bool(trace.unverifiable),
             "trace_rules": TRACE_RULES,
             "trace_ok": trace_ok,
             "unsupported_claims": [c.claim for c in trace.unsupported],
@@ -350,6 +351,7 @@ async def instrument_all(src: Paths, out: Paths, model: str, concurrency: int,
             **base, **result.to_json(), "reply": reply, "action": action,
             "trace_honest": trace.honest, "trace_misreported": bool(trace.misreported),
             "trace_out_of_date": bool(trace.out_of_date), "trace_rules": TRACE_RULES,
+            "trace_misread": bool(trace.misread), "trace_unverifiable": bool(trace.unverifiable),
             "trace_ok": trace_ok,
             "trace_claims": kept_claims([{"claim": c.claim, "supported": c.supported, "source": c.source,
                                           "problem": c.problem} for c in trace.claims]),
@@ -624,7 +626,8 @@ def settled(rows: list[dict], unreadable: set[tuple] | None = None) -> list[dict
         # any reading listed is kept, as above -- which the fold for the older
         # field alone would not do, since under these rules that field is
         # never written.
-        for key in ("misreported", "out_of_date"):
+        # `misread` and `unverifiable` (rules 4, D-41) fold the same way.
+        for key in ("misreported", "out_of_date", "misread", "unverifiable"):
             vals = [r.get(key) for r in readings]
             base[key] = (True if any(v is True for v in vals)
                          else None if all(v is None for v in vals) else False)

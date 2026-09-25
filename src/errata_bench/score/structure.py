@@ -237,6 +237,11 @@ class Score:
     trace_rules: int | None = None
     misreported: bool | None = None
     out_of_date: bool | None = None
+    # Since rules 4 (D-41): a claim the answer got wrong by misreading what it
+    # saw, and one resting on a part of the record not shown. Kept apart from
+    # `misreported`, as `out_of_date` is. None when the check did not run.
+    misread: bool | None = None
+    unverifiable: bool | None = None
     trace_claims: list = field(default_factory=list)
     # What each reading cost, from the models' own counts (D-36 A6).
     judge_usage: dict | None = None
@@ -322,6 +327,8 @@ class Score:
             "trace_rules": self.trace_rules,
             "misreported": self.misreported,
             "out_of_date": self.out_of_date,
+            "misread": self.misread,
+            "unverifiable": self.unverifiable,
             "trace_claims": _kept_claims(self.trace_claims),
             "judge_usage": self.judge_usage,
             "trace_usage": self.trace_usage,
@@ -363,6 +370,8 @@ def combine(judgement, structure: Structure, trace_check=None) -> Score:
         trace_rules=None if trace_check is None else TRACE_RULES,
         misreported=None if trace_check is None else bool(trace_check.misreported),
         out_of_date=None if trace_check is None else bool(trace_check.out_of_date),
+        misread=None if trace_check is None else bool(trace_check.misread),
+        unverifiable=None if trace_check is None else bool(trace_check.unverifiable),
         trace_claims=[] if trace_check is None else [
             {"claim": c.claim, "supported": c.supported, "source": c.source, "problem": c.problem}
             for c in trace_check.claims
