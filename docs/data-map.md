@@ -97,6 +97,17 @@ Each run also has a log beside it (`runs/<run>.log`, `runs/<run>.admit.log`).
   `results/d42-criterion2-flags.md`, and the packets read are
   `results/d42/flags/`.
 
+## D-43, the judge's unverified-claim reading checked against the records
+
+- **The draw.** `scripts/judge_sample.py` over D-40's six runs:
+  `results/d43/judge-flags/` holds the 72 packets and `sample.json`, and
+  `results/d43/draw.txt` the counts.
+- **The reading.** `results/d43/`: the rubric, the first reading
+  (`first/batch1-12.json`), the blind second (`second/readings/set1-12.json`),
+  and the two settled disagreements (`second/adjudicated.json`).
+- **The tally.** `results/d43-criterion-judge-flags.md`, by
+  `scripts/flag_tally.py`, which reads this sample's shape unchanged.
+
 ## How each step stays independent and reviewable
 
 - **Its own file.** One step's output is never edited by another. Rerunning a

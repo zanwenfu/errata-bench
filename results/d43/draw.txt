@@ -1,0 +1,8 @@
+run                              counted flagged
+d40-grok-4.6                         165      77
+d40-Kimi-K2.7-Code                   164      99
+d40-DeepSeek-V4-Pro                  163     110
+d40-DeepSeek-V4-Flash                160     110
+d40-Mistral-Large-3                  165     135
+d40-MAI-Thinking-1                   163     134
+sampled 72 answers into results/d43/judge-flags

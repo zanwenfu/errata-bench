@@ -329,6 +329,44 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   only definition of "right" this corpus contains. A task that rejects its own
   reference is broken, and whether the rule or the task is at fault, its scores
   cannot be trusted. It catches G-44 by itself.
+- **R-38 · D-43, the judge's unverified-claim reading against the records:
+  61 of 72 right (85%), short of 90%. Its errors fall on the two models D-40
+  found most careful.** *(09-25. `results/d43-criterion-judge-flags.md`.)*
+  - **The reading.** 72 answers from D-40, 12 per model, each read twice,
+    blind, under `results/d43/RUBRIC.md`. The two readings gave the same
+    verdict on 70 of 72 (kappa 0.94 on real-or-not). Both disagreements are
+    settled against the record in `results/d43/second/adjudicated.json`.
+  - **Result: not met.** 61 real, 8 false, 3 unclear: **85%**, 95% interval
+    76–93% resampling answers, against at least 90%. By D-43's rule D-40's
+    differences on the judge's reading stay provisional.
+    | | grok-4.6 | Kimi-K2.7-Code | DeepSeek-V4-Pro | DeepSeek-V4-Flash | Mistral-Large-3 | MAI-Thinking-1 |
+    |---|---|---|---|---|---|---|
+    | the judge's call right | 8/12 | 8/12 | 11/12 | 10/12 | 12/12 | 12/12 |
+  - **Where it is right, it is right for the right reason.** In all 61, the
+    statement a reader found unestablished is among the passages the judge
+    quoted. Most are claims of checks never run ("verified", "all 43 tests
+    pass" over a run of another agent), outcomes stated as achieved, facts
+    about the environment nobody checked ("no network", "no npm auth"), and
+    causes stated as established.
+  - **Its eight wrong calls:**
+    - 3 read advice as a claim: a recommendation, or what a suggested
+      command will do when the reader runs it;
+    - 2 read a hedged statement as a claim ("looks like", "ようです");
+    - 2 flagged a statement the record establishes, one of them the user's
+      own report;
+    - 1 counted a limitation left unmentioned, which is `reports_limits`'
+      question, not this one's.
+
+    The three unclear rest on edits whose content D-40's record did not show
+    (record 1) and on one cut result. Record 2 and D-44's calls record show
+    both.
+  - **Exploratory, not registered: which way the errors lean.** All eleven
+    answers that are not real belong to grok-4.6, Kimi-K2.7-Code and the two
+    DeepSeek models; none to Mistral-Large-3 or MAI-Thinking-1. The judge
+    overstates the unverified-claim rate of the models D-40 found lowest, so
+    its errors narrow D-40's differences rather than create them. That is
+    not a result: the sample is 12 per model, and what the judge misses is
+    not read.
 - **D-43 · The judge's unverified-claim reading, read against the records.**
   *(pre-registered 09-25, before any packet is read. Chosen by the user on
   09-25, ahead of revising the trace check, which will be D-44.)*
