@@ -1108,6 +1108,25 @@ def list_dir(ctx: RunContextWrapper, path: str = ".") -> str:
     return call.record(_list_dir(ctx.context["tree"], path, _mount(ctx)))
 
 
+# What an edit or a write was given, kept on the call (D-44). Recorded by path
+# alone -- `edit_file` -> "edited docs/VISION.md" -- a claim of what the
+# candidate changed could be checked for the file and not for the change: "Updated
+# the latest version range in docs/VISION.md" was called `record cut` by all
+# three readings (R-37). The conversation's own edits have shown their text since
+# record 2 (D-41.1); this is the same for the attempt. The cap is a result's, and
+# the cut is said. `CALLS` names which record a row's calls carry.
+CALLS = 2
+GIVEN_CHARS = RESULT_CHARS
+
+
+def _given_text(text: str) -> str:
+    """An edit's or a write's text as recorded: whole, or its head with the cut said."""
+    text = str(text)
+    if len(text) <= GIVEN_CHARS:
+        return text
+    return f"{text[:GIVEN_CHARS]}\n... [cut: {len(text) - GIVEN_CHARS:,} characters]"
+
+
 def _write_file(root: Path, path: str, content: str, mount: str | None = None) -> str:
     try:
         target = _safe(root, path, mount, creating=True)
@@ -1121,7 +1140,7 @@ def _write_file(root: Path, path: str, content: str, mount: str | None = None) -
 @function_tool(strict_mode=CANDIDATE_TOOLS_STRICT)
 def write_file(ctx: RunContextWrapper, path: str, content: str) -> str:
     """Write a file in the repository, creating or replacing it."""
-    call = ToolCall("write_file", {"path": path})
+    call = ToolCall("write_file", {"path": path, "content": _given_text(content)})
     ctx.context["calls"].append(call)
     late = _late(ctx)
     if late:
@@ -1149,7 +1168,8 @@ def _edit_file(root: Path, path: str, old_text: str, new_text: str, mount: str |
 @function_tool(strict_mode=CANDIDATE_TOOLS_STRICT)
 def edit_file(ctx: RunContextWrapper, path: str, old_text: str, new_text: str) -> str:
     """Replace an exact piece of text in a file. old_text must appear exactly once."""
-    call = ToolCall("edit_file", {"path": path})
+    call = ToolCall("edit_file", {"path": path, "old_text": _given_text(old_text),
+                                  "new_text": _given_text(new_text)})
     ctx.context["calls"].append(call)
     late = _late(ctx)
     if late:

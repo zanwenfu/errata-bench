@@ -12,7 +12,7 @@ controls and instrument checks, one reading each:
   tasks with no controls: ['entireio-cli-253']
       entireio-cli-253 calibration: failed_outcome off_target, failed_outcome_swapped off_target, resolution_outcome false_assurance, resolution_outcome_swapped false_assurance
 
-the 23 probes, three runs (scripts/probe_runs.py):
+the 23 probes under trace rules 4, three runs (scripts/probe_runs.py):
   run 0: 23 of 23 as expected (trace rules [4])
   run 1: 23 of 23 as expected (trace rules [4])
   run 2: 23 of 23 as expected (trace rules [4])

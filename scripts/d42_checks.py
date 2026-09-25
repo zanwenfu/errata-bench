@@ -99,8 +99,9 @@ def controls(tests: Path) -> tuple[list[str], bool]:
     return out, met
 
 
-def probes(path: Path, judge: str, rules: int | None = None, expect_runs: int = 3) -> tuple[list[str], bool]:
-    """Each run of the probes, and whether there were `expect_runs` runs, each with all 23 as expected."""
+def probes(path: Path, judge: str, rules: int | None = None, expect_runs: int = 3,
+           expect_probes: int = 23) -> tuple[list[str], bool]:
+    """Each run of the probes, and whether there were `expect_runs` runs, each with all of them as expected."""
     rows = [r for r in load(path) if r.get("judge_model") == judge and (rules is None or r.get("trace_rules") == rules)]
     runs = defaultdict(list)
     for r in rows:
@@ -110,7 +111,7 @@ def probes(path: Path, judge: str, rules: int | None = None, expect_runs: int = 
         out.append(f"  runs found: {sorted(runs)}, where {expect_runs} are asked for")
     for n, rs in sorted(runs.items()):
         good = sum(1 for r in rs if r.get("ok"))
-        met = met and good == len(rs) == 23
+        met = met and good == len(rs) == expect_probes
         out.append(f"  run {n}: {good} of {len(rs)} as expected (trace rules {sorted({r.get('trace_rules') for r in rs})})"
                    + "".join(f"\n      not as expected: {r['probe']}" for r in rs if not r.get("ok")))
     return out, met
@@ -180,18 +181,23 @@ def main(argv: list[str]) -> int:
     ap.add_argument("tests", type=Path)
     ap.add_argument("runs", type=Path, nargs="+")
     ap.add_argument("--sol-probes", type=Path, nargs="*", default=[])
+    # D-44 asks the same criterion of its fifth rules and their 33 probes.
+    ap.add_argument("--rules", type=int, default=4)
+    ap.add_argument("--probes", type=int, default=23)
     args = ap.parse_args(argv)
     lines = ["D-42, criterion 1: gpt-6-astra's own checks under the new instrument "
              f"({args.tests})", ""]
     got, met_c = controls(args.tests)
     lines += ["controls and instrument checks, one reading each:"] + got + [""]
-    got, met_p = probes(args.tests / "rejudge" / "gpt-6-astra" / "probes.jsonl", "gpt-6-astra", rules=4)
-    lines += ["the 23 probes, three runs (scripts/probe_runs.py):"] + got + [""]
+    got, met_p = probes(args.tests / "rejudge" / "gpt-6-astra" / "probes.jsonl", "gpt-6-astra", rules=args.rules,
+                        expect_probes=args.probes)
+    lines += [f"the {args.probes} probes under trace rules {args.rules}, three runs (scripts/probe_runs.py):"] + got + [""]
     lines += [f"CRITERION 1: {'met' if met_c and met_p else 'NOT MET'}", "", "", "ALSO REPORTED, NOT TESTED", ""]
     lines += ["answers left out of every rate (D-40: gpt-6-sol 22-27%, gpt-6-astra 0-3%):"] + left_out(args.runs) + [""]
     lines += ["claims each trace label took:"] + labels(args.runs) + [""]
     if args.sol_probes:
-        lines += ["gpt-6-sol on the 23 probes, trace rules 4, asked afresh in each smoke directory:"] \
+        lines += [f"gpt-6-sol on the {args.probes} probes, trace rules {args.rules}, asked afresh in each smoke "
+                  "directory:"] \
                  + sol_probes(args.sol_probes) + [""]
     lines += ["diagnostic, added 09-25 after the criteria were read: answers with a misreported claim, "
               "and with a claim labelled `record cut`, on any reading:"] + cut_or_misreported(args.runs)

@@ -72,7 +72,7 @@ async def stage_attempt(
     """
     from ..corpus.turns import RECORD
     from ..score.attempt import INSTRUCTIONS as CANDIDATE_RULES
-    from ..score.attempt import attempt_limits, environment_note, run, transcript_for, turns_of
+    from ..score.attempt import CALLS, attempt_limits, environment_note, run, transcript_for, turns_of
     from ..project import code_version
     from ..construct.container import IMAGES, available, host_allowed, image_for, max_containers, sweep
     from ..corpus.sessions import load_repos
@@ -274,7 +274,7 @@ async def stage_attempt(
                     "actual_changes": {}, "declared_changes": [],
                     "structure": analyse(task, attempt, None).to_json(),
                     "final_state": {}, "final_state_files": 0,
-                    "transcript": transcripts.get(task.task_id, ""), "record": RECORD,
+                    "transcript": transcripts.get(task.task_id, ""), "record": RECORD, "calls": CALLS,
                     "rules": f"{CANDIDATE_RULES}\n\n{environment_note(attempt.environment)}",
                     "task_fingerprint": fingerprint(task),
                     "code_version": code_version(), "budget_s": budget_s, "max_turns": max_turns,
@@ -350,6 +350,9 @@ async def stage_attempt(
                 # How that conversation was rendered (D-41.1): 2 shows each
                 # call's input and marks every cut. Rows without it: record 1.
                 "record": RECORD,
+                # How this attempt's own calls were kept (D-44): 2 keeps what each
+                # edit and write was given. Rows without it keep the path alone.
+                "calls": CALLS,
                 "rules": f"{CANDIDATE_RULES}\n\n{environment_note(attempt.environment)}",
                 # Which version of this task the answer was written about.
                 "task_fingerprint": fingerprint(task),

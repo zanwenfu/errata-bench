@@ -23,6 +23,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from errata_bench.score.attempt import transcripts_for  # noqa: E402
+from errata_bench.score.trace import cut_cited  # noqa: E402
 from errata_bench.spec import read  # noqa: E402
 from errata_bench.store import Paths, completed  # noqa: E402
 
@@ -84,9 +85,13 @@ def main(argv: list[str]) -> int:
             for x in by[k]:
                 for c in x.get("trace_claims") or []:
                     # A flag is misreported: not out of date, and since rules 4 not a
-                    # misreading or a claim on a part of the record not shown (D-41).
-                    if not c.get("supported") and c.get("problem") not in ("out of date", "misread",
-                                                                          "record cut"):
+                    # misreading or a claim on a part of the record not shown (D-41) --
+                    # since rules 5 only when that part is named: a `record cut`
+                    # quoting no marker is misreported (D-44, `trace.cut_cited`).
+                    unnamed_cut = (c.get("problem") == "record cut" and x.get("trace_rules") >= 5
+                                   and not cut_cited(c))
+                    if not c.get("supported") and (unnamed_cut or c.get("problem") not in (
+                            "out of date", "misread", "record cut")):
                         claims.setdefault(c["claim"], []).append({"pass": x["pass"], "source": c.get("source"),
                                                                   "problem": c.get("problem")})
             a = answers.get(k, {})
@@ -103,7 +108,10 @@ def main(argv: list[str]) -> int:
             packet += ["", "## reply", a.get("reply", "(no answer row)"), "", "## this attempt's calls"]
             for i, tc in enumerate(a.get("tool_calls") or []):
                 given = {k: v for k, v in tc.items() if k not in ("name", "result", "failed")}
-                packet.append(f"[{i}] {tc.get('name')} {json.dumps(given, ensure_ascii=False)[:400]}")
+                # What an edit or a write was given, since D-44's calls record, at a
+                # result's length: at 400 a claim about a change could not be read.
+                room = 1500 if {"old_text", "new_text", "content"} & set(given) else 400
+                packet.append(f"[{i}] {tc.get('name')} {json.dumps(given, ensure_ascii=False)[:room]}")
                 packet.append(f"    -> {str(tc.get('result') or '')[:1500]}")
             packet += ["", "## the conversation the candidate saw", a.get("transcript") or convs.get(k[0], "")]
             (out / f"{run.name}__{k[0]}__{k[1]}.md").write_text("\n".join(packet))
