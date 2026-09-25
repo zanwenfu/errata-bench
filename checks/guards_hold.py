@@ -8,6 +8,35 @@ sys.path.insert(0, "src")
 os.environ["ERRATA_JUDGE_MODEL"] = "the-grader"
 os.environ["ERRATA_MODEL"] = "the-candidate"
 
+# No network (B-264). A stand-in that stops standing in reaches the real thing
+# and says nothing: once the stand-in corpus gave every session a turn (B-263),
+# section 41's locate no longer failed for want of a session and asked the
+# model provider, with the key the real `.env` holds -- answered 404, the model
+# being the stand-in name set above, so nothing was billed -- while the agents library
+# uploaded its traces of the stand-in runs. Only on a machine with a `.env`:
+# CI has neither file nor key, the call failed there before it was made, and
+# the suite passed both ways. So the suite starts as CI does -- no credential
+# in the environment, `.env` never read, no traces sent -- and a connection
+# that would leave the machine is refused and counted; the last section says
+# how many there were. `.env` is skipped by a switch, not by popping what it
+# set: `llm` reads the file when it is imported, after anything done here.
+os.environ["ERRATA_DOTENV"] = "0"
+CREDENTIALS = ("OPENAI_API_KEY", "AZURE_OPENAI_API_KEY", "AZURE_OPENAI_BASE_URL", "ERRATA_PROVIDER",
+               "ANTHROPIC_API_KEY", "ERRATA_ALLOW_CLAUDE")
+for _k in CREDENTIALS:
+    os.environ.pop(_k, None)
+OFF_MACHINE = []
+NO_NETWORK = "the guard suite reaches no network"
+
+
+def _no_network(event, args):
+    if event == "socket.connect" and isinstance(args[1], tuple) and args[1][0] not in ("127.0.0.1", "::1"):
+        OFF_MACHINE.append(args[1][0])
+        raise ConnectionRefusedError(f"{NO_NETWORK}, and was asked for {args[1][0]}")
+
+
+sys.addaudithook(_no_network)
+
 from errata_bench.score import attempt as attempt_mod
 from errata_bench.construct import container as container_mod
 from errata_bench.corpus import sessions as corpus
@@ -34,6 +63,11 @@ FAIL = []
 
 def check(ok, message):
     (print(f"  ok    {message}") if ok else (FAIL.append(message), print(f"  FAIL  {message}")))
+
+
+print("\n0. the suite starts as CI does: no credential in its environment (B-264)")
+check(not [k for k in CREDENTIALS if os.environ.get(k)],
+      f"none once everything is imported, `.env` included: {[k for k in CREDENTIALS if os.environ.get(k)]}")
 
 
 seen = {"judge": [], "context": [], "given": [], "changed": []}
@@ -97,6 +131,9 @@ attempt_mod.transcripts_for = no_corpus
 # so a stand-in, kept real for section 67.
 REAL_SERVED = reader.served
 reader.served = lambda model: {"deployment": model, "served_model": f"{model} (stand-in)"}
+# No trace of a stand-in run is uploaded (B-264).
+from agents import set_tracing_disabled as _no_traces
+_no_traces(True)
 # What the controls are read against (D-36 A3): the control paths now read the
 # conversations, which is not the corpus read any section here tests -- section
 # 63 tests the real one -- so a fixed stand-in, kept real for that section.
@@ -2466,12 +2503,19 @@ check([bool(r.get("error")) for r in _rows41(_p41.attempts)] == [False],
 _loc41 = Paths(_dir41())
 append(_loc41.readings, {"session_id": "s41", "repo_id": "r/r", "turn_number": 7,
                          "reading": {"benchmark_viable": True}})
-_first41 = asyncio.run(_stage_locate41(_loc41, 10**9, concurrency=1))
-_reason41 = _rows41(_loc41.trajectories)[0].get("reason", "")
-_again41 = asyncio.run(_stage_locate41(_loc41, 10**9, concurrency=1))
-check(_reason41.startswith("error:") and (_again41.failed, _again41.skipped) == (1, 0),
-      f"a failure stored as a reason ({_reason41[:28]!r}) is retried on the next run, "
-      f"not counted as work already done: {_again41.line().strip()!r}")
+# The stand-in corpus at the top gives every session a turn (B-263), and with
+# one, locate asks the model: the premise is restored here (B-264).
+_turns41_none = turns_mod.load_session_turns
+turns_mod.load_session_turns = lambda ids: {}
+try:
+    _first41 = asyncio.run(_stage_locate41(_loc41, 10**9, concurrency=1))
+    _reason41 = _rows41(_loc41.trajectories)[0].get("reason", "")
+    _again41 = asyncio.run(_stage_locate41(_loc41, 10**9, concurrency=1))
+finally:
+    turns_mod.load_session_turns = _turns41_none
+check(_reason41.startswith("error: KeyError") and (_again41.failed, _again41.skipped) == (1, 0),
+      f"a failure stored as a reason ({_reason41[:28]!r}, the missing session, so no model was asked) "
+      f"is retried on the next run, not counted as work already done: {_again41.line().strip()!r}")
 
 # (3) `key_of`: turn zero is a real turn. The reading carries `turn_number` and
 # the trajectory written from it carries `complaint`, so read as
@@ -7581,6 +7625,21 @@ check(_agents_last.Runner is _agents_run_last.Runner and attempt_mod.Runner is _
       f"and the model library's Runner is the real one everywhere: section 26 left a stand-in in its place "
       f"for every later section: {getattr(_agents_last.Runner, '__name__', '?')}, "
       f"{getattr(attempt_mod.Runner, '__name__', '?')}")
+
+import socket as _sock_last
+_tried_last = list(OFF_MACHINE)
+_probe_last = _sock_last.socket(_sock_last.AF_INET, _sock_last.SOCK_STREAM)
+_probe_last.settimeout(1)
+try:
+    _probe_last.connect(("192.0.2.1", 9))   # TEST-NET-1, routed nowhere
+    _refused_last = "connected"
+except OSError as _e:
+    _refused_last = str(_e)
+finally:
+    _probe_last.close()
+check(_refused_last.startswith(NO_NETWORK),
+      f"and the suite reaches no network: a connection off the machine is refused before it is made: {_refused_last}")
+check(not _tried_last, f"and no section asked for one (B-264): {sorted(set(_tried_last))}")
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:

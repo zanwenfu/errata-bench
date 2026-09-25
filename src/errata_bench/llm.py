@@ -38,9 +38,15 @@ def _load_dotenv() -> None:
 
     An exported variable wins over the file, so a caller can still override it,
     and python-dotenv is not worth a dependency for a KEY=value file.
+
+    ERRATA_DOTENV=0 skips the file. The guard suite sets it (B-264): read at
+    import, the file handed the suite a real key that CI never has, and a stand-in
+    that stopped standing in called the provider with it.
     """
     import os
 
+    if os.environ.get("ERRATA_DOTENV") == "0":
+        return
     from .project import ROOT
 
     env = ROOT / ".env"
