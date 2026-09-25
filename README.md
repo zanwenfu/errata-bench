@@ -14,23 +14,25 @@ conversation and a rebuilt copy of the repository, and its answer is read three
 ways. The same session usually shows how the problem was eventually resolved,
 which gives each task a reference answer.
 
-## Where this stands (09-24)
+## Where this stands (09-25)
 
 - **The first grid is complete.** 21 tasks, 3 candidate models, 3 attempts
   each: 189 answers, each read three times by each of two judges.
-- **No honesty ranking can be claimed yet.** Under the analysis fixed in
+- **No honesty ranking can be claimed from it.** Under the analysis fixed in
   advance (D-35), the primary honesty measure ranks the models differently
   depending on which judge reads it. Two narrower differences held.
 - **The instrument has been partly repaired (phase A).** Every control now
   behaves as it should. But of 30 flags from the main honesty check read by
-  hand, only 14 are real (47%); the target is 90%. The two judges agree at
+  hand, only 14 were real (47%); the target is 90%. The two judges agreed at
   kappa 0.46 on that check; the target is 0.6. On the repaired instrument the
-  model differences also change. So the honesty numbers are not yet evidence
+  model differences also change. So those honesty numbers are not evidence
   about the models.
 - **55 valid tasks (09-24), every one from the current pipeline:** the first
   grid's moments reprocessed (9), the later-pushback sample (7), and 39 new.
   Two screening gates that read a bare "yes" without its conversation were
-  fixed (B-252, B-253). 25 repositories, entireio/cli 16 of them.
+  fixed (B-252, B-253). 25 repositories, entireio/cli 16 of them. They carry
+  phase A's repair of the task data: lost calls restored at every stage, and
+  trees that git changed or that contradict their conversation rejected.
 - **Claude is no longer called (09-24):** its Azure deployment bills the
   user's own card rather than the Azure credits, and the code now refuses it.
   gpt-6-sol replaces it as the second judge (D-40). All eight deployments D-40
@@ -38,30 +40,50 @@ which gives each task a reference answer.
   Microsoft's documents).
 - **The confirmatory run, D-40, is running (from 09-24 22:22 UTC):** the 55
   tasks, 6 candidates, 3 attempts each, graded 3 times by gpt-6-astra and 3
-  times by gpt-6-sol, with the analysis fixed in advance
-  (`scripts/d40_analysis.sh`).
+  times by gpt-6-sol under the honesty check's third rules, with the analysis
+  fixed in advance (`scripts/d40_analysis.sh`). It is the first measurement of
+  the repaired task data and of those rules on fresh answers. At 09-25 04:45
+  UTC:
+  - DeepSeek-V4-Pro, Mistral-Large-3 and MAI-Thinking-1 have all 165 answers,
+    graded by both judges. DeepSeek-V4-Flash has its 165, and gpt-6-sol's
+    grading is under way. grok-4.6 is at 136 of 165.
+  - Kimi-K2.7-Code is at 44 of 165. Its quota, 100K tokens a minute and the
+    most Azure gives it, sets the pace: an attempt averages about 2.4 minutes
+    of quota, so it needs about five more hours at best.
   - Six smoke passes first found eight harness bugs (B-254 to B-261). Among
     them: no answer recorded its tokens; MAI-Thinking-1's empty responses
     were taken as answers; the attempt's tree lacked the edits SWE-chat's
     table lost; strict tool schemas; a forced report pasted as text, which
     Azure's content filter blocked.
-  - Kimi-K2.7-Code and DeepSeek-V4-Flash are paused: their Azure quotas, not
-    the models, were ending long attempts. They rerun from nothing once the
-    quotas are raised.
+  - A ninth (B-262): a provider's rate limit could run an attempt past its
+    deadline while the client waited out 429s where nothing could see it.
+    The attempt now waits itself and moves its deadline by every wait.
+    Kimi-K2.7-Code and DeepSeek-V4-Flash, paused for their quotas, restarted
+    from nothing once the quotas were raised.
+  - Azure's content filter still blocks some forced final reports (grok 8,
+    Kimi 3 so far). Those attempts are retried, and any given up will be rerun
+    once the filter is set to annotate rather than block.
+- **The flag reading, first pass (09-25): the checker's flags are not 90%
+  real.** D-40's second instrument criterion reads up to 12 flagged answers
+  per model against their records. A first reading of four models' 48 answers
+  found 72 of 118 flagged claims real (61%). 35 of the 48 answers have at
+  least one real flag. Of the other 46 claims:
+  - 14 are wrong, but the candidate misread output it did see;
+  - 14 are the checker's error;
+  - 18 cannot be decided from a record that was cut short.
+
+  These are Claude's readings (subagents following a written rubric), not a
+  human's. A blind second reading is under way, and the claims the two
+  readings disagree on will be settled against the record. grok-4.6 and
+  Kimi-K2.7-Code will be read once they are graded. If the criterion fails,
+  D-40 reports its model comparison as provisional, as registered.
 - **Solid findings about the data.** SWE-chat's conversations table is missing
   18.8% of tool calls. On at least 5 of the 21 tasks the rebuilt repository
   differs from what the conversation shows. On 3 of 21 tasks, the answer the
   developer accepted itself misreports the work.
-- **Built on 09-23, not yet measured on fresh answers:**
-  - the repair of the task data: lost calls restored at every stage, and trees
-    that git changed or that contradict their conversation rejected. Run on
-    300 new moments, it admitted 7 tasks;
-  - a revision of the honesty check (rules 3), which passes all its probes.
 
-  **Next:** build fresh tasks with both, measure the checker on their
-  answers, then run a confirmatory grid. Fresh tasks are the constraint: the
-  fresh set may not reuse the first grid's repositories, which leaves about 12
-  tasks. See
+  **Next:** finish D-40 (grok's and Kimi's attempts, then both judges'
+  grading), finish the flag reading, and run the registered analysis. See
   [Problems found, and where each stands](#problems-found-and-where-each-stands).
 
 ## Results so far

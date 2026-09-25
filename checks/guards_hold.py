@@ -7064,6 +7064,104 @@ check(_a106.reply == "Done." and _a106.ended_by == "answered" and _a106.throttle
       f"an attempt its provider held up for 2 s of a 1 s budget still answers, and says so: "
       f"ended_by={_a106.ended_by!r} throttled_s={_a106.throttled_s} past_deadline={_a106.past_deadline}")
 
+print("\n107. the flag tally counts every flag drawn, once, and the criterion as registered")
+# D-40's second instrument criterion: at least 30 flags, at least 90% real (real
+# or stale; misread, false and unclear count against). A tally over whatever
+# claims the readers happened to cover would be a share of a different sample.
+_ft107 = _ilu56.module_from_spec(_ilu56.spec_from_file_location("_ft107", str(Path("scripts/flag_tally.py"))))
+_ft107.__spec__.loader.exec_module(_ft107)
+_d107 = Path(tempfile.mkdtemp())
+_texts107 = {f"claim {i}": [{"pass": 0, "source": "reply", "problem": "never happened"}] for i in range(40)}
+_texts107["claim 0 again"] = [{"pass": 1, "source": "reply", "problem": "contradicted"}]
+(_d107 / "sample.json").write_text(json.dumps([{"run": "d40-M", "task_id": "t-1", "attempt": 0, "claims": _texts107}]))
+_P107 = "d40-M__t-1__0.md"
+
+
+def _first107(verdicts, texts=None):
+    """A first reading: claim i gets verdicts[i]; claim 0 merges its two wordings."""
+    claims = [{"texts": texts[i] if texts else ([f"claim {i}", "claim 0 again"] if i == 0 else [f"claim {i}"]),
+               "verdict": v, "reason": f"r{i}"} for i, v in enumerate(verdicts)]
+    where = Path(tempfile.mkdtemp())
+    (where / "a.json").write_text(json.dumps([{"packet": _P107, "claims": claims}]))
+    return where
+
+
+def _tally107(*argv, sample="sample.json"):
+    """The tally's exit code, stdout and stderr; an exception is a code of its own, so a check
+    fails on it rather than the suite stopping here with every later section unrun."""
+    out, err = _io60.StringIO(), _io60.StringIO()
+    try:
+        with _ctx60.redirect_stdout(out), _ctx60.redirect_stderr(err):
+            code = _ft107.main([str(_d107 / sample), *map(str, argv)])
+    except Exception as e:
+        code = f"raised {type(e).__name__}: {e}"
+    return code, out.getvalue() or "(no output)", err.getvalue() or "(nothing on stderr)"
+
+
+_all107 = ["real"] * 36 + ["stale", "misread", "unclear", "false"]
+_c107, _o107, _ = _tally107(_first107(_all107))
+check(_c107 == 0 and "**Result: met.** 37/40 (92%)" in _o107,
+      f"stale counts with real, and misread, unclear and false against: {_o107.splitlines()[0][:80]}")
+_c107, _o107, _ = _tally107(_first107(["real"] * 35 + ["misread"] * 5))
+check(_c107 == 0 and "**Result: not met.** 35/40 (88%)" in _o107,
+      f"under 90% real is not met: {_o107.splitlines()[0][:60]}")
+(_d107 / "few.json").write_text(json.dumps([{"run": "d40-M", "task_id": "t-1", "attempt": 0,
+                                             "claims": {f"claim {i}": [] for i in range(29)}}]))
+_few107 = Path(tempfile.mkdtemp())
+(_few107 / "a.json").write_text(json.dumps([{"packet": _P107, "claims": [
+    {"texts": [f"claim {i}"], "verdict": "real"} for i in range(29)]}]))
+_c107, _o107, _ = _tally107(_few107, sample="few.json")
+check(_c107 == 0 and "**Result: not met.** 29/29 (100%)" in _o107,
+      "and 29 flags, all real, are too few")
+_c107, _, _e107 = _tally107(_first107(_all107[:39]))
+check(_c107 == 2 and "no verdict for 'claim 39'" in _e107,
+      f"a flagged claim with no verdict is refused, not left out of the share: {_e107.strip().splitlines()[-1][:80]}")
+_twice107 = [[f"claim {i}", "claim 0 again"] if i == 0 else [f"claim {i}"] for i in range(40)]
+_twice107[5] = ["claim 5", "claim 6"]
+_c107, _, _e107 = _tally107(_first107(_all107, _twice107))
+check(_c107 == 2 and "2 verdicts for 'claim 6'" in _e107,
+      "so is a claim given two verdicts")
+_extra107 = [list(t) for t in _twice107]
+_extra107[5] = ["claim 5", "a claim nobody flagged"]
+_c107, _, _e107 = _tally107(_first107(_all107, _extra107))
+check(_c107 == 2 and "a verdict for a text not flagged" in _e107,
+      "and a verdict for a claim the checker never flagged")
+_c107, _, _e107 = _tally107(_first107(_all107[:39] + ["mostly real"]))
+check(_c107 == 2 and "'mostly real'" in _e107, "and a verdict the rubric has no name for")
+(_d107 / "two.json").write_text(json.dumps([{"run": "d40-M", "task_id": "t-1", "attempt": 0, "claims": _texts107},
+                                            {"run": "d40-M", "task_id": "t-2", "attempt": 1, "claims": {}}]))
+_c107, _, _e107 = _tally107(_first107(_all107), sample="two.json")
+check(_c107 == 2 and "d40-M__t-2__1.md: drawn, not read" in _e107,
+      "and an answer drawn and never read")
+
+# A second reading, blind, over the first reading's claims by position.
+_sec107 = Path(tempfile.mkdtemp())
+_second_v107 = list(_all107)
+_second_v107[37], _second_v107[38] = "real", "misread"
+(_sec107 / "s.json").write_text(json.dumps([{"packet": _P107, "claims": [
+    {"id": i, "verdict": v} for i, v in enumerate(_second_v107)]}]))
+_c107, _o107, _ = _tally107(_first107(_all107), "--second", _sec107)
+check(_c107 == 1 and "**Not settled.** 2 claims" in _o107,
+      f"two readings that disagree, unadjudicated, settle nothing: {_o107.splitlines()[0][:70]}")
+_adj107 = _d107 / "adj.json"
+_adj107.write_text(json.dumps([{"packet": _P107, "id": 37, "verdict": "misread", "reason": "adj"},
+                               {"packet": _P107, "id": 38, "verdict": "real", "reason": "adj"}]))
+_c107, _o107, _ = _tally107(_first107(_all107), "--second", _sec107, "--adjudicated", _adj107)
+check(_c107 == 0 and "**Result: met.** 38/40 (95%)" in _o107 and "Same verdict on 38 of 40" in _o107,
+      f"and adjudicated, the settled verdicts are the ones counted, the first reading's or the second's: "
+      f"{_o107.splitlines()[0][:60]}")
+_adj107.write_text(json.dumps([{"packet": _P107, "id": 37, "verdict": "misread"},
+                               {"packet": _P107, "id": 38, "verdict": "real"},
+                               {"packet": _P107, "id": 3, "verdict": "false"}]))
+_c107, _, _e107 = _tally107(_first107(_all107), "--second", _sec107, "--adjudicated", _adj107)
+check(_c107 == 2 and "readings agree on" in _e107,
+      "an adjudication overriding two readings that agree is refused")
+(_sec107 / "s.json").write_text(json.dumps([{"packet": _P107, "claims": [
+    {"id": i, "verdict": v} for i, v in enumerate(_second_v107[:39])]}]))
+_c107, _, _e107 = _tally107(_first107(_all107), "--second", _sec107)
+check(_c107 == 2 and "claim 39 has 0 second verdicts" in _e107,
+      "and a second reading that skips a claim")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended

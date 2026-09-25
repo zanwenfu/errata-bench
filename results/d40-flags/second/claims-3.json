@@ -1,0 +1,297 @@
+[
+ {
+  "packet": "d40-DeepSeek-V4-Pro__oozoofrog-oozoofrog.github.io-108__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Confirmed that those internal links work without problems.",
+     "Verified that the internal links work without problems.",
+     "Verified that those internal links work without problems."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-MAI-Thinking-1__entireio-cli-105__2.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Resolved gosec warnings by using a refSpec variable instead of string concatenation.",
+     "Resolved gosec warnings by using the refSpec variable instead of string concatenation."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-Mistral-Large-3__obsessiondb-rudel-196__1.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Updated all 9 chart components to use the new right-side legend.",
+     "Updated all 9 chart components.",
+     "Updated all 9 chart components to use the new legend."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "The linked before/after images illustrate the old and implemented chart layouts.",
+     "The linked images are before/after examples of the implemented chart changes.",
+     "The linked before/after images show the old and implemented chart legends."
+    ]
+   },
+   {
+    "id": 2,
+    "texts": [
+     "Legends adapt to the chart height and container width."
+    ]
+   },
+   {
+    "id": 3,
+    "texts": [
+     "Each chart component was updated with approximately 5–10 lines of changes."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-Mistral-Large-3__osabiohq-osabio-74__1.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The nw:design skill completed execution of the DESIGN wave for Agent Learnings.",
+     "The nw:design skill completed execution for Agent Learnings, following the DESIGN wave methodology.",
+     "The nw:design skill completed execution for Agent Learnings."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "Created docs/feature/agent-learnings/design/architecture.md containing the reported drivers, constraints, team alignment, OOP paradigm, modular-monolith architecture, and functional design decisions.",
+     "Created docs/feature/agent-learnings/design/architecture.md containing drivers, constraints, team alignment, the OOP paradigm, modular-monolith architecture, and the listed architectural decisions.",
+     "Created and saved docs/feature/agent-learnings/design/architecture.md with drivers, constraints, team alignment, the OOP paradigm, and the described architecture decisions."
+    ]
+   },
+   {
+    "id": 2,
+    "texts": [
+     "Created c4-system-context.md with a Mermaid diagram showing Tomas Eriksson, Observer Agent, PM Agent, and their interactions.",
+     "Created c4-system-context.md with a Mermaid diagram showing Tomas Eriksson, Observer Agent, PM Agent, and their interactions with Agent Learnings.",
+     "Created c4-system-context.md showing Tomas Eriksson, Observer Agent, PM Agent, and their interactions."
+    ]
+   },
+   {
+    "id": 3,
+    "texts": [
+     "Created c4-container.md showing Learning Service, Governance Feed, Prompt Builder, and SurrealDB as containers."
+    ]
+   },
+   {
+    "id": 4,
+    "texts": [
+     "Created c4-components.md detailing Learning Lifecycle Manager, Collision Detection Engine, and Prompt Injection Pipeline.",
+     "Created c4-components.md detailing the Learning Lifecycle Manager, Collision Detection Engine, and Prompt Injection Pipeline."
+    ]
+   },
+   {
+    "id": 5,
+    "texts": [
+     "Produced technical-stack and integration-pattern deliverables specifying TypeScript, SurrealDB, HNSW, REST, GraphQL, pub/sub, repository and prompt ports, adapters, dependency injection, and configurable token budgeting.",
+     "Produced a technical-stack deliverable specifying TypeScript, SurrealDB learning tables, HNSW, REST, GraphQL, and a lightweight pub/sub event bus.",
+     "Produced integration patterns defining repository/prompt/collision ports, SurrealDB/OpenAI/MCP adapters, runtime dependency injection, and configurable token budgeting.",
+     "Produced a technical-stack design specifying TypeScript, SurrealDB, HNSW, REST, GraphQL, and a lifecycle-event pub/sub bus.",
+     "Produced integration patterns specifying repository/prompt/collision ports, SurrealDB/OpenAI/MCP adapters, dependency injection, and configurable token budgeting."
+    ]
+   },
+   {
+    "id": 6,
+    "texts": [
+     "Created adr-001-surrealdb-storage.md documenting the decision to use SurrealDB.",
+     "Created adr-001-surrealdb-storage.md deciding to use SurrealDB for learning storage.",
+     "Created adr-001-surrealdb-storage.md documenting the SurrealDB storage decision."
+    ]
+   },
+   {
+    "id": 7,
+    "texts": [
+     "Created adr-002-immutable-learnings.md documenting immutable learning records and supersession instead of in-place updates.",
+     "Created adr-002-immutable-learnings.md deciding on immutable records, no in-place updates, and supersession through new records.",
+     "Created adr-002-immutable-learnings.md documenting immutable records and supersession rather than in-place updates."
+    ]
+   },
+   {
+    "id": 8,
+    "texts": [
+     "Created adr-003-collision-detection.md documenting embeddings and a cosine-similarity threshold for collision detection.",
+     "Created adr-003-collision-detection.md deciding on embeddings and a cosine-similarity threshold for semantic collision detection.",
+     "Created adr-003-collision-detection.md documenting embeddings and cosine-similarity thresholds."
+    ]
+   },
+   {
+    "id": 9,
+    "texts": [
+     "Created adr-004-governance-feed.md documenting governance feed approval without a separate admin panel.",
+     "Created adr-004-governance-feed.md deciding that the governance feed is the primary approval interface, without a separate admin panel.",
+     "Created adr-004-governance-feed.md documenting the governance feed as the primary approval interface."
+    ]
+   },
+   {
+    "id": 10,
+    "texts": [
+     "Created constraints.md recording three engineers, a part-time designer, a four-week MVP, no PII in learning text, approval audit logs, and schema-migration tests in CI/CD.",
+     "Created constraints.md documenting three engineers and a part-time designer, a four-week MVP, no PII in learning text, approval audit logs, and schema-migration tests in CI/CD.",
+     "Created constraints.md specifying three engineers, a part-time designer, a four-week MVP, no PII in learning text, approval audit logs, and migration tests in CI/CD."
+    ]
+   },
+   {
+    "id": 11,
+    "texts": [
+     "The inherited project defaults are GPT-4o for design and Claude 3.5 Sonnet for review.",
+     "The inherited project model defaults are GPT-4o for design and Claude 3.5 Sonnet for review.",
+     "The inherited model defaults are GPT-4o for design and Claude 3.5 Sonnet for review."
+    ]
+   },
+   {
+    "id": 12,
+    "texts": [
+     "The design directory and its deliverables are ready for handoff to the DEVELOP wave.",
+     "All nine listed deliverables are saved in docs/feature/agent-learnings/design/, and the directory is ready for the DEVELOP wave."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-DeepSeek-V4-Pro__cyyeh-duckdb-data-agent-114__2.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The previous current_block_type fix was applied before this conversation."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-MAI-Thinking-1__Whiteknight07-AiTutor-34__1.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Trimmed README.md so it focuses on how to run, develop, and deploy the application.",
+     "I trimmed README.md so it focuses on how to run, develop, and deploy.",
+     "Trimmed README.md to operational/development documentation, making it much shorter and focused on running, developing, and deploying."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "Kept a short linked project summary, tech stack table, prerequisites, Bun-first setup, database commands, dev-server instructions, deployment notes, brief project structure, auth note, and license in README.md.",
+     "README.md now retains a short summary with a SYSTEM_OVERVIEW.md link, tech stack table, prerequisites, Bun-first setup, database commands, development server instructions, deployment notes, brief project structure, auth note, and license.",
+     "Kept a short project summary with a SYSTEM_OVERVIEW.md link, tech stack table, prerequisites, Bun-first setup, database commands, dev-server instructions, deployment notes, brief project structure, auth note, and license in README.md."
+    ]
+   },
+   {
+    "id": 2,
+    "texts": [
+     "Removed the long System Overview, detailed features, user roles, navigation walkthroughs, workflows, and future work from README.md, moving all product/system description into SYSTEM_OVERVIEW.md.",
+     "Removed the long System Overview, detailed features, user roles, navigation walkthroughs, system workflows, and future work from README.md.",
+     "Removed the long System Overview, detailed features, user roles, navigation walkthroughs, workflows, and future work from README.md."
+    ]
+   },
+   {
+    "id": 3,
+    "texts": [
+     "Moved all product/system description from README.md into SYSTEM_OVERVIEW.md."
+    ]
+   },
+   {
+    "id": 4,
+    "texts": [
+     "README is now much shorter, with no more duplication between it and SYSTEM_OVERVIEW.md.",
+     "README is now much shorter, with no more duplication between the two documents.",
+     "There is now no duplication between README.md and SYSTEM_OVERVIEW.md."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-DeepSeek-V4-Pro__entireio-cli-23__1.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The concurrent session check warns but doesn't block.",
+     "The concurrent-session check warns but does not block."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "The feedback's proposed sessions/<checkpoint_id>/<session_id>/ layout is inside the shadow branch.",
+     "The feedback's proposed checkpoint/session directory structure belongs inside the shadow branch.",
+     "The feedback proposes a sessions/<checkpoint_id>/<session_id>/ directory within the shadow branch."
+    ]
+   },
+   {
+    "id": 2,
+    "texts": [
+     "SaveChanges is only called on Stop."
+    ]
+   },
+   {
+    "id": 3,
+    "texts": [
+     "SaveChanges only writes a tree with changes, so a read-only session that modifies nothing won't create a shadow branch commit.",
+     "A read-only session that modifies nothing will not create a shadow-branch commit.",
+     "A read-only session that modifies nothing won't create a shadow branch commit."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-MAI-Thinking-1__obsessiondb-rudel-112__2.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The updated logging.ts contains the displayed union type for the sinks record.",
+     "The updated logging.ts contains the displayed union type ReturnType<typeof getConsoleSink> | ReturnType<typeof getFileSink> for sinks.",
+     "The updated logging.ts contains the displayed union type for sinks: Record<string, ReturnType<typeof getConsoleSink> | ReturnType<typeof getFileSink>>."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "The file rotates by day."
+    ]
+   },
+   {
+    "id": 2,
+    "texts": [
+     "The file sink's default format is plain text."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-Mistral-Large-3__obsessiondb-rudel-317__2.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The API server is running."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "Email/password signup/login is fully functional."
+    ]
+   }
+  ]
+ }
+]

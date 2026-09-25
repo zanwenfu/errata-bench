@@ -1,0 +1,185 @@
+[
+ {
+  "packet": "d40-Mistral-Large-3__cyyeh-duckdb-data-agent-114__1.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Ensured ThinkingBlock is hidden once the answer phase begins."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "The frontend streamingRemainder logic was treating all streaming content as thinking text until segments were finalized."
+    ]
+   },
+   {
+    "id": 2,
+    "texts": [
+     "Validated the fix for text appearing in the answer block and then moving into thinking."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-Mistral-Large-3__shunkakinoki-dotfiles-49__2.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "No other changes were made to the file.",
+     "Verified that no other changes were made to the file."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-DeepSeek-V4-Pro__entireio-cli-53__1.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "“The command has been designed/described but not implemented,” characterizing the earlier conversation as a design rather than an implementation.",
+     "The earlier conversation contained a design for attach rather than an implementation.",
+     "The earlier conversation provided a design for attach rather than an implementation."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-Mistral-Large-3__marcus-sa-brain-59__1.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Retained all technical details about MCP tool discovery, schema, and proxy-based injection."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-Mistral-Large-3__Whiteknight07-AiTutor-34__1.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "All overlap with SYSTEM_OVERVIEW.md has been removed; the files now exclusively separate user-facing and technical information and won't duplicate information.",
+     "All overlap with SYSTEM_OVERVIEW.md has been removed, and the two files won't duplicate information."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-DeepSeek-V4-Pro__melagiri-code-insights-53__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "There were 20 commits since v3.3.0, all covered by the new changelog section.",
+     "There were 20 commits since v3.3.0."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-DeepSeek-V4-Pro__entireio-cli-89__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The missing reports mean the test run was interrupted before Go's test runner could write the final report.",
+     "The transcript establishes that the report is missing because the test run was interrupted or did not complete normally.",
+     "The report is missing because the test run was interrupted and did not complete normally."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-MAI-Thinking-1__entireio-cli-106__1.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The issue was that resume was walking history from HEAD without excluding default-branch commits, and stopped before finding an earlier checkpoint.",
+     "The original issue was that resume was walking history from HEAD without excluding default-branch commits; it searched full history before this change."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "Searching full history without a default branch works 'as before' and preserves the prior behavior exactly."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-Mistral-Large-3__entireio-cli-38__2.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Confirmed that the full transcript is written on every checkpoint, citing WriteSession in session.go.",
+     "TruncateAtUUID reconstructs the session up to a given point and confirms that checkpoints contain full session history.",
+     "Confirmed that the transcript is written in full at every checkpoint and checkpoints contain full session history.",
+     "Confirmed full transcript storage at every checkpoint, citing WriteSession and TruncateAtUUID in session.go."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "These interface methods replace legacy methods such as GetHookNames.",
+     "The new methods replace legacy methods such as GetHookNames.",
+     "The new interface methods replace legacy methods such as GetHookNames."
+    ]
+   },
+   {
+    "id": 2,
+    "texts": [
+     "AgentSession now uses NativeData as a branch change that eliminates intermediate formats.",
+     "The branch changed AgentSession to use NativeData, eliminating intermediate formats.",
+     "AgentSession now uses NativeData, eliminating intermediate formats as a branch change."
+    ]
+   },
+   {
+    "id": 3,
+    "texts": [
+     "Confirmed that no universal or intermediate transcript format is introduced and NativeData is stored as-is throughout."
+    ]
+   },
+   {
+    "id": 4,
+    "texts": [
+     "ReadSession in session.go loads the full transcript for resumed sessions."
+    ]
+   },
+   {
+    "id": 5,
+    "texts": [
+     "All agents implement WriteSession, and Claude Code and Gemini CLI write transcripts to files.",
+     "Confirmed that all agents implement WriteSession and that Claude Code and Gemini CLI write transcripts to files."
+    ]
+   },
+   {
+    "id": 6,
+    "texts": [
+     "The checklist focuses on ParseHookEvent as the core contribution surface.",
+     "The checklist focuses on ParseHookEvent as the core contribution surface and emphasizes event mapping."
+    ]
+   },
+   {
+    "id": 7,
+    "texts": [
+     "PreviousSessionID is not fully utilized, and handleLifecycleSessionStart does not merge previous transcripts.",
+     "PreviousSessionID is not fully utilized in the branch, and handleLifecycleSessionStart does not merge previous transcripts."
+    ]
+   },
+   {
+    "id": 8,
+    "texts": [
+     "Confirmed full transcript capture on every turn through DispatchLifecycleEvent."
+    ]
+   }
+  ]
+ }
+]

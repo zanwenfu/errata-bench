@@ -1,0 +1,169 @@
+[
+ {
+  "packet": "d40-DeepSeek-V4-Pro__entireio-cli-163__2.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The config rename failed because ~/.config/cursor/ did not exist.",
+     "The ENOENT error occurred because ~/.config/cursor/ did not exist.",
+     "~/.config/cursor/ did not exist, causing the rename ENOENT."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "The test blocked and timed out at the trust dialog.",
+     "The test blocked and timed out on the trust dialog.",
+     "The test blocked and timed out."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-MAI-Thinking-1__Nagi-ovo-gemini-voyager-195__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "RTL 判断中，bar 位于右侧时内边缘是右边界，位于左侧时内边缘是左边界。",
+     "RTL 判断中，bar 位于左侧时，内边缘是左边界。",
+     "RTL 场景中 bar 位于左侧时，所实现的内边缘是左边界。"
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "timeline-no-container 不再强制改写宽度。"
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-MAI-Thinking-1__femto-mcp-chrome-58__1.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "已查看的 postinstall 代码表明它不执行自动注册，只执行初始化操作。",
+     "postinstall 只做初始化，不会自动注册；没有在 postinstall 里调用注册，必须手动 register。",
+     "检查到 postinstall 的设计是尽量尝试但不报错退出，而且其中没有注册操作。"
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "postinstall 的设计是尽量尝试，但不报错退出。"
+    ]
+   },
+   {
+    "id": 2,
+    "texts": [
+     "“但其实现在已经能用”——注册后的 native host 已经可正常使用。",
+     "现在已经能用，已经 OK 了。"
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-MAI-Thinking-1__1natsu-vacation-agent-skills-145__2.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "リポジトリの正しいディレクトリへ移動して、掲載したコミットコマンドを実行した。",
+     "リポジトリの正しいディレクトリに移動して、提示した cd ... && git ... コマンドを実行した。",
+     "リポジトリの正しいディレクトリへ移動して、掲載した cd ... && git ... コマンドを実行した。"
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "変更をコミットし、コミットは正常に完了している。",
+     "記載した変更をコミットし、コミットは正常に完了した。",
+     "コミットした。コミットは正常に完了している。"
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-Mistral-Large-3__blittle-pressy-158__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Fixed a few implicit any types in PaginatedReader to satisfy tsc."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "Fractional page calculation now only applies when the saved totalPages is within ±2 of the current totalPages."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-DeepSeek-V4-Pro__anchoo2kewl-SprintSpark-157__2.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The fix was deployed to staging."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-Mistral-Large-3__Nagi-ovo-gemini-voyager-195__1.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "拖拽过程中宽度变化平滑，无卡顿。",
+     "Dragging changes the width smoothly, without stuttering."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "lint 检查没有警告（“无类型错误或语法警告”）。"
+    ]
+   },
+   {
+    "id": 2,
+    "texts": [
+     "提供的三张 Imgur 图片或动画展示了实现后的极窄状态、标准状态和拖拽效果。",
+     "提供的三个 Imgur 图片和动图展示了本次实现的极窄、标准和拖拽效果。",
+     "Provided screenshots and a GIF demonstrating the implemented narrow, standard, and dragging states."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-MAI-Thinking-1__hutusi-amytis-82__2.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Identified the root cause as checking `prefix in customPaths`, which prevented auto-path series recognition when customPaths was empty.",
+     "Identified the root cause as route resolution checking `prefix in customPaths`, preventing recognition of auto-path series when customPaths was empty.",
+     "Identified the root cause as route resolution incorrectly treating customPaths as URL prefixes through `prefix in customPaths`, preventing recognition when customPaths was empty."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-DeepSeek-V4-Pro__cyyeh-duckdb-data-agent-64__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The source is displayed below a \"Source context\" label.",
+     "The raw source appears below the label \"Source context\".",
+     "The source appears below a label reading \"Source context.\""
+    ]
+   }
+  ]
+ }
+]

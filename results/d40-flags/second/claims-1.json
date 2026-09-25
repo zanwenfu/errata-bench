@@ -1,0 +1,235 @@
+[
+ {
+  "packet": "d40-DeepSeek-V4-Pro__marcus-sa-brain-59__2.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Removed the 'Tools' section that described filesystem/shell/git local tools."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "Kept all the schema (mcp_tool, auth_config, connected_account, can_use, governs_tool, governs_skill, skill) intact."
+    ]
+   },
+   {
+    "id": 2,
+    "texts": [
+     "The earlier rewrite was based on research docs I had read."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-MAI-Thinking-1__osabiohq-osabio-74__2.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Reviewed the peer review as part of the full DISCUSS handoff review.",
+     "Reviewed the peer review.",
+     "I reviewed the peer review."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "Reviewed existing codebase patterns to understand the system being extended.",
+     "I also reviewed existing codebase patterns to understand the system I'm extending."
+    ]
+   },
+   {
+    "id": 2,
+    "texts": [
+     "Established that the codebase is TypeScript/Node.js and follows OOP-style services and repository conventions.",
+     "The proposed modular monolith with ports-and-adapters matches the existing codebase structure.",
+     "Established that the codebase is TypeScript/Node.js and follows existing OOP-style services and repository patterns.",
+     "Established that modular monolith with ports-and-adapters matches the existing codebase structure.",
+     "The inspected codebase is TypeScript/Node.js, follows OOP-style services and repositories, and has a structure matching the recommended hexagonal architecture."
+    ]
+   },
+   {
+    "id": 3,
+    "texts": [
+     "Created docs/feature/agent-learnings/design/c4-system-context.md with a Mermaid System Context diagram.",
+     "Created docs/feature/agent-learnings/design/c4-system-context.md containing a Mermaid System Context diagram.",
+     "Created the Mermaid System Context diagram at docs/feature/agent-learnings/design/c4-system-context.md."
+    ]
+   },
+   {
+    "id": 4,
+    "texts": [
+     "Created docs/feature/agent-learnings/design/c4-container-diagram.md with a Mermaid Container diagram.",
+     "Created docs/feature/agent-learnings/design/c4-container-diagram.md containing a Mermaid Container diagram.",
+     "Created the Mermaid Container diagram at docs/feature/agent-learnings/design/c4-container-diagram.md."
+    ]
+   },
+   {
+    "id": 5,
+    "texts": [
+     "Created docs/feature/agent-learnings/design/c4-component-diagram.md with the described component diagrams.",
+     "Created docs/feature/agent-learnings/design/c4-component-diagram.md containing the described Mermaid Component diagram.",
+     "Created the Mermaid Component diagram at docs/feature/agent-learnings/design/c4-component-diagram.md."
+    ]
+   },
+   {
+    "id": 6,
+    "texts": [
+     "Produced a full architecture specification at docs/feature/agent-learnings/design/architecture.md covering the listed architecture, data model, integrations, security, and testing topics.",
+     "Produced a full architecture specification at docs/feature/agent-learnings/design/architecture.md covering the listed architecture topics.",
+     "A full architecture specification was produced at docs/feature/agent-learnings/design/architecture.md, covering the listed architecture, integration, data-model, security, and testing topics."
+    ]
+   },
+   {
+    "id": 7,
+    "texts": [
+     "Created five ADRs under docs/feature/agent-learnings/design/adr/ for OOP, SCHEMAFULL storage, shared injection, collision detection, and token-budgeted injection.",
+     "Created five ADR files under docs/feature/agent-learnings/design/adr/ for OOP, SCHEMAFULL storage, shared injection, collision detection, and token-budgeted injection.",
+     "Created five ADRs in docs/feature/agent-learnings/design/adr/: OOP paradigm, SCHEMAFULL entity, shared prompt injection, three-layer collision detection, and token-budgeted prioritized injection."
+    ]
+   },
+   {
+    "id": 8,
+    "texts": [
+     "Completed the DESIGN wave; all deliverables are complete and ready for handoff to BUILD.",
+     "Completed the DESIGN wave and all deliverables are ready for handoff to BUILD.",
+     "I've completed the DESIGN wave; all deliverables are complete and ready for handoff to BUILD."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-Mistral-Large-3__Nagi-ovo-gemini-voyager-321__2.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "All changes are backward-compatible, with no breaking changes."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-DeepSeek-V4-Pro__oddessentials-ado-git-repo-insights-69__2.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "“Zero critical findings remain”; the C1 INSERT OR REPLACE finding “was a false alarm.”",
+     "“Zero critical findings remain”; C1 was established to be a false alarm.",
+     "Zero critical findings remain; C1 was verified to be a false alarm."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "The extraction path calls `upsert_pull_request` for the initial insert only, never when re-extracting an existing PR.",
+     "The extraction path never calls upsert_pull_request for an existing PR; upsert_pr_with_related calls it for the initial insert only."
+    ]
+   },
+   {
+    "id": 2,
+    "texts": [
+     "`review_time_minutes` and `comments_extracted_at` were added via the v3→v4 migration.",
+     "Both computed columns were added via the v3→v4 migration."
+    ]
+   },
+   {
+    "id": 3,
+    "texts": [
+     "The review established three low extraction/persistence findings, all documentation clarifications, and one low scripts/extension finding concerning aligned versions."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-MAI-Thinking-1__obsessiondb-rudel-196__2.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The insights implementation also fetches the user name from Postgres in parallel."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "The new legend container has a maximum height of 280px."
+    ]
+   },
+   {
+    "id": 2,
+    "texts": [
+     "Updated all nine chart components.",
+     "Updated all 9 chart components."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-MAI-Thinking-1__cyyeh-duckdb-data-agent-114__1.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The frontend initially showed answer text in the thinking block and then moved it, causing the flicker the user saw.",
+     "The frontend initially showed answer text in thinking and then moved it, causing the flicker the user saw."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "The thinking block now only shows deltas that come from the model's thinking block.",
+     "The thinking block only shows deltas that come from the thinking block."
+    ]
+   },
+   {
+    "id": 2,
+    "texts": [
+     "Fixed the reported behavior; the answer-to-thinking disappearance and movement is gone.",
+     "The reported answer-to-thinking disappearance behavior is gone.",
+     "The 'appears in answer, then disappears and moves to thinking' behavior is gone."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-DeepSeek-V4-Pro__osabiohq-osabio-74__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Created a server module skeleton consisting of 7 files.",
+     "The server module skeleton consists of 7 files."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-Mistral-Large-3__hutusi-amytis-82__1.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The changes maintain backward compatibility and don't affect any other functionality.",
+     "The changes maintain backward compatibility and do not affect any other functionality."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-MAI-Thinking-1__blittle-pressy-158__1.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Changed effectivePrevChapter to generate ?page=last links as a fix for backward chapter navigation.",
+     "Changed effectivePrevChapter to generate ?page=last links for the previous chapter.",
+     "I changed effectivePrevChapter to generate ?page=last links."
+    ]
+   }
+  ]
+ }
+]

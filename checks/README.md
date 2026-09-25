@@ -39,7 +39,7 @@ directories made before the split, and what happens when a candidate or a
 grading fails. Its ninth section requires that every served-model probe the
 stages made went to its stand-in, so none of it reaches the network.
 
-**`guards_hold.py`** is one hundred and six numbered sections, one per guard: what the
+**`guards_hold.py`** is one hundred and seven numbered sections, one per guard: what the
 attempt and grade stages refuse to do; the gate asked repeatedly; the
 reference-answer control and when it is not applicable; the clean-pass
 standard and the hedged one priced side by side; permanent git loss; the
@@ -149,7 +149,9 @@ run's own grading; section 104 has every D-35 script read a named judge from its
 re-grade, or else from the run's own grading that it did; section 105 has the paired
 tests give an interval resampling repositories beside the one resampling tasks;
 section 106 gives an attempt back the time its provider kept it waiting (throttled,
-dropped or empty sends), and never retries a refused Claude call. It closes by asserting it handed production back unpatched, because three
+dropped or empty sends), and never retries a refused Claude call; section 107 has the
+flag tally count every flag drawn exactly once, refuse a reading that leaves one out or
+judges one twice, and settle two readings' disagreements only by adjudication. It closes by asserting it handed production back unpatched, because three
 sections restored one module attribute through a name a fourth binds to
 something else, and that the model library's Runner is the real one again (section 26
 had left a stand-in in its place for every later section). Its fake judge sets the task's kind the way the
