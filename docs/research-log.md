@@ -7008,3 +7008,28 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - D-40 is untouched: its answers and readings were written at tag
     `d40-instrument`, and its analysis runs from `d40-analysis`.
   - To be checked on a Claude judge when there is one (D-41.5).
+- **09-25, 06:2x UTC** — **D-41.1 done: record 2, the conversation with each
+  call's input and every cut marked.**
+  - **What the candidate and the checker read now.**
+    - A search shows its pattern, an edit what it replaced and with what, a
+      write what it wrote, and a partial read which lines.
+    - Anything cut says how much: "[5,000 more characters not shown]".
+    - The corpus already kept every call's input in `content`; the rendering
+      threw it away.
+  - **Record 1 is untouched.** It is still the default, so the task-building
+    gates read what they read before. Rendered again from the corpus, D-40's
+    55 conversations are byte for byte the transcripts stored on its answer
+    rows.
+  - **Room.**
+    - Showing edits takes space the results had. At the old 60,000
+      characters, 31 of the 55 tasks would have shown less of each result.
+    - At 75,000, only 5 do, and the median result keeps its full 4,000. The
+      conversations are 28% longer in all.
+    - The checker and the judge read 75,000 too (`trace.CONTEXT_CHARS`), so a
+      record-2 conversation is read whole.
+  - **Rows.** Answer rows record `record` (2). Rows without it are record 1.
+  - **Flag packets** now show the conversation stored on the answer, as the
+    candidate and the checker read it, and rebuild it only for an answer that
+    has none. Redrawn this way, D-40's 48 packets are byte for byte those read,
+    and the draw no longer needs the corpus.
+  - Guard: section 110. Nine pieces broken alone, each red.

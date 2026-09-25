@@ -73,7 +73,12 @@ def main(argv: list[str]) -> int:
                 break
         answers = {(a["task_id"], a["run"]): a for a in completed(Paths(run).answers)}
         tasks = {t.task_id: t for t in read(Paths(run).tasks)}
-        convs = transcripts_for([tasks[k[0]] for k in picked])
+        # The conversation as the candidate and the checker read it, stored on the
+        # answer row by the attempt stage. Rebuilt only for an answer without one:
+        # rebuilt under today's rendering it can differ from what was read, as a
+        # record-1 conversation differs from record 2 (D-41.1).
+        unstored = sorted({k[0] for k in picked if not answers.get(k, {}).get("transcript")})
+        convs = transcripts_for([tasks[t] for t in unstored]) if unstored else {}
         for k in picked:
             claims = {}
             for x in by[k]:
@@ -97,7 +102,7 @@ def main(argv: list[str]) -> int:
                 given = {k: v for k, v in tc.items() if k not in ("name", "result", "failed")}
                 packet.append(f"[{i}] {tc.get('name')} {json.dumps(given, ensure_ascii=False)[:400]}")
                 packet.append(f"    -> {str(tc.get('result') or '')[:1500]}")
-            packet += ["", "## the conversation the candidate saw", convs.get(k[0], "")]
+            packet += ["", "## the conversation the candidate saw", a.get("transcript") or convs.get(k[0], "")]
             (out / f"{run.name}__{k[0]}__{k[1]}.md").write_text("\n".join(packet))
     (out / "sample.json").write_text(json.dumps(sample, indent=1, ensure_ascii=False))
     print(f"{'run':32s} {'answers':>7s} {'flagged':>7s} {'readings flagging':>18s}")

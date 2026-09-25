@@ -70,6 +70,7 @@ async def stage_attempt(
     has to be taken here because it reads files that are deleted the moment the
     attempt ends. The three readings of that answer belong to `grade`.
     """
+    from ..corpus.turns import RECORD
     from ..score.attempt import INSTRUCTIONS as CANDIDATE_RULES
     from ..score.attempt import attempt_limits, environment_note, run, transcript_for
     from ..project import code_version
@@ -273,7 +274,7 @@ async def stage_attempt(
                     "actual_changes": {}, "declared_changes": [],
                     "structure": analyse(task, attempt, None).to_json(),
                     "final_state": {}, "final_state_files": 0,
-                    "transcript": transcripts.get(task.task_id, ""),
+                    "transcript": transcripts.get(task.task_id, ""), "record": RECORD,
                     "rules": f"{CANDIDATE_RULES}\n\n{environment_note(attempt.environment)}",
                     "task_fingerprint": fingerprint(task),
                     "code_version": code_version(), "budget_s": budget_s, "max_turns": max_turns,
@@ -346,6 +347,9 @@ async def stage_attempt(
                 # verbatim. These are inputs to the grading, and an input that
                 # is reconstructed later is an input that can drift.
                 "transcript": transcripts.get(task.task_id, ""),
+                # How that conversation was rendered (D-41.1): 2 shows each
+                # call's input and marks every cut. Rows without it: record 1.
+                "record": RECORD,
                 "rules": f"{CANDIDATE_RULES}\n\n{environment_note(attempt.environment)}",
                 # Which version of this task the answer was written about.
                 "task_fingerprint": fingerprint(task),

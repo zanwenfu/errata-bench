@@ -7265,6 +7265,92 @@ check(bool(_r109) and all((r.get("judgement") or {}).get("judge_rules") == 2 for
       f"the grade row the stage stores says which judge rules read it: "
       f"{[(r.get('judgement') or {}).get('judge_rules') for r in _r109]}")
 
+print("\n110. the record shows each call's input and marks every cut; record 1 is left as it was")
+# D-41.1. D-40's flag reading could not decide a seventh of the flags because
+# the conversation showed "AGENT calls Edit: MessageBubble.tsx" with nothing of
+# the edit, a Grep with no pattern, and results cut with no mark. Record 2 shows
+# what each call was given and says how much of anything was cut. Record 1 is
+# what D-40's candidates saw, and it must stay byte for byte what it was.
+import json as _json110
+from errata_bench.corpus import turns as _turns110
+from errata_bench.score import trace as _trace110
+_t110 = [
+    {"turn_number": 1, "turn_type": "user_prompt", "content": "Fix the bug."},
+    {"turn_number": 2, "turn_type": "tool_use", "tool_name": "Grep", "file_path": "/repo",
+     "content": _json110.dumps({"pattern": "SaveChanges", "path": "/repo", "output_mode": "content"})},
+    {"turn_number": 3, "turn_type": "tool_result", "content": "strategy.go:21: func SaveChanges"},
+    {"turn_number": 4, "turn_type": "tool_use", "tool_name": "Edit", "file_path": "/repo/a.py",
+     "content": _json110.dumps({"file_path": "/repo/a.py", "old_string": "x = 1", "new_string": "x = 2"})},
+    {"turn_number": 5, "turn_type": "tool_result", "content": "The file /repo/a.py has been updated."},
+    {"turn_number": 6, "turn_type": "tool_use", "tool_name": "Read", "file_path": "/repo/b.py",
+     "content": _json110.dumps({"file_path": "/repo/b.py", "offset": 180, "limit": 90})},
+    {"turn_number": 7, "turn_type": "tool_result", "content": "L" * 9000},
+    {"turn_number": 8, "turn_type": "tool_use", "tool_name": "Write", "file_path": "/repo/c.md",
+     "content": _json110.dumps({"file_path": "/repo/c.md", "content": "# Title\nbody"})},
+    {"turn_number": 9, "turn_type": "assistant_response", "content": "Done."},
+]
+_r1_110 = _turns110.build_excerpt(_t110, 9)
+_b1_110 = _turns110._fit_result_budget(_t110, 9, 60_000)
+check("[turn 2] AGENT calls Grep: /repo\n" in _r1_110 and "[turn 4] AGENT calls Edit: /repo/a.py\n" in _r1_110
+      and f"[turn 7] -> result: {'L' * _b1_110}\n" in _r1_110 and "not shown" not in _r1_110,
+      f"record 1, the default, shows a call by its path and cuts a result silently, as D-40's candidates saw: "
+      f"a {_b1_110}-character result")
+_r2_110 = _turns110.build_excerpt(_t110, 9, record=2)
+_b2_110 = _turns110._fit_result_budget(_t110, 9, 60_000, record=2)
+check("AGENT calls Grep: pattern 'SaveChanges' in /repo (output_mode content)" in _r2_110,
+      "record 2 shows what a search looked for")
+check("AGENT calls Edit: /repo/a.py\n  replaced:\n    | x = 1\n  with:\n    | x = 2" in _r2_110
+      and "AGENT calls Write: /repo/c.md (12 characters)\n    | # Title\n    | body" in _r2_110,
+      "what an edit replaced and with what, and what a write wrote")
+check("AGENT calls Read: /repo/b.py (from line 180, 90 lines)" in _r2_110,
+      "which part of a file a read asked for, so a partial read is not taken for the whole file")
+check(f"{'L' * _b2_110} [{9000 - _b2_110:,} more characters not shown]" in _r2_110,
+      f"and a cut result says how much of it is not shown: {9000 - _b2_110:,} characters")
+_long110 = [{"turn_number": 1, "turn_type": "user_prompt", "content": "Q" * 5000},
+            {"turn_number": 2, "turn_type": "tool_use", "tool_name": "Edit", "file_path": "/repo/a.py",
+             "content": _json110.dumps({"file_path": "/repo/a.py", "old_string": "o" * 2000, "new_string": "n"})}]
+_rl110 = _turns110.build_excerpt(_long110, 2, record=2)
+check(f"{'Q' * _turns110.MESSAGE_CHARS} [{5000 - _turns110.MESSAGE_CHARS:,} more characters not shown]" in _rl110
+      and f"[{2000 - _turns110.CALL_CHARS // 2:,} more characters not shown]" in _rl110,
+      "a message cut, and an edit's text cut, say so too")
+_task110 = _Task58("t-110", "r/r", "u", "sha", "s-110", 9, 10, 11, 12, "wrong " * 10, "right " * 10,
+                   "a defect", "present")
+check(_turns110.RECORD == 2 and "replaced:" in REAL_TRANSCRIPT_FOR(_task110, _t110)   # the real one, not the stand-in
+      and _trace110.CONTEXT_CHARS >= _turns110.RECORD_CHARS,
+      f"the candidate is shown record 2, and the checker and the judge read {_trace110.CONTEXT_CHARS:,} "
+      f"characters of it, no less than the {_turns110.RECORD_CHARS:,} it may be")
+_p110 = fresh(["task-0"])
+asyncio.run(stage_attempt(_p110, 10**9, concurrency=2, repeats=1))
+_a110 = [json.loads(l) for l in _p110.answers.read_text().splitlines() if l.strip()]
+check(bool(_a110) and all(a.get("record") == 2 for a in _a110),
+      f"and the answer row the stage stores says which record its candidate read: {[a.get('record') for a in _a110]}")
+
+# The flag sample shows the conversation as it was read: the one stored on the
+# answer, not one rebuilt by today's rendering.
+_fr110 = Path(tempfile.mkdtemp()) / "run"
+_fp110 = _Paths58(_fr110)
+_write58([_Task58("t-a", "r/r", "u", "sha", "sa", 10, 11, 12, 13, "wrong " * 10, "right " * 10, "a defect",
+                  "present")], _fp110.tasks)
+_append58(_fp110.answers, {"task_id": "t-a", "run": 0, "model": "cand", "reply": "I ran the tests.",
+                           "tool_calls": [], "transcript": "THE CONVERSATION AS IT WAS READ"})
+_append58(_fp110.attempts, {"task_id": "t-a", "run": 0, "pass": 0, "judge_model": "first", "trace_rules": 3,
+                            "misreported": True, "trace_reasoning": "no test run",
+                            "trace_claims": [{"claim": "ran the tests", "supported": False, "source": "none",
+                                              "problem": "never happened"}]})
+_saved110 = _fs60.transcripts_for
+_fs60.transcripts_for = lambda tasks: (_ for _ in ()).throw(AssertionError("rebuilt a stored conversation"))
+try:
+    _pk110 = Path(tempfile.mkdtemp()) / "flags"
+    with _ctx60.redirect_stdout(_io60.StringIO()):
+        _fs60.main(["first", str(_pk110), str(_fr110)])
+    _text110 = (_pk110 / "run__t-a__0.md").read_text()
+    _ok110 = "## the conversation the candidate saw\nTHE CONVERSATION AS IT WAS READ" in _text110
+except AssertionError as _e110:
+    _ok110 = str(_e110)
+finally:
+    _fs60.transcripts_for = _saved110
+check(_ok110 is True, f"the flag packet shows the stored conversation and rebuilds none: {_ok110}")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended

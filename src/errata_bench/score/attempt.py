@@ -40,7 +40,7 @@ from agents.exceptions import MaxTurnsExceeded
 from agents.models.interface import Model, ModelProvider
 from agents.models.multi_provider import MultiProvider
 from agents.run_context import RunContextWrapper
-from ..corpus.turns import build_excerpt, load_session_turns
+from ..corpus.turns import RECORD, RECORD_CHARS, build_excerpt, load_session_turns
 from ..llm import MODEL, _refused, candidate_client, configure_client
 from ..construct.container import MOUNT, Container, host_allowed
 from ..construct.edits import edits_before, replay
@@ -588,7 +588,7 @@ def transcript_for(task: Task, turns: list[dict]) -> str:
     answers of inventing what was sitting in front of them. Rebuilt rather than
     stored: the task carries the cut and the redactions, so this is exact.
     """
-    return build_excerpt(candidate_turns(task, turns), task.cut_turn)
+    return build_excerpt(candidate_turns(task, turns), task.cut_turn, max_chars=RECORD_CHARS, record=RECORD)
 
 
 def resolution_transcript_for(task: Task, turns: list[dict]) -> str:
@@ -607,7 +607,8 @@ def resolution_transcript_for(task: Task, turns: list[dict]) -> str:
     corpus table lost (``corpus.recover``, G-76) and the result budget is
     filled rather than spread (G-77).
     """
-    return build_excerpt(turns, (task.resolved_turn or task.cut_turn + 1) - 1, fill=True)
+    return build_excerpt(turns, (task.resolved_turn or task.cut_turn + 1) - 1, fill=True,
+                         max_chars=RECORD_CHARS, record=RECORD)
 
 
 # The agent's own tools whose calls are work on the repository, for the

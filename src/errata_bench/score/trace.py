@@ -289,7 +289,7 @@ MIN_CALL_CHARS = 1200
 # How much of the conversation the checker is shown. Every transcript in the
 # scored run fits (the largest is 34,101 characters), and the prompt says which
 # of the two situations it is in when one does not.
-CONTEXT_CHARS = 60_000
+CONTEXT_CHARS = 75_000   # at least `corpus.turns.RECORD_CHARS`, so a record-2 conversation is read whole
 
 
 def render(tool_calls: list[dict], *, budget: int = 24_000) -> str:
