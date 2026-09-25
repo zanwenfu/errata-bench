@@ -6352,7 +6352,7 @@ async def _ran95(task, *, image=None, turns=None, **kw):
 async def _died95(task, *, image=None, turns=None, **kw):
     return Attempt(task.task_id, "the-candidate", environment=image or "host", error="the container died",
                    usage={"requests": 1, "input_tokens": 50, "output_tokens": 5, "total_tokens": 55,
-                          "cached_tokens": 0, "reasoning_tokens": 0})
+                          "cached_tokens": 0, "reasoning_tokens": 0}, throttled_s=12.5)
 
 
 _before95 = attempt_mod.run
@@ -6371,8 +6371,10 @@ check(all(_row95.get(k) == v for k, v in _want95.items()),
 _left95 = set(_made95["attempt"].to_json()) - set(_row95) - {"error"} if _made95 else {"no attempt was made"}
 check(not _left95, f"and every field the attempt reports reaches the row, so the next one cannot be left "
                    f"behind unnoticed: missing {sorted(_left95)}")
-check(_err95.get("error") and (_err95.get("usage") or {}).get("total_tokens") == 55,
-      f"an attempt the harness broke still says what it spent: {_err95.get('usage')}")
+check(_err95.get("error") and (_err95.get("usage") or {}).get("total_tokens") == 55
+      and _err95.get("throttled_s") == 12.5,
+      f"an attempt the harness broke still says what it spent, and how long it was kept waiting: "
+      f"{_err95.get('usage')}, {_err95.get('throttled_s')}")
 
 print("\n96. a response the provider sent back with nothing in it is sent again, not taken as the answer")
 # B-255. MAI-Thinking-1 answered about one request in four with an empty

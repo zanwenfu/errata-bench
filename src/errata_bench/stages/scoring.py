@@ -286,7 +286,8 @@ async def stage_attempt(
             append(
                 paths.answers,
                 {"task_id": task.task_id, "run": i, "error": attempt.error,
-                 "failures": before, "usage": attempt.usage, "null_responses": attempt.null_responses},
+                 "failures": before, "usage": attempt.usage, "null_responses": attempt.null_responses,
+                 "throttled_s": attempt.throttled_s},
             )
             return False
         # Taken now, not at grading time. The token check reads the files the

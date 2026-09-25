@@ -1507,6 +1507,7 @@ async def run(
                 return Attempt(
                     task.task_id, model, tool_calls=calls, actual_changes=changed,
                     environment=environment, usage=usage, null_responses=provider.nulls,
+                    throttled_s=round(context.get("throttled_s", 0.0), 1),
                     error=f"the container died mid-attempt: {context['container_died']}",
                 )
             return Attempt(
@@ -1539,6 +1540,7 @@ async def run(
                 environment=environment,
                 usage=context.get("usage"),
                 null_responses=provider.nulls,
+                throttled_s=round(context.get("throttled_s", 0.0), 1),
                 error=f"{type(e).__name__}: {e}",
             )
         finally:

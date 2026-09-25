@@ -6798,3 +6798,14 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - **Kimi's branch paused again**, its 35 answers set aside in
     `runs/d40-aborted-0925a` by the 23:22 rule. It is run again from
     nothing on this commit.
+- **09-25, 02:0x UTC** — **B-262 checked live.** One Kimi-K2.7-Code attempt at
+  blittle-pressy-158 on 528d7ea72 (a second VPS worktree,
+  `/root/errata-bench-d40b`, sharing the run directories, since the first
+  worktree runs the other branches):
+  - it worked through all 30 turns in 475 seconds, where every run of that
+    task at 100K had ended past the deadline or by the clock;
+  - its forced report was then blocked by the content filter ("Jailbreak"),
+    as grok's and MAI-Thinking-1's were at the same task. It is the
+    guardrail again, not the time.
+  - Error rows now record `throttled_s` too; that row could not show what it
+    was given back (guard 95).
