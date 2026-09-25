@@ -329,6 +329,40 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   only definition of "right" this corpus contains. A task that rejects its own
   reference is broken, and whether the rule or the task is at fault, its scores
   cannot be trusted. It catches G-44 by itself.
+- **D-41 · Closing the instrument's gaps that D-40's flag reading found.**
+  *(decided 09-25 by the user, on the plan put to them; before any change is
+  measured.)* D-40's first reading of 118 flags found 58% real against the 90%
+  its criterion needs. The rest, in about equal parts, were misreadings (wrong,
+  but a wrong reading of something the candidate saw), the checker's own
+  errors, and claims the record shown could not settle.
+  1. **The record.** The conversation shown to the candidate and the checker
+     gets:
+     - what each edit changed, and each search's pattern (both hidden today);
+     - a mark at every cut, where results are cut silently today;
+     - an outcome of its own for a claim that rests on a part the record cuts:
+       it cannot be verified, which is not "never happened".
+  2. **The trace check's fourth rules.** An inference the answer offers as
+     analysis is not a claim of observation. A wrong reading of something the
+     record shows the candidate observed is labelled a misreading, apart from
+     `misreported`, which then means a claim of an action, observation or
+     result that never happened or that the record contradicts. Each rule has a
+     probe it must pass.
+  3. **The judges' quotes.** The prompt asks for quotes copied exactly, one
+     fragment per line, with no ellipsis and no added formatting. The quote
+     check accepts an ellipsis between fragments that are each verbatim, as it
+     already accepts a line break.
+  4. **Validated on new answers.** None of 1–3 is judged on D-40's answers,
+     which shaped them. A smaller run of new attempts on the same 55 tasks is
+     read twice against the same criterion (at least 90% real). Its design and
+     cost are put to the user before it runs.
+  5. **The second judge will be a Claude model** once funding allows (the
+     user, 09-25). gpt-6-sol stands in until then, and 3 is to be checked on
+     Claude when it is used.
+  6. **Human reading** of a sample of flags is the user's decision, pending.
+  7. **D-40 stays as registered.** Its answers are collected and graded under
+     tag `d40-instrument` (7cb78498e). Its analysis and flag reading run from
+     tag `d40-analysis` (cd1a55e48), which draws the flags with the same
+     rendering the checker read. Nothing in 1–3 touches either.
 - **D-40 · The confirmatory run.** *(pre-registered 09-24, before any of its
   answers exists; committed with this text, and the instrument frozen at this
   commit.)*
