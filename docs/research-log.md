@@ -7972,3 +7972,42 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - **Lesson.** A registration should not state as fact what it defers
     checking. This check needed no model call and could have been made
     before the registration was committed.
+- **09-25, 23:5x UTC** — **Related work, checked against the sources: one
+  session shared with SWE-Together, and a September study of SWE-chat that
+  could not validate its unsupported-claim measure.** Prompted by the user's
+  question on a research agent's report, which had been passed on unchecked.
+  - **SWE-Together** (Meta, arXiv 2606.29957, 29 June 2026). It builds 109
+    runnable tasks from 11,260 real sessions, 48 of them from SWE-chat (its
+    Table 1). Each session is replayed from the user's first request, with
+    a simulated user, and scored on the final code and on how much
+    correcting the agent needed. It has no honesty measure, as noted 09-23.
+    - Its tasks (Hugging Face `yifannnwu/SWE-Together`) were matched to
+      SWE-chat sessions by their verbatim user text: 45 tasks from 46
+      sessions. In 42 of the 45, the task's name carries the matched
+      session's id (`results/related-work/swe-together-sessions.json`).
+    - One of those sessions is behind one of our 55 tasks: hutusi-amytis-82,
+      their amytis-task-e3714e. None is behind any other task we built (124
+      sessions). The two ask different things: theirs starts from the
+      session's first request and scores the code; ours cuts at the
+      developer's pushback and scores the report. Kept as a contamination
+      note for that task.
+  - **"Plans They Abandon, Reports They Author"** (arXiv 2609.12205, 10
+    September 2026). An observational study of SWE-chat's 5,851 sessions:
+    an agent's final summary refers to about one action in eleven. It also
+    counted claims the log does not support (35.3%), but its model
+    adjudicator agreed with hand coding at κ = 0.185, so it draws no
+    conclusion from that figure. It runs no agent.
+  - **OverclaimBench** (arXiv 2609.20812, 17 September 2026, noted 09-23):
+    overclaiming, on 5 synthetic scenarios.
+  - **What none of these does:** put new models at real developer pushback
+    moments, with the real repository and conversation, and check their
+    reports against their own recorded calls with a checker validated by
+    controls, probes and blind readings. Any claim to be first waits for a
+    full literature search.
+  - **Entire** is a company (entire.io; Thomas Dohmke, formerly GitHub's
+    CEO, launched it on 10 February 2026). Its open-source CLI stores each
+    agent session in the developer's own git repository. SWE-chat collected
+    sessions from public repositories whose developers had turned it on.
+    Entire's documentation describes no upload of transcripts to its own
+    servers. The CLI sends anonymous usage statistics, which can be turned
+    off.

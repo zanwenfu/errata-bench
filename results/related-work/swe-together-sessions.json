@@ -1,0 +1,234 @@
+{
+ "source": "huggingface.co/datasets/yifannnwu/SWE-Together (split test, 109 rows, fetched 2026-09-25)",
+ "method": "each task's verbatim user text (oracle_intents verbatim_excerpt, and the instruction's first 200 characters) searched in the user turns of the same repository in SWE-chat's conversations.parquet; the session with the most hits",
+ "matched": {
+  "agent-swarm-task-4a881b": {
+   "swe_chat_session": "4a881bb4-433e-4400-9d44-e77806f19dd7",
+   "repository": "desplega-ai/agent-swarm",
+   "id_carries_session_prefix": true
+  },
+  "agent-swarm-task-ea4bd8": {
+   "swe_chat_session": "ea4bd83a-342a-478d-8ad6-14afe2adc5ca",
+   "repository": "desplega-ai/agent-swarm",
+   "id_carries_session_prefix": true
+  },
+  "amytis-task-e3714e": {
+   "swe_chat_session": "e3714eda-1ed1-4fab-b9ae-d59bb23a0966",
+   "repository": "hutusi/amytis",
+   "id_carries_session_prefix": true
+  },
+  "cli-fix-2026-0": {
+   "swe_chat_session": "2026-01-26-4fec7ea0-3335-43ec-a178-d4ab47d5aef3",
+   "repository": "entireio/cli",
+   "id_carries_session_prefix": false
+  },
+  "cli-task-0ec2e9": {
+   "swe_chat_session": "0ec2e9e2-49e0-4201-9ea8-22f86e352f71",
+   "repository": "entireio/cli",
+   "id_carries_session_prefix": true
+  },
+  "cli-task-19def0": {
+   "swe_chat_session": "19def01c-b939-40ef-b431-47aa7121df4c",
+   "repository": "entireio/cli",
+   "id_carries_session_prefix": true
+  },
+  "cli-task-2026-0": {
+   "swe_chat_session": "2026-01-29-0f6074fc-a0f5-4d56-8de0-f4a592ddcf3b",
+   "repository": "entireio/cli",
+   "id_carries_session_prefix": false
+  },
+  "cli-task-2a55af": {
+   "swe_chat_session": "2a55af89-4e4f-4460-b18f-42a07287ae76",
+   "repository": "entireio/cli",
+   "id_carries_session_prefix": true
+  },
+  "cli-task-2c3e30": {
+   "swe_chat_session": "2c3e30d0-15c3-4a04-8741-40a1585a20c0",
+   "repository": "entireio/cli",
+   "id_carries_session_prefix": true
+  },
+  "cli-task-2f5833": {
+   "swe_chat_session": "2f5833ec-423b-47b4-9535-556896507b53",
+   "repository": "entireio/cli",
+   "id_carries_session_prefix": true
+  },
+  "cli-task-30159a": {
+   "swe_chat_session": "30159aa1-626d-4de8-923a-317a4859bbc4",
+   "repository": "entireio/cli",
+   "id_carries_session_prefix": true
+  },
+  "cli-task-32ba47": {
+   "swe_chat_session": "32ba4784-dda9-482a-9d1f-ed540c5d64f0",
+   "repository": "entireio/cli",
+   "id_carries_session_prefix": true
+  },
+  "cli-task-33e050": {
+   "swe_chat_session": "33e0503c-ecf6-44f0-9f93-e70fe49cfa87",
+   "repository": "entireio/cli",
+   "id_carries_session_prefix": true
+  },
+  "cli-task-408b8c": {
+   "swe_chat_session": "408b8c7a-970e-44d6-97d2-5055b778a417",
+   "repository": "entireio/cli",
+   "id_carries_session_prefix": true
+  },
+  "cli-task-4a9dde": {
+   "swe_chat_session": "4a9dde92-9a32-4a2f-ae0b-c9f6e026cd16",
+   "repository": "entireio/cli",
+   "id_carries_session_prefix": true
+  },
+  "cli-task-577e8c": {
+   "swe_chat_session": "577e8c02-5f1b-4f4d-ab6a-f1848ef0fd8e",
+   "repository": "entireio/cli",
+   "id_carries_session_prefix": true
+  },
+  "cli-task-5a69ca": {
+   "swe_chat_session": "5a69ca08-eee5-4626-ac94-c23483e262cb",
+   "repository": "entireio/cli",
+   "id_carries_session_prefix": true
+  },
+  "cli-task-70c88c": {
+   "swe_chat_session": "70c88cff-cb35-404f-a974-2a08bab4e4bc",
+   "repository": "entireio/cli",
+   "id_carries_session_prefix": true
+  },
+  "cli-task-726de6": {
+   "swe_chat_session": "726de64d-e8b7-4952-a516-72c4774b2003",
+   "repository": "entireio/cli",
+   "id_carries_session_prefix": true
+  },
+  "cli-task-aa4038": {
+   "swe_chat_session": "aa4038a5-34b6-41e4-8541-9cca654dcbc5",
+   "repository": "entireio/cli",
+   "id_carries_session_prefix": true
+  },
+  "cli-task-b12319": {
+   "swe_chat_session": "b12319af-9a0a-4691-b084-e5fc5ae7e446",
+   "repository": "entireio/cli",
+   "id_carries_session_prefix": true
+  },
+  "cli-task-b3d2dd": {
+   "swe_chat_session": "1a289c77-a9da-491d-954a-2df7f0dd6a17",
+   "repository": "entireio/cli",
+   "id_carries_session_prefix": false
+  },
+  "cli-task-c01017": {
+   "swe_chat_session": "c010174c-a7cd-4bcc-b7d4-61258d6c463f",
+   "repository": "entireio/cli",
+   "id_carries_session_prefix": true
+  },
+  "cli-task-c425e4": {
+   "swe_chat_session": "c425e4bc-c074-44d6-ad17-a1cc912af0ed",
+   "repository": "entireio/cli",
+   "id_carries_session_prefix": true
+  },
+  "cli-task-c4c7e9": {
+   "swe_chat_session": "c4c7e905-d2bf-4366-99c5-b3c2a0948d8a",
+   "repository": "entireio/cli",
+   "id_carries_session_prefix": true
+  },
+  "cli-task-cd4662": {
+   "swe_chat_session": "cd46624d-fbea-4097-aaf8-2f63c3db0818",
+   "repository": "entireio/cli",
+   "id_carries_session_prefix": true
+  },
+  "cli-task-cf32cb": {
+   "swe_chat_session": "cf32cb7d-e69d-4fde-838f-a801d52d6b92",
+   "repository": "entireio/cli",
+   "id_carries_session_prefix": true
+  },
+  "cli-task-dbd2bf": {
+   "swe_chat_session": "dbd2bfe1-bc12-4d4c-be2e-e2ec6b92170f",
+   "repository": "entireio/cli",
+   "id_carries_session_prefix": true
+  },
+  "cli-task-e5813e": {
+   "swe_chat_session": "e5813e1b-2fe5-4d88-905e-4debfdb35a44",
+   "repository": "entireio/cli",
+   "id_carries_session_prefix": true
+  },
+  "cli-task-ea3f8f": {
+   "swe_chat_session": "ea3f8f47-2d40-474f-bb55-bde41f47b79c",
+   "repository": "entireio/cli",
+   "id_carries_session_prefix": true
+  },
+  "gemini-voyager-task-16a5c7": {
+   "swe_chat_session": "16a5c736-9609-48fb-8a10-a4595c039b21",
+   "repository": "nagi-ovo/gemini-voyager",
+   "id_carries_session_prefix": true
+  },
+  "gemini-voyager-task-4a5730": {
+   "swe_chat_session": "4a57300d-2e4d-49bb-a58e-06d12f2a0599",
+   "repository": "nagi-ovo/gemini-voyager",
+   "id_carries_session_prefix": true
+  },
+  "gemini-voyager-task-4bddaf": {
+   "swe_chat_session": "4bddaf90-966f-4caf-90c8-e01cfe2e9c26",
+   "repository": "nagi-ovo/gemini-voyager",
+   "id_carries_session_prefix": true
+  },
+  "gemini-voyager-task-64c72f": {
+   "swe_chat_session": "64c72f02-bd94-45d3-9334-74fbb19bdba7",
+   "repository": "nagi-ovo/gemini-voyager",
+   "id_carries_session_prefix": true
+  },
+  "gemini-voyager-task-72a86c": {
+   "swe_chat_session": "72a86ca0-ec56-45a9-9f97-c841875b5e96",
+   "repository": "nagi-ovo/gemini-voyager",
+   "id_carries_session_prefix": true
+  },
+  "gemini-voyager-task-aa88f5": {
+   "swe_chat_session": "aa88f58c-c3f6-4b35-9125-e4fa75831cce",
+   "repository": "nagi-ovo/gemini-voyager",
+   "id_carries_session_prefix": true
+  },
+  "gemini-voyager-task-c5c01d": {
+   "swe_chat_session": "c5c01d3f-dbb6-436c-9179-17702671f6c0",
+   "repository": "nagi-ovo/gemini-voyager",
+   "id_carries_session_prefix": true
+  },
+  "gemini-voyager-task-f519c2": {
+   "swe_chat_session": "f519c26b-77fb-46fd-91a8-60ad27222598",
+   "repository": "nagi-ovo/gemini-voyager",
+   "id_carries_session_prefix": true
+  },
+  "light-protocol-implement-7adad1": {
+   "swe_chat_session": "7adad1d7-2fa8-4694-9cf8-1e40b25edd6c",
+   "repository": "lightprotocol/light-protocol",
+   "id_carries_session_prefix": true
+  },
+  "lock-code-manager-fix-7c955a": {
+   "swe_chat_session": "7c955a97-89aa-424d-84c1-3b2571976d8a",
+   "repository": "raman325/lock_code_manager",
+   "id_carries_session_prefix": true
+  },
+  "no-magic-task-ce67d5": {
+   "swe_chat_session": "ce67d562-2214-46e6-80e0-a9b99d4a3215",
+   "repository": "mathews-tom/no-magic",
+   "id_carries_session_prefix": true
+  },
+  "rudel-task-468289": {
+   "swe_chat_session": "4682893d-3cfc-46f3-a655-115f08a18bfb",
+   "repository": "obsessiondb/rudel",
+   "id_carries_session_prefix": true
+  },
+  "rudel-task-491983": {
+   "swe_chat_session": "491983cb-b3ca-448f-b386-3fc23bbd8d05",
+   "repository": "obsessiondb/rudel",
+   "id_carries_session_prefix": true
+  },
+  "rudel-task-8e0bd6": {
+   "swe_chat_session": "8e0bd61c-0332-4bb5-b76c-7a342db7d775",
+   "repository": "obsessiondb/rudel",
+   "id_carries_session_prefix": true
+  },
+  "rudel-task-d1ddb8": {
+   "swe_chat_session": "d1ddb826-b4ef-42c2-b940-1b81d4c9b6de",
+   "repository": "obsessiondb/rudel",
+   "id_carries_session_prefix": true
+  }
+ },
+ "shared_with_errata_bench": {
+  "amytis-task-e3714e": "hutusi-amytis-82"
+ }
+}
