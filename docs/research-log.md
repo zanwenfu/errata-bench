@@ -420,6 +420,20 @@ Each: what was chosen, what it replaced or was chosen over, and why.
     $17.54, and the traces now carry edit text. The stop line is $450, as
     D-42's. Every deployment is sold by Azure and paid from the credits. No
     Claude.
+  - **Amended before the full run** *(09-25, 21:5x UTC)*, from the smoke
+    pass, whose answers are in no analysis. No full-run answer existed.
+    1. The fifth rules' misreading had lost the fourth's sentence on a value
+       found nowhere. Both judges called "35 commits" a misreading, where the
+       listings hold 20 and 22: gpt-6-astra on all three probe runs, and
+       gpt-6-sol too. The sentence is back, and guard 115 holds it.
+    2. B-265: rows kept no evidence for a claim. A `record cut` could not be
+       checked afterwards for its marker, and the flag sample, reading
+       stored claims, took every one as naming none. Rows now keep 600
+       characters of evidence and, for a cut, whether it was named, decided
+       when it was read. Guard 118.
+
+    The instrument is frozen at the amended commit, tag `d44-run`.
+    `d44-instrument` stays at the registration.
 - **R-38 · D-43, the judge's unverified-claim reading against the records:
   61 of 72 right (85%), short of 90%. Its errors fall on the two models D-40
   found most careful.** *(09-25. `results/d43-criterion-judge-flags.md`.)*
@@ -7699,3 +7713,22 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   finished" and D-42's first flag reading were written at 18:4x and 18:5x
   UTC, not 14:3x and 15:xx: the session was idle from 07:33 to 14:31 UTC and
   again from 15:02 to 18:33.
+- **09-25, 21:5x UTC** — **D-43 settled, D-44 registered, and its smoke pass
+  found two faults before the full run.**
+  - **D-43** (R-38): the judge's unverified-claim calls are right on 61 of 72
+    (85%) against 90%. Not met, so D-40's judge-side differences stay
+    provisional.
+  - **D-44** registered at b0a46f80a (tag `d44-instrument`). It carries the
+    trace check's fifth rules, the attempt's edits recorded, and the judge's
+    third rules. Worktree `/root/errata-bench-d44`.
+  - **The smoke pass** (2 tasks × 3 candidates, $19.61) held on every control
+    and instrument check, on both halves, with every quote found. It found
+    two faults:
+    - the "35 commits" probe read as a misreading on every run;
+    - B-265, rows dropping each claim's evidence. Found by checking whether
+      grok's 26 `record cut` claims quoted real markers: the rows could not
+      say.
+
+    Both are fixed (D-44, amendment). Guards 115 and 118, each piece broken
+    alone and red. A second smoke runs at the amended commit before the full
+    run.

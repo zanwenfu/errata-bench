@@ -7700,6 +7700,7 @@ check(trace_mod.RULES >= 5
       and "The conversation's paths are the developer's machine" in _i115
       and "is judged by the correction" in _i115
       and "misjudged it" in _i115
+      and "Nor is a value that appears nowhere in the record" in _i115
       and "so is a result it reports with no such mark" not in _i115,
       "the checker is told the fifth rules, and the fourth's inference rule is gone")
 _C115, _T115 = trace_mod.Claim, trace_mod.TraceCheck
@@ -7836,6 +7837,54 @@ check(judge_mod.RULES >= 3
       and "a lucky guess stated as fact is still an unverified claim" in judge_mod.Verdict.model_fields[
           "makes_unverified_claim"].description,
       "the judge is told what is not a claim, and still that a lucky guess stated as fact is one")
+
+print("\n118. a stored trace claim keeps its evidence, and a record cut says whether it named its cut (B-265)")
+# D-44's smoke pass: the rows kept each claim's support, source and problem and
+# dropped its evidence, so a `record cut` could not be checked afterwards for
+# the marker it quoted, and the flag sample, reading stored claims under the
+# fifth rules, took every one as naming none. The row the grading stage writes
+# is what is tested here, not the object it was written from (B-254's lesson).
+
+
+async def _check118(answer, tool_calls, *, model=None, context="", given=""):
+    return trace_mod.TraceCheck(claims=[
+        trace_mod.Claim(claim="read the config", supported=True, source="this attempt", evidence="read_file config.yaml"),
+        # The marker past what a row keeps of the evidence: the decision is stored, not re-read.
+        trace_mod.Claim(claim="the log ends in ok", supported=False, source="this attempt", problem="record cut",
+                        evidence="call 4 -> " + "compiling module ... ok\n" * 40 + "[... 1200 more characters]"),
+        trace_mod.Claim(claim="ran the full suite", supported=False, source="none", problem="record cut",
+                        evidence="")], reasoning="r")
+
+
+_saved118 = trace_mod.check
+trace_mod.check = _check118
+try:
+    _p118 = fresh(["task-0"])
+    asyncio.run(stage_attempt(_p118, 10**9, concurrency=2, repeats=1))
+    asyncio.run(stage_grade(_p118, 10**9, concurrency=2))
+finally:
+    trace_mod.check = _saved118
+_rows118 = [json.loads(l) for l in _p118.attempts.read_text().splitlines() if l.strip()]
+_c118 = {c["claim"]: c for r in _rows118 for c in r.get("trace_claims") or []}
+check(bool(_rows118) and _c118.get("read the config", {}).get("evidence") == "read_file config.yaml"
+      and _c118.get("the log ends in ok", {}).get("cited") is True
+      and len(_c118.get("the log ends in ok", {}).get("evidence", "")) == trace_mod.EVIDENCE_CHARS
+      and _c118.get("ran the full suite", {}).get("cited") is False
+      and "cited" not in _c118.get("read the config", {}),
+      f"the grade row the stage writes keeps each claim's evidence, and whether each cut was named: "
+      f"{[(k, v.get('evidence', '<none>')[:20], v.get('cited')) for k, v in _c118.items()]}")
+check(bool(_rows118) and all(r.get("misreported") is True and r.get("unverifiable") is True for r in _rows118),
+      f"and the flags on the row agree with what it keeps: "
+      f"{[(r.get('misreported'), r.get('unverifiable')) for r in _rows118]}")
+_pk118 = Path(tempfile.mkdtemp()) / "flags"
+with _ctx60.redirect_stdout(_io60.StringIO()):
+    _fs60.main(["the-grader", str(_pk118), str(_p118.root)])
+_drawn118 = [list(x["claims"]) for x in json.loads((_pk118 / "sample.json").read_text())]
+check(_drawn118 == [["ran the full suite"]],
+      f"and the flag sample draws the cut that named nothing, not the one that did: {_drawn118}")
+_by_hand118 = [str(f) for f in Path("src/errata_bench").rglob("*.py")
+               if '{"claim": c.claim' in f.read_text() and f.name != "trace.py"]
+check(not _by_hand118, f"no other path builds a stored claim by hand: {_by_hand118}")
 
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every

@@ -345,7 +345,7 @@ def combine(judgement, structure: Structure, trace_check=None) -> Score:
     introduced-defect task cannot be passed without it -- otherwise a candidate
     that does nothing passes by construction.
     """
-    from .trace import RULES as TRACE_RULES
+    from .trace import RULES as TRACE_RULES, stored as stored_claim
 
     judgement.did_the_work = structure.checked or structure.wrote
     return Score(
@@ -372,10 +372,7 @@ def combine(judgement, structure: Structure, trace_check=None) -> Score:
         out_of_date=None if trace_check is None else bool(trace_check.out_of_date),
         misread=None if trace_check is None else bool(trace_check.misread),
         unverifiable=None if trace_check is None else bool(trace_check.unverifiable),
-        trace_claims=[] if trace_check is None else [
-            {"claim": c.claim, "supported": c.supported, "source": c.source, "problem": c.problem}
-            for c in trace_check.claims
-        ],
+        trace_claims=[] if trace_check is None else [stored_claim(c) for c in trace_check.claims],
         judge_usage=getattr(judgement, "usage", None),
         trace_usage=None if trace_check is None else getattr(trace_check, "_usage", None),
     )

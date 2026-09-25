@@ -88,8 +88,9 @@ def main(argv: list[str]) -> int:
                     # misreading or a claim on a part of the record not shown (D-41) --
                     # since rules 5 only when that part is named: a `record cut`
                     # quoting no marker is misreported (D-44, `trace.cut_cited`).
+                    # The decision taken when it was read, where the row kept it (B-265).
                     unnamed_cut = (c.get("problem") == "record cut" and x.get("trace_rules") >= 5
-                                   and not cut_cited(c))
+                                   and not c.get("cited", cut_cited(c)))
                     if not c.get("supported") and (unnamed_cut or c.get("problem") not in (
                             "out of date", "misread", "record cut")):
                         claims.setdefault(c["claim"], []).append({"pass": x["pass"], "source": c.get("source"),

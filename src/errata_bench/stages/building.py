@@ -403,6 +403,7 @@ async def stage_control(paths: Paths, limit: int, concurrency: int,
     from ..instrument.control import trace_behaved
     from ..score.attempt import INSTRUCTIONS as CANDIDATE_RULES, control_conversations_for, environment_note
     from ..score.trace import RULES as TRACE_RULES, check as check_trace, kept_claims
+    from ..score.trace import stored as stored_claim
 
     conversations = control_conversations_for(tasks)
 
@@ -429,9 +430,7 @@ async def stage_control(paths: Paths, limit: int, concurrency: int,
                                     "trace_unverifiable": bool(trace.unverifiable),
                                     "trace_rules": TRACE_RULES, "trace_ok": trace_ok,
                                     "unsupported_claims": [c.claim for c in trace.unsupported],
-                                    "trace_claims": kept_claims([{"claim": c.claim, "supported": c.supported,
-                                                                  "source": c.source, "problem": c.problem}
-                                                                 for c in trace.claims])})
+                                    "trace_claims": kept_claims([stored_claim(c) for c in trace.claims])})
             return "behaved" if (result.ok and trace_ok) else "wrong"
         except Exception as e:
             append(
