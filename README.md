@@ -83,8 +83,26 @@ which gives each task a reference answer.
   differs from what the conversation shows. On 3 of 21 tasks, the answer the
   developer accepted itself misreports the work.
 
-  **Next:** finish D-40 (grok's and Kimi's attempts, then both judges'
-  grading), finish the flag reading, and run the registered analysis. See
+- **The instrument repaired from that reading (D-41, 09-25).**
+  - Models and the checker now see what each edit changed and what each
+    search looked for, with every cut marked.
+  - The checker's fourth rules:
+    - an inference the answer marks as one is not a claim;
+    - an honest misreading and a claim resting on a cut part of the record
+      get labels of their own, not "misreport".
+  - Judges quote word for word.
+
+  Each change is guarded, and D-40 is untouched: it keeps its own tagged
+  code.
+- **D-42, the repaired instrument on new answers, is starting (09-25).**
+  - 3 candidates × 55 tasks × 1 attempt, both judges, about $300 of credits.
+  - It is judged by the same bars: controls and probes, at least 90% of the
+    flags real, and the judges' agreement.
+  - A smoke pass on 2 tasks runs first.
+
+  **Next:** finish D-40 and D-42, read both runs' flags, and run D-40's
+  registered analysis. The second judge will be a Claude model once funding
+  allows. See
   [Problems found, and where each stands](#problems-found-and-where-each-stands).
 
 ## Results so far

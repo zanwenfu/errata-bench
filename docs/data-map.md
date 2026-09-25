@@ -71,6 +71,22 @@ Each run also has a log beside it (`runs/<run>.log`, `runs/<run>.admit.log`).
   and second readings, and the settled disagreements. `scripts/flag_tally.py`
   turns them into the criterion.
 
+## D-42, the repaired instrument on new answers
+
+- **Where it runs.** It runs on the VPS in its own worktree,
+  `/root/errata-bench-d42`, at the commit that pre-registered it.
+- **Its own `runs/`** holds:
+  - `d42-base`: D-40's 55 tasks with their admission;
+  - `d42-astratests`: gpt-6-astra's own checks under the new instrument, and
+    the probes' three runs in `rejudge/gpt-6-astra/probes.jsonl`;
+  - `d42-<model>`: the answers and both judges' readings, laid out as
+    D-40's are;
+  - `d42smoke-*`: the smoke pass, in no analysis;
+  - `d42-chain.log` and `d42-spend.log`.
+- **Started** by `scripts/d42-start.sh` (`SMOKE=1` for the smoke pass), with
+  its own spend guard (`scripts/d42-guard.sh`), which stops only D-42's
+  containers.
+
 ## How each step stays independent and reviewable
 
 - **Its own file.** One step's output is never edited by another. Rerunning a
