@@ -151,7 +151,10 @@ container_mod.image_for = lambda lang, **kw: "node:22"
 container_mod.sweep = lambda: None
 container_mod.max_containers = lambda: 2
 corpus.load_repos = lambda: {}
-turns_mod.load_session_turns = lambda ids: {}
+# One stand-in turn per session asked for: a session the corpus lacks is
+# refused since B-263 (guards_hold section 113).
+turns_mod.load_session_turns = lambda ids: {i: [{"turn_number": 0, "turn_type": "user_prompt",
+                                                  "content": "a stand-in turn"}] for i in ids}
 
 
 def fresh_run(task_ids):

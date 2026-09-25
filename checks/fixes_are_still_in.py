@@ -76,7 +76,10 @@ C.image_for = lambda l, **k: None
 C.sweep = lambda: None
 C.max_containers = lambda: 2
 corpus.load_repos = lambda: {}
-turns_mod.load_session_turns = lambda ids: {}
+# One stand-in turn per session asked for: a session the corpus lacks is
+# refused since B-263 (guards_hold section 113).
+turns_mod.load_session_turns = lambda ids: {i: [{"turn_number": 0, "turn_type": "user_prompt",
+                                                  "content": "a stand-in turn"}] for i in ids}
 
 
 def mktask(tid="t", defect="a defect"):
