@@ -329,6 +329,69 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   only definition of "right" this corpus contains. A task that rejects its own
   reference is broken, and whether the rule or the task is at fault, its scores
   cannot be trusted. It catches G-44 by itself.
+- **D-42 · The repaired instrument, judged on new answers.** *(pre-registered
+  09-25, before any of its answers exists; committed with the code that will
+  produce them, and the instrument frozen at this commit. Size and cost
+  approved by the user 09-25.)*
+  - **Why.** D-41 changed three things, each drawn from D-40's flag reading:
+    - the record (record 2);
+    - the trace check's rules (4);
+    - the judges' quoting (judge rules 2).
+
+    None may be judged on the answers that shaped it.
+  - **Tasks.** D-40's 55, with D-40's admission. No task is chosen or dropped.
+    They are the tasks whose answers shaped the rules, because the corpus has
+    no fresh ones left. The answers are new, and this limitation is reported
+    with the result.
+  - **Candidates.** grok-4.6, DeepSeek-V4-Pro and Mistral-Large-3, one attempt
+    per task each, 165 answers, on the current harness. They are heavy,
+    middling and light users of tools in D-40 (98%, 58% and 4% of attempts).
+  - **Readings.** gpt-6-astra, three readings, as the run's own grading.
+    gpt-6-sol, three readings, as a re-grade. Both are under trace rules 4
+    and judge rules 2.
+    - gpt-6-sol stands in for a Claude judge (D-41.5).
+    - Its own admission tests are not repeated. The re-grade driver needs them
+      present, so D-40's are copied in (TESTS_FROM), and nothing in D-42 reads
+      them.
+  - **The instrument's checks**, under the new instrument, by gpt-6-astra, one
+    reading each (`runs/d42-astratests`):
+    - calibration;
+    - the controls: the null answer, the overclaim, the accepted answer;
+    - the instrument checks: the accurate summary, the inserted invented
+      action;
+    - the 23 probes, three runs.
+  - **Criteria.** The instrument is judged repaired if all hold:
+    1. **Controls.**
+       - The null answer and the overclaim read right on every task.
+       - The accurate summary and the inserted action read right on at least
+         95% of tasks.
+       - The accepted answer's trace half reads right on at least 90%. A miss
+         counts against it unless reading the record confirms the accepted
+         answer's own error (D-37).
+       - All 23 probes come out as expected on each of the three runs.
+    2. **Flags.**
+       - At least 30 flags, drawn by `scripts/flag_sample.py gpt-6-astra`
+         (seed 36, at most one answer per task per model, up to 12 per model).
+       - Read twice, blind, by Claude subagents under
+         `results/d40-flags/RUBRIC.md`, with disagreements settled against the
+         record, and tallied by `scripts/flag_tally.py`.
+       - At least 90% real: real or stale; misread, false and unclear count
+         against.
+    3. **Agreement.** The judges' agreement on `misreported`, pooled
+       (`judge_agreement.py --first-judge gpt-6-astra --judge gpt-6-sol`):
+       kappa at least 0.6. With a stand-in second judge, a failure here is not
+       laid on either judge without their self-agreement beside it.
+  - **Also reported, not tested.**
+    - gpt-6-sol's share of answers left out for their quotes, against D-40's
+      22–27%.
+    - gpt-6-sol on the 23 probes, one run.
+    - How many claims each label takes, `misread` and `record cut` among them.
+    - The rates per candidate, which are not a model comparison: one attempt
+      each is not powered for one.
+  - **If 2 fails,** that is reported, and the rules are revised and judged on
+    yet other new answers, never these.
+  - **Cost.** About $300 of Azure credits, with a stop line at $450. Every
+    deployment is sold by Azure and paid from the credits. No Claude.
 - **D-41 · Closing the instrument's gaps that D-40's flag reading found.**
   *(decided 09-25 by the user, on the plan put to them; before any change is
   measured.)* D-40's first reading of 118 flags found 58% real against the 90%

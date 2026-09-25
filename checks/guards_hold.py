@@ -7436,6 +7436,71 @@ _flags111 = json.loads((_pk111 / "sample.json").read_text())[0]["claims"]
 check(list(_flags111) == ["ran the suite"],
       f"and the flag sample draws only what is misreported: {list(_flags111)}")
 
+print("\n112. D-42's probe runs keep every run and resume; its spend counts a judge's tests where asked")
+# D-42's first criterion counts the probes on three runs of one judge, and its
+# spend guard prices gpt-6-astra's own tests, asked in d42-astratests, which
+# D-40's guard priced only for gpt-6-sol in soltests.
+_pr112 = _ilu56.module_from_spec(_ilu56.spec_from_file_location("_pr112", str(Path("scripts/probe_runs.py"))))
+_pr112.__spec__.loader.exec_module(_pr112)
+_asked112 = []
+
+
+async def _verify112(*, model=None, context="", given=""):
+    _asked112.append(model)
+    n = len(_asked112) - 1
+    return [{"probe": p[0], "must_flag": p[1], "flagged": p[1] if (n or i) else not p[1],
+             "ok": bool(n or i), "claims": []} for i, p in enumerate(trace_mod.PROBES)]
+
+
+_saved112 = _pr112.trace.verify
+_pr112.trace.verify = _verify112
+try:
+    _out112 = Path(tempfile.mkdtemp()) / "probes.jsonl"
+    with _ctx60.redirect_stdout(_io60.StringIO()) as _o112:
+        _c112 = _pr112.main(["gpt-6-astra", str(_out112), "--runs", "2"])
+    _rows112 = [json.loads(l) for l in _out112.read_text().splitlines()]
+    with _ctx60.redirect_stdout(_io60.StringIO()):
+        _c112b = _pr112.main(["gpt-6-astra", str(_out112), "--runs", "2"])
+    # Asked with the stand-in still in place: if the refusal were ever lost,
+    # no real call to a Claude deployment could follow from this check.
+    _e112 = _io60.StringIO()
+    try:
+        with _ctx60.redirect_stderr(_e112), _ctx60.redirect_stdout(_io60.StringIO()):
+            _pr112.main(["claude-opus-5", str(Path(tempfile.mkdtemp()) / "c.jsonl"), "--runs", "1"])
+        _cl112 = "ran"
+    except SystemExit as _x:
+        _cl112 = _x.code
+finally:
+    _pr112.trace.verify = _saved112
+check(len(_rows112) == 2 * len(trace_mod.PROBES) and {r.get("run") for r in _rows112} == {0, 1}
+      and all(r.get("trace_rules") == trace_mod.RULES and r.get("judge_model") == "gpt-6-astra" for r in _rows112),
+      f"every probe on every run is kept, with its run and rules: {len(_rows112)} rows")
+check(_c112 == 1 and "run 0: 22 of 23" in _o112.getvalue() and "run 1: 23 of 23" in _o112.getvalue(),
+      "one probe wrong on one run fails it, and says which run")
+check(len(_asked112) == 2 and _c112b == 1,
+      f"asked again, runs already complete are not paid for twice: {len(_asked112)} runs asked in all")
+check(_cl112 == 2 and "claude" in _e112.getvalue().lower(), "and a Claude judge is refused")
+
+_sp112 = _ilu56.module_from_spec(_ilu56.spec_from_file_location("_sp112", str(Path("scripts/d40_spend.py"))))
+_sp112.__spec__.loader.exec_module(_sp112)
+_root112 = Path(tempfile.mkdtemp())
+for _rel, _n in (("runs/d42-astratests/rejudge/gpt-6-astra/controls.jsonl", 2),
+                 ("runs/d42-astratests/rejudge/gpt-6-astra/probes.jsonl", 23),
+                 ("runs/d42-grok-4.6/rejudge/gpt-6-sol/controls.jsonl", 5)):
+    (_root112 / _rel).parent.mkdir(parents=True, exist_ok=True)
+    (_root112 / _rel).write_text("".join(json.dumps({"task_id": f"t{i}"}) + "\n" for i in range(_n)))
+_cwd112 = os.getcwd()
+os.chdir(_root112)
+try:
+    with _ctx60.redirect_stdout(_io60.StringIO()) as _s112:
+        _sp112.main(["--prefix", "d42", "--stop", "999"])
+finally:
+    os.chdir(_cwd112)
+_want112 = 2 * _sp112.TEST_ROW_USD["controls"] + 23 * _sp112.TEST_ROW_USD["probes"]
+check(f"its tests ~${_want112:.2f}" in _s112.getvalue(),
+      f"a judge's tests are priced where they were asked, any judge, and never where they were copied to: "
+      f"{_s112.getvalue().strip()[-60:]}")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended

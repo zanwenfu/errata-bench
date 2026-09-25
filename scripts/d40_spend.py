@@ -20,7 +20,7 @@ PRICE = {  # USD per 1M tokens: input, cached input, output (Global Standard lis
     "Mistral-Large-3": (0.50, 0.50, 1.50), "MAI-Thinking-1": (2.00, 0.20, 8.00),
     "gpt-6-astra": (10.00, 1.00, 50.00), "gpt-6-sol": (10.00, 1.00, 50.00),
 }
-TEST_ROW_USD = {"calibration": 0.40, "controls": 0.26, "instrument": 0.13}
+TEST_ROW_USD = {"calibration": 0.40, "controls": 0.26, "instrument": 0.13, "probes": 0.05}
 
 
 def usd(model, u, reasoning_apart=False):
@@ -64,10 +64,12 @@ def main(argv):
             astra += usd("gpt-6-astra", r.get("judge_usage")) + usd("gpt-6-astra", r.get("trace_usage"))
         for r in rows(f"{d}/rejudge/gpt-6-sol/attempts.jsonl"):
             sol += usd("gpt-6-sol", r.get("judge_usage")) + usd("gpt-6-sol", r.get("trace_usage"))
-        # Counted where they were asked, never where TESTS_FROM copied them to.
-        if name == "soltests":
+        # Counted where they were asked, never where TESTS_FROM copied them to:
+        # a judge's own tests in a `<prefix>-<...>tests` directory (D-40's
+        # gpt-6-sol in soltests, D-42's gpt-6-astra in astratests).
+        if name.endswith("tests"):
             for kind, each in TEST_ROW_USD.items():
-                tests += each * sum(1 for _ in rows(f"{d}/rejudge/gpt-6-sol/{kind}.jsonl"))
+                tests += each * sum(1 for f in sorted(glob.glob(f"{d}/rejudge/*/{kind}.jsonl")) for _ in rows(f))
     total = cand + astra + sol + tests
     now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
     print(f"{now} answers {answers} readings {readings} | candidates ${cand:.2f} | gpt-6-astra ${astra:.2f} | "
