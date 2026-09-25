@@ -92,7 +92,10 @@ def main(argv: list[str]) -> int:
             packet += ["## reply", a.get("reply", "(no answer row)"), "", "## this attempt's calls"]
             for i, tc in enumerate(a.get("tool_calls") or []):
                 given = {n: v for n, v in tc.items() if n not in ("name", "result", "failed")}
-                packet.append(f"[{i}] {tc.get('name')} {json.dumps(given, ensure_ascii=False)[:400]}")
+                # What an edit or a write was given, since D-44's calls record, at a
+                # result's length, as `flag_sample.py` shows it.
+                room = 1500 if {"old_text", "new_text", "content"} & set(given) else 400
+                packet.append(f"[{i}] {tc.get('name')} {json.dumps(given, ensure_ascii=False)[:room]}")
                 packet.append(f"    -> {str(tc.get('result') or '')[:1500]}")
             packet += ["", "## the files the candidate left, as the judge was shown them",
                        render_files(files_after(a, task.signature_path)).strip() or "(not shown)",
