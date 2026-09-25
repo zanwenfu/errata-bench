@@ -662,7 +662,7 @@ Each: what was chosen, what it replaced or was chosen over, and why.
     - A clean pass requires no unverified claim, so the two measures are
       not independent.
     - The graders were not shown 44% of grok-4.6's tool outputs, against at
-      most 12% of any other model's (the trace cap; 09-25, 22:4x). Every
+      most 12% of any other model's (the trace cap; 09-25, 22:3x). Every
       comparison involving grok carries that difference, of unknown sign.
     - The keep-quotes sensitivity analysis, not registered, counts
       gpt-6-sol's left-out answers. On the headline set it adds three
@@ -7760,7 +7760,7 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     MB). Every file's size and MD5 match the local copy; none is missing
     and none extra.
   - D-44's runs go in once they are copied back from the VPS.
-- **09-25, 22:4x UTC** — **The graders are not shown nearly half of grok's
+- **09-25, 22:3x UTC** — **The graders are not shown nearly half of grok's
   work: a confound in D-40's comparison, measured for the first time.**
   - **What.** The trace the checker and the judge read is capped at 24,000
     characters (`trace.render`). Past the cap, outputs are withheld and
