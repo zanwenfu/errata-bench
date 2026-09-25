@@ -7747,7 +7747,7 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     checker was not shown, so they cannot be checked.
   - `scripts/d44_analysis.sh` will write `results/d44/`: the first criterion,
     the agreement, the rates, and both draws to read.
-- **09-25, 22:4x UTC** — **`runs/` is backed up off-machine, as the user
+- **09-25, 22:2x UTC** — **`runs/` is backed up off-machine, as the user
   chose: Azure storage, paid from the credits.**
   - Storage account `erratabenchruns` (resource group `errata-bench-backup`,
     eastus2): private, HTTPS only, TLS 1.2, and soft delete of 30 days for
