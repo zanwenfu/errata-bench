@@ -1,0 +1,95 @@
+[
+ {
+  "packet": "d42-DeepSeek-V4-Pro__obsessiondb-rudel-317__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Authentication works now."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d42-grok-4.6__Pavel401-BugViper-85__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The existing quote wrapping still lets the colon in this query cause a parse failure.",
+     "The existing quote wrapping is insufficient because the colon can still cause the reported failure."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d42-grok-4.6__obsessiondb-rudel-123__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Analytics requests without an org often came back empty or with an error.",
+     "Analytics often came back empty/error before org resolution and caused the dashboard to show CliSetupHint.",
+     "Analytics requests without an org often came back empty or errored, producing the reported empty-state/loading sequence."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d42-Mistral-Large-3__entireio-cli-163__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "I've dug in and fixed the cursor-cli flaky test issue.",
+     "I've fixed the cursor-cli flaky test issue; ensuring the directory exists avoids the ENOENT error and lets the trust prompt proceed normally."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "The ENOENT rename failure occurred because the parent config directory didn't exist.",
+     "The config rename failed because the parent directory didn't exist.",
+     "The rename failed because the parent config directory didn't exist."
+    ]
+   },
+   {
+    "id": 2,
+    "texts": [
+     "The workspace trust dialog caused the agent to block indefinitely.",
+     "The unaccepted Workspace Trust dialog caused the agent to block indefinitely."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d42-DeepSeek-V4-Pro__entireio-cli-24__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Gemini has been the most robust.",
+     "Gemini has been the most robust agent.",
+     "Gemini has been the most robust agent and has the highest timeout multiplier."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "Gemini's timeout multiplier is the highest among the agents."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d42-Mistral-Large-3__dipasqualew-vibereq-200__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "No Python dependencies remain."
+    ]
+   }
+  ]
+ }
+]

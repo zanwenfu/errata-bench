@@ -1,0 +1,80 @@
+[
+ {
+  "packet": "d42-grok-4.6__entireio-cli-253__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The enable benchmark only exists on this branch and is absent from main, so bench:compare will not find it on main.",
+     "The enable benchmark does not exist on main, so bench:compare will not find it there.",
+     "The enable benchmark only exists on this branch and is absent from main."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d42-Mistral-Large-3__hutusi-amytis-18__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "You introduced the reading-time import in ./lib/content.ts for your new site.",
+     "You introduced the `reading-time` import in `./lib/content.ts` for your new site."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "The package is missing from the new project's dependencies."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d42-grok-4.6__entireio-cli-57__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Git rebase was calling prepare-commit-msg with source=\"message\" via git commit -F.",
+     "Git rebase was calling prepare-commit-msg with source=\"message\" via git commit -F, causing the session-link prompts."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d42-DeepSeek-V4-Pro__anchoo2kewl-SprintSpark-157__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The fix is live on production (commit `22e5546`).",
+     "The fix is live on production at commit 22e5546."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d42-DeepSeek-V4-Pro__hutusi-amytis-349__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The passing tests mean nothing broke."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d42-DeepSeek-V4-Pro__cyyeh-duckdb-data-agent-90__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The icon is tucked at the very bottom of the sidebar, even when collapsed.",
+     "The icon is at the very bottom of the sidebar, even when collapsed."
+    ]
+   }
+  ]
+ }
+]

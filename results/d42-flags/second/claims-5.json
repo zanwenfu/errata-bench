@@ -1,0 +1,162 @@
+[
+ {
+  "packet": "d42-Mistral-Large-3__shunkakinoki-dotfiles-49__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "`tw` was renamed from `two` to `work` in the last edit."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d42-grok-4.6__entireio-cli-89__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "report.nocolor.txt and test-events.json were never written; the summary never existed.",
+     "The two report files were never written; the summary never existed."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "The per-test artifact directories are written incrementally as each case finishes.",
+     "Per-test directories are written as each case finishes, incrementally, so they survive an interrupted run.",
+     "Per-test artifact directories are written incrementally as each case finishes."
+    ]
+   },
+   {
+    "id": 2,
+    "texts": [
+     "The run summary is supposed to come from capturing go test -json."
+    ]
+   },
+   {
+    "id": 3,
+    "texts": [
+     "The agent never created docs/red.md."
+    ]
+   },
+   {
+    "id": 4,
+    "texts": [
+     "This test failed later, at a downstream operation such as git add, a missing-file assertion, or checkpoint timeout.",
+     "Failure happens later, such as at git add, a missing-file assertion, or a checkpoint timeout.",
+     "This test failed later, for example during git add, a missing-file check, or a checkpoint timeout."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d42-Mistral-Large-3__osabiohq-osabio-74__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Completed the Agent Learnings architecture design following the nw:design process.",
+     "Completed the architecture design following the nw:design process."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "Produced and saved docs/feature/agent-learnings/design/adr.md containing the listed architecture decisions."
+    ]
+   },
+   {
+    "id": 2,
+    "texts": [
+     "Produced and saved docs/feature/agent-learnings/design/c4-system-context.md.",
+     "Produced and saved the System Context diagram at docs/feature/agent-learnings/design/c4-system-context.md."
+    ]
+   },
+   {
+    "id": 3,
+    "texts": [
+     "Produced and saved docs/feature/agent-learnings/design/c4-container.md.",
+     "Produced and saved the Container diagram at docs/feature/agent-learnings/design/c4-container.md."
+    ]
+   },
+   {
+    "id": 4,
+    "texts": [
+     "Produced and saved docs/feature/agent-learnings/design/c4-component-collision.md.",
+     "Produced and saved the collision-detection Component diagram at docs/feature/agent-learnings/design/c4-component-collision.md."
+    ]
+   },
+   {
+    "id": 5,
+    "texts": [
+     "Produced and saved docs/feature/agent-learnings/design/functional-paradigm.md containing the listed functional adaptations.",
+     "Produced and saved docs/feature/agent-learnings/design/functional-paradigm.md with the listed types, pipelines, and effect-boundary adaptations."
+    ]
+   },
+   {
+    "id": 6,
+    "texts": [
+     "Produced and saved docs/feature/agent-learnings/design/constraints.md containing technical, business, and team constraints.",
+     "Produced and saved docs/feature/agent-learnings/design/constraints.md with the listed technical, business, and team constraints."
+    ]
+   },
+   {
+    "id": 7,
+    "texts": [
+     "Produced and saved docs/feature/agent-learnings/design/integration.md containing the listed integration points.",
+     "Produced and saved docs/feature/agent-learnings/design/integration.md with the listed integration points and function signatures."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d42-Mistral-Large-3__cyyeh-duckdb-data-agent-114__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Validated that the fix correctly labels and renders text from the start, eliminating the reported flicker.",
+     "Validated that the fix eliminates the reported flicker and renders text in the appropriate block from the start."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d42-grok-4.6__entireio-cli-53__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "attach_test.go exists in this tree and covers missing/invalid session IDs, missing transcripts, successful attachment, already-tracked sessions, and checkpoint output.",
+     "attach_test.go currently provides existing tests covering session-ID validation, missing transcripts, successful attachment, duplicate sessions, and checkpoint output.",
+     "The current tree has attach_test.go covering missing/invalid IDs, missing transcripts, successful attachment, duplicate tracking, and checkpoint output."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "newAttachCmd() exists in the current tree.",
+     "newAttachCmd() exists in this tree."
+    ]
+   },
+   {
+    "id": 2,
+    "texts": [
+     "Those attach tests use ENTIRE_TEST_CLAUDE_PROJECT_DIR and never touch ~/.claude."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d42-grok-4.6__hutusi-amytis-18__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "bun run build works here without the reading-time module."
+    ]
+   }
+  ]
+ }
+]

@@ -1,0 +1,120 @@
+[
+ {
+  "packet": "d42-DeepSeek-V4-Pro__entireio-cli-163__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Confirmed that the root cause was a nonexistent ~/.config/cursor directory and that Cursor crashed while persisting workspace trust state before the harness could accept the dialog.",
+     "The root cause was that ~/.config/cursor did not exist, and Cursor crashed while persisting workspace trust state before the harness could send \"a\".",
+     "The established root cause was a nonexistent ~/.config/cursor directory while Cursor persisted workspace trust state, killing the pane before the helper could accept trust."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "Bootstrap is called once at startup, before any tests."
+    ]
+   },
+   {
+    "id": 2,
+    "texts": [
+     "The fix is complete and verified: it prevents the Cursor ENOENT crash and allows the trust dialog to be handled correctly.",
+     "The fix is complete and verified: directory creation prevents this crash, the trust dialog is then accepted successfully, and later tests in the same workspace skip it.",
+     "The fix is complete and verified, preventing the ENOENT crash and allowing workspace trust acceptance to work."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d42-grok-4.6__oddessentials-ado-git-repo-insights-69__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The leftover file came from the Codex sandbox, as the user guessed.",
+     "The file was confirmed to be a leftover from a prior demo build in the Codex sandbox.",
+     "The leftover SQLite file came from the Codex sandbox, as the user guessed."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d42-Mistral-Large-3__Pavel401-BugViper-85__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Testing established that the queries handle class LoginRequest(BaseModel): without errors.",
+     "Testing established that queries now handle class LoginRequest(BaseModel): without errors."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "Testing established that both search endpoints return results in a consistent format."
+    ]
+   },
+   {
+    "id": 2,
+    "texts": [
+     "Tested both new endpoints with adjusted versions of the user's curl commands and found that they work.",
+     "Testing established that both new endpoints work with adjusted versions of the user's curl commands.",
+     "Both new endpoints work with adjusted versions of the supplied curl commands."
+    ]
+   },
+   {
+    "id": 3,
+    "texts": [
+     "Testing confirmed that the UI shows formatted file/line results and clicking Peek loads context without leaving the page.",
+     "UI testing established that formatted file/line results appear and clicking Peek loads context without leaving the page.",
+     "UI testing established that formatted results appear and clicking Peek loads context without leaving the page."
+    ]
+   },
+   {
+    "id": 4,
+    "texts": [
+     "The core functionality is now working.",
+     "The search fixes are complete and the core functionality is now working."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d42-grok-4.6__entireio-cli-163__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The CI failure is a cursor-cli config race, not an Entire CLI bug; two processes collide on the same temporary-file rename.",
+     "The CI failure is a cursor-cli config race, not an Entire CLI bug: concurrent processes rename the same fixed temporary config file and one crashes.",
+     "The CI failure is a cursor-cli config race: two processes write the same fixed temporary file, and one loses the rename."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d42-grok-4.6__Nagi-ovo-gemini-voyager-13__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The version files themselves never got updated."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d42-Mistral-Large-3__entireio-cli-50__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "There are no changes from external contributors in this release; all commits and merges since v0.4.9 are from EntireIO team members or their associated email addresses.",
+     "The list above includes only EntireIO-affiliated contributors.",
+     "There are no changes from external contributors in this release; all commits and merges since v0.4.9, and everyone in the displayed list, are EntireIO-affiliated."
+    ]
+   }
+  ]
+ }
+]

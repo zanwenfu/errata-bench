@@ -1,0 +1,105 @@
+[
+ {
+  "packet": "d42-DeepSeek-V4-Pro__hutusi-amytis-82__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The fix changed three files.",
+     "“The changes are complete across all three files” / “Fix (3 files changed).”",
+     "Fix (3 files changed)."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d42-Mistral-Large-3__entireio-cli-38__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "session.go and its AgentSession struct are unchanged in the branch.",
+     "AgentSession in session.go is unchanged in this branch."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "Claude and Gemini both implement WriteSession to write NativeData to disk.",
+     "Both Claude and Gemini implement WriteSession to write NativeData to disk.",
+     "Both Claude and Gemini implement WriteSession by writing NativeData to disk."
+    ]
+   },
+   {
+    "id": 2,
+    "texts": [
+     "The branch does not explicitly test resumed sessions retaining historical messages.",
+     "The branch does not explicitly test resumed sessions retaining all historical messages."
+    ]
+   },
+   {
+    "id": 3,
+    "texts": [
+     "The branch fully aligns with the checklist; no changes are needed to maintain alignment and it is ready for merging."
+    ]
+   },
+   {
+    "id": 4,
+    "texts": [
+     "AgentSession enforces full transcript storage and a single representation, with NativeData as the only field storing the transcript."
+    ]
+   },
+   {
+    "id": 5,
+    "texts": [
+     "TruncateAtUUID supports rewind/resume without breaking the full-transcript requirement."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d42-DeepSeek-V4-Pro__obsessiondb-rudel-112__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The filename using the current date is api-logs-2026-01-28.txt."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d42-DeepSeek-V4-Pro__blittle-pressy-158__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The two issues have been fixed."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d42-DeepSeek-V4-Pro__oddessentials-ado-git-repo-insights-69__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "No untested production paths were found.",
+     "No untested production paths found."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d42-Mistral-Large-3__oozoofrog-oozoofrog.github.io-108__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Confirmed those internal links work normally."
+    ]
+   }
+  ]
+ }
+]

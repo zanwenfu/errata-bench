@@ -1,0 +1,109 @@
+[
+ {
+  "packet": "d42-Mistral-Large-3__anchoo2kewl-SprintSpark-157__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The fix has been successfully promoted to production.",
+     "The fix has been successfully promoted to production, and new sprints and tags will appear after the next scheduled sync.",
+     "The production daily auto-sync now includes sprints and tags, which will appear after the next scheduled sync.",
+     "Production's daily auto-sync now includes sprints and tags, which will appear after the next scheduled sync."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "Production's Git Commit is 22e5546.",
+     "Production's Git commit is 22e5546."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d42-DeepSeek-V4-Pro__hutusi-amytis-18__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The failing content.ts exists only in the scaffolded site produced by create-amytis and in the released tarball.",
+     "The failing content.ts exists only in the scaffold produced by create-amytis, specifically in the released tarball."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "reading-time is missing from the package.json shipped with the scaffolded site.",
+     "This is an established release/scaffold bug: its content.ts references reading-time but its package.json omits it.",
+     "reading-time is missing from the package.json shipped with the scaffolded site, establishing a release/scaffold bug.",
+     "reading-time is missing from the package.json shipped with the scaffolded site, establishing a release/scaffold dependency bug."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d42-grok-4.6__entireio-cli-24__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Cursor's failure is agent non-determinism, not an Entire bug."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "The Gemini-specific concurrency path is doing what it is supposed to in this run.",
+     "The Gemini-specific concurrency path is doing what it is supposed to."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d42-DeepSeek-V4-Pro__marcus-sa-brain-59__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Added per-agent tool resolution via can_use relation edges."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "The registry/brokerage-only approach, rather than a Brain tool execution runtime, is consistent with the two research documents' findings."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d42-Mistral-Large-3__obsessiondb-rudel-123__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The fix ensures CliSetupHint now appears only after an organization is loaded and its session count is zero.",
+     "I fixed the empty-state behavior so CliSetupHint now only appears after an organization exists and its session count is zero.",
+     "I fixed the empty-state flicker so CliSetupHint now appears only after the organization is loaded and there are no sessions."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d42-grok-4.6__entireio-cli-50__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Sven Pfleiderer is internal."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "There are no external-contributor PRs to credit in a Thanks section."
+    ]
+   }
+  ]
+ }
+]

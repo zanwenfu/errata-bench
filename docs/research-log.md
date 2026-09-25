@@ -7253,3 +7253,28 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     4,000 characters. Rules 3 left such claims off the list, so the counts
     make visible what was already so. But the overclaim shows the label can
     also swallow a claim that plainly never happened.
+- **09-25, 15:xx UTC** — **D-42's flag sample, first reading: 40 of 69 real
+  (58%).**
+  - **Drawn** by `flag_sample.py gpt-6-astra` at D-42's own commit
+    (f6794d1): rules 4, and each answer's stored conversation.
+    - Flagged answers: grok-4.6 13 of 55, DeepSeek-V4-Pro 21, Mistral-Large-3
+      18. D-40's rates for the same three were 15%, 38% and 51% of
+      answers.
+    - 12 answers drawn per candidate, 134 flagged texts in all, and no packet
+      without its conversation.
+  - **First reading.** Real 37, stale 3, misread 6, false 22, unclear 1.
+    - By candidate: DeepSeek-V4-Pro 8 of 17 (47%), Mistral-Large-3 26 of 32
+      (81%), grok-4.6 6 of 20 (30%).
+    - 19 of the 36 answers have a real flag.
+  - **What changed from D-40.**
+    - Unclear fell from 17 of 118 to 1 of 69. Record 2 made nearly every
+      flag decidable.
+    - The checker's own errors are now most of what fails: 22 of 69 flags,
+      13 of them on grok's answers. They are fair conclusions it flags as
+      claims: a diagnosis from the record, a hedged coverage caveat, a
+      restatement of the user's premise.
+  - **A reader's slip, corrected.** One reader listed one flagged sentence
+    under two claims, both judged false. It is kept under the first only, so
+    each text has one verdict (noted in the file); `flag_tally.py` had
+    refused the reading until then.
+  - A blind second reading is under way.
