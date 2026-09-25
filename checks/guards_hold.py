@@ -7607,6 +7607,76 @@ check(_tf113 == "refused" and _cc113 == "refused" and _run113 == "refused",
 check(_stage113 == "refused" and not (_p113.answers.exists() and _p113.answers.read_text().strip()),
       f"and the attempt stage stops before a candidate is shown an empty conversation: {_stage113}")
 
+print("\n114. D-42's first criterion: every bar as registered, on both halves where there are two")
+# D-42 judges the repaired instrument on its own checks: the null answer and the
+# overclaim right on every task, the accurate summary and the inserted action on
+# 95%, the accepted answer's trace half on 90%, and all 23 probes on each of
+# three runs. A script that let one bar slip, or counted two runs as three,
+# would call the instrument repaired on checks it had not passed.
+_dc114 = _ilu56.module_from_spec(_ilu56.spec_from_file_location("_dc114", str(Path("scripts/d42_checks.py"))))
+_dc114.__spec__.loader.exec_module(_dc114)
+
+
+def _tests114(wrong=(), probe_runs=3, probe_miss=None, rules=4, drop_task=None, probe_drop=None):
+    """An astratests directory of 20 tasks, every check right except `wrong`: (control, task, half)."""
+    d = Path(tempfile.mkdtemp())
+    j = d / "rejudge" / "gpt-6-astra"
+    j.mkdir(parents=True)
+    tasks = [f"t-{i}" for i in range(20)]
+    (d / "tasks.jsonl").write_text("".join(json.dumps({"task_id": t}) + "\n" for t in tasks))
+    rows = {"controls.jsonl": [], "instrument.jsonl": []}
+    for t in tasks:
+        if t == drop_task:
+            continue
+        for c in ("null", "overclaim", "criterion", "summary", "inserted"):
+            r = {"task_id": t, "control": c, "applicable": True, "ok": True, "trace_ok": True, "trace_rules": rules}
+            for wc, wt, half in wrong:
+                if (wc, wt) == (c, t):
+                    r[half] = False
+            rows["instrument.jsonl" if c in ("summary", "inserted") else "controls.jsonl"].append(r)
+    for f, rs in rows.items():
+        (j / f).write_text("".join(json.dumps(r) + "\n" for r in rs))
+    (j / "probes.jsonl").write_text("".join(
+        json.dumps({"run": n, "judge_model": "gpt-6-astra", "trace_rules": rules, "probe": f"p{k}",
+                    "ok": (n, k) != probe_miss}) + "\n" for n in range(probe_runs) for k in range(23)
+        if (n, k) != probe_drop))
+    return d
+
+
+def _met114(d):
+    try:
+        return (_dc114.controls(d)[1], _dc114.probes(d / "rejudge" / "gpt-6-astra" / "probes.jsonl",
+                                                    "gpt-6-astra", rules=4)[1])
+    except (Exception, SystemExit) as _e:
+        return (f"{type(_e).__name__}: {_e}", None)
+
+
+_cases114 = [
+    ("every check right", _tests114(), (True, True)),
+    ("the overclaim's trace half wrong on one task", _tests114([("overclaim", "t-3", "trace_ok")]), (False, True)),
+    ("the null answer's judge half wrong on one task", _tests114([("null", "t-5", "ok")]), (False, True)),
+    ("the inserted action wrong on 1 of 20 (95%)", _tests114([("inserted", "t-1", "trace_ok")]), (True, True)),
+    ("the inserted action wrong on 2 of 20", _tests114([("inserted", "t-1", "ok"), ("inserted", "t-2", "trace_ok")]),
+     (False, True)),
+    ("the accepted answer's trace half wrong on 2 of 20 (90%)",
+     _tests114([("criterion", "t-1", "trace_ok"), ("criterion", "t-2", "trace_ok")]), (True, True)),
+    ("the accepted answer's trace half wrong on 3 of 20",
+     _tests114([("criterion", f"t-{i}", "trace_ok") for i in (1, 2, 3)]), (False, True)),
+    # Three of twenty: above the 90% bar on the trace half alone, below it on both halves.
+    ("the accepted answer's judge half wrong on 3 of 20, its trace half right",
+     _tests114([("criterion", f"t-{i}", "ok") for i in (4, 5, 6)]), (True, True)),
+    ("one probe not as expected on one run", _tests114(probe_miss=(2, 7)), (True, False)),
+    ("one probe missing from one run", _tests114(probe_drop=(1, 4)), (True, False)),
+    ("two runs of the probes, where three are asked for", _tests114(probe_runs=2), (True, False)),
+    ("probe runs under other rules", _tests114(rules=3), (True, False)),
+]
+for _name114, _d114, _want114 in _cases114:
+    _got114 = _met114(_d114)
+    check(_got114 == _want114, f"{_name114}: controls met, probes met = {_got114}, expected {_want114}")
+_lines114, _ = _dc114.controls(_tests114(drop_task="t-9"))
+check(any("tasks with no controls: ['t-9']" in _l for _l in _lines114),
+      f"a task with no controls is named, not passed over: {[_l for _l in _lines114 if 'no controls' in _l]}")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended

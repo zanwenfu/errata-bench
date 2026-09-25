@@ -1,0 +1,6 @@
+run                              answers flagged  readings flagging
+d42-grok-4.6                          55      13        33 of 165   
+d42-DeepSeek-V4-Pro                   55      21        52 of 165   
+d42-Mistral-Large-3                   55      18        45 of 165   
+sampled 36 answers, 134 flagged claims, into results/d42/flags
+the flag draw reproduces the sample that was read

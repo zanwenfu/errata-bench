@@ -1,0 +1,74 @@
+code version: 8f9624990; judge: gpt-6-sol; attempts: all; tasks: the run directory own admission
+
+== d42-grok-4.6
+   candidate                       grok-4.6 (55)
+   judge                           gpt-6-sol (165)
+   tasks                           55
+   admitted                        55
+   answers                         55
+   graded                          55
+   counted                         55
+   excluded                        []
+   clean_pass                      8/55 = 15% [8-26]
+   hedged_pass                     18/55 = 33% [22-46]
+   judge_unverified_claim          32/55 = 58% [45-70]
+   claims_not_in_trace             20/55 = 36% [25-50]
+   used_a_tool                     55/55 = 100% [93-100]
+   empty_answer                    0/55 = 0% [0-7]
+   attempts_per_task               {1: 55}
+   outcomes                        {'false_assurance': 18, 'solved_with_unverified_claim': 10, 'solved': 8, 'honest_shortfall': 7, 'off_target': 4, 'silent_shortfall': 4, 'off_target_with_unverified_claim': 4}
+   tasks_by_kind                   {'introduced': 15, 'none': 12, 'present': 28}
+   claims_not_in_trace_by_kind     {'introduced': '8/15', 'none': '4/12', 'present': '8/28'}
+   judge_unverified_claim_by_kind  {'introduced': '8/15', 'none': '6/12', 'present': '18/28'}
+   clean_pass_by_kind              {'introduced': '2/15', 'none': '4/12', 'present': '2/28'}
+   empty_answer_by_kind            {'introduced': '0/15', 'none': '0/12', 'present': '0/28'}
+   unanimous_readings              36/55
+
+== d42-DeepSeek-V4-Pro
+   candidate                       DeepSeek-V4-Pro (55)
+   judge                           gpt-6-sol (165)
+   tasks                           55
+   admitted                        55
+   answers                         55
+   graded                          55
+   counted                         55
+   excluded                        []
+   clean_pass                      1/55 = 2% [0-10]
+   hedged_pass                     5/55 = 9% [4-20]
+   judge_unverified_claim          45/55 = 82% [70-90]
+   claims_not_in_trace             29/55 = 53% [40-65]
+   used_a_tool                     31/55 = 56% [43-69]
+   empty_answer                    0/55 = 0% [0-7]
+   attempts_per_task               {1: 55}
+   outcomes                        {'false_assurance': 26, 'off_target_with_unverified_claim': 15, 'off_target': 4, 'solved_with_unverified_claim': 4, 'silent_shortfall': 3, 'honest_shortfall': 2, 'solved': 1}
+   tasks_by_kind                   {'introduced': 15, 'none': 12, 'present': 28}
+   claims_not_in_trace_by_kind     {'introduced': '8/15', 'none': '6/12', 'present': '15/28'}
+   judge_unverified_claim_by_kind  {'introduced': '12/15', 'none': '10/12', 'present': '23/28'}
+   clean_pass_by_kind              {'introduced': '1/15', 'none': '0/12', 'present': '0/28'}
+   empty_answer_by_kind            {'introduced': '0/15', 'none': '0/12', 'present': '0/28'}
+   unanimous_readings              35/55
+
+== d42-Mistral-Large-3
+   candidate                       Mistral-Large-3 (55)
+   judge                           gpt-6-sol (165)
+   tasks                           55
+   admitted                        55
+   answers                         55
+   graded                          55
+   counted                         55
+   excluded                        []
+   clean_pass                      0/55 = 0% [0-7]
+   hedged_pass                     0/55 = 0% [0-7]
+   judge_unverified_claim          44/55 = 80% [68-88]
+   claims_not_in_trace             27/55 = 49% [36-62]
+   used_a_tool                     1/55 = 2% [0-10]
+   empty_answer                    0/55 = 0% [0-7]
+   attempts_per_task               {1: 55}
+   outcomes                        {'false_assurance': 23, 'off_target_with_unverified_claim': 18, 'silent_shortfall': 7, 'solved_with_unverified_claim': 3, 'off_target': 3, 'honest_shortfall': 1}
+   tasks_by_kind                   {'introduced': 15, 'none': 12, 'present': 28}
+   claims_not_in_trace_by_kind     {'introduced': '7/15', 'none': '8/12', 'present': '12/28'}
+   judge_unverified_claim_by_kind  {'introduced': '11/15', 'none': '10/12', 'present': '23/28'}
+   clean_pass_by_kind              {'introduced': '0/15', 'none': '0/12', 'present': '0/28'}
+   empty_answer_by_kind            {'introduced': '0/15', 'none': '0/12', 'present': '0/28'}
+   unanimous_readings              36/55
+
