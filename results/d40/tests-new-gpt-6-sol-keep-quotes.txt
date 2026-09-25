@@ -1,0 +1,78 @@
+tasks restricted to results/d40-tasks-new.json (46 ids)
+judge: gpt-6-sol; attempts: all; tasks: the run directory own admission; answers left out only for a quote are COUNTED (sensitivity analysis, not registered)
+  d40-grok-4.6: 138 answers counted, 42 of them for a quote only, over 46 tasks; empty answers 0/138
+  d40-Kimi-K2.7-Code: 137 answers counted, 42 of them for a quote only, over 46 tasks; empty answers 0/137
+  d40-DeepSeek-V4-Pro: 138 answers counted, 31 of them for a quote only, over 46 tasks; empty answers 0/138
+  d40-DeepSeek-V4-Flash: 138 answers counted, 22 of them for a quote only, over 46 tasks; empty answers 0/138
+  d40-Mistral-Large-3: 138 answers counted, 30 of them for a quote only, over 46 tasks; empty answers 0/138
+  d40-MAI-Thinking-1: 138 answers counted, 34 of them for a quote only, over 46 tasks; empty answers 1/138
+
+PRIMARY  trace check: a claim the record does not support
+  d40-grok-4.6: mean per-task rate 0.312 over 46 tasks
+  d40-Kimi-K2.7-Code: mean per-task rate 0.409 over 46 tasks
+  d40-DeepSeek-V4-Pro: mean per-task rate 0.507 over 46 tasks
+  d40-DeepSeek-V4-Flash: mean per-task rate 0.514 over 46 tasks
+  d40-Mistral-Large-3: mean per-task rate 0.652 over 46 tasks
+  d40-MAI-Thinking-1: mean per-task rate 0.587 over 46 tasks
+  d40-grok-4.6 - d40-Kimi-K2.7-Code: 46 tasks, mean difference -0.098 [-0.207, +0.011] by task, [-0.247, -0.014] by repository, sign-flip p 0.0983, Holm 0.5898; any-attempt 2 to 14, p 0.004
+  d40-grok-4.6 - d40-DeepSeek-V4-Pro: 46 tasks, mean difference -0.196 [-0.312, -0.080] by task, [-0.307, -0.130] by repository, sign-flip p 0.0042, Holm 0.0457; any-attempt 4 to 17, p 0.007
+  d40-grok-4.6 - d40-DeepSeek-V4-Flash: 46 tasks, mean difference -0.203 [-0.297, -0.109] by task, [-0.333, -0.140] by repository, sign-flip p 0.0002, Holm 0.0032; any-attempt 1 to 20, p 0.000
+  d40-grok-4.6 - d40-Mistral-Large-3: 46 tasks, mean difference -0.341 [-0.471, -0.203] by task, [-0.484, -0.262] by repository, sign-flip p 0.0000, Holm 0.0004; any-attempt 3 to 18, p 0.001
+  d40-grok-4.6 - d40-MAI-Thinking-1: 46 tasks, mean difference -0.275 [-0.413, -0.130] by task, [-0.452, -0.170] by repository, sign-flip p 0.0008, Holm 0.0092; any-attempt 4 to 16, p 0.012
+  d40-Kimi-K2.7-Code - d40-DeepSeek-V4-Pro: 46 tasks, mean difference -0.098 [-0.207, +0.011] by task, [-0.192, +0.043] by repository, sign-flip p 0.1038, Holm 0.5898; any-attempt 6 to 7, p 1.000
+  d40-Kimi-K2.7-Code - d40-DeepSeek-V4-Flash: 46 tasks, mean difference -0.105 [-0.203, -0.007] by task, [-0.190, +0.004] by repository, sign-flip p 0.0436, Holm 0.3081; any-attempt 1 to 8, p 0.039
+  d40-Kimi-K2.7-Code - d40-Mistral-Large-3: 46 tasks, mean difference -0.243 [-0.362, -0.123] by task, [-0.324, -0.143] by repository, sign-flip p 0.0004, Holm 0.0056; any-attempt 4 to 7, p 0.549
+  d40-Kimi-K2.7-Code - d40-MAI-Thinking-1: 46 tasks, mean difference -0.178 [-0.293, -0.065] by task, [-0.303, -0.026] by repository, sign-flip p 0.0065, Holm 0.0646; any-attempt 6 to 6, p 1.000
+  d40-DeepSeek-V4-Pro - d40-DeepSeek-V4-Flash: 46 tasks, mean difference -0.007 [-0.123, +0.109] by task, [-0.118, +0.070] by repository, sign-flip p 1.0000, Holm 1.0000; any-attempt 5 to 11, p 0.210
+  d40-DeepSeek-V4-Pro - d40-Mistral-Large-3: 46 tasks, mean difference -0.145 [-0.246, -0.043] by task, [-0.284, -0.046] by repository, sign-flip p 0.0106, Holm 0.0952; any-attempt 3 to 5, p 0.727
+  d40-DeepSeek-V4-Pro - d40-MAI-Thinking-1: 46 tasks, mean difference -0.080 [-0.181, +0.022] by task, [-0.206, +0.005] by repository, sign-flip p 0.1720, Holm 0.6878; any-attempt 5 to 4, p 1.000
+  d40-DeepSeek-V4-Flash - d40-Mistral-Large-3: 46 tasks, mean difference -0.138 [-0.254, -0.014] by task, [-0.211, -0.077] by repository, sign-flip p 0.0385, Holm 0.3081; any-attempt 7 to 3, p 0.344
+  d40-DeepSeek-V4-Flash - d40-MAI-Thinking-1: 46 tasks, mean difference -0.072 [-0.188, +0.043] by task, [-0.190, +0.035] by repository, sign-flip p 0.2921, Holm 0.8763; any-attempt 10 to 3, p 0.092
+  d40-Mistral-Large-3 - d40-MAI-Thinking-1: 46 tasks, mean difference +0.065 [-0.043, +0.174] by task, [-0.042, +0.185] by repository, sign-flip p 0.3107, Holm 0.8763; any-attempt 8 to 5, p 0.581
+
+judge: makes an unverified claim
+  d40-grok-4.6: mean per-task rate 0.449 over 46 tasks
+  d40-Kimi-K2.7-Code: mean per-task rate 0.627 over 46 tasks
+  d40-DeepSeek-V4-Pro: mean per-task rate 0.790 over 46 tasks
+  d40-DeepSeek-V4-Flash: mean per-task rate 0.775 over 46 tasks
+  d40-Mistral-Large-3: mean per-task rate 0.848 over 46 tasks
+  d40-MAI-Thinking-1: mean per-task rate 0.848 over 46 tasks
+  d40-grok-4.6 - d40-Kimi-K2.7-Code: 46 tasks, mean difference -0.178 [-0.283, -0.072] by task, [-0.311, -0.090] by repository, sign-flip p 0.0023, Holm 0.0205; any-attempt 4 to 13, p 0.049
+  d40-grok-4.6 - d40-DeepSeek-V4-Pro: 46 tasks, mean difference -0.341 [-0.471, -0.203] by task, [-0.560, -0.210] by repository, sign-flip p 0.0000, Holm 0.0003; any-attempt 4 to 14, p 0.031
+  d40-grok-4.6 - d40-DeepSeek-V4-Flash: 46 tasks, mean difference -0.326 [-0.442, -0.210] by task, [-0.570, -0.176] by repository, sign-flip p 0.0000, Holm 0.0000; any-attempt 2 to 14, p 0.004
+  d40-grok-4.6 - d40-Mistral-Large-3: 46 tasks, mean difference -0.399 [-0.514, -0.283] by task, [-0.602, -0.282] by repository, sign-flip p 0.0000, Holm 0.0000; any-attempt 0 to 13, p 0.000
+  d40-grok-4.6 - d40-MAI-Thinking-1: 46 tasks, mean difference -0.399 [-0.522, -0.275] by task, [-0.604, -0.276] by repository, sign-flip p 0.0000, Holm 0.0000; any-attempt 3 to 14, p 0.013
+  d40-Kimi-K2.7-Code - d40-DeepSeek-V4-Pro: 46 tasks, mean difference -0.163 [-0.268, -0.058] by task, [-0.305, -0.076] by repository, sign-flip p 0.0057, Holm 0.0454; any-attempt 3 to 4, p 1.000
+  d40-Kimi-K2.7-Code - d40-DeepSeek-V4-Flash: 46 tasks, mean difference -0.149 [-0.243, -0.051] by task, [-0.314, -0.045] by repository, sign-flip p 0.0057, Holm 0.0454; any-attempt 0 to 3, p 0.250
+  d40-Kimi-K2.7-Code - d40-Mistral-Large-3: 46 tasks, mean difference -0.221 [-0.312, -0.134] by task, [-0.354, -0.146] by repository, sign-flip p 0.0000, Holm 0.0001; any-attempt 0 to 4, p 0.125
+  d40-Kimi-K2.7-Code - d40-MAI-Thinking-1: 46 tasks, mean difference -0.221 [-0.319, -0.127] by task, [-0.348, -0.140] by repository, sign-flip p 0.0001, Holm 0.0009; any-attempt 1 to 3, p 0.625
+  d40-DeepSeek-V4-Pro - d40-DeepSeek-V4-Flash: 46 tasks, mean difference +0.014 [-0.094, +0.123] by task, [-0.125, +0.096] by repository, sign-flip p 0.8975, Holm 1.0000; any-attempt 1 to 3, p 0.625
+  d40-DeepSeek-V4-Pro - d40-Mistral-Large-3: 46 tasks, mean difference -0.058 [-0.130, +0.014] by task, [-0.161, +0.016] by repository, sign-flip p 0.1890, Holm 0.9448; any-attempt 1 to 4, p 0.375
+  d40-DeepSeek-V4-Pro - d40-MAI-Thinking-1: 46 tasks, mean difference -0.058 [-0.152, +0.036] by task, [-0.147, +0.024] by repository, sign-flip p 0.3104, Holm 0.9448; any-attempt 1 to 2, p 1.000
+  d40-DeepSeek-V4-Flash - d40-Mistral-Large-3: 46 tasks, mean difference -0.072 [-0.174, +0.029] by task, [-0.154, +0.035] by repository, sign-flip p 0.2059, Holm 0.9448; any-attempt 1 to 2, p 1.000
+  d40-DeepSeek-V4-Flash - d40-MAI-Thinking-1: 46 tasks, mean difference -0.072 [-0.152, +0.014] by task, [-0.133, +0.031] by repository, sign-flip p 0.1456, Holm 0.8733; any-attempt 2 to 1, p 1.000
+  d40-Mistral-Large-3 - d40-MAI-Thinking-1: 46 tasks, mean difference +0.000 [-0.080, +0.072] by task, [-0.061, +0.069] by repository, sign-flip p 1.0000, Holm 1.0000; any-attempt 3 to 1, p 0.625
+
+clean pass
+  d40-grok-4.6: mean per-task rate 0.123 over 46 tasks
+  d40-Kimi-K2.7-Code: mean per-task rate 0.087 over 46 tasks
+  d40-DeepSeek-V4-Pro: mean per-task rate 0.036 over 46 tasks
+  d40-DeepSeek-V4-Flash: mean per-task rate 0.036 over 46 tasks
+  d40-Mistral-Large-3: mean per-task rate 0.000 over 46 tasks
+  d40-MAI-Thinking-1: mean per-task rate 0.000 over 46 tasks
+  d40-grok-4.6 - d40-Kimi-K2.7-Code: 46 tasks, mean difference +0.036 [+0.000, +0.072] by task, [+0.000, +0.059] by repository, sign-flip p 0.1250, Holm 0.6250; any-attempt 3 to 0, p 0.250
+  d40-grok-4.6 - d40-DeepSeek-V4-Pro: 46 tasks, mean difference +0.087 [+0.029, +0.159] by task, [+0.038, +0.140] by repository, sign-flip p 0.0176, Holm 0.2031; any-attempt 6 to 1, p 0.125
+  d40-grok-4.6 - d40-DeepSeek-V4-Flash: 46 tasks, mean difference +0.087 [+0.022, +0.159] by task, [+0.040, +0.167] by repository, sign-flip p 0.0234, Holm 0.2344; any-attempt 6 to 1, p 0.125
+  d40-grok-4.6 - d40-Mistral-Large-3: 46 tasks, mean difference +0.123 [+0.051, +0.203] by task, [+0.072, +0.198] by repository, sign-flip p 0.0020, Holm 0.0293; any-attempt 10 to 0, p 0.002
+  d40-grok-4.6 - d40-MAI-Thinking-1: 46 tasks, mean difference +0.123 [+0.051, +0.203] by task, [+0.072, +0.198] by repository, sign-flip p 0.0020, Holm 0.0293; any-attempt 10 to 0, p 0.002
+  d40-Kimi-K2.7-Code - d40-DeepSeek-V4-Pro: 46 tasks, mean difference +0.051 [+0.000, +0.109] by task, [+0.000, +0.117] by repository, sign-flip p 0.1484, Holm 0.6250; any-attempt 4 to 2, p 0.688
+  d40-Kimi-K2.7-Code - d40-DeepSeek-V4-Flash: 46 tasks, mean difference +0.051 [+0.000, +0.109] by task, [+0.004, +0.141] by repository, sign-flip p 0.1484, Holm 0.6250; any-attempt 4 to 2, p 0.688
+  d40-Kimi-K2.7-Code - d40-Mistral-Large-3: 46 tasks, mean difference +0.087 [+0.029, +0.159] by task, [+0.038, +0.179] by repository, sign-flip p 0.0156, Holm 0.2031; any-attempt 7 to 0, p 0.016
+  d40-Kimi-K2.7-Code - d40-MAI-Thinking-1: 46 tasks, mean difference +0.087 [+0.029, +0.159] by task, [+0.038, +0.179] by repository, sign-flip p 0.0156, Holm 0.2031; any-attempt 7 to 0, p 0.016
+  d40-DeepSeek-V4-Pro - d40-DeepSeek-V4-Flash: 46 tasks, mean difference +0.000 [-0.036, +0.036] by task, [-0.031, +0.062] by repository, sign-flip p 1.0000, Holm 1.0000; any-attempt 3 to 3, p 1.000
+  d40-DeepSeek-V4-Pro - d40-Mistral-Large-3: 46 tasks, mean difference +0.036 [+0.007, +0.065] by task, [+0.006, +0.092] by repository, sign-flip p 0.0625, Holm 0.5625; any-attempt 5 to 0, p 0.062
+  d40-DeepSeek-V4-Pro - d40-MAI-Thinking-1: 46 tasks, mean difference +0.036 [+0.007, +0.065] by task, [+0.006, +0.092] by repository, sign-flip p 0.0625, Holm 0.5625; any-attempt 5 to 0, p 0.062
+  d40-DeepSeek-V4-Flash - d40-Mistral-Large-3: 46 tasks, mean difference +0.036 [+0.007, +0.065] by task, [+0.011, +0.057] by repository, sign-flip p 0.0625, Holm 0.5625; any-attempt 5 to 0, p 0.062
+  d40-DeepSeek-V4-Flash - d40-MAI-Thinking-1: 46 tasks, mean difference +0.036 [+0.007, +0.065] by task, [+0.011, +0.057] by repository, sign-flip p 0.0625, Holm 0.5625; any-attempt 5 to 0, p 0.062
+  d40-Mistral-Large-3 - d40-MAI-Thinking-1: 46 tasks, mean difference +0.000 [+0.000, +0.000] by task, [+0.000, +0.000] by repository, sign-flip p 1.0000, Holm 1.0000; any-attempt 0 to 0, p 1.000
+

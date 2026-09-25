@@ -1,0 +1,8 @@
+run                              answers flagged  readings flagging
+d40-grok-4.6                         165      25        69 of 495   
+d40-Kimi-K2.7-Code                   164      41       107 of 492   
+d40-DeepSeek-V4-Pro                  165      62       154 of 495   
+d40-DeepSeek-V4-Flash                165      53       142 of 495   
+d40-Mistral-Large-3                  165      84       231 of 495   
+d40-MAI-Thinking-1                   164      67       186 of 492   
+sampled 72 answers, 306 flagged claims, into results/d40/flags
