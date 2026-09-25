@@ -89,6 +89,8 @@ trace_mod.check = fake_check
 # the stand-in in place, 63's "the cut stops before the complaint" held of the
 # string "conversation for t63" and tested nothing.
 REAL_TRANSCRIPT_FOR = attempt_mod.transcript_for
+REAL_TRANSCRIPTS_FOR = attempt_mod.transcripts_for   # kept: section 113 reads it without a corpus
+REAL_CONTROL_CONVERSATIONS_FOR = attempt_mod.control_conversations_for   # and this
 attempt_mod.transcript_for = lambda task, turns: f"conversation for {task.task_id}"
 attempt_mod.transcripts_for = no_corpus
 # The served-model probe makes a network call (D-36 A6). No section here may,
@@ -113,7 +115,10 @@ container_mod.max_containers = lambda: 2
 REAL_LOAD_REPOS = corpus.load_repos      # kept: section 38 reads a corpus written for it
 corpus.load_repos = lambda: {}
 REAL_LOAD_SESSION_TURNS = turns_mod.load_session_turns   # kept: section 91 reads a corpus written for it
-turns_mod.load_session_turns = lambda ids: {}
+# One stand-in turn per session asked for: a session the corpus lacks is refused
+# since B-263, and no section here means to test that except section 113.
+turns_mod.load_session_turns = lambda ids: {i: [{"turn_number": 0, "turn_type": "user_prompt",
+                                                  "content": "a stand-in turn"}] for i in ids}
 
 
 def make_task(tid, defect="a defect"):
@@ -7500,6 +7505,59 @@ _want112 = 2 * _sp112.TEST_ROW_USD["controls"] + 23 * _sp112.TEST_ROW_USD["probe
 check(f"its tests ~${_want112:.2f}" in _s112.getvalue(),
       f"a judge's tests are priced where they were asked, any judge, and never where they were copied to: "
       f"{_s112.getvalue().strip()[-60:]}")
+
+print("\n113. a task whose session the corpus lacks is refused, not shown an empty conversation")
+# B-263. On 09-25 grok's D-40 flag packets were drawn in a worktree whose corpus
+# was an older subset. For 9 of 12 answers the session was not in it, and each
+# packet was written with an empty conversation -- no error anywhere -- and read
+# by two readers before anyone noticed. The same path renders what a candidate
+# is shown and what grading reads when no transcript is stored.
+_SNC113 = attempt_mod.SessionNotInCorpus
+_t113 = make_task("task-113")
+_one113 = [{"turn_number": 0, "turn_type": "user_prompt", "content": "hi"}]
+check(attempt_mod.turns_of({_t113.session_id: _one113}, _t113) == _one113,
+      "a session the corpus holds gives its turns")
+_why113 = []
+for _load113 in ({}, {_t113.session_id: []}):
+    try:
+        attempt_mod.turns_of(_load113, _t113)
+        _why113.append("returned")
+    except _SNC113 as _e:
+        _why113.append(str(_e))
+check(len(_why113) == 2 and all(_t113.session_id in w and "task-113" in w for w in _why113),
+      f"one missing, or present with no turns, is refused by name: {_why113[0][:90]}")
+
+
+def _outcome113(fn):
+    try:
+        fn()
+        return "ran"
+    except _SNC113:
+        return "refused"
+    except Exception as _e:
+        return f"{type(_e).__name__}: {_e}"
+
+
+_saved113 = turns_mod.load_session_turns
+turns_mod.load_session_turns = lambda ids: {}
+try:
+    _tf113 = _outcome113(lambda: REAL_TRANSCRIPTS_FOR([_t113]))
+    _cc113 = _outcome113(lambda: REAL_CONTROL_CONVERSATIONS_FOR([_t113]))
+    _cfg113 = attempt_mod.configure_client
+    attempt_mod.configure_client = lambda: None
+    try:
+        _run113 = _outcome113(lambda: asyncio.run(REAL_RUN(_t113, image="node:22", turns=None, budget_s=1)))
+    finally:
+        attempt_mod.configure_client = _cfg113
+    _p113 = fresh(["task-0"])
+    _stage113 = _outcome113(lambda: asyncio.run(stage_attempt(_p113, 10**9, concurrency=2, repeats=1)))
+finally:
+    turns_mod.load_session_turns = _saved113
+check(_tf113 == "refused" and _cc113 == "refused" and _run113 == "refused",
+      f"the transcripts that grading and the flag sample rebuild, the controls' conversations, and an attempt "
+      f"that loads its own turns are refused, not rendered empty: {_tf113}, {_cc113}, {_run113}")
+check(_stage113 == "refused" and not (_p113.answers.exists() and _p113.answers.read_text().strip()),
+      f"and the attempt stage stops before a candidate is shown an empty conversation: {_stage113}")
 
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every

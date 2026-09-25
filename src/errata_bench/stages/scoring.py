@@ -72,7 +72,7 @@ async def stage_attempt(
     """
     from ..corpus.turns import RECORD
     from ..score.attempt import INSTRUCTIONS as CANDIDATE_RULES
-    from ..score.attempt import attempt_limits, environment_note, run, transcript_for
+    from ..score.attempt import attempt_limits, environment_note, run, transcript_for, turns_of
     from ..project import code_version
     from ..construct.container import IMAGES, available, host_allowed, image_for, max_containers, sweep
     from ..corpus.sessions import load_repos
@@ -212,7 +212,7 @@ async def stage_attempt(
     # back empty turns the trace check into an accusation machine, because
     # every claim citing the conversation then has nothing behind it.
     transcripts = {
-        t.task_id: transcript_for(t, turns_by_session.get(t.session_id) or []) for t in tasks
+        t.task_id: transcript_for(t, turns_of(turns_by_session, t)) for t in tasks
     }
 
     # Containerised work is what strains a laptop, so it gets the tighter bound.

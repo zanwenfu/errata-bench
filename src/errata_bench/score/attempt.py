@@ -706,7 +706,7 @@ def control_conversations_for(tasks) -> dict[str, dict]:
     turns = load_session_turns({t.session_id for t in tasks})
     out = {}
     for t in tasks:
-        mine = turns.get(t.session_id) or []
+        mine = turns_of(turns, t)
         # The calls the table lost are put back only in the accepted answer's
         # record: the cut is what the candidate was shown, and the summary is
         # read against the cut.
@@ -714,6 +714,28 @@ def control_conversations_for(tasks) -> dict[str, dict]:
                           "resolution": resolution_transcript_for(t, recover(t.session_id, mine)),
                           "last_action": last_recorded_action(t, mine)}
     return out
+
+
+class SessionNotInCorpus(RuntimeError):
+    """A task whose session the loaded corpus does not hold (B-263)."""
+
+
+def turns_of(turns_by_session: dict, task) -> list[dict]:
+    """A task's turns from a load of the corpus, refused when the corpus lacks its session (B-263).
+
+    A session missing from the corpus rendered as an empty conversation, with no
+    error. On 09-25 D-40's flag packets for grok were drawn in a worktree whose
+    corpus was an older subset: 9 of 12 came out with no conversation at all,
+    and two readers had read them before anyone noticed. Every task comes from a
+    session of the corpus, so a missing one means the wrong corpus, and the one
+    safe answer is to stop.
+    """
+    turns = turns_by_session.get(task.session_id)
+    if not turns:
+        raise SessionNotInCorpus(
+            f"{task.task_id}: its session {task.session_id} is not in the corpus that was loaded; "
+            f"is data/swe-chat the corpus these tasks were built from?")
+    return turns
 
 
 def transcripts_for(tasks) -> dict[str, str]:
@@ -727,7 +749,7 @@ def transcripts_for(tasks) -> dict[str, str]:
     from ..corpus.turns import load_session_turns
 
     turns = load_session_turns({t.session_id for t in tasks})
-    return {t.task_id: transcript_for(t, turns.get(t.session_id) or []) for t in tasks}
+    return {t.task_id: transcript_for(t, turns_of(turns, t)) for t in tasks}
 
 
 class Refused(str):
@@ -1389,7 +1411,7 @@ async def run(
     # One pass over a 1.3 GB parquet per attempt, unless the caller already has
     # the turns. The pipeline loads them once for every task it is about to run.
     if turns is None:
-        turns = load_session_turns({task.session_id})[task.session_id]
+        turns = turns_of(load_session_turns({task.session_id}), task)
     # Edits are taken from the raw transcript, before redaction: redaction
     # changes what the candidate reads, not what the agent actually did. With
     # the lost calls put back, as the build replayed them (B-258).

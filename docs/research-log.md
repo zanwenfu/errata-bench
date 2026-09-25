@@ -7159,3 +7159,31 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
       candidates read so far.
     - Its 12 flag packets were drawn at tag `d40-analysis`, and the first
       reading is under way.
+- **09-25, 07:0x UTC** — **B-263 fixed: a task whose session the corpus
+  lacked was shown an empty conversation, with no error.**
+  - **Found.** grok's D-40 flag packets were drawn at 06:36 in the analysis
+    worktree (`/root/errata-bench-rejudge`, tag `d40-analysis`). Its
+    `data/swe-chat` linked to an older corpus subset built for the first grid.
+    - 9 of the 12 packets came out with no conversation. The 3 first-grid tasks
+      had theirs.
+    - Two readers read them before one reported the conversation empty. Their
+      verdicts are void and are not kept.
+  - **Redrawn** with the worktree pointed at D-40's corpus: the same 12
+    answers. Each conversation is byte for byte the transcript stored on its
+    answer row. One seemed to differ until it was read without newline
+    translation: it holds 22 carriage returns.
+  - **Cause.** `load_session_turns` gives an empty list for a session not in
+    the corpus, and every caller rendered that as an empty conversation.
+  - **Fix.** `attempt.turns_of` refuses such a session and names the task.
+    Five paths use it:
+    - the attempt stage;
+    - one attempt that loads its own turns;
+    - the transcripts that grading and the flag sample rebuild;
+    - the controls' conversations.
+
+    The flag sample on main reads the stored conversation anyway (D-41.1).
+  - **Checked on the VPS:** no answer in D-40's six runs (924 so far) or in
+    D-42's is without its conversation. Every D-40 and D-42 worktree reads
+    D-40's corpus.
+  - **Guard:** section 113, five pieces broken alone, each red. The suite's
+    stand-in corpus now gives one turn per session.
