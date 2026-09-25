@@ -7140,3 +7140,22 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - Guard: section 111. Nine pieces broken alone, each red. Two first failed
     to go red, one by crashing and one because the test's true value sat in
     the first reading; both checks were tightened.
+- **09-25, 06:4x UTC** — **D-42's smoke pass was clean, and the full run has
+  started** (06:40 UTC, `/root/errata-bench-d42` at f6794d1).
+  - **The smoke:** 2 tasks × 3 candidates, one attempt each, both judges.
+    - Every answer was written at f6794d1 under record 2. entireio-cli-105's
+      conversation showed 5 edits, 11 search patterns and 10 marked cuts.
+    - Every reading (18 by gpt-6-astra, 6 by gpt-6-sol) was taken under trace
+      rules 4 and judge rules 2, and its quote was found. `record cut` was
+      used.
+    - gpt-6-astra read 23 of 23 probes as expected on each of three runs. The
+      controls and instrument checks came out as expected on both tasks.
+    - grok's attempt at Nagi-ovo-gemini-voyager-13 ran to the turn limit
+      (117 calls), and its forced report went through: the filter now
+      annotates rather than blocks.
+    - Spend (upper bound): $16.84.
+  - **D-40:** gpt-6-astra finished grading grok-4.6 at 06:34.
+    - 25 of its 165 answers are flagged, 15%, the fewest of the five
+      candidates read so far.
+    - Its 12 flag packets were drawn at tag `d40-analysis`, and the first
+      reading is under way.
