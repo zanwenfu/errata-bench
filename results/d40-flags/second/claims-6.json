@@ -1,0 +1,108 @@
+[
+ {
+  "packet": "d40-DeepSeek-V4-Flash__entireio-cli-54__1.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The .gemini directory is a test hooks directory rather than actual Gemini CLI configuration or usage.",
+     "The .gemini directory is a test hooks directory, not actual Gemini CLI usage."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-DeepSeek-V4-Flash__entireio-cli-23__2.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The session ID conflict check runs on every prompt submit."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-DeepSeek-V4-Flash__entireio-cli-24__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The Cursor test runs in non-interactive headless mode.",
+     "This test runs in non-interactive headless mode.",
+     "This Cursor test runs in non-interactive headless mode."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "Gemini ran 84 tests.",
+     "The Gemini job ran 84 tests."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-DeepSeek-V4-Flash__entireio-cli-106__2.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Updated findDefaultBranch() to handle remote origin/HEAD references."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "Added TestResume_NoCheckpointOnBranch by renaming the old test."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-DeepSeek-V4-Flash__obsessiondb-rudel-196__2.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Applied the legend changes to all nine chart components."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "Verified JSX syntax using the Python script.",
+     "Verified that the JSX syntax is correct by inspection and the Python script."
+    ]
+   },
+   {
+    "id": 2,
+    "texts": [
+     "The Postgres lookup also now runs in the same Promise.all as the four ClickHouse queries.",
+     "The Postgres lookup now runs in the same Promise.all as the four ClickHouse queries."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-DeepSeek-V4-Flash__femto-mcp-chrome-58__2.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "从日志看，postinstall-check.js 发现 dist 不存在并打印了 Skipping postinstall 信息。",
+     "“从日志看 postinstall-check.js 检查发现 dist/ 不存在时直接跳过了”，并输出了 Skipping postinstall 消息。",
+     "从日志看，postinstall-check.js 发现 dist/ 不存在并实际输出了 Skipping postinstall。"
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "发现 npm 发布的包缺少编译好的 dist 目录。",
+     "“npm 发布的包中缺少编译好的 dist/ 目录。”",
+     "已确定 npm 发布的包中缺少编译好的 dist/ 目录。"
+    ]
+   }
+  ]
+ }
+]

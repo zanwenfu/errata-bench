@@ -60,7 +60,11 @@ def load_readings(where: Path) -> dict[str, list[dict]]:
     """Every packet's claims in a reading, from all its JSON files; a packet read twice is refused."""
     out: dict[str, list[dict]] = {}
     for f in sorted(where.glob("*.json")):
-        for p in json.loads(f.read_text()):
+        packets = json.loads(f.read_text())
+        if not (isinstance(packets, list)
+                and all(isinstance(p, dict) and "packet" in p and isinstance(p.get("claims"), list) for p in packets)):
+            raise SystemExit(f"{f}: not a reading (a list of {{packet, claims}})")
+        for p in packets:
             if p["packet"] in out:
                 raise SystemExit(f"{f}: {p['packet']} is read twice in {where}")
             out[p["packet"]] = p["claims"]

@@ -7093,7 +7093,7 @@ def _tally107(*argv, sample="sample.json"):
     try:
         with _ctx60.redirect_stdout(out), _ctx60.redirect_stderr(err):
             code = _ft107.main([str(_d107 / sample), *map(str, argv)])
-    except Exception as e:
+    except (Exception, SystemExit) as e:
         code = f"raised {type(e).__name__}: {e}"
     return code, out.getvalue() or "(no output)", err.getvalue() or "(nothing on stderr)"
 
@@ -7128,6 +7128,11 @@ check(_c107 == 2 and "a verdict for a text not flagged" in _e107,
       "and a verdict for a claim the checker never flagged")
 _c107, _, _e107 = _tally107(_first107(_all107[:39] + ["mostly real"]))
 check(_c107 == 2 and "'mostly real'" in _e107, "and a verdict the rubric has no name for")
+_stray107 = _first107(_all107)
+(_stray107 / "notes.json").write_text(json.dumps({"read by": "someone"}))
+_c107, _, _e107 = _tally107(_stray107)
+check(isinstance(_c107, str) and "not a reading" in _c107,
+      f"and a file among the readings that is not one is named, not crashed on: {str(_c107)[:90]}")
 (_d107 / "two.json").write_text(json.dumps([{"run": "d40-M", "task_id": "t-1", "attempt": 0, "claims": _texts107},
                                             {"run": "d40-M", "task_id": "t-2", "attempt": 1, "claims": {}}]))
 _c107, _, _e107 = _tally107(_first107(_all107), sample="two.json")

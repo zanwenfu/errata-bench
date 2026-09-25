@@ -1,0 +1,99 @@
+[
+ {
+  "packet": "d40-DeepSeek-V4-Flash__oozoofrog-oozoofrog.github.io-108__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "두 내부 링크가 모두 정상 동작하는 것을 확인했다.",
+     "Confirmed that both internal links work normally."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-DeepSeek-V4-Flash__yorrick-claude-code-plugins-144__2.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The elapsed-time format produces values such as 0m05s.",
+     "Elapsed-time formatting produces values such as 0m05s, including in '[workflow] Starting: node_name (0m05s)'.",
+     "Elapsed-time output includes the example 0m05s."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "When callbacks are registered, default logging is suppressed and the caller owns observability."
+    ]
+   },
+   {
+    "id": 2,
+    "texts": [
+     "The implementation has zero overhead when callbacks are registered."
+    ]
+   },
+   {
+    "id": 3,
+    "texts": [
+     "Added _has_callbacks(), which checks if any observability callbacks are registered."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-DeepSeek-V4-Flash__anchoo2kewl-SprintSpark-157__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Production deployment is complete: deployed via Travis CI.",
+     "Deployments are complete: staging is deployed and production is deployed via Travis CI.",
+     "Production deployment via Travis CI is complete."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "The health check caught old traffic before the new pods rolled out.",
+     "The old production version means the health check caught old traffic before the new pods rolled out.",
+     "The old version means the health check caught old traffic before the new pods rolled out."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-DeepSeek-V4-Flash__entireio-cli-105__1.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The #nosec G204 suppression in FetchMetadataBranch was already present from the existing pattern."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-DeepSeek-V4-Flash__Nagi-ovo-gemini-voyager-195__1.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The timeline width syncs with the popup."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-DeepSeek-V4-Flash__obsessiondb-rudel-317__2.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Email/password auth works right now."
+    ]
+   }
+  ]
+ }
+]
