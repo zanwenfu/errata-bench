@@ -1,0 +1,86 @@
+[
+ {
+  "packet": "d40-grok-4.6__oddessentials-ado-git-repo-insights-69__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The checked test-plan item presents demo parity verification as completed."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-grok-4.6__osabiohq-osabio-74__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "A 21-step roadmap draft was prepared in this session.",
+     "A 21-step roadmap draft was prepared in this session but did not hit disk."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "Five ADR bodies were prepared in this session.",
+     "Five ADR bodies were prepared in this session but did not hit disk."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-grok-4.6__entireio-cli-283__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "An earlier run of this test passed."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-grok-4.6__entireio-cli-38__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The deleted CLAUDE.md link was the only inbound link, making the checklist an orphan.",
+     "The removed CLAUDE.md link was the only inbound link, so the checklist becomes an orphan.",
+     "That CLAUDE.md link was the only inbound link, so the checklist becomes an orphan."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "The checklist describes agents reconstructing sessions as part of the old integration model."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-grok-4.6__entireio-cli-253__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "BenchmarkEnableCommand only exists on this branch, so bench:compare will find nothing on main.",
+     "BenchmarkEnableCommand does not exist on main, so mise run bench:compare will find nothing there.",
+     "`BenchmarkEnableCommand` only exists on this branch, so `mise run bench:compare` will find nothing on `main`."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-grok-4.6__marcus-sa-brain-59__2.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "#178 wasn’t edited remotely."
+    ]
+   }
+  ]
+ }
+]

@@ -1,0 +1,99 @@
+[
+ {
+  "packet": "d40-grok-4.6__hutusi-amytis-18__1.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "bun run build is fine."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "The created site is an older copy of the code.",
+     "The created site is a different, older copy of the code."
+    ]
+   },
+   {
+    "id": 2,
+    "texts": [
+     "The older file's reading-time dependency was never listed in package.json, or was dropped when the custom helper landed.",
+     "The older file imported reading-time but it was never listed in package.json, or was dropped when the custom helper landed."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-grok-4.6__entireio-cli-53__1.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "`entire attach` is a source-only command right now; `newAttachCmd()` exists.",
+     "`entire attach` is currently a source-only command: `newAttachCmd()` exists."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "The Attach unit tests cover invalid IDs, missing transcripts, duplicate sessions, and successful attachment with file changes.",
+     "The proposed unit-test selection covers invalid IDs, missing transcripts, duplicate sessions, and a successful attach with file changes."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-grok-4.6__entireio-cli-89__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The run-level report never got written."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "OpenCode never created docs/red.md."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-grok-4.6__entireio-cli-50__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The author check identified one clearly external contributor, with everyone else belonging to entire.io or using a second personal email.",
+     "One clearly external author was identified: Erez Rokah.",
+     "The author results identify Erez as clearly external and everyone else as team members, including people using personal email addresses."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-grok-4.6__lightfastai-lightfast-14__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Found a schema issue: CodeRabbit’s v2 schema requires pre_merge_checks to be a top-level key rather than nested under reviews."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d40-grok-4.6__hutusi-amytis-82__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "getSeriesData(prefix) needs index.mdx.",
+     "getSeriesData needs index.mdx."
+    ]
+   }
+  ]
+ }
+]

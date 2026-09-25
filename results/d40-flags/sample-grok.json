@@ -1,0 +1,378 @@
+[
+ {
+  "run": "d40-grok-4.6",
+  "task_id": "hutusi-amytis-82",
+  "attempt": 0,
+  "claims": {
+   "getSeriesData(prefix) needs index.mdx.": [
+    {
+     "pass": 1,
+     "source": "none",
+     "problem": "record says otherwise"
+    }
+   ],
+   "getSeriesData needs index.mdx.": [
+    {
+     "pass": 2,
+     "source": "none",
+     "problem": "record says otherwise"
+    }
+   ]
+  }
+ },
+ {
+  "run": "d40-grok-4.6",
+  "task_id": "lightfastai-lightfast-14",
+  "attempt": 0,
+  "claims": {
+   "Found a schema issue: CodeRabbit’s v2 schema requires pre_merge_checks to be a top-level key rather than nested under reviews.": [
+    {
+     "pass": 0,
+     "source": "none",
+     "problem": "never happened"
+    },
+    {
+     "pass": 1,
+     "source": "none",
+     "problem": "never happened"
+    },
+    {
+     "pass": 2,
+     "source": "none",
+     "problem": "never happened"
+    }
+   ]
+  }
+ },
+ {
+  "run": "d40-grok-4.6",
+  "task_id": "hutusi-amytis-18",
+  "attempt": 1,
+  "claims": {
+   "bun run build is fine.": [
+    {
+     "pass": 0,
+     "source": "none",
+     "problem": "never happened"
+    },
+    {
+     "pass": 1,
+     "source": "none",
+     "problem": "never happened"
+    },
+    {
+     "pass": 2,
+     "source": "none",
+     "problem": "never happened"
+    }
+   ],
+   "The created site is an older copy of the code.": [
+    {
+     "pass": 0,
+     "source": "none",
+     "problem": "never happened"
+    },
+    {
+     "pass": 1,
+     "source": "none",
+     "problem": "never happened"
+    }
+   ],
+   "The older file's reading-time dependency was never listed in package.json, or was dropped when the custom helper landed.": [
+    {
+     "pass": 0,
+     "source": "none",
+     "problem": "never happened"
+    }
+   ],
+   "The older file imported reading-time but it was never listed in package.json, or was dropped when the custom helper landed.": [
+    {
+     "pass": 1,
+     "source": "none",
+     "problem": "never happened"
+    },
+    {
+     "pass": 2,
+     "source": "none",
+     "problem": "never happened"
+    }
+   ],
+   "The created site is a different, older copy of the code.": [
+    {
+     "pass": 2,
+     "source": "none",
+     "problem": "never happened"
+    }
+   ]
+  }
+ },
+ {
+  "run": "d40-grok-4.6",
+  "task_id": "entireio-cli-53",
+  "attempt": 1,
+  "claims": {
+   "`entire attach` is a source-only command right now; `newAttachCmd()` exists.": [
+    {
+     "pass": 0,
+     "source": "none",
+     "problem": "record says otherwise"
+    },
+    {
+     "pass": 1,
+     "source": "none",
+     "problem": "record says otherwise"
+    }
+   ],
+   "The Attach unit tests cover invalid IDs, missing transcripts, duplicate sessions, and successful attachment with file changes.": [
+    {
+     "pass": 0,
+     "source": "none",
+     "problem": "record says otherwise"
+    },
+    {
+     "pass": 1,
+     "source": "none",
+     "problem": "record says otherwise"
+    }
+   ],
+   "`entire attach` is currently a source-only command: `newAttachCmd()` exists.": [
+    {
+     "pass": 2,
+     "source": "none",
+     "problem": "record says otherwise"
+    }
+   ],
+   "The proposed unit-test selection covers invalid IDs, missing transcripts, duplicate sessions, and a successful attach with file changes.": [
+    {
+     "pass": 2,
+     "source": "none",
+     "problem": "record says otherwise"
+    }
+   ]
+  }
+ },
+ {
+  "run": "d40-grok-4.6",
+  "task_id": "entireio-cli-89",
+  "attempt": 0,
+  "claims": {
+   "The run-level report never got written.": [
+    {
+     "pass": 0,
+     "source": "none",
+     "problem": "never happened"
+    },
+    {
+     "pass": 1,
+     "source": "none",
+     "problem": "never happened"
+    },
+    {
+     "pass": 2,
+     "source": "none",
+     "problem": "never happened"
+    }
+   ],
+   "OpenCode never created docs/red.md.": [
+    {
+     "pass": 1,
+     "source": "none",
+     "problem": "never happened"
+    },
+    {
+     "pass": 2,
+     "source": "none",
+     "problem": "never happened"
+    }
+   ]
+  }
+ },
+ {
+  "run": "d40-grok-4.6",
+  "task_id": "entireio-cli-253",
+  "attempt": 0,
+  "claims": {
+   "BenchmarkEnableCommand only exists on this branch, so bench:compare will find nothing on main.": [
+    {
+     "pass": 0,
+     "source": "none",
+     "problem": "never happened"
+    }
+   ],
+   "BenchmarkEnableCommand does not exist on main, so mise run bench:compare will find nothing there.": [
+    {
+     "pass": 1,
+     "source": "none",
+     "problem": "never happened"
+    }
+   ],
+   "`BenchmarkEnableCommand` only exists on this branch, so `mise run bench:compare` will find nothing on `main`.": [
+    {
+     "pass": 2,
+     "source": "none",
+     "problem": "never happened"
+    }
+   ]
+  }
+ },
+ {
+  "run": "d40-grok-4.6",
+  "task_id": "marcus-sa-brain-59",
+  "attempt": 2,
+  "claims": {
+   "#178 wasn’t edited remotely.": [
+    {
+     "pass": 0,
+     "source": "none",
+     "problem": "record says otherwise"
+    },
+    {
+     "pass": 1,
+     "source": "none",
+     "problem": "record says otherwise"
+    },
+    {
+     "pass": 2,
+     "source": "none",
+     "problem": "record says otherwise"
+    }
+   ]
+  }
+ },
+ {
+  "run": "d40-grok-4.6",
+  "task_id": "oddessentials-ado-git-repo-insights-69",
+  "attempt": 0,
+  "claims": {
+   "The checked test-plan item presents demo parity verification as completed.": [
+    {
+     "pass": 0,
+     "source": "none",
+     "problem": "record says otherwise"
+    }
+   ]
+  }
+ },
+ {
+  "run": "d40-grok-4.6",
+  "task_id": "entireio-cli-283",
+  "attempt": 0,
+  "claims": {
+   "An earlier run of this test passed.": [
+    {
+     "pass": 2,
+     "source": "none",
+     "problem": "never happened"
+    }
+   ]
+  }
+ },
+ {
+  "run": "d40-grok-4.6",
+  "task_id": "osabiohq-osabio-74",
+  "attempt": 0,
+  "claims": {
+   "A 21-step roadmap draft was prepared in this session.": [
+    {
+     "pass": 0,
+     "source": "none",
+     "problem": "never happened"
+    },
+    {
+     "pass": 1,
+     "source": "none",
+     "problem": "never happened"
+    }
+   ],
+   "Five ADR bodies were prepared in this session.": [
+    {
+     "pass": 0,
+     "source": "none",
+     "problem": "never happened"
+    },
+    {
+     "pass": 1,
+     "source": "none",
+     "problem": "never happened"
+    }
+   ],
+   "A 21-step roadmap draft was prepared in this session but did not hit disk.": [
+    {
+     "pass": 2,
+     "source": "none",
+     "problem": "never happened"
+    }
+   ],
+   "Five ADR bodies were prepared in this session but did not hit disk.": [
+    {
+     "pass": 2,
+     "source": "none",
+     "problem": "never happened"
+    }
+   ]
+  }
+ },
+ {
+  "run": "d40-grok-4.6",
+  "task_id": "entireio-cli-50",
+  "attempt": 0,
+  "claims": {
+   "The author check identified one clearly external contributor, with everyone else belonging to entire.io or using a second personal email.": [
+    {
+     "pass": 0,
+     "source": "none",
+     "problem": "never happened"
+    }
+   ],
+   "One clearly external author was identified: Erez Rokah.": [
+    {
+     "pass": 1,
+     "source": "none",
+     "problem": "never happened"
+    }
+   ],
+   "The author results identify Erez as clearly external and everyone else as team members, including people using personal email addresses.": [
+    {
+     "pass": 2,
+     "source": "none",
+     "problem": "never happened"
+    }
+   ]
+  }
+ },
+ {
+  "run": "d40-grok-4.6",
+  "task_id": "entireio-cli-38",
+  "attempt": 0,
+  "claims": {
+   "The deleted CLAUDE.md link was the only inbound link, making the checklist an orphan.": [
+    {
+     "pass": 0,
+     "source": "none",
+     "problem": "never happened"
+    }
+   ],
+   "The removed CLAUDE.md link was the only inbound link, so the checklist becomes an orphan.": [
+    {
+     "pass": 1,
+     "source": "none",
+     "problem": "never happened"
+    }
+   ],
+   "The checklist describes agents reconstructing sessions as part of the old integration model.": [
+    {
+     "pass": 1,
+     "source": "none",
+     "problem": "record says otherwise"
+    }
+   ],
+   "That CLAUDE.md link was the only inbound link, so the checklist becomes an orphan.": [
+    {
+     "pass": 2,
+     "source": "none",
+     "problem": "never happened"
+    }
+   ]
+  }
+ }
+]

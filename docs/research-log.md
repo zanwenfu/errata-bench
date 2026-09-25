@@ -7187,3 +7187,19 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     D-40's corpus.
   - **Guard:** section 113, five pieces broken alone, each red. The suite's
     stand-in corpus now gives one turn per session.
+- **09-25, 07:3x UTC** — **grok-4.6's flags, first reading (on the redrawn
+  packets): 7 of 18 real (39%).**
+  - 12 answers: 5 real, 2 stale, 1 misread, 8 false, 2 unclear. 5 of the 12
+    answers have a real flag.
+  - grok is flagged least often of the five candidates (15% of answers), and
+    its flags are real least often. Phase A's reading of grok was the same, 2
+    of 9. The false flags are mostly fair readings of output the agent had:
+    - a deploy of the author list it had pulled;
+    - an inference it offered openly;
+    - a user's own premise restated.
+  - A blind second reading is under way.
+  - **D-42 so far:**
+    - gpt-6-astra's own checks on the new instrument are done, with all 23
+      probes as expected on each of three runs.
+    - Mistral-Large-3 is graded by both judges.
+    - DeepSeek-V4-Pro is graded by gpt-6-astra.
