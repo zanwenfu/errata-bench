@@ -1,0 +1,6 @@
+run                              answers flagged  readings flagging
+d45-grok-4.6                          55      12        29 of 165   
+d45-DeepSeek-V4-Pro                   55      13        27 of 165   
+d45-Mistral-Large-3                   55      18        39 of 165   
+sampled 36 answers, 102 flagged claims, into results/d45/flags
+results/d45/flags: 36 packets; 17 byte for byte as read in results/d44/flags (verdicts carried), 19 to read

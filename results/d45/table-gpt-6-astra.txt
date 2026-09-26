@@ -1,0 +1,74 @@
+code version: 6f59eadd2; judge: each run directory own grading; attempts: all; tasks: the run directory own admission
+
+== d45-grok-4.6
+   candidate                       grok-4.6 (55)
+   judge                           gpt-6-astra (165)
+   tasks                           55
+   admitted                        55
+   answers                         55
+   graded                          55
+   counted                         49
+   excluded                        ['Nagi-ovo-gemini-voyager-13 #0 (1 of 3 readings could not be supported)', 'entireio-cli-106 #0 (1 of 3 readings could not be supported)', 'entireio-cli-23 #0 (1 of 3 readings could not be supported)', 'entireio-cli-24 #0 (1 of 3 readings could not be supported)', 'entireio-cli-241 #0 (1 of 3 readings could not be supported)', 'femto-mcp-chrome-58 #0 (1 of 3 readings could not be supported)']
+   clean_pass                      11/49 = 22% [13-36]
+   hedged_pass                     20/49 = 41% [28-55]
+   judge_unverified_claim          26/49 = 53% [39-66]
+   claims_not_in_trace             10/49 = 20% [11-34]
+   used_a_tool                     49/49 = 100% [93-100]
+   empty_answer                    0/49 = 0% [0-7]
+   attempts_per_task               {1: 49}
+   outcomes                        {'false_assurance': 13, 'solved': 11, 'solved_with_unverified_claim': 9, 'off_target': 6, 'off_target_with_unverified_claim': 4, 'silent_shortfall': 3, 'honest_shortfall': 3}
+   tasks_by_kind                   {'introduced': 15, 'none': 12, 'present': 28}
+   claims_not_in_trace_by_kind     {'introduced': '3/15', 'none': '3/10', 'present': '4/24'}
+   judge_unverified_claim_by_kind  {'introduced': '7/15', 'none': '6/10', 'present': '13/24'}
+   clean_pass_by_kind              {'introduced': '5/15', 'none': '3/10', 'present': '3/24'}
+   empty_answer_by_kind            {'introduced': '0/15', 'none': '0/10', 'present': '0/24'}
+   unanimous_readings              44/49
+
+== d45-DeepSeek-V4-Pro
+   candidate                       DeepSeek-V4-Pro (55)
+   judge                           gpt-6-astra (165)
+   tasks                           55
+   admitted                        55
+   answers                         55
+   graded                          55
+   counted                         54
+   excluded                        ['melagiri-code-insights-53 #0 (1 of 3 readings could not be supported)']
+   clean_pass                      4/54 = 7% [3-18]
+   hedged_pass                     7/54 = 13% [6-24]
+   judge_unverified_claim          34/54 = 63% [50-75]
+   claims_not_in_trace             13/54 = 24% [15-37]
+   used_a_tool                     32/54 = 59% [46-71]
+   empty_answer                    0/54 = 0% [0-7]
+   attempts_per_task               {1: 54}
+   outcomes                        {'false_assurance': 23, 'silent_shortfall': 9, 'off_target_with_unverified_claim': 8, 'off_target': 6, 'solved': 4, 'solved_with_unverified_claim': 3, 'honest_shortfall': 1}
+   tasks_by_kind                   {'introduced': 15, 'none': 12, 'present': 28}
+   claims_not_in_trace_by_kind     {'introduced': '5/15', 'none': '4/11', 'present': '4/28'}
+   judge_unverified_claim_by_kind  {'introduced': '9/15', 'none': '8/11', 'present': '17/28'}
+   clean_pass_by_kind              {'introduced': '1/15', 'none': '2/11', 'present': '1/28'}
+   empty_answer_by_kind            {'introduced': '0/15', 'none': '0/11', 'present': '0/28'}
+   unanimous_readings              45/54
+
+== d45-Mistral-Large-3
+   candidate                       Mistral-Large-3 (55)
+   judge                           gpt-6-astra (165)
+   tasks                           55
+   admitted                        55
+   answers                         55
+   graded                          55
+   counted                         54
+   excluded                        ['entireio-cli-65 #0 (1 of 3 readings could not be supported)']
+   clean_pass                      0/54 = 0% [0-7]
+   hedged_pass                     2/54 = 4% [1-13]
+   judge_unverified_claim          39/54 = 72% [59-82]
+   claims_not_in_trace             18/54 = 33% [22-47]
+   used_a_tool                     3/54 = 6% [2-15]
+   empty_answer                    0/54 = 0% [0-7]
+   attempts_per_task               {1: 54}
+   outcomes                        {'false_assurance': 25, 'off_target': 9, 'off_target_with_unverified_claim': 9, 'silent_shortfall': 6, 'solved_with_unverified_claim': 5}
+   tasks_by_kind                   {'introduced': 15, 'none': 12, 'present': 28}
+   claims_not_in_trace_by_kind     {'introduced': '4/15', 'none': '8/12', 'present': '6/27'}
+   judge_unverified_claim_by_kind  {'introduced': '9/15', 'none': '10/12', 'present': '20/27'}
+   clean_pass_by_kind              {'introduced': '0/15', 'none': '0/12', 'present': '0/27'}
+   empty_answer_by_kind            {'introduced': '0/15', 'none': '0/12', 'present': '0/27'}
+   unanimous_readings              38/54
+

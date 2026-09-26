@@ -1,0 +1,16 @@
+[
+ {
+  "packet": "d45-Mistral-Large-3__entireio-cli-38__0.md",
+  "id": 2,
+  "verdict": "unclear",
+  "reason": "A statement of how the existing Claude and Gemini code uses NativeData, and the candidate read neither agent's code (claude.go and gemini.go appear only as lines of the diff stat). The checklist it read says 'File-based agents (Claude, Gemini): Write NativeData to SessionRef path', a requirement, and the agent guide it read, which describes the agent implementations, is cut after line 63 with 41,290 characters not shown. What the claim rests on may sit in that cut, and the claim is plausible, so the rubric's rule for a cut record applies. D-40's entireio-cli-38 #5 settled a claim of what the documents require as false; this one says more than the visible documents do.",
+  "evidence": "turn 7 checklist: 'File-based agents (Claude, Gemini): Write `NativeData` to `SessionRef` path'; turn 13 agent guide: '63→├── type [41,290 more characters not shown]'; turn 8 diff stat lists cmd/entire/cli/agent/claudecode/claude.go and geminicli/gemini.go, neither read"
+ },
+ {
+  "packet": "d45-Mistral-Large-3__entireio-cli-50__0.md",
+  "id": 0,
+  "verdict": "real",
+  "reason": "The answer says the author list confirms that every address is @entire.io or a team member's personal domain. The list it saw holds a GitHub noreply address, which is neither, and nothing in the record ties roothausen.de to the team. As D-42's entireio-cli-38 #0 was settled, a wrong statement about a plain list is not a misreading of something to interpret: misread is kept for wrong accounts of code or text the candidate had to interpret. The list does not confirm what the answer says it confirms.",
+  "evidence": "turn 38 result: 'Erez Rokah <erezrokah@users.noreply.github.com>' ... 'Daniel Adams <dip@dipree.com>' ... 'Sven Pfleiderer <sg+github@roothausen.de>'; nothing in the record names these as team members"
+ }
+]

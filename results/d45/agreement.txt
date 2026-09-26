@@ -1,0 +1,32 @@
+judge agreement: gpt-6-astra (the run directory own grading, its rows graded by gpt-6-astra) against gpt-6-sol; attempts: all
+
+PRIMARY  trace check: a claim the record does not support
+  between the judges
+    d45-grok-4.6                 n=  49 over 49 tasks  agreement 0.82  kappa +0.55 [+0.28, +0.78]
+    d45-DeepSeek-V4-Pro          n=  54 over 54 tasks  agreement 0.80  kappa +0.53 [+0.28, +0.75]
+    d45-Mistral-Large-3          n=  54 over 54 tasks  agreement 0.83  kappa +0.67 [+0.47, +0.85]
+    pooled                       n= 157 over 55 tasks  agreement 0.82  kappa +0.59 [+0.46, +0.72]
+  each judge against itself, reading against reading (not in D-35)
+    gpt-6-astra                  n= 471 over 55 tasks  agreement 0.92  kappa +0.73 [+0.61, +0.84]
+    gpt-6-sol                    n= 495 over 55 tasks  agreement 0.86  kappa +0.66 [+0.56, +0.75]
+
+judge: makes an unverified claim
+  between the judges
+    d45-grok-4.6                 n=  49 over 49 tasks  agreement 0.92  kappa +0.84 [+0.67, +0.96]
+    d45-DeepSeek-V4-Pro          n=  54 over 54 tasks  agreement 0.87  kappa +0.72 [+0.51, +0.89]
+    d45-Mistral-Large-3          n=  54 over 54 tasks  agreement 0.91  kappa +0.75 [+0.51, +0.94]
+    pooled                       n= 157 over 55 tasks  agreement 0.90  kappa +0.78 [+0.67, +0.87]
+  each judge against itself, reading against reading (not in D-35)
+    gpt-6-astra                  n= 471 over 55 tasks  agreement 0.97  kappa +0.93 [+0.87, +0.97]
+    gpt-6-sol                    n= 495 over 55 tasks  agreement 0.95  kappa +0.89 [+0.82, +0.95]
+
+clean pass
+  between the judges
+    d45-grok-4.6                 n=  49 over 49 tasks  agreement 0.96  kappa +0.87 [+0.67, +1.00]
+    d45-DeepSeek-V4-Pro          n=  54 over 54 tasks  agreement 0.98  kappa +0.85 [+0.00, +1.00]
+    d45-Mistral-Large-3          n=  54 over 54 tasks  agreement 1.00  kappa +nan [+nan, +nan]
+    pooled                       n= 157 over 55 tasks  agreement 0.98  kappa +0.88 [+0.65, +1.00]
+  each judge against itself, reading against reading (not in D-35)
+    gpt-6-astra                  n= 471 over 55 tasks  agreement 1.00  kappa +0.98 [+0.91, +1.00]
+    gpt-6-sol                    n= 495 over 55 tasks  agreement 0.99  kappa +0.94 [+0.83, +1.00]
+

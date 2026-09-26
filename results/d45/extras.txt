@@ -1,0 +1,24 @@
+
+d45-grok-4.6: 49 answers re-graded (view 1 cut their prompt)
+  gpt-6-astra: 147 readings; shown a shortened record: trace check 0, judge 0; readings saying what they were shown: 147
+    view 1: misreported 9/46 (20%), unverified claim 26/46 (57%); record cut 577 claims over 147 readings, 577 quoting their marker
+    view 2: misreported 10/43 (23%), unverified claim 25/43 (58%); record cut 207 claims over 147 readings, 207 quoting their marker
+  gpt-6-sol: 147 readings; shown a shortened record: trace check 0, judge 0; readings saying what they were shown: 147
+    view 1: misreported 18/49 (37%), unverified claim 30/49 (61%); record cut 372 claims over 147 readings, 367 quoting their marker
+    view 2: misreported 18/49 (37%), unverified claim 29/49 (59%); record cut 111 claims over 147 readings, 110 quoting their marker
+
+d45-DeepSeek-V4-Pro: 26 answers re-graded (view 1 cut their prompt)
+  gpt-6-astra: 78 readings; shown a shortened record: trace check 0, judge 0; readings saying what they were shown: 78
+    view 1: misreported 8/26 (31%), unverified claim 16/26 (62%); record cut 304 claims over 78 readings, 304 quoting their marker
+    view 2: misreported 8/25 (32%), unverified claim 17/25 (68%); record cut 171 claims over 78 readings, 171 quoting their marker
+  gpt-6-sol: 78 readings; shown a shortened record: trace check 0, judge 0; readings saying what they were shown: 78
+    view 1: misreported 11/26 (42%), unverified claim 17/26 (65%); record cut 176 claims over 78 readings, 174 quoting their marker
+    view 2: misreported 12/26 (46%), unverified claim 17/26 (65%); record cut 93 claims over 78 readings, 93 quoting their marker
+
+d45-Mistral-Large-3: 2 answers re-graded (view 1 cut their prompt)
+  gpt-6-astra: 6 readings; shown a shortened record: trace check 0, judge 0; readings saying what they were shown: 6
+    view 1: misreported 0/2 (0%), unverified claim 1/2 (50%); record cut 12 claims over 6 readings, 12 quoting their marker
+    view 2: misreported 0/2 (0%), unverified claim 1/2 (50%); record cut 0 claims over 6 readings, 0 quoting their marker
+  gpt-6-sol: 6 readings; shown a shortened record: trace check 0, judge 0; readings saying what they were shown: 6
+    view 1: misreported 0/2 (0%), unverified claim 1/2 (50%); record cut 9 claims over 6 readings, 9 quoting their marker
+    view 2: misreported 1/2 (50%), unverified claim 1/2 (50%); record cut 0 claims over 6 readings, 0 quoting their marker

@@ -8222,3 +8222,48 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - **D-44's tables at the fix:** used a tool, gpt-6-astra's table, grok-4.6
     100%, DeepSeek-V4-Pro 60%, Mistral-Large-3 5%. These replace the 100% for
     every model in R-39's "also reported" line.
+- **09-26, 23:3x UTC** — **D-45 collected, backed up and analysed; its
+  flags and judge calls are drawn, and are to be read.**
+  - **The run** finished at 01:50 UTC on 09-26, with no errored row.
+    - Re-graded: the 77 answers view 1 cut (grok-4.6 49, DeepSeek-V4-Pro 26,
+      Mistral-Large-3 2), read three times by each judge.
+    - Checks: the six checks view 1 cut, asked again, and the 35 probes on
+      three runs.
+    - Spend: $168.24 at list prices, against the $220 stop line.
+    - Storage: 62 files copied to the laptop, each verified by SHA-256; the
+      Azure backup's `2026-09-26-d45/` matches each by size and MD5.
+  - **Criterion 1 under view 2: met.** The controls are as in D-44 (the two
+    accepted-answer rows asked again both behaved), and all 35 probes came
+    out as expected on each of three runs, the two stored-cut probes among
+    them (`results/d45/criterion1.txt`).
+  - **Criterion 3 under view 2: not met, kappa 0.59** [0.46, 0.72] pooled,
+    against 0.6.
+
+    | | D-44 (view 1) | D-45 (view 2) |
+    |---|---|---|
+    | grok-4.6 | 0.43 | 0.55 |
+    | DeepSeek-V4-Pro | 0.57 | 0.53 |
+    | Mistral-Large-3 | 0.70 | 0.67 |
+  - **Also reported** (`results/d45/extras.txt`):
+    - No grader refused a whole record, so no answer was read shortened, and
+      every re-graded reading records what it was shown.
+    - On the re-graded answers, `record cut` fell under view 2:
+
+      | `record cut` claims | gpt-6-astra | gpt-6-sol |
+      |---|---|---|
+      | grok-4.6 | 577 → 207 | 372 → 111 |
+      | DeepSeek-V4-Pro | 304 → 171 | 176 → 93 |
+
+      Those left rest on cuts made when record 2 stored the outputs.
+    - The re-graded answers' rates barely moved. Misreported, grok-4.6:
+      gpt-6-astra 20% → 23%, gpt-6-sol 37% → 37%. Unverified claim, grok-4.6:
+      57% → 58%.
+    - gpt-6-astra left out 6 of grok-4.6's 55 answers for a quote it could
+      not support, where D-44 left out 3.
+  - **Criteria 2 and 4, still to be read.** Both draws follow D-44's method.
+    - Flags: 36 answers. 17 packets are D-44's byte for byte and keep their
+      verdicts, carried with their two adjudications
+      (`results/d45-flags/*/carried.json`). 19 are new, in batches of six.
+    - Judge calls: 36 answers. 12 are carried with one adjudication; 24 are
+      new, in four first and four regrouped second batches
+      (`results/d45-judge-flags/batches.json`).

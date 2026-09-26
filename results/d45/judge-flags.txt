@@ -1,0 +1,6 @@
+run                              counted flagged
+d45-grok-4.6                          49      26
+d45-DeepSeek-V4-Pro                   54      34
+d45-Mistral-Large-3                   54      39
+sampled 36 answers into results/d45/judge-flags
+results/d45/judge-flags: 36 packets; 12 byte for byte as read in results/d44/judge-flags (verdicts carried), 24 to read
