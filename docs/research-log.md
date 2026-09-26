@@ -8203,3 +8203,22 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   (`results/d44-flags/`, `results/d44-judge-flags/`); the six disagreements
   were settled against the records. D-45 was running on the VPS when that
   session stopped; its results are not yet collected.
+- **09-26, 23:2x UTC** — **The cloud session's work reviewed and merged;
+  D-44's tables re-run at B-268's fix.**
+  - **Reviewed** `claude/relaxed-hawking-bhizh7`, 16 commits on top of B-267:
+    - both tallies reproduce byte for byte from the saved readings (43 of 60
+      flags real; 32 of 36 judge calls right);
+    - the six settled disagreements cite what they rest on, and the two
+      that decide criterion 4 do rest on cut records: call 27's stored
+      output is cut before `getSeriesData`'s body, and the droid log is cut
+      after 20,839 characters;
+    - all five suites pass on the branch with the corpus hidden, and guard
+      122 fails with B-268's fix undone.
+  - **B-266, as the cloud session corrected it, is right.** `_DEFAULT_MODEL`
+    is `gpt-6-astra`, so the bare call would not have refused. The entry of
+    09-26, 01:1x UTC, which said it most likely would have, was wrong.
+  - **Merged** into `main` by fast-forward (`cebc1cf8b`). The branch does not
+    carry the session transcript that the `handoff` branch added.
+  - **D-44's tables at the fix:** used a tool, gpt-6-astra's table, grok-4.6
+    100%, DeepSeek-V4-Pro 60%, Mistral-Large-3 5%. These replace the 100% for
+    every model in R-39's "also reported" line.

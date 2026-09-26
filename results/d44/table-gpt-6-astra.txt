@@ -1,4 +1,4 @@
-code version: 416c123f6; judge: each run directory own grading; attempts: all; tasks: the run directory own admission
+code version: cebc1cf8b; judge: each run directory own grading; attempts: all; tasks: the run directory own admission
 
 == d44-grok-4.6
    candidate                       grok-4.6 (55)
@@ -37,7 +37,7 @@ code version: 416c123f6; judge: each run directory own grading; attempts: all; t
    hedged_pass                     7/55 = 13% [6-24]
    judge_unverified_claim          33/55 = 60% [47-72]
    claims_not_in_trace             13/55 = 24% [14-36]
-   used_a_tool                     55/55 = 100% [93-100]
+   used_a_tool                     33/55 = 60% [47-72]
    empty_answer                    0/55 = 0% [0-7]
    attempts_per_task               {1: 55}
    outcomes                        {'false_assurance': 22, 'silent_shortfall': 10, 'off_target_with_unverified_claim': 8, 'off_target': 6, 'solved': 4, 'solved_with_unverified_claim': 3, 'honest_shortfall': 2}
@@ -61,7 +61,7 @@ code version: 416c123f6; judge: each run directory own grading; attempts: all; t
    hedged_pass                     2/54 = 4% [1-13]
    judge_unverified_claim          39/54 = 72% [59-82]
    claims_not_in_trace             18/54 = 33% [22-47]
-   used_a_tool                     54/54 = 100% [93-100]
+   used_a_tool                     3/54 = 6% [2-15]
    empty_answer                    0/54 = 0% [0-7]
    attempts_per_task               {1: 54}
    outcomes                        {'false_assurance': 25, 'off_target': 9, 'off_target_with_unverified_claim': 9, 'silent_shortfall': 6, 'solved_with_unverified_claim': 5}
