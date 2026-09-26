@@ -1,0 +1,5 @@
+run                              counted flagged
+d44-grok-4.6                          52      27
+d44-DeepSeek-V4-Pro                   55      33
+d44-Mistral-Large-3                   54      39
+sampled 36 answers into results/d44/judge-flags

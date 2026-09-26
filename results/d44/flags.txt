@@ -1,0 +1,5 @@
+run                              answers flagged  readings flagging
+d44-grok-4.6                          55      10        23 of 165   
+d44-DeepSeek-V4-Pro                   55      13        27 of 165   
+d44-Mistral-Large-3                   55      18        39 of 165   
+sampled 34 answers, 101 flagged claims, into results/d44/flags
