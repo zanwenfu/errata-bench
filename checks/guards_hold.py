@@ -8188,6 +8188,50 @@ check(_rows120(_to120 / "attempts.jsonl") == _whole120 and _rows120(_to120 / "re
       f"the answers' readings are copied only where view 1 cut nothing (a trace, or an answer past 12,000 "
       f"characters): {_o120b.getvalue().splitlines()[0] if _o120b.getvalue() else ''}")
 
+print("\n121. every script that starts a paid stage names its provider and its model on the command")
+# D-45's branch script first graded with a bare `run.py stages --only grade`
+# (09-26, found before it ran). Called so, `judge_model()` falls back to the
+# default model and provider. Every earlier script sets ERRATA_PROVIDER and the
+# model on the same command. A shell script is joined at its line
+# continuations, and each command that starts a paid stage must name both.
+import glob as _glob121
+
+
+def _commands121(text):
+    out, cur = [], ""
+    for line in text.splitlines():
+        cur += line.rstrip("\\").rstrip() + " "
+        if not line.rstrip().endswith("\\"):
+            out.append(cur)
+            cur = ""
+    return out
+
+
+def _unnamed121(text):
+    bad = []
+    for c in _commands121(text):
+        if c.lstrip().startswith("#"):
+            continue
+        if "run.py stages" in c and ("--only grade" in c or "--only attempt" in c):
+            model = "ERRATA_JUDGE_MODEL=" if "--only grade" in c else "ERRATA_MODEL="
+            if "ERRATA_PROVIDER=" not in c or model not in c:
+                bad.append(c.strip()[:90])
+        elif ("run.py rejudge" in c or "run.py gate" in c) and ("ERRATA_PROVIDER=" not in c or "--judge" not in c):
+            bad.append(c.strip()[:90])
+    return bad
+
+
+_scanned121 = sorted(_glob121.glob("scripts/*.sh"))
+_bad121 = {f: b for f in _scanned121 for b in [_unnamed121(Path(f).read_text())] if b}
+_paid121 = sum(1 for f in _scanned121 for c in _commands121(Path(f).read_text())
+               if "run.py stages --run" in c and ("--only grade" in c or "--only attempt" in c))
+check(not _bad121 and _paid121 >= 3,
+      f"no script starts a grading or a candidate stage without naming its provider and model "
+      f"({_paid121} such commands in {len(_scanned121)} scripts): {_bad121}")
+check(bool(_unnamed121('.venv/bin/python run.py stages --run "runs/x" --only grade --passes 3 \\\n  >> log 2>&1'))
+      and not _unnamed121('ERRATA_PROVIDER=azure ERRATA_JUDGE_MODEL=j \\\n  .venv/bin/python run.py stages --run r --only grade'),
+      "the scan catches a bare grading command split over lines, and passes a named one")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended

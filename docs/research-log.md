@@ -8054,3 +8054,24 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - **Also corrected.** SWE-chat's pushback label: its paper now reports
     accuracy between 0.63 and 0.74 against expert labels, depending on the
     model, where our findings documents quote 0.67.
+- **09-26, 01:1x UTC** — **D-44 finished; B-266 fixed before D-45 started.**
+  - **D-44 finished** at 00:56 UTC: 165 answers, three readings by each
+    judge, and gpt-6-astra's checks, with no errored row left. Spend at list
+    prices was $340.86 of the $450 stop line, the checks priced at their
+    fixed per-row estimate. The run directories were copied to the laptop,
+    192 files, each verified by SHA-256 against the server's own hashes.
+  - **B-266.** `scripts/d45-branch.sh` graded with a bare `run.py stages
+    --only grade`, naming neither `ERRATA_PROVIDER` nor `ERRATA_JUDGE_MODEL`.
+    Every earlier script names both on the command. Called bare,
+    `judge_model()` falls back to the default model and provider. The stage
+    would most likely have refused, since the copied rows carry another
+    judge, so D-45 would have run no gpt-6-astra grading. It was found by
+    reading the script against `attempt-rounds.sh` before anything ran.
+    - *Fix.* The branch now calls `scripts/grade-passes.sh`, the grading
+      every earlier run used.
+    - *Guard 121.* Every command in `scripts/*.sh` that starts a grading or
+      a candidate stage must name its provider and its model, and every
+      re-grade or gate must name its provider and judge. With the old script
+      restored the guard fails and names the line.
+    - *Instrument unchanged.* `src/` is byte for byte `d45-run`. D-45 runs at
+      the fix, tag `d45-launch`.

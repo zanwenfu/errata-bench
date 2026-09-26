@@ -11,8 +11,12 @@ LOG="runs/d45-chain.log"
 echo $$ > "runs/d45-branch-$c.pid"
 say() { echo "=== $* $(date -u +%FT%TZ)" >> "$LOG"; }
 say "D-45 $c branch start at $(git rev-parse --short HEAD)"
-.venv/bin/python run.py stages --run "runs/d45-$c" --only grade --grade-concurrency "$conc" --passes 3 \
-  >> "runs/d45-$c.log" 2>&1
+# The grading every earlier run used (scripts/grade-passes.sh): the provider and
+# the judge named on the command, two rounds so a rate-limited reading is asked
+# again, then the report. Called bare, `run.py stages --only grade` falls back to
+# the default model and provider (llm.judge_model), which is how this script
+# was first written (09-26, found before it ran).
+scripts/grade-passes.sh "d45-$c" gpt-6-astra 3 "$conc"
 say "$c gpt-6-astra grading done, exit $?"
 scripts/rejudge-rounds.sh gpt-6-sol "$conc" 3 "/root/errata-bench-d45/runs/d45-$c" >> "$LOG" 2>&1
 say "$c gpt-6-sol grading done, exit $?"
