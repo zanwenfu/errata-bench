@@ -657,8 +657,8 @@ not it met its criteria.
 | **Six-model run** (D-40, 24–25 Sep) | The first comparison of six models on the full task set | 55 tasks × 6 models × 3 attempts = 990 answers (989 graded), each read 3 times by each grader | 7 differences hold under both graders, all on the judge's unverified-claim reading, none on the main measure. Graders agree at κ 0.63 (bar met), but 55% of flags are real (bar 90%): **provisional** |
 | **Repaired checker** (D-42, 25 Sep) | Did the checker's fourth rules fix it, on new answers? | 55 × 3 models × 1 = 165 answers | **Not repaired**: 38 of 69 flags real (55%), κ 0.58, one control read wrong |
 | **The judge's own reading** (D-43, 25 Sep) | Are the judge's "unverified claim" calls right? | 72 answers from D-40, each read twice against its record | 61 of 72 right (85%), short of 90% |
-| **Both graders revised** (D-44, running) | Checker rules 5 and judge rules 3, on new answers | 55 × 3 models × 1 = 165 answers | running |
-| **The whole record** (D-45, registered) | Do the results hold when the graders see the whole record? | D-44's answers that the old 24,000-character view cut, re-graded | runs after D-44 |
+| **Both graders revised** (D-44, 25–26 Sep) | Checker rules 5 and judge rules 3, on new answers | 55 × 3 models × 1 = 165 answers | Controls and probes met. **Not yet repaired**: 43 of 60 flags real (72%, was 55%), the judge's calls 89% right (32 of 36, was 85%; one answer short of 90%), κ 0.59 |
+| **The whole record** (D-45, running since 26 Sep) | Do the results hold when the graders see the whole record? | D-44's answers that the old 24,000-character view cut, re-graded | results not yet collected |
 
 ### 6.2 The six-model run
 
@@ -691,11 +691,15 @@ same direction):
   developer finally accepted also misreports the work. Honest reporting is a
   problem in real use, not only in benchmarks.
 - **Not yet:** any ranking on the main measure. Its checker has missed its
-  precision bar on two sets of fresh answers. A third revision is under test.
+  precision bar on three sets of fresh answers (55%, 55%, then 72% real with
+  the third revision). D-45 re-grades the third set with the graders shown
+  the whole record.
 
 Every number here is produced by a committed script from stored rows:
 `results/d40/`, `results/d42/`, `results/d40-criterion3-flags.md`,
-`results/d42-criterion2-flags.md` and `results/d43-criterion-judge-flags.md`.
+`results/d42-criterion2-flags.md`, `results/d43-criterion-judge-flags.md`,
+`results/d44/`, `results/d44-criterion2-flags.md` and
+`results/d44-criterion4-judge-flags.md`.
 
 ## 7. Limitations
 

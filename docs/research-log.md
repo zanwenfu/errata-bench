@@ -329,6 +329,69 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   only definition of "right" this corpus contains. A task that rejects its own
   reference is broken, and whether the rule or the task is at fault, its scores
   cannot be trusted. It catches G-44 by itself.
+- **R-39 · D-44, the fifth rules and the judge's third rules on new
+  answers: criterion 1 met; 2, 3 and 4 not met. The trace check's flags are
+  72% real (was 55%); the judge's calls 89% right (was 85%), one answer
+  short.** *(09-26. `results/d44/`, `results/d44-criterion2-flags.md`,
+  `results/d44-criterion4-judge-flags.md`. Read in a new session, from the
+  laptop's analysis and reading set-up, pushed to the `handoff` branch.)*
+  - **Criterion 1, controls and probes: met.** Null and overclaim right on
+    54 of 54 tasks, both halves; the accurate summary 54/54, the inserted
+    action 53/54, the accepted answer's trace half 53/54; all 33 probes as
+    expected on each of three runs. entireio-cli-253 has no controls: its
+    calibration fails under the new instrument (`results/d44/criterion1.txt`).
+  - **Criterion 3, agreement on `misreported`: not met,** kappa 0.59 [0.46,
+    0.70] pooled, against 0.6. Per model: grok-4.6 0.43, DeepSeek-V4-Pro 0.57,
+    Mistral-Large-3 0.70. On the judge's unverified-claim reading the judges
+    agree at 0.77 (`results/d44/agreement.txt`).
+  - **Criterion 2, the trace check's flags: not met.** 34 answers, 60
+    distinct flagged claims, read twice, blind, under
+    `results/d40-flags/RUBRIC.md` by twelve Claude readers with the previous
+    session's prompts and batches. The readings agreed on 56 of 60 (kappa
+    0.84); the four disagreements are settled against the record in
+    `results/d44-flags/second/adjudicated.json`. **43 real, 1 misread, 14
+    false, 2 unclear: 72%,** 95% interval 56–83% resampling answers, against
+    at least 90%.
+    | | grok-4.6 | DeepSeek-V4-Pro | Mistral-Large-3 |
+    |---|---|---|---|
+    | flags real | 7/14 (50%) | 9/13 (69%) | 27/33 (82%) |
+  - **Criterion 4, the judge's unverified-claim calls: not met, by one
+    answer.** 36 answers read twice, blind, under `results/d43/RUBRIC.md`.
+    The readings agreed on 34 of 36 (kappa 0.64, interval -0.04 to 1.00);
+    both disagreements are settled unclear under the rubric's rule for a cut
+    record (`results/d44-judge-flags/second/adjudicated.json`). **32 real, 1
+    false, 3 unclear: 89%,** interval 78–97%. Settled real, either
+    disagreement would have made it 33/36 (92%) and met; each is recorded
+    with the cut that decided it, so the call can be checked.
+    | | grok-4.6 | DeepSeek-V4-Pro | Mistral-Large-3 |
+    |---|---|---|---|
+    | the judge's call right | 10/12 | 11/12 | 11/12 |
+  - **The fourteen false flags, by kind.**
+    - 4, all grok-4.6: a faithful report of the attempt's own refused calls
+      ("this pass timed out", "I could not write the remaining fixes",
+      "commands timed out", an issue "not updated remotely" when GitHub was
+      refused).
+    - 5: a fair reading of output the candidate saw (a GPG signing error
+      read as `commit.gpgsign=true`, a failed agent log read as the file
+      never written, a benchmark the conversation created read as not on
+      main, a build error paraphrased, a template with no callbacks).
+    - 2: file sizes rounded correctly (33,950 bytes as 34KB).
+    - 3: what rules 5 says is no claim: a prediction of an edit's effect, a
+      hedged troubleshooting tip, a usage comment in example code.
+  - **Exploratory, not registered: the refused-call flags and view 1.**
+    Three of the four grok-4.6 flags on its own refused calls rest on
+    refusals in long attempts (calls 53-61 and 68-69), and view 1 withheld
+    more of grok-4.6's long records than of any other model's (22:3x
+    entry); the fourth rests on the attempt's first call. If the checker was not shown those refusals,
+    view 2 should clear them. D-45 re-grades the answers view 1 cut, so it
+    tests this; nothing here settles it.
+  - **Also reported, not tested.** `results/d44/table-*.txt` print
+    `used_a_tool` 100% for every model: B-268, a counting error, not
+    behaviour. The tables must be re-run at the fix before any tool-use rate
+    is quoted.
+  - **What follows.** By D-44's own terms no revision is judged on these
+    answers. D-45, registered before any of this was read, re-reads the
+    answers view 1 cut and measures criteria 2 to 4 again over all 165.
 - **D-45 · The whole record (view 2), judged on the D-44 answers view 1
   cut.** *(pre-registered 09-25, before D-44 has finished, before any of its
   flags is read, and before any D-45 reading; the instrument frozen at this
@@ -8132,3 +8195,11 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     - *Not yet done.* D-44's tables in `results/d44/` were produced before the
       fix and still print 100%. They need `scripts/grid_table.py` re-run over
       the D-44 run directories, which are not in this checkout.
+- **09-26, 03:4x UTC** — **R-39: D-44 read.** Criterion 1 met; the flags
+  72% real, the judge's calls 89% right, kappa 0.59: criteria 2 to 4 not
+  met. The readings the previous session started and lost to its usage
+  limit were run again in a new session from its own prompts, rubrics and
+  fixed batches, each report saved through its checks
+  (`results/d44-flags/`, `results/d44-judge-flags/`); the six disagreements
+  were settled against the records. D-45 was running on the VPS when that
+  session stopped; its results are not yet collected.
