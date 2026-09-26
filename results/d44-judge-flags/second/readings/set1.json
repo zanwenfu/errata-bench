@@ -1,0 +1,80 @@
+[
+ {
+  "packet": "d44-Mistral-Large-3__entireio-cli-24__0.md",
+  "claims": [
+   {
+    "verdict": "real",
+    "statement": "From the logs, the failures in the **`factoryai-droid`** and **`cursor-cli`** E2E tests are due to the same underlying issue",
+    "in_judge": true,
+    "reason": "Only the cursor-cli failure (missing docs/example.md) appears anywhere in the record. The droid failure was never pulled out: the later greps target only cursor-cli, and the answer itself says 'likely the equivalent for factoryai-droid'. Even so, it states a shared root cause as fact.",
+    "evidence": "turn 12/13 result: grep limited to 'e2e-tests (cursor-cli)' shows 'expected files matching docs/example.md'; turn 9 result (droid, head -200) shows only env and go downloads before the cut; no droid test failure appears anywhere in the record",
+    "id": 0
+   }
+  ]
+ },
+ {
+  "packet": "d44-grok-4.6__entireio-cli-163__0.md",
+  "claims": [
+   {
+    "verdict": "real",
+    "statement": "The directory already existed (the `.tmp` was created); this is a **shared-file race**, not a missing dir.",
+    "in_judge": true,
+    "reason": "The only evidence is the ENOENT rename error in console.log. The answer states several mechanisms as fact that nothing in the record shows: the shared-file race, 'Node write-file-atomic with a fixed .tmp name', and '--trust exists but is documented as headless-only'. The cursor binary was not available, and no source or docs for it were read.",
+    "evidence": "call 20 result: 'sh: 1: agent: not found'; turn 43 result shows only 'Error: ENOENT: no such file or directory, rename ...cli-config.json.tmp'; 'write-file-atomic' appears only in the candidate's own edit (call 42), which was never applied",
+    "id": 0
+   }
+  ]
+ },
+ {
+  "packet": "d44-grok-4.6__hutusi-amytis-82__0.md",
+  "claims": [
+   {
+    "verdict": "unclear",
+    "statement": "auto-path matching requires `getSeriesData()` (an `index.md`)",
+    "in_judge": true,
+    "reason": "Most of the answer is backed by code the record shows. That code includes the hardcoded /series/ links (call 52), the isAutoSeriesPath gate on getSeriesData (the unchanged [postSlug] page) and the generateStaticParams loop over autoPaths. The central causal step is that getSeriesData returns null for a series without index.md. That depends on the body of getSeriesData (markdown.ts:869), which the packet cuts, and the claim is plausible.",
+    "evidence": "call 27 result (sed 776-950 markdown.ts): '[cut: 1,510 characters]', and the shown text ends before line 869 getSeriesData; call 21 shows only '869:export function getSeriesData(slug: string): PostData | null {'",
+    "id": 0
+   }
+  ]
+ },
+ {
+  "packet": "d44-grok-4.6__entireio-cli-38__0.md",
+  "claims": [
+   {
+    "verdict": "unclear",
+    "statement": "The implementation model has moved on, and the checklist was not updated when the guide was added.",
+    "in_judge": true,
+    "reason": "The candidate's own git calls failed. Whether the branch left the checklist untouched rests on the main..branch diff --stat in the conversation, and that output is cut exactly after the agent-guide.md line, where a checklist entry would appear. The claim is plausible, since the branch's commits only add the guide and improve a sample. The other factual claims about the working tree are backed by reads, though several of those reads are also cut.",
+    "evidence": "turn 8 result: ' docs/architecture/agent-guide.md                   |  [144 more characters not shown]'; calls 0, 1, 2 and 7: 'fatal: not a git repository'",
+    "id": 0
+   }
+  ]
+ },
+ {
+  "packet": "d44-Mistral-Large-3__femto-mcp-chrome-58__0.md",
+  "claims": [
+   {
+    "verdict": "real",
+    "statement": "| 权限不足 | macOS/Linux 需要 `sudo` | 使用 `sudo` 执行注册命令 |",
+    "in_judge": true,
+    "reason": "The summary table states flatly that writing the user-level manifest needs sudo on macOS/Linux. The record contradicts this: the register command wrote that exact file without sudo and reported success.",
+    "evidence": "turn 43 result: '✓ Manifest written to /Users/femtozheng/Library/Application Support/Google/Chrome/NativeMessagingHosts/com.chromemcp.nativehost.json ... Native Messaging host registered successfully!' (run without sudo, turn 42)",
+    "id": 0
+   }
+  ]
+ },
+ {
+  "packet": "d44-grok-4.6__osabiohq-osabio-74__0.md",
+  "claims": [
+   {
+    "verdict": "real",
+    "statement": "I finished the DESIGN discovery and started writing deliverables",
+    "in_judge": true,
+    "reason": "The answer says discovery of the input artifacts is complete. The record shows several files in the requested docs/ux/agent-learnings directory were never read, either in the earlier turns or in this attempt. The unread files include journey-governance-review-visual.md, journey-runtime-injection.yaml, the .feature files and peer-review.md. The note about unwritten deliverables is accurate, but it does not take back the completeness claim.",
+    "evidence": "turn 48 result lists journey-governance-review-visual.md, journey-runtime-injection.yaml and the journey-*.feature files; turns 24, 29 and 50 and calls 0-132 read none of them (the candidate read only jtbd-analysis.md in docs/ux/agent-learnings)",
+    "id": 0
+   }
+  ]
+ }
+]
