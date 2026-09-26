@@ -8075,3 +8075,21 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
       restored the guard fails and names the line.
     - *Instrument unchanged.* `src/` is byte for byte `d45-run`. D-45 runs at
       the fix, tag `d45-launch`.
+- **09-26, 01:2x UTC** — **B-267: D-45's spend guard measured nothing.**
+  - **What.** `d40_spend.py` read every `runs/d45-*` entry as a run
+    directory. D-45's setup leaves a file, `runs/d45-setup.txt`, and the
+    counter raised `NotADirectoryError` on it at every tick. The guard loop
+    only stops on exit code 3, so it went on without measuring anything:
+    D-45 had no working stop line. Found about ten minutes into D-45, by
+    reading the spend log during the first check that its grading had
+    started.
+  - **Fix.** Only directories are read. Guard 120's spend check now has such
+    a file beside the run directories, and with the fix reverted the suite
+    raises.
+  - **Applied to the running D-45** by replacing that one script in its
+    worktree, with HEAD left at `d45-launch`:
+    - rows record `+dirty` only for changes to `src/` or `run.py`, so the
+      guard's `--code` filter is unaffected;
+    - no running process loads this script.
+
+    The next tick measured the spend (below).

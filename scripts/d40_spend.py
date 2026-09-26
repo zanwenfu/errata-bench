@@ -16,6 +16,7 @@ paid for in D-44. Test rows record no code version; a copied one is marked
 import argparse
 import glob
 import json
+import os
 import sys
 from datetime import datetime, timezone
 
@@ -63,7 +64,10 @@ def main(argv):
     answers = readings = 0
     for d in sorted(glob.glob(f"runs/{args.prefix}-*")):
         name = d.split(f"{args.prefix}-", 1)[1]
-        if d.endswith((".log", ".done", ".failed", ".pid")) or name == "base":
+        # Only run directories hold rows. A file beside them -- a log, a pid,
+        # D-45's `d45-setup.txt` -- was read as a directory and raised
+        # NotADirectoryError, so the guard measured nothing (09-26).
+        if not os.path.isdir(d) or name == "base":
             continue
         if name in PRICE:
             for r in rows(f"{d}/answers.jsonl"):

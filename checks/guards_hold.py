@@ -8143,6 +8143,9 @@ check(_again120 == 2, f"set up once: a second setup into the same directory is r
 # The spend guard prices a check asked in D-45 and not one D-44 paid for.
 _root120 = Path(tempfile.mkdtemp())
 _sh120.copytree(_dst120, _root120 / "runs" / "d45-astratests")
+# A file beside the run directories, as D-45's setup leaves one: it made the
+# counter raise, and the guard then measured nothing (09-26).
+(_root120 / "runs" / "d45-setup.txt").write_text("d44-grok-4.6: 55 answers\n")
 with (_root120 / "runs/d45-astratests/rejudge/gpt-6-astra/controls.jsonl").open("a") as _fh120:
     _fh120.write(json.dumps({"task_id": "t-cut", "control": "criterion", "ok": True}) + "\n")
 _cwd120 = os.getcwd()
