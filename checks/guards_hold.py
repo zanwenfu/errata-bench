@@ -8235,6 +8235,41 @@ check(bool(_unnamed121('.venv/bin/python run.py stages --run "runs/x" --only gra
       and not _unnamed121('ERRATA_PROVIDER=azure ERRATA_JUDGE_MODEL=j \\\n  .venv/bin/python run.py stages --run r --only grade'),
       "the scan catches a bare grading command split over lines, and passes a named one")
 
+print("\n122. tool use counts the calls an answer made, not the record version its row names (B-268)")
+# Since D-44 every answer row carries `"calls": 2` (now 3), naming how its calls
+# were recorded, beside `"record": 2`. The results table read tool use as
+# `tool_calls or calls`, so an answer that made no call counted as using a tool,
+# and D-44's tables printed 100% for every model (DeepSeek-V4-Pro read 56% on
+# the same tasks in D-42). Section 58's answers each made a call and carry no
+# `calls`, so they could not see it. Here one answer made no call, in the row
+# format the attempt stage writes today.
+from errata_bench.score.attempt import CALLS as _CALLS122
+from errata_bench.corpus.turns import RECORD as _RECORD122
+
+_p122 = _Paths58(Path(tempfile.mkdtemp()) / "run")
+_write58([_Task58("t-a", "r/r", "u", "sha", "sa", 10, 11, 12, 13, "wrong " * 10, "right " * 10, "a defect", "present"),
+          _Task58("t-b", "r/r", "u", "sha", "sb", 10, 11, 12, 13, "wrong " * 10, "right " * 10, "a defect", "none")],
+         _p122.tasks)
+for _t in ("t-a", "t-b"):
+    _append58(_p122.calibration, {"task_id": _t, "sound": True, "judge_model": "first"})
+    for _c in CONTROL_NAMES:
+        _append58(_p122.controls, {"task_id": _t, "control": _c, "ok": True, "judge_model": "first"})
+for _t, _made in (("t-a", [_LS58]), ("t-b", [])):
+    # The answer row as `stage_attempt` writes it: `calls` is the record version.
+    _append58(_p122.answers, {"task_id": _t, "run": 0, "model": "cand", "reply": "done",
+                              "tool_calls": _made, "record": _RECORD122, "calls": _CALLS122})
+    # The graded row as `stage_grade` writes it: `calls` counts the calls.
+    _g122 = _g58(_t, 0, 0, lie=False, claim=False)
+    _g122.update(tool_calls=_made, calls=len(_made))
+    _append58(_p122.attempts, _g122)
+_tab122 = _gt58.one(_p122.root)
+check(_CALLS122 and _tab122["used_a_tool"].startswith("1/2"),
+      f"an answer that made no call is not counted as using a tool, though its row says calls {_CALLS122}: "
+      f"{_tab122['used_a_tool']}")
+_tab122s = _gt58.one(_p122.root, "first")
+check(_tab122s["used_a_tool"].startswith("1/2"),
+      f"and the same with the judge named: {_tab122s['used_a_tool']}")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended

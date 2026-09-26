@@ -80,7 +80,12 @@ def one(run: Path, judge: str | None = None, runs: set[int] | None = None,
     models = Counter(a.get("model") for a in answers)
     judges = Counter(a.get("judge_model") for a in d35.rows_of(run, judge) if not a.get("error")
                      and (runs is None or a.get("run") in runs))
-    used = {(a.get("task_id"), a.get("run")): bool(a.get("tool_calls") or a.get("calls")) for a in answers}
+    # An answer row's `calls` is not a count of calls: since D-44 it names how
+    # the attempt's calls were recorded ("calls": 2, now 3), and it is set on
+    # every row, so read as tool use it counted every answer as using a tool
+    # (B-268). Only a graded row's `calls` counts calls; the fallback below
+    # reads that.
+    used = {(a.get("task_id"), a.get("run")): bool(a.get("tool_calls")) for a in answers}
     kinds = {tid: t.kind for tid, t in tasks.items()}
     return {
         "run": run.name,

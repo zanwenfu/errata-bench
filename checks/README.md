@@ -39,7 +39,7 @@ directories made before the split, and what happens when a candidate or a
 grading fails. Its ninth section requires that every served-model probe the
 stages made went to its stand-in, so none of it reaches the network.
 
-**`guards_hold.py`** is one hundred and twenty-one numbered sections, one per guard, after a section 0: what the
+**`guards_hold.py`** is one hundred and twenty-two numbered sections, one per guard, after a section 0: what the
 attempt and grade stages refuse to do; the gate asked repeatedly; the
 reference-answer control and when it is not applicable; the clean-pass
 standard and the hedged one priced side by side; permanent git loss; the
@@ -188,7 +188,9 @@ the rest marked `copied_from` and leave D-44's directory untouched, the spend gu
 what was asked, and its 35 probes include a pair for an output cut when it was stored, which no
 checker can pass by calling every claim cut or every claim contradicted; section 121 has every
 script that starts a grading or a candidate stage name its provider and its model on the same
-command (B-266: D-45's branch script graded with a bare `run.py stages --only grade`).
+command (B-266: D-45's branch script graded with a bare `run.py stages --only grade`);
+section 122 has tool use counted from the calls an answer made, not from the record
+version its row names (B-268: every D-44 answer read as using a tool).
 Section 0 has the suite
 start as CI does, with no credential in its environment and `.env` never read (B-264: a
 stand-in corpus that gave every session a turn let section 41 call the model provider with the

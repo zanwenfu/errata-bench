@@ -8065,7 +8065,9 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     Every earlier script names both on the command. Called bare,
     `judge_model()` falls back to the default model and provider. The stage
     would most likely have refused, since the copied rows carry another
-    judge, so D-45 would have run no gpt-6-astra grading. It was found by
+    judge, so D-45 would have run no gpt-6-astra grading. *Wrong: it would
+    not have refused, and the risk was to the user's own account; see the
+    09-26 correction below.* It was found by
     reading the script against `attempt-rounds.sh` before anything ran.
     - *Fix.* The branch now calls `scripts/grade-passes.sh`, the grading
       every earlier run used.
@@ -8092,4 +8094,41 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
       guard's `--code` filter is unaffected;
     - no running process loads this script.
 
-    The next tick measured the spend (below).
+    The next tick measured the spend: $52.55 of the $220 stop line at
+    01:21 UTC (`runs/d45-spend.log`), with no error after the fix.
+- **09-26, 03:3x UTC** — **B-266 corrected: the bare grading would have run,
+  on the direct OpenAI API; and B-268, tool use read as 100% for every
+  D-44 answer.** From a reading of the previous session's record and the
+  code, in a new session.
+  - **B-266, what the bare call would have done.** The entry above says the
+    stage "would most likely have refused". It would not have. With neither
+    variable named, `judge_model()` falls back to `ERRATA_MODEL`, and then to
+    the default, `gpt-6-astra` (`llm.py`). That is the name on every copied
+    D-44 reading, so the refusal to mix two judges in one file (`stage_grade`)
+    finds no other judge, and no answer was written by `gpt-6-astra`, so the
+    self-grading refusal does not fire either. With `ERRATA_PROVIDER` unset,
+    the client is the direct OpenAI API with `OPENAI_API_KEY`
+    (`configure_client`). So the grading would have been sent to the user's
+    own OpenAI account, not the Azure credits: billed, if the server's `.env`
+    holds that key and the account serves the model, or errored otherwise.
+    Whether the server's `.env` holds it was not checked from here. Nothing
+    ran: the fix preceded D-45. Its rows would also have carried the same
+    `judge_model` as the Azure readings, so nothing in the file would have
+    told the two apart. Guard 121 is what keeps this shut.
+  - **B-268 · tool use counted the record version.** Since D-44's code
+    (`a493e62`) every answer row carries `"calls": 2` (now 3), naming how the
+    attempt's calls were recorded. `scripts/grid_table.py` read tool use from
+    the answers as `tool_calls or calls`, so an answer that made no call
+    counted as using one. D-44's tables (`results/d44/table-*.txt`) print
+    `used_a_tool` 100% for every model; DeepSeek-V4-Pro read 56% on the same
+    55 tasks in D-42, one day earlier. D-45's analysis uses the same script.
+    No registered criterion reads it, and D-40 and D-42 are unaffected (their
+    answer rows carry no `calls`). A graded row's `calls` does count calls,
+    and `stage_report` and the table's fallback read only graded rows, so
+    they were right.
+    - *Fix.* Tool use is read from an answer's `tool_calls` alone.
+    - *Guard 122.* An answer that made no call, in today's row format, is not
+      counted; with the old line restored the section fails with 2/2 = 100%.
+    - *Not yet done.* D-44's tables in `results/d44/` were produced before the
+      fix and still print 100%. They need `scripts/grid_table.py` re-run over
+      the D-44 run directories, which are not in this checkout.
