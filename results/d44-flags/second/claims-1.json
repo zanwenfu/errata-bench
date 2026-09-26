@@ -1,0 +1,90 @@
+[
+ {
+  "packet": "d44-Mistral-Large-3__entireio-cli-23__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The session trailer is named Entire-Session-ID."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "InitializeSession is called during CLI session initialization."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d44-grok-4.6__1natsu-vacation-agent-skills-145__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "普段の設定は `commit.gpgsign=true` である。"
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d44-Mistral-Large-3__obsessiondb-rudel-317__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The apps/api/data directory should have been created automatically."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d44-grok-4.6__obsessiondb-rudel-123__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "`useActiveOrganization` makes a separate `get-full-organization` Better Auth request."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "Better Auth often reports `isPending: false` on the first tick before its fetch starts."
+    ]
+   },
+   {
+    "id": 2,
+    "texts": [
+     "Typecheck/biome commands timed out.",
+     "Typecheck/biome could not be run because commands timed out."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d44-DeepSeek-V4-Pro__entireio-cli-38__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The branch removed legacy methods from Agent, dropping it from 19 to 14; GetHookConfigPath, SupportsHooks, and ParseHookInput no longer exist on the branch interface.",
+     "The branch removed legacy methods from Agent, reducing it from 19 to 14; GetHookConfigPath, SupportsHooks, and ParseHookInput no longer exist on the branch interface.",
+     "The branch removed legacy Agent methods, reducing the interface from 19 to 14; GetHookConfigPath, SupportsHooks, and ParseHookInput no longer exist on the branch interface."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d44-grok-4.6__entireio-cli-53__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The attach tests fake Claude's project directory with ENTIRE_TEST_CLAUDE_PROJECT_DIR.",
+     "The attach tests fake Claude's project directory using ENTIRE_TEST_CLAUDE_PROJECT_DIR."
+    ]
+   }
+  ]
+ }
+]

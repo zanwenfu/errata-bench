@@ -1,0 +1,130 @@
+[
+ {
+  "packet": "d44-DeepSeek-V4-Pro__oozoofrog-oozoofrog.github.io-108__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The identification of this Peter Fenwick as the Auckland computer scientist is factual rather than speculative."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d44-Mistral-Large-3__oozoofrog-oozoofrog.github.io-108__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "`astro dev`로 렌더링 확인을 완료했습니다.",
+     "Verified rendering with astro dev.",
+     "Verified rendering using astro dev."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "Those internal links work correctly."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d44-grok-4.6__dipasqualew-vibereq-200__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "This pass timed out."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "I could not write the remaining fixes before this pass ended."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d44-Mistral-Large-3__yorrick-claude-code-plugins-144__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Implemented default progress logging in engine.py, sending start/finish messages and elapsed time to stderr when no callbacks are registered.",
+     "The default progress logging implementation is complete.",
+     "Implemented the default progress logging feature in engine.py.",
+     "Added default progress logging to stderr when no callbacks are registered.",
+     "Implemented the default progress logging feature in engine.py; the implementation is complete.",
+     "Added default stderr progress logging when no callbacks are registered."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "Progress messages now show node start and finish with elapsed time.",
+     "The implemented progress messages show node start and finish with elapsed time."
+    ]
+   },
+   {
+    "id": 2,
+    "texts": [
+     "The implementation maintains backward compatibility by letting existing callbacks take precedence.",
+     "The implementation maintains backward compatibility by giving existing callbacks precedence.",
+     "The implementation maintains backward compatibility and gives existing callbacks precedence."
+    ]
+   },
+   {
+    "id": 3,
+    "texts": [
+     "All added progress output goes to stderr rather than script result output.",
+     "All of the new progress output goes to stderr."
+    ]
+   },
+   {
+    "id": 4,
+    "texts": [
+     "Updated workflow.md to replace the bare output print with a structured final summary.",
+     "Updated workflow.md, replacing the bare result print with a structured final summary.",
+     "Updated workflow.md, removing the bare result print in favor of a structured final summary."
+    ]
+   },
+   {
+    "id": 5,
+    "texts": [
+     "Updated test_engine.py with test coverage for the new default logging behavior.",
+     "Updated test_engine.py with coverage for the new default logging behavior."
+    ]
+   },
+   {
+    "id": 6,
+    "texts": [
+     "Verified existing functionality remains intact."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d44-grok-4.6__lightfastai-lightfast-14__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "CodeRabbit’s v2 schema expects `finishing_touches` under `reviews`."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d44-grok-4.6__entireio-cli-163__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Cursor writes its trust config using Node write-file-atomic with a fixed .tmp name."
+    ]
+   }
+  ]
+ }
+]

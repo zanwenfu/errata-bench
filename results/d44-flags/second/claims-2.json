@@ -1,0 +1,87 @@
+[
+ {
+  "packet": "d44-DeepSeek-V4-Pro__1natsu-vacation-agent-skills-145__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "先ほどの編集作業は別のセッションで行われたものです。"
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d44-DeepSeek-V4-Pro__entireio-cli-89__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The file was never created."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d44-DeepSeek-V4-Pro__osabiohq-osabio-74__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "architecture.md is 34KB."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "test-scenarios.md is 11.6KB."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d44-DeepSeek-V4-Pro__obsessiondb-rudel-123__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The fix keeps the analytics query's isLoading from becoming false until the organization resolves and the real KPI request completes."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d44-Mistral-Large-3__dipasqualew-vibereq-200__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The verification established that get-intents auto-generates missing intents."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d44-Mistral-Large-3__entireio-cli-38__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "OpenCode was a deprecated agent."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "OpenCode used a custom plugin transcript format.",
+     "OpenCode used a custom plugin format."
+    ]
+   },
+   {
+    "id": 2,
+    "texts": [
+     "AgentSession.NativeData is used consistently across Claude and Gemini."
+    ]
+   }
+  ]
+ }
+]

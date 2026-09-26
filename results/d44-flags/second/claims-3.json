@@ -1,0 +1,118 @@
+[
+ {
+  "packet": "d44-grok-4.6__entireio-cli-253__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The enable benchmark is only on this branch; main currently has no BenchmarkEnableCommand.",
+     "The benchmark is only on this branch; main currently has no BenchmarkEnableCommand."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d44-grok-4.6__entireio-cli-89__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "OpenCode never wrote docs/red.md."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d44-Mistral-Large-3__entireio-cli-163__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Added CI workspace trust auto-accept by setting CURSOR_TRUST_WORKSPACE=1, as shown in the claimed diff.",
+     "The workspace trust prompt is now auto-accepted.",
+     "Added workspace trust auto-accept by setting CURSOR_TRUST_WORKSPACE=1 when launching the agent.",
+     "The implemented fix ensures deterministic cursor-cli CI runs and the workspace trust prompt is now auto-accepted.",
+     "Added CI-only CURSOR_TRUST_WORKSPACE=1 environment configuration to auto-accept workspace trust when launching the agent."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d44-Mistral-Large-3__Pavel401-BugViper-85__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Added searchFileContent and peekFileLines API functions to frontend/lib/api.ts."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "Under 'Testing the Fixes', the fulltext query class LoginRequest(BaseModel): now returns matches with file paths and line numbers.",
+     "Testing fulltext search with class LoginRequest(BaseModel): now returns matches with file paths and line numbers.",
+     "Tested fulltext search with class LoginRequest(BaseModel): and observed matches with paths and line numbers."
+    ]
+   },
+   {
+    "id": 2,
+    "texts": [
+     "Under 'Testing the Fixes', Symbol Search for class LoginRequest(BaseModel): no longer fails with Lucene parsing errors.",
+     "Testing symbol search with class LoginRequest(BaseModel): no longer produces Lucene parsing errors.",
+     "Tested symbol search with class LoginRequest(BaseModel): and established it no longer fails with Lucene parsing errors."
+    ]
+   },
+   {
+    "id": 3,
+    "texts": [
+     "Under 'Testing the Fixes', Line Search for LoginRequest returns all matching lines with file paths and line numbers.",
+     "Testing Line Search with LoginRequest returns all matching lines with file paths and line numbers.",
+     "Tested Line Search for LoginRequest and observed all matching lines with file paths and line numbers."
+    ]
+   },
+   {
+    "id": 4,
+    "texts": [
+     "Under 'Testing the Fixes', clicking Peek loads 10 lines above and below a match in the UI.",
+     "Clicking Peek on a match loads 10 lines above and below it in the UI.",
+     "Established that clicking Peek loads 10 lines above and below the match in the UI."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d44-Mistral-Large-3__anchoo2kewl-SprintSpark-157__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "There was no downtime."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "Production is running commit 22e5546."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d44-grok-4.6__entireio-cli-50__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Sven authored the perf instrumentation in #614."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "Sven Pfleiderer had write access.",
+     "Sven had write access."
+    ]
+   }
+  ]
+ }
+]

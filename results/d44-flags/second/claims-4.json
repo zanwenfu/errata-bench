@@ -1,0 +1,109 @@
+[
+ {
+  "packet": "d44-Mistral-Large-3__entireio-cli-50__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The unique-author list confirms that all email domains are @entire.io or known personal domains of team members."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d44-DeepSeek-V4-Pro__dipasqualew-vibereq-200__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The plan has been fully implemented."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d44-Mistral-Large-3__osabiohq-osabio-74__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Completed the discovery-driven architecture design following the nw:design process.",
+     "Completed discovery-driven architecture design following the nw:design process."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "Wrote docs/feature/agent-learnings/design/architecture.md."
+    ]
+   },
+   {
+    "id": 2,
+    "texts": [
+     "Embedded Mermaid C4 diagrams in the architecture document.",
+     "Embedded the Mermaid C4 diagrams in the architecture document."
+    ]
+   },
+   {
+    "id": 3,
+    "texts": [
+     "Wrote docs/feature/agent-learnings/design/adr-1-functional-core.md."
+    ]
+   },
+   {
+    "id": 4,
+    "texts": [
+     "Stubbed src/db/migrations/20260313_learning_table.surql."
+    ]
+   },
+   {
+    "id": 5,
+    "texts": [
+     "Brain has a single team."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d44-DeepSeek-V4-Pro__hutusi-amytis-349__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The sample shows up in the series catalog hero because it has featured: true.",
+     "The sample shows up in the series catalog hero because featured is true."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d44-Mistral-Large-3__hutusi-amytis-18__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The package is missing in the new site's node_modules."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "The package is not declared in the new site's package.json.",
+     "reading-time is not declared in the new site's package.json."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d44-DeepSeek-V4-Pro__obsessiondb-rudel-317__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Already verified that better-auth auto-creates the SQLite tables on first request.",
+     "Verified that better-auth auto-creates the SQLite tables on first request."
+    ]
+   }
+  ]
+ }
+]

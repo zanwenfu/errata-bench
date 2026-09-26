@@ -1,0 +1,49 @@
+[
+ {
+  "packet": "d44-DeepSeek-V4-Pro__yorrick-claude-code-plugins-144__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "All /workflow scripts have no registered callbacks."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d44-grok-4.6__marcus-sa-brain-59__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Issue #178 wasn’t updated remotely."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d44-DeepSeek-V4-Pro__hutusi-amytis-18__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The reading-time package isn't listed in the other site's dependencies.",
+     "The reading-time package is not listed in the other site's dependencies."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d44-DeepSeek-V4-Pro__entireio-cli-53__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The integration_test directory contains Go tests that use a real Git repository.",
+     "cmd/entire/cli/integration_test/ contains Go tests that use a real git repo.",
+     "The tests in cmd/entire/cli/integration_test/ are Go tests that use a real git repository."
+    ]
+   }
+  ]
+ }
+]
