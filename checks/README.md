@@ -39,7 +39,7 @@ directories made before the split, and what happens when a candidate or a
 grading fails. Its ninth section requires that every served-model probe the
 stages made went to its stand-in, so none of it reaches the network.
 
-**`guards_hold.py`** is one hundred and thirty numbered sections, one per guard, after a section 0: what the
+**`guards_hold.py`** is one hundred and thirty-one numbered sections, one per guard, after a section 0: what the
 attempt and grade stages refuse to do; the gate asked repeatedly; the
 reference-answer control and when it is not applicable; the clean-pass
 standard and the hedged one priced side by side; permanent git loss; the
@@ -213,7 +213,10 @@ that fails falling back and putting the developer's own lockfile back as it was;
 record 3, the whole conversation: nothing cut, the graders reading it whole and shortening it only
 with the record at a length fallback, saying so, and the results the corpus table cut given back
 whole from the transcript only when the transcript's text begins with what the table kept
-(section 110 now expects record 3 of the candidate and of the stored answer).
+(section 110 now expects record 3 of the candidate and of the stored answer); section 131 has an
+agent's Harbor trajectory (ATIF) read into the graders' record with every call, argument and result
+whole, the seeded conversation left out and a subagent's calls kept, and each call shown by what it
+acted on and was asked.
 Section 0 has the suite
 start as CI does, with no credential in its environment and `.env` never read (B-264: a
 stand-in corpus that gave every session a turn let section 41 call the model provider with the

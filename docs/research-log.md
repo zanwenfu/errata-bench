@@ -8564,3 +8564,16 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     the freeze 04:0x (was 04:1x), the check rows 04:1x (was 04:4x), the user's
     decisions and the probes 04:3x (were 04:5x and 05:0x), the environments
     04:4x (was 05:4x).
+- **09-27, 05:2x UTC** — **An agent's Harbor trajectory, read into the
+  graders' record (v1 step 3 begins).** `errata_bench.release.atif` reads
+  ATIF (Harbor's trajectory format, v1.7) into the calls `trace.render`
+  shows the graders: every call with all of its arguments (kept whole under
+  `args`) and all of its result, a result given as parts joined. Left out:
+  steps marked `is_copied_context`, which are a seeded conversation, not the
+  attempt's work. Kept: a subagent's calls, named as its. The answer is the last
+  message the agent wrote. A call that is not a shell command is shown by what
+  it acted on and what else it was asked (a read's part of a file, a search's
+  pattern and where); an editor's operation (OpenHands' `str_replace` beside a
+  path) is not taken for a shell command; a command given as a list (Codex) is
+  run together. Guard 131, which fails with the copied context kept or a read
+  shown without its file.

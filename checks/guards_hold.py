@@ -8817,6 +8817,56 @@ check(_w130[0]["content"] == _full130 and _w130[0].get("whole_from_transcript") 
       "a result the table cut comes back whole from the transcript, never one that differs or a subagent's, "
       "and nothing changes without a transcript")
 
+print("\n131. an agent's Harbor trajectory is read into the graders' record, whole (v1 step 3)")
+# Harbor's agents write ATIF. The graders read calls in this harness's shape.
+# Nothing of an attempt's calls may be dropped; the seeded conversation, marked
+# as copied context, is not the attempt's work; a subagent's calls are.
+from errata_bench.release import atif as _atif131
+_big131 = "log line\n" * 6000
+_traj131 = {"schema_version": "ATIF-v1.7", "agent": {"name": "claude-code"}, "steps": [
+    {"step_id": 1, "source": "user", "message": "the developer's old request", "is_copied_context": True},
+    {"step_id": 2, "source": "agent", "message": "Old reply.", "is_copied_context": True,
+     "tool_calls": [{"tool_call_id": "old", "function_name": "Bash", "arguments": {"command": "rm -rf old"}}],
+     "observation": {"results": [{"source_call_id": "old", "content": "done"}]}},
+    {"step_id": 3, "source": "user", "message": "Is the fix in?"},
+    {"step_id": 4, "source": "agent", "message": "",
+     "tool_calls": [{"tool_call_id": "t1", "function_name": "Bash", "arguments": {"command": "npm test"}},
+                    {"tool_call_id": "t2", "function_name": "Read",
+                     "arguments": {"file_path": "/w/a.py", "offset": 10, "limit": 5}}],
+     "observation": {"results": [{"source_call_id": "t1", "content": _big131},
+                                 {"source_call_id": "t2", "content": [{"type": "text", "text": "     10→x = 1"}]}]}},
+    {"step_id": 5, "source": "agent", "message": "Checking the edit.",
+     "tool_calls": [{"tool_call_id": "t3", "function_name": "Edit",
+                     "arguments": {"file_path": "/w/a.py", "old_string": "x = 1", "new_string": "x = 2",
+                                   "replace_all": False}}],
+     "observation": {"results": [{"source_call_id": "t3", "content": "updated"}]}},
+    {"step_id": 6, "source": "agent", "message": [{"type": "text", "text": "Yes: the fix is in, and the tests pass."}]}],
+    "subagent_trajectories": [{"agent": {"name": "explorer"}, "steps": [
+        {"step_id": 1, "source": "agent", "message": "",
+         "tool_calls": [{"tool_call_id": "s1", "function_name": "Grep",
+                         "arguments": {"pattern": "fix", "path": "/w"}}],
+         "observation": {"results": [{"source_call_id": "s1", "content": "a.py:1: fix"}]}}]}]}
+_ans131, _calls131 = _atif131.record_of(_traj131)
+check(_ans131 == "Yes: the fix is in, and the tests pass." and [c["name"] for c in _calls131]
+      == ["Bash", "Read", "Edit", "subagent explorer: Grep"] and not any("rm -rf old" in str(c) for c in _calls131),
+      f"the answer is the last thing the agent wrote; the calls are this attempt's and its subagent's, never the "
+      f"seeded conversation's: {[c['name'] for c in _calls131]}")
+check(_calls131[0]["result"] == _big131 and _calls131[1]["result"] == "     10→x = 1"
+      and _calls131[2]["old_text"] == "x = 1" and _calls131[2]["new_text"] == "x = 2"
+      and _calls131[2]["args"]["replace_all"] is False,
+      "every result is kept whole, one given as parts too, and every argument, under args")
+_r131 = trace_mod.render(_calls131)
+check("1. Bash: npm test" in _r131 and "2. Read: /w/a.py {\"offset\": 10, \"limit\": 5}" in _r131
+      and "replaced:\n      x = 1\n   with:\n      x = 2" in _r131 and "Grep: /w {\"pattern\": \"fix\"}" in _r131
+      and _big131.rstrip().replace("\n", "\n      ") in _r131,
+      "and the graders see each call by what it acted on and was asked, and the long output whole")
+_ed131 = _atif131.call_of("str_replace_editor", {"command": "str_replace", "path": "/w/b.py",
+                                                 "old_str": "print()", "new_str": "pass"}, "done")
+_sh131 = _atif131.call_of("shell", {"command": ["bash", "-lc", "go test ./..."]}, "ok")
+check(_ed131["command"] == "str_replace /w/b.py" and _ed131["old_text"] == "print()"
+      and _sh131["command"] == "bash -lc go test ./...",
+      "an editor's operation is not taken for a shell command, and a command given as a list is run together")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended
