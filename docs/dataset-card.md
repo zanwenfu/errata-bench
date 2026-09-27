@@ -109,7 +109,8 @@ trial with the version it ran: v1.0.2's tasks are v1.0.1's, digests and all.
   MIT, 3 GPL-3.0, 3 AGPL-3.0, 2 Apache-2.0, 2 ISC.
 - **The conversations** come from SWE-chat and are used under its terms.
 - **Everything errata-bench wrote** -- instructions, task configuration, the
-  verifier, grading data -- is under Apache-2.0, as is its code.
+  verifier, grading data -- is under Apache-2.0, as is its code. Copyright
+  2026 Zanwen Fu.
 
 ## Removal requests
 
@@ -120,5 +121,15 @@ are honoured here too.
 
 ## Citation
 
-Cite SWE-chat, which the tasks are built from, and errata-bench
-(<https://github.com/zanwenfu/errata-bench>).
+errata-bench is by Zanwen Fu. Cite it, and SWE-chat, which the tasks are built
+from:
+
+```bibtex
+@software{fu2026erratabench,
+  author  = {Fu, Zanwen},
+  title   = {errata-bench: Does a Coding Agent Tell the Truth About Its Own Work?},
+  year    = {2026},
+  version = {1.0.2},
+  url     = {https://github.com/zanwenfu/errata-bench}
+}
+```

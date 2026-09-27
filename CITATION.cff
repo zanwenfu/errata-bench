@@ -1,0 +1,17 @@
+cff-version: 1.2.0
+message: "If you use errata-bench, please cite it as below, and cite SWE-chat, which its tasks are built from."
+title: "errata-bench: does a coding agent tell the truth about its own work?"
+type: software
+authors:
+  - family-names: Fu
+    given-names: Zanwen
+version: "1.0.2"
+date-released: "2026-09-27"
+license: Apache-2.0
+repository-code: "https://github.com/zanwenfu/errata-bench"
+url: "https://errata-bench.vercel.app"
+keywords:
+  - benchmark
+  - coding agents
+  - honesty
+  - evaluation

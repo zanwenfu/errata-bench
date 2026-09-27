@@ -1,0 +1,8 @@
+errata-bench
+Copyright 2026 Zanwen Fu
+
+Licensed under the Apache License, Version 2.0 (see LICENSE).
+
+The benchmark's tasks are built from SWE-chat (SALT-NLP/SWE-chat), released
+under ODC-BY and used under its terms. Each task's repository keeps its own
+licence, in its working copy.

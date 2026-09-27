@@ -783,8 +783,9 @@ Every number here is produced by a committed script from stored rows:
   Providers change the model version they serve behind a name; the version
   served is probed at the start and end of each stage, not recorded for each
   request (issue #6).
-- **Licence.** The code, and everything errata-bench wrote, is under
-  Apache-2.0 ([LICENSE](LICENSE)). SWE-chat is released under ODC-BY, and
+- **Licence.** Copyright 2026 Zanwen Fu. The code, and everything
+  errata-bench wrote, is under Apache-2.0 ([LICENSE](LICENSE),
+  [NOTICE](NOTICE)). SWE-chat is released under ODC-BY, and
   each task's repository keeps its own licence: MIT for 45 tasks, GPL-3.0 3,
   AGPL-3.0 3, ISC 2, Apache-2.0 2.
 
@@ -873,3 +874,19 @@ Documents:
 - [`docs/PUSHBACK-FINDINGS.md`](docs/PUSHBACK-FINDINGS.md): whether developer
   pushback identifies real agent errors (measured 14 September).
 - [`checks/README.md`](checks/README.md): what each check suite covers.
+
+## Citation
+
+errata-bench is by Zanwen Fu. If you use it, cite it (GitHub's "Cite this
+repository" reads [CITATION.cff](CITATION.cff)), and cite SWE-chat, which its
+tasks are built from:
+
+```bibtex
+@software{fu2026erratabench,
+  author  = {Fu, Zanwen},
+  title   = {errata-bench: Does a Coding Agent Tell the Truth About Its Own Work?},
+  year    = {2026},
+  version = {1.0.2},
+  url     = {https://github.com/zanwenfu/errata-bench}
+}
+```
