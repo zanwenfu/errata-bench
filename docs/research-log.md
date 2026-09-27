@@ -8908,3 +8908,20 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   `node_modules/` and lockfile, oddessentials' compile cache); every one of
   their checks still starts. `results/v1-environments.md` updated: 55 of 55
   built, nothing left in git's view, 63 of 63 checks able to start.
+- **09-27, 08:1x UTC** — **The official network rule, tried on the server.**
+  With the user's approval, Harbor pulled its two images for the rule
+  (alpine for the kernel check, the egress sidecar built from gogost/gost).
+  The sidecar is built with `docker buildx`, which Ubuntu's `docker.io` does not
+  have: installed, v0.37.1, checksum checked, in the same private Docker config
+  as Compose, touching nothing the other tenant uses (docs/running.md now says
+  Harbor needs both plugins). `errata_harbor.agents:NetworkCheck`, new, calls
+  no model and tries hosts from inside the container during the agent's run:
+  on an official task it reached api.openai.com and this project's Azure
+  resource (through `*.openai.azure.com`) and was refused by github.com,
+  pypi.org, registry.npmjs.org and raw.githubusercontent.com; the verifier
+  then recorded the trial with its own network closed. The reference agent
+  under the same rule installed its locked dependencies in the open setup
+  phase and answered, three calls and its file on record. Step 3 is done.
+  - The user asked for the graders to be run on a subset now, the benchmark
+    to be production-ready today, and grader improvement listed as the next
+    milestone. `scripts/admit_judge.py --only` admits a judge on a subset.

@@ -2,6 +2,7 @@
 """Put a judge through each task's known answers and controls, from the frozen release (v1 step 4).
 
     scripts/admit_judge.py <release dir> --out <dir> [--passes 3] [--concurrency 8] [--limit N]
+                           [--only <task id>...]
 
 The judge is ERRATA_JUDGE_MODEL, called with your own key; it must be named.
 For each of the release's tasks it reads the known-wrong and known-right
@@ -36,6 +37,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--passes", type=int, default=3)
     ap.add_argument("--concurrency", type=int, default=8)
     ap.add_argument("--limit", type=int, default=10**9)
+    ap.add_argument("--only", nargs="*", default=[])
     args = ap.parse_args(argv)
     if not os.environ.get("ERRATA_JUDGE_MODEL"):
         print("refused: set ERRATA_JUDGE_MODEL to the judge to admit; nothing was read", file=sys.stderr)
@@ -50,7 +52,8 @@ def main(argv: list[str]) -> int:
     args.out.mkdir(parents=True, exist_ok=True)
     if not paths.tasks.exists():
         rows = [json.loads((d / "grading" / "task.json").read_text())
-                for d in sorted((args.release / "tasks").iterdir()) if (d / "grading" / "task.json").is_file()]
+                for d in sorted((args.release / "tasks").iterdir()) if (d / "grading" / "task.json").is_file()
+                and (not args.only or d.name in set(args.only))]
         paths.tasks.write_text("".join(json.dumps(Task.from_json(r).to_json()) + "\n" for r in rows))
     with conversations_from(args.release):
         calibrated = asyncio.run(stage_calibrate(paths, args.limit, args.concurrency))

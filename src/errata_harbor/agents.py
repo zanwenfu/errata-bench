@@ -2,6 +2,7 @@
 
     harbor run -p <tasks> -a errata_harbor.agents:Reference -m <model>
     harbor run -p <tasks> -a errata_harbor.agents:StandIn
+    harbor run -p <tasks> -a errata_harbor.agents:NetworkCheck [--ak hosts=<host>,<host>]
 
 `Reference` is errata-bench's reference agent: the benchmark's own five-tool
 loop (`errata_bench.release.reference_agent`), installed in the task's
@@ -10,6 +11,10 @@ instruction as a file, so an instruction of any length reaches it whole.
 The model's credentials are passed from where Harbor runs (the names in
 `Reference.FORWARDED`) or with `--ae`. The model `errata/stand-in` is a
 fixed script, no model, through the same loop and tools.
+
+`NetworkCheck` calls no model either: from inside the task's container, while
+the agent's network rule is in force, it tries each host and reports which it
+reached, to check a machine's setup before paying for a run.
 
 `StandIn` calls no model and installs nothing. It looks at the repository,
 writes one file and reports what it did, and writes its trajectory in ATIF,
@@ -141,3 +146,46 @@ class Reference(BaseInstalledAgent):
             command=(f"{home}/venv/bin/python -m errata_bench.release.reference_agent {home}/instruction.md "
                      f"{logs} --model {shlex.quote(self.model_name or '')}"),
             env=env)
+
+
+class NetworkCheck(BaseAgent):
+    """No model: which hosts the agent's network rule lets it reach, tried from inside the task's container."""
+
+    capabilities = AgentCapabilities(atif=True)
+    # Two model APIs every task allows, and three hosts no task does.
+    HOSTS = ("api.openai.com", "api.anthropic.com", "github.com", "pypi.org", "registry.npmjs.org")
+
+    def __init__(self, logs_dir: Path, model_name: str | None = None, hosts: str | None = None, **kwargs):
+        super().__init__(logs_dir=logs_dir, model_name=model_name, **kwargs)
+        self.hosts = tuple(h.strip() for h in (hosts or "").split(",") if h.strip()) or self.HOSTS
+
+    @staticmethod
+    def name() -> str:
+        return "errata-network-check"
+
+    def version(self) -> str:
+        return "1.0"
+
+    async def setup(self, environment: BaseEnvironment) -> None:
+        return None
+
+    async def run(self, instruction: str, environment: BaseEnvironment, context: AgentContext) -> None:
+        steps = [Step(step_id=1, timestamp=_now(), source="user", message=instruction)]
+        reached, blocked = [], []
+        for n, host in enumerate(self.hosts, start=1):
+            command = (f"curl -sS -m 15 -o /dev/null -w 'http %{{http_code}}' https://{shlex.quote(host)}/ 2>&1; "
+                       f"echo \" exit $?\"")
+            done = await environment.exec(command=command, timeout_sec=60)
+            out = (done.stdout or "") + (done.stderr or "")
+            # Any HTTP answer, even an error status, means the host was reached.
+            ok = "http " in out and "http 000" not in out
+            (reached if ok else blocked).append(host)
+            steps.append(Step(
+                step_id=len(steps) + 1, timestamp=_now(), source="agent", message="",
+                tool_calls=[ToolCall(tool_call_id=f"n{n}", function_name="run_command", arguments={"command": command})],
+                observation=Observation(results=[ObservationResult(source_call_id=f"n{n}", content=out)])))
+        reply = (f"Reached: {', '.join(reached) or 'none'}. Blocked: {', '.join(blocked) or 'none'}.")
+        steps.append(Step(step_id=len(steps) + 1, timestamp=_now(), source="agent", message=reply))
+        trajectory = Trajectory(schema_version="ATIF-v1.7", session_id=str(uuid.uuid4()),
+                                agent=Agent(name=self.name(), version=self.version()), steps=steps)
+        (self.logs_dir / "trajectory.json").write_text(json.dumps(trajectory.to_json_dict(), indent=1))

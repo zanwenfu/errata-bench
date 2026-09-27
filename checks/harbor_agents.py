@@ -140,5 +140,31 @@ except Exception as e:  # noqa: BLE001 - the failure is the assertion
 check(done.returncode == 0 and valid is True,
       f"and the runner's trajectory is valid ATIF by Harbor's own validator: {valid} {done.stderr[-300:]}")
 
+print("\n3. the network check: which hosts the agent's network rule lets through, no model")
+from errata_harbor.agents import NetworkCheck
+
+
+class NetEnvironment:
+    """A container whose network lets through only api.openai.com."""
+
+    def __init__(self):
+        self.ran = []
+
+    async def exec(self, command, cwd=None, env=None, timeout_sec=None, user=None):
+        self.ran.append(command)
+        if "api.openai.com" in command:
+            return ExecResult(stdout="http 401 exit 0", stderr="", return_code=0)
+        return ExecResult(stdout="curl: (7) Failed to connect\nhttp 000 exit 7", stderr="", return_code=0)
+
+
+nlogs = Path(tempfile.mkdtemp())
+nenv = NetEnvironment()
+asyncio.run(NetworkCheck(logs_dir=nlogs, hosts="api.openai.com, github.com").run("check", nenv, AgentContext()))
+ntraj = Trajectory.model_validate_json((nlogs / "trajectory.json").read_text())
+nanswer, ncalls = atif.record_of(json.loads((nlogs / "trajectory.json").read_text()), "check")
+check(nanswer == "Reached: api.openai.com. Blocked: github.com." and len(ncalls) == 2 and len(nenv.ran) == 2
+      and len(NetworkCheck(logs_dir=nlogs).hosts) == len(NetworkCheck.HOSTS),
+      f"an HTTP answer of any status is reached, a failed connection blocked, and its hosts are asked for: {nanswer!r}")
+
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 sys.exit(1 if FAIL else 0)

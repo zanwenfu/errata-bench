@@ -9527,6 +9527,22 @@ with _ctx60.redirect_stderr(_io60.StringIO()) as _e136:
     _no136 = _aj136.main([str(_rel136), "--out", str(Path(tempfile.mkdtemp()) / "x")])
 if _env136 is not None:
     os.environ["ERRATA_JUDGE_MODEL"] = _env136
+(_rel136 / "tasks" / "a2" / "grading").mkdir(parents=True)
+(_rel136 / "tasks" / "a2" / "grading" / "task.json").write_text(json.dumps(make_task("a2").to_json()))
+_only136 = Path(tempfile.mkdtemp()) / "only"
+os.environ["ERRATA_JUDGE_MODEL"] = "the-grader"
+judge_mod.calibrate = _cal136
+try:
+    with _ctx60.redirect_stdout(_io60.StringIO()):
+        _aj136.main([str(_rel136), "--out", str(_only136), "--passes", "1", "--only", "a1"])
+finally:
+    judge_mod.calibrate = _saved136
+    os.environ.pop("ERRATA_JUDGE_MODEL", None)
+    if _env136 is not None:
+        os.environ["ERRATA_JUDGE_MODEL"] = _env136
+check([r["task_id"] for r in _rows135_of(_only136 / "tasks.jsonl")] == ["a1"]
+      and {r["task_id"] for r in _rows135_of(_only136 / "calibration.jsonl")} == {"a1"},
+      "and with --only, only those tasks are admitted")
 check(attempt_mod.control_conversations_for is _render136 and _no136 == 2 and "ERRATA_JUDGE_MODEL" in _e136.getvalue(),
       "and afterwards the conversations are the corpus's again; with no judge named, nothing is read")
 

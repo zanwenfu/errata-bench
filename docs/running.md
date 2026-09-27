@@ -12,10 +12,12 @@ the laptop or the server, but several parts of the release are not ready yet
 
 ## What you need
 
-- **Linux with Docker and Docker Compose v2.** For the official network rule
-  (the network closed while the agent works, apart from model APIs), Docker
-  must support Harbor's egress sidecar: Linux containers and nftables in the
-  kernel. Harbor checks this itself before a run.
+- **Linux with Docker, and its Compose v2 and buildx plugins.** For the
+  official network rule (the network closed while the agent works, apart from
+  model APIs), Docker must support Harbor's egress sidecar: Linux containers
+  and nftables in the kernel. Harbor checks this itself before a run, and
+  `-a errata_harbor.agents:NetworkCheck` shows from inside a task's container
+  which hosts the rule lets through, with no model.
 - **Two Python environments**, because they cannot be one: Harbor 0.23.0
   needs openai below 3, and errata-bench's lock pins openai 3.13.0.
   - Harbor's, to run agents: `pip install harbor==0.23.0`, then
