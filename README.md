@@ -751,6 +751,12 @@ Every number here is produced by a committed script from stored rows:
 
 ## 8. Running it
 
+**Testing your own agent (v1, in progress).** v1 runs any agent
+[Harbor](https://github.com/laude-institute/harbor) runs, on the frozen tasks, and grades
+its answers with the graders below, with your own keys: [docs/running.md](docs/running.md)
+is the draft quickstart, and says what is not ready yet. What follows is this
+repository's own pipeline, which builds the tasks and runs its reference candidates.
+
 Setup:
 
     python -m venv .venv && .venv/bin/pip install -e .
