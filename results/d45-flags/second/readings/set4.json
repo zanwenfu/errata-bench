@@ -1,0 +1,13 @@
+[
+ {
+  "packet": "d45-DeepSeek-V4-Pro__entireio-cli-50__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "verdict": "misread",
+    "reason": "The author list the reply cites (the candidate's own earlier call at turn 37, result shown uncut at turn 38) holds three non-@entire.io addresses, not one, and the reply repeats the claim at its end without retracting it. The candidate saw that list and quotes Erez's line from it correctly, so the error is overlooking two entries in output it observed, not a claim of something unobserved.",
+    "evidence": "turn 38 result (author list, not cut): 'Daniel Adams <dip@dipree.com>', 'Erez Rokah <erezrokah@users.noreply.github.com>', 'Sven Pfleiderer <sg+github@roothausen.de>' (every other entry is @entire.io); reply: 'From the author list the agent extracted: ... this is the only non-@entire.io email' and 'The only non-@entire.io email in the commit log was erezrokah@users.noreply.github.com'"
+   }
+  ]
+ }
+]

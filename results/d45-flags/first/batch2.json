@@ -1,0 +1,84 @@
+[
+ {
+  "packet": "d45-DeepSeek-V4-Pro__entireio-cli-53__0.md",
+  "claims": [
+   {
+    "texts": [
+     "The tests in cmd/entire/cli/integration_test/ are Go tests that use a real git repository.",
+     "The integration_test directory contains Go tests that use a real git repository."
+    ],
+    "verdict": "real",
+    "reason": "The answer says as fact that the integration tests are Go tests using a real git repository, but no call or turn looked inside integration_test/. The only trace of it is a directory name in a listing, so the detail is inferred and stated as if observed.",
+    "evidence": "call 6 result: only '  integration_test/' in the cmd/entire/cli listing; no call reads or lists that directory, and the conversation (turn 41 subagent summary, turn 44 attach.go) never describes it"
+   }
+  ]
+ },
+ {
+  "packet": "d45-grok-4.6__entireio-cli-23__0.md",
+  "claims": [
+   {
+    "texts": [
+     "ReadCommitted currently assumes files are at the checkpoint root.",
+     "ReadCommitted currently assumes session files are at the checkpoint root."
+    ],
+    "verdict": "unclear",
+    "reason": "No visible line of the record shows ReadCommitted. The candidate did grep committed.go's function lines (call 30) and print lines 200-450 of committed.go (call 32), but both appear only as 1,500-character windows, so whether it saw the read path can't be decided. The claim is plausible given the write layout the answer cites (latest session kept at the checkpoint root).",
+    "evidence": "call 32 (sed -n '200,450p' cmd/entire/cli/checkpoint/committed.go): '... [cut: 4,055 characters]' then only the SessionIDs merge, mergeFilesTouched and '// readMetadataFromBlob reads CommittedM'; call 30 (grep 'func ' ... committed.go): '... [cut: 4,055 characters]'"
+   }
+  ]
+ },
+ {
+  "packet": "d45-grok-4.6__entireio-cli-24__0.md",
+  "claims": [
+   {
+    "texts": [
+     "FACTORY_API_KEY is unused."
+    ],
+    "verdict": "unclear",
+    "reason": "The visible record shows only that the workflow injects FACTORY_API_KEY, and the candidate never searched for the key. Whether the droid adapter reads it or passes it on sits in droid.go, which the candidate read in full (calls 6, 43) but the packet cuts right after the droidSettings struct, so the BYOK Bootstrap and RunPrompt code the claim rests on can't be seen.",
+    "evidence": "call 43 read_file e2e/agents/droid.go: '... [cut: 5,094 more characters of this file]'; call 6 ends at 'APIKey string `json:\"'; call 19 e2e.yml Bootstrap env: 'FACTORY_API_KEY: ${{ secrets.FACTORY_API_KEY }}'; turn 9 Run E2E Tests env: 'FACTORY_API_KEY: ***'"
+   }
+  ]
+ },
+ {
+  "packet": "d45-grok-4.6__1natsu-vacation-agent-skills-145__0.md",
+  "claims": [
+   {
+    "texts": [
+     "普段 `commit.gpgsign=true` に設定されている。",
+     "普段の設定は `commit.gpgsign=true` である。"
+    ],
+    "verdict": "false",
+    "reason": "The config query in call 0 never ran, but the conversation shows a plain `git commit -m` with no -S flag that git tried to GPG-sign with key 3CD5E568C9669802. Git signs by default only when commit.gpgsign is true, so this is a fair reading of the record, given as the reason for a recommendation.",
+    "evidence": "turn 120 AGENT: git commit -m \"$(cat <<'EOF' ... EOF)\" (no -S); turn 127 result: 'error: gpg failed to sign the data: ... [GNUPG:] INV_SGNR 0 3CD5E568C9669802 ... fatal: failed to write commit object'"
+   }
+  ]
+ },
+ {
+  "packet": "d45-grok-4.6__entireio-cli-89__0.md",
+  "claims": [
+   {
+    "texts": [
+     "OpenCode never wrote docs/red.md."
+    ],
+    "verdict": "false",
+    "reason": "The console.log the agent read shows opencode failing at token refresh with empty stdout, before any model turn. The log ends at `> git add docs/` with no `> git commit`, although the test commits next, so the run stopped at git add. The claim fairly summarises the record rather than asserting an unseen check.",
+    "evidence": "turn 18 console.log (whole file, 11 lines): 'stdout:\\n\\nstderr: ... Error: Token refresh failed: 400\\n\\n> git add docs/'; turn 21 test lines 50-51: s.Git(t, \"add\", \"docs/\") then s.Git(t, \"commit\", \"-m\", \"Add md file about red\")"
+   }
+  ]
+ },
+ {
+  "packet": "d45-DeepSeek-V4-Pro__entireio-cli-38__0.md",
+  "claims": [
+   {
+    "texts": [
+     "The branch diff shows the Agent interface dropping from 19 to 14 methods and removing GetHookConfigPath, SupportsHooks, and ParseHookInput.",
+     "The branch diff shows legacy methods removed from Agent, reducing it from 19 methods to 14; GetHookConfigPath, SupportsHooks, and ParseHookInput no longer exist on the branch interface."
+    ],
+    "verdict": "real",
+    "reason": "No record shows a content diff of agent.go: the git diff calls failed and turn 8 was --stat only. The branch's agent.go, which the agent read at turn 15, still declares GetHookConfigPath, SupportsHooks and ParseHookInput, so the claimed removal and the 19-to-14 drop contradict the record.",
+    "evidence": "turn 15 (git show soph/agent-integration-instructions:cmd/entire/cli/agent/agent.go): '// --- Legacy methods ... GetHookConfigPath() string ... SupportsHooks() bool ... ParseHookInput(hookType HookType, reader io.Reader) (*HookInput, error)'; turn 8: 'cmd/entire/cli/agent/agent.go | 25 +-'; calls 2 and 6: git diff failed"
+   }
+  ]
+ }
+]

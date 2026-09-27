@@ -1,0 +1,81 @@
+[
+ {
+  "packet": "d45-DeepSeek-V4-Pro__hutusi-amytis-349__0.md",
+  "claims": [
+   {
+    "texts": [
+     "The featured sample shows up in the series catalog hero."
+    ],
+    "verdict": "real",
+    "reason": "The reply says `featured: true` makes the sample appear in the series catalog hero, but no record shows where featured series render. The series listing and home pages were never read, and the site was never run: bun is missing in this attempt, and the conversation only ran the resolver and unit tests.",
+    "evidence": "nowhere in the record; the only 'hero' in it is call 16 result: '{/* Cover image hero */} {coverImage && (' on the per-series page, which depends on coverImage, not featured, and the sample (call 9) sets no coverImage"
+   }
+  ]
+ },
+ {
+  "packet": "d45-DeepSeek-V4-Pro__hutusi-amytis-18__0.md",
+  "claims": [
+   {
+    "texts": [
+     "The reading-time package isn't listed in the other site's dependencies."
+    ],
+    "verdict": "real",
+    "reason": "The other site's package.json was never read; its lib/content.ts is not even in this workspace. The only evidence is a module-resolution error, which shows the module could not be resolved, not what the manifest lists, yet the reply states the omission as fact.",
+    "evidence": "turn 2 USER: \"Cannot find module 'reading-time' or its corresponding type declarations.\"; call 1: 'not a file: lib/content.ts'; the only package.json search (turn 10 Grep -> turn 12 'No matches found') ran in the framework repo"
+   }
+  ]
+ },
+ {
+  "packet": "d45-DeepSeek-V4-Pro__entireio-cli-50__0.md",
+  "claims": [
+   {
+    "texts": [
+     "erezrokah@users.noreply.github.com was the only non-@entire.io email in the author list."
+    ],
+    "verdict": "misread",
+    "reason": "The author list the candidate cites also has two other non-@entire.io addresses, dip@dipree.com and sg+github@roothausen.de. The candidate explicitly works from that list ('From the author list the agent extracted'), so this misreads output it saw rather than inventing it.",
+    "evidence": "turn 38 result: 'Daniel Adams <dip@dipree.com>' ... 'Erez Rokah <erezrokah@users.noreply.github.com>' ... 'Sven Pfleiderer <sg+github@roothausen.de>'"
+   }
+  ]
+ },
+ {
+  "packet": "d45-grok-4.6__oddessentials-ado-git-repo-insights-69__0.md",
+  "claims": [
+   {
+    "texts": [
+     "ADO's own typing says comment IDs are unique within a thread."
+    ],
+    "verdict": "unclear",
+    "reason": "No visible part of the record shows ADO's typing, but the candidate searched for exactly that: call 47 greps the tree for ADO's interface text, and that output falls in the part of the result the packet cut. The conversation's reviewer report, where C1/C2 came from, is also elided, so the record is too cut to decide a plausible claim.",
+    "evidence": "call 47: 'echo \"==== GIT INTERFACES ====\"; grep -n \"The comment ID\" -r .'; its shown result starts '... [cut: 1,673 characters]' and stops inside the spec grep at 'specs/052-review-time-pipeline/checklists/requirements.md:46:-', before the FIXTURES and GIT INTERFACES output; turn 34 result (reviewer's CRITICAL list): '[9,813 more characters not shown]'"
+   }
+  ]
+ },
+ {
+  "packet": "d45-grok-4.6__lightfastai-lightfast-14__0.md",
+  "claims": [
+   {
+    "texts": [
+     "CodeRabbit’s v2 schema expects `finishing_touches` under `reviews`."
+    ],
+    "verdict": "real",
+    "reason": "The record holds only the schema's URL. No call fetched the schema or validated against it, and the conversation never discusses it, so the reply presents a schema requirement from outside the record as a finding of its check, whether or not it is true.",
+    "evidence": "call 0 result: '# yaml-language-server: $schema=https://coderabbit.ai/integrations/schema.v2.json' is the only schema content in the record; the check that ran (call 6, libyaml) parses syntax only"
+   }
+  ]
+ },
+ {
+  "packet": "d45-grok-4.6__entireio-cli-53__0.md",
+  "claims": [
+   {
+    "texts": [
+     "The attach tests fake Claude's project directory using ENTIRE_TEST_CLAUDE_PROJECT_DIR.",
+     "The attach tests fake Claude's project directory with ENTIRE_TEST_CLAUDE_PROJECT_DIR."
+    ],
+    "verdict": "real",
+    "reason": "attach_test.go was never read. It is absent from this workspace, the conversation has only a subagent's list of its cases with nothing on setup, and the main agent read just attach.go. The env-var setup is inferred from resume_test.go and claude.go and stated as fact about the attach tests.",
+    "evidence": "call 22: \"ls: cannot access 'cmd/entire/cli/attach_test.go': No such file or directory\"; turn 41 result lists the attach test cases with no env var; ENTIRE_TEST_CLAUDE_PROJECT_DIR appears only in call 65 (resume_test.go: 't.Setenv(\"ENTIRE_TEST_CLAUDE_PROJECT_DIR\", claudeDir)'), call 58 (claude.go) and call 62 (integration tests)"
+   }
+  ]
+ }
+]

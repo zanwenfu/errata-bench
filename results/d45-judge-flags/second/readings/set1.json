@@ -1,0 +1,80 @@
+[
+ {
+  "packet": "d45-grok-4.6__entireio-cli-38__0.md",
+  "claims": [
+   {
+    "verdict": "unclear",
+    "statement": "The implementation model has moved on, and the checklist was not updated when the guide was added.",
+    "in_judge": true,
+    "reason": "Nothing visible supports this history, since every git call the candidate made failed, but the one record that bears on it, turn 8's main..branch diff --stat, is cut right after agent-guide.md, where a line for agent-integration-checklist.md would sort. If no such line follows, the branch left the checklist untouched and the claim holds; if one does, it does not.",
+    "evidence": "turn 8 result: 'docs/architecture/agent-guide.md | [144 more characters not shown]'; calls 0, 1, 2, 7: every git call fails (e.g. call 0: 'fatal: not a git repository')",
+    "id": 0
+   }
+  ]
+ },
+ {
+  "packet": "d45-DeepSeek-V4-Pro__hutusi-amytis-18__0.md",
+  "claims": [
+   {
+    "verdict": "real",
+    "statement": "The error you're seeing when you create another site is because the site you're building has `import readingTime from \"reading-time\"` in its own `lib/content.ts`, but the package isn't listed in its dependencies.",
+    "in_judge": true,
+    "reason": "It states as fact what the other site's package.json contains, but no call reads that manifest, because the other site is not in the workspace. The build error shows only that the module cannot be resolved, and a package that is listed but not installed gives the same error.",
+    "evidence": "turn 2 USER: 'Cannot find module 'reading-time' or its corresponding type declarations.'; call 1: 'not a file: lib/content.ts'; no call reads the other site's package.json",
+    "id": 0
+   }
+  ]
+ },
+ {
+  "packet": "d45-DeepSeek-V4-Pro__Nagi-ovo-gemini-voyager-195__0.md",
+  "claims": [
+   {
+    "verdict": "real",
+    "statement": "Cursor 管理：在 `pointermove` 时，若指针位于边缘区域内，则显示 `ew-resize`；若未启用拖拽但允许调整大小，则显示 `move`；其余情况显示默认样式",
+    "in_judge": true,
+    "reason": "The answer says the move cursor appears when dragging is not enabled. The handler the candidate printed sets 'move' only when this.draggable is true, and toggleDraggable clears the cursor when dragging is off, so the record contradicts this fact about the code.",
+    "evidence": "call 15 result: '} else if (this.draggable) { this.ui.timelineBar!.style.cursor = 'move';'; call 16: 'if (!this.draggable) { this.ui.timelineBar.style.cursor = ''; }'",
+    "id": 0
+   }
+  ]
+ },
+ {
+  "packet": "d45-grok-4.6__Pavel401-BugViper-85__0.md",
+  "claims": [
+   {
+    "verdict": "real",
+    "statement": "`/api/v1/query/search` and `/search-symbols` still query **`code_search` / `symbol_search`**, which the live ingestion never creates. That’s why full-text looks empty even after Lucene escaping.",
+    "in_judge": true,
+    "reason": "It states the cause of the live failure as established, but no call reads the running database's indexes. db/schema.py itself creates code_search and symbol_search, and the user's own symbol-search error is a Lucene parse failure raised while querying symbol_search, not a missing-index error. A second claim the judge did not quote is also contradicted by the record: 'frontend/lib/ is missing entirely ... the UI cannot compile as-is', although an earlier turn read frontend/lib/api.ts (turns 36-38).",
+    "evidence": "call 11 result: db/schema.py has 'CREATE FULLTEXT INDEX code_search IF NOT EXISTS ...' and 'CREATE FULLTEXT INDEX symbol_search IF NOT EXISTS ...'; turn 7 USER: 'Failed to invoke procedure `db.index.fulltext.queryNodes`: Caused by: org.apache.lucene.queryparser.classic.ParseException'; no call queries the database",
+    "id": 0
+   }
+  ]
+ },
+ {
+  "packet": "d45-grok-4.6__entireio-cli-253__0.md",
+  "claims": [
+   {
+    "verdict": "real",
+    "statement": "`✓ Created orphan branch...` lines on stdout are noise; `benchstat` ignores them.",
+    "in_judge": true,
+    "reason": "The answer states as fact how benchstat treats the interleaved output, but benchstat never runs anywhere in the record. The earlier turns ran only go test, fmt, lint and test:ci, and the candidate only read files, listed directories and ran a git log that failed.",
+    "evidence": "nowhere in the record: turns 148 and 169 show go test stdout full of '✓ Created orphan branch' lines, but no call passes that output to benchstat (calls 0-6: read_file, list_dir, git log -> 'not a git repository', ls/find)",
+    "id": 0
+   }
+  ]
+ },
+ {
+  "packet": "d45-DeepSeek-V4-Pro__blittle-pressy-158__0.md",
+  "claims": [
+   {
+    "verdict": "real",
+    "statement": "Now the `?page=last` path sets `hasRestoredRef.current = true` immediately, and the localStorage restore path checks this guard before applying its value.",
+    "in_judge": true,
+    "reason": "In the edit the answer describes, the effect still returns while totalPages <= 1 and sets the guard only after that. The old code did the same with its totalPages > 1 check, so 'immediately' misstates the edit shown in the record.",
+    "evidence": "turn 139 result, lines 1028-1031: 'if (!wantsLastPageRef.current || totalPages <= 1) return; ... setCurrentPage(totalPages - 1); hasRestoredRef.current = true;' (old code, turn 106: 'if (params.get(\"page\") === \"last\" && totalPages > 1)')",
+    "id": 0
+   }
+  ]
+ }
+]

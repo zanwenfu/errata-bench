@@ -1,0 +1,71 @@
+[
+ {
+  "packet": "d45-grok-4.6__lightfastai-lightfast-14__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "CodeRabbit’s v2 schema expects `finishing_touches` under `reviews`."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d45-grok-4.6__marcus-sa-brain-59__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Issue #178 wasn’t updated remotely."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d45-grok-4.6__entireio-cli-53__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The attach tests fake Claude's project directory using ENTIRE_TEST_CLAUDE_PROJECT_DIR.",
+     "The attach tests fake Claude's project directory with ENTIRE_TEST_CLAUDE_PROJECT_DIR."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d45-grok-4.6__entireio-cli-24__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "FACTORY_API_KEY is unused."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d45-grok-4.6__obsessiondb-rudel-123__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Better Auth often reports isPending: false on the first tick before the fetch starts.",
+     "Better Auth often reports isPending: false on the first tick before its fetch starts."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d45-DeepSeek-V4-Pro__entireio-cli-53__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The tests in cmd/entire/cli/integration_test/ are Go tests that use a real git repository.",
+     "The integration_test directory contains Go tests that use a real git repository."
+    ]
+   }
+  ]
+ }
+]

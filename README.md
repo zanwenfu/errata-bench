@@ -16,15 +16,16 @@ answer, puts a new model in the agent's place with real tools in a sandbox,
 records everything it does, and then checks every claim in its answer against
 that record.
 
-> **Status (25 September 2026).** The pipeline, the task set (55 tasks) and a
+> **Status (27 September 2026).** The pipeline, the task set (55 tasks) and a
 > pre-registered six-model run (990 answers) are complete. The measurement is
-> still being validated, and this README says plainly where it falls short:
-> on the six-model run the two graders agreed well enough (Cohen's κ 0.63,
-> above the 0.6 required), but only 55% of the flags raised by the main
-> honesty check survived a reading against the records, where 90% is
-> required. A revised checker is being tested on fresh answers. Until it
-> passes, model comparisons on the main measure are **not** claimed.
-> [Results so far](#6-results-so-far).
+> still being validated, and this README says plainly where it falls short.
+> With the graders shown the whole record, the judge's reading of unverified
+> claims now passes its accuracy check: 33 of 36 of its calls are right
+> (92%), where 90% is required. The main honesty check does not pass yet: 75%
+> of its flags survive a reading against the records, where 90% is required,
+> and the two graders agree on it at κ 0.59, just under the 0.6 required.
+> Until it passes, model comparisons on the main measure are **not**
+> claimed. [Results so far](#6-results-so-far).
 
 ## Contents
 
@@ -434,9 +435,9 @@ section lists how each step is checked, and what the checks have found.
 | The repository | the rebuilt tree is not the one the agent worked in | the agent's own edits are replayed; sessions whose git commands changed files are rejected; the tree is compared line by line with every file the conversation read | on the first 21 tasks, built before this check, 5 trees differed from their conversation. Such trees are now rejected at build |
 | The task | the task cannot be scored, or its reference is wrong | calibration in both orders, repeated seven more times; the accepted answer must pass; tasks whose accepted answer misreports leave | 95 built, 64 passed calibration, 56 passed their controls |
 | The graders | a rule change silently blinds or over-sensitises a grader | the null and overclaim controls on every task; an accurate summary of the agent's own last action (must not be flagged) and the same summary with one invented action (must be flagged); 35 fixed probes, each asked three times | each rule's probe sits beside one that must still be flagged, so no rule can pass by flagging everything or nothing |
-| Grader agreement | one grader's quirks decide the result | a second grader re-reads every answer three times; Cohen's κ between them must reach 0.6 | κ 0.18 on the first instrument; 0.63 on the six-model run (bar met); 0.58 on the next |
-| Flag precision | the flags are not real | a fixed sample of flags is read against the full record, twice and blind, and each disagreement settled against the record; at least 90% must be real | 55% real on the six-model run (83 of 151) and on the next (38 of 69). On the six-model run the two blind readings agreed at κ 0.82 |
-| The judge's own reading | its "unverified claim" calls are wrong | 72 of its calls read twice against the records, as for the flags | 61 of 72 right (85%), where 90% is required |
+| Grader agreement | one grader's quirks decide the result | a second grader re-reads every answer three times; Cohen's κ between them must reach 0.6 | κ 0.18 on the first instrument; 0.63 on the six-model run (bar met); 0.58 on the next; 0.59 on D-44, and 0.59 again with the whole record (D-45) |
+| Flag precision | the flags are not real | a fixed sample of flags is read against the full record, twice and blind, and each disagreement settled against the record; at least 90% must be real | 55% real on the six-model run (83 of 151) and on the next (38 of 69); 72% on D-44 (43 of 60); 75% with the whole record (D-45, 44 of 59). The two blind readings agree at κ 0.82–0.86 |
+| The judge's own reading | its "unverified claim" calls are wrong | 72 of its calls read twice against the records, as for the flags | 61 of 72 right (85%) on D-40's answers; 32 of 36 (89%) on D-44's; 33 of 36 (92%, bar met) with the whole record (D-45) |
 | The analysis | results chosen after seeing the data | each experiment's criteria and analysis scripts are committed in git before its results are read, and since the six-model run before its answers exist; a change before a run is a dated amendment that says what had been seen; failures are reported as failures | six experiments registered this way (§6); two were amended before they ran, each amendment saying what had been seen |
 | The code | a fix quietly stops working | a regression suite of 121 sections; each fix is shown to fail its check when reverted on its own; five suites run in CI on every push, with no corpus, no credentials and no network | 12 of 28 assertions once written still passed with their fix removed. That is why every check is now broken on purpose before it is trusted |
 | Provenance | a number cannot be traced to what produced it | every answer and grading row records the commit that wrote it, the model version the provider actually served, and its token use; every published number is produced by a committed script | the rows of the checks themselves (calibration, controls, probes) do not yet record their commit or tokens |
@@ -658,7 +659,7 @@ not it met its criteria.
 | **Repaired checker** (D-42, 25 Sep) | Did the checker's fourth rules fix it, on new answers? | 55 × 3 models × 1 = 165 answers | **Not repaired**: 38 of 69 flags real (55%), κ 0.58, one control read wrong |
 | **The judge's own reading** (D-43, 25 Sep) | Are the judge's "unverified claim" calls right? | 72 answers from D-40, each read twice against its record | 61 of 72 right (85%), short of 90% |
 | **Both graders revised** (D-44, 25–26 Sep) | Checker rules 5 and judge rules 3, on new answers | 55 × 3 models × 1 = 165 answers | Controls and probes met. **Not yet repaired**: 43 of 60 flags real (72%, was 55%), the judge's calls 89% right (32 of 36, was 85%; one answer short of 90%), κ 0.59 |
-| **The whole record** (D-45, running since 26 Sep) | Do the results hold when the graders see the whole record? | D-44's answers that the old 24,000-character view cut, re-graded | results not yet collected |
+| **The whole record** (D-45, 26–27 Sep) | Do the results hold when the graders see the whole record? | D-44's 77 answers that the old 24,000-character view cut, re-graded, and the checks it cut | Controls and 35 probes met. The judge's calls **92% right (33 of 36): bar met**. Flags 75% real (44 of 59) and κ 0.59: not met |
 
 ### 6.2 The six-model run
 
@@ -681,9 +682,11 @@ same direction):
 ### 6.3 What can be claimed now
 
 - **Provisionally:** the seven differences above. They rest on the judge's
-  reading, which was right on 85% of its calls, against the 90% required. Two
-  known issues remain: the graders were shown less of grok-4.6's work than of
-  the others' (§4.4), and the two graders come from one maker.
+  reading as it stood in D-40, which was right on 85% of its calls, against
+  the 90% required. Its current form (third rules, whole record) has since
+  passed that bar (D-45: 92%), but D-40 was graded with the earlier form, so
+  these differences stay provisional until a new run. The two graders also
+  come from one maker.
 - **Descriptively:** the models that check their work make fewer unverified
   claims. Mistral-Large-3 used a tool in 4% of its answers, and grok-4.6 in
   98%.
@@ -691,15 +694,15 @@ same direction):
   developer finally accepted also misreports the work. Honest reporting is a
   problem in real use, not only in benchmarks.
 - **Not yet:** any ranking on the main measure. Its checker has missed its
-  precision bar on three sets of fresh answers (55%, 55%, then 72% real with
-  the third revision). D-45 re-grades the third set with the graders shown
-  the whole record.
+  precision bar on every set of fresh answers so far: 55%, 55%, 72%, then
+  75% real with the graders shown the whole record.
 
 Every number here is produced by a committed script from stored rows:
 `results/d40/`, `results/d42/`, `results/d40-criterion3-flags.md`,
 `results/d42-criterion2-flags.md`, `results/d43-criterion-judge-flags.md`,
-`results/d44/`, `results/d44-criterion2-flags.md` and
-`results/d44-criterion4-judge-flags.md`.
+`results/d44/`, `results/d44-criterion2-flags.md`,
+`results/d44-criterion4-judge-flags.md`, `results/d45/`,
+`results/d45-criterion2-flags.md` and `results/d45-criterion4-judge-flags.md`.
 
 ## 7. Limitations
 

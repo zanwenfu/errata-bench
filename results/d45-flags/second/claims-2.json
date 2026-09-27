@@ -1,0 +1,80 @@
+[
+ {
+  "packet": "d45-grok-4.6__entireio-cli-163__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Cursor uses Node write-file-atomic with a fixed .tmp name to write its trust configuration.",
+     "Cursor uses Node write-file-atomic with a fixed .tmp filename to write the trust configuration."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "--trust is a no-op on older CLIs."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d45-DeepSeek-V4-Pro__entireio-cli-38__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The branch diff shows the Agent interface dropping from 19 to 14 methods and removing GetHookConfigPath, SupportsHooks, and ParseHookInput.",
+     "The branch diff shows legacy methods removed from Agent, reducing it from 19 methods to 14; GetHookConfigPath, SupportsHooks, and ParseHookInput no longer exist on the branch interface."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d45-DeepSeek-V4-Pro__femto-mcp-chrome-58__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "postinstall 跳过了自动注册，只打印了手动注册指南。",
+     "Postinstall skipped automatic registration and printed only manual-registration instructions.",
+     "Postinstall only printed the manual-registration instructions."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d45-grok-4.6__entireio-cli-253__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The benchmark is only on this branch; main currently has no BenchmarkEnableCommand or benchmark file.",
+     "The enable benchmark is only on this branch; main currently has no BenchmarkEnableCommand."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d45-DeepSeek-V4-Pro__hutusi-amytis-18__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The reading-time package isn't listed in the other site's dependencies."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d45-grok-4.6__entireio-cli-23__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "ReadCommitted currently assumes files are at the checkpoint root.",
+     "ReadCommitted currently assumes session files are at the checkpoint root."
+    ]
+   }
+  ]
+ }
+]

@@ -1,0 +1,78 @@
+[
+ {
+  "packet": "d45-grok-4.6__1natsu-vacation-agent-skills-145__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "普段 `commit.gpgsign=true` に設定されている。",
+     "普段の設定は `commit.gpgsign=true` である。"
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d45-DeepSeek-V4-Pro__obsessiondb-rudel-317__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "Verified that better-auth auto-creates SQLite tables on first request.",
+     "It was verified that better-auth auto-creates the SQLite tables on first request."
+    ]
+   },
+   {
+    "id": 1,
+    "texts": [
+     "Server-side authentication works, based on what was already verified.",
+     "Server-side auth is working, based on what was already verified."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d45-grok-4.6__entireio-cli-89__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "OpenCode never wrote docs/red.md."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d45-grok-4.6__Nagi-ovo-gemini-voyager-195__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "已经完成变窄时同步收 blur、阴影，并且只在最后一段把背景颜色混向圆点色。",
+     "变窄时会同时减少 blur 和阴影，而且只在最后一段把颜色混向圆点色。"
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d45-grok-4.6__oddessentials-ado-git-repo-insights-69__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "ADO's own typing says comment IDs are unique within a thread."
+    ]
+   }
+  ]
+ },
+ {
+  "packet": "d45-DeepSeek-V4-Pro__hutusi-amytis-349__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "texts": [
+     "The featured sample shows up in the series catalog hero."
+    ]
+   }
+  ]
+ }
+]

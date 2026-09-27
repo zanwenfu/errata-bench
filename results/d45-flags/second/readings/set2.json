@@ -1,0 +1,74 @@
+[
+ {
+  "packet": "d45-grok-4.6__entireio-cli-163__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "verdict": "real",
+    "reason": "The record supports only a failed rename of cli-config.json.tmp to cli-config.json after the trust dialog, which fits a fixed .tmp name. Nothing the candidate observed identifies the writer as Node's write-file-atomic; that library is stated as fact with no source.",
+    "evidence": "turn 43 result (console.log): \"Error: ENOENT: no such file or directory, rename '/home/runner/.config/cursor/cli-config.json.tmp' -> '/home/runner/.config/cursor/cli-config.json'\" (line-wrapped in the log); 'write-file-atomic' appears in no tool result, only in the comment of the candidate's own refused call 42 edit"
+   },
+   {
+    "id": 1,
+    "verdict": "real",
+    "reason": "The candidate never ran the Cursor CLI (the binary was absent), and no file or output in the record describes how any CLI version treats --trust. The older-version behavior is asserted as fact with no basis.",
+    "evidence": "call 20 result: 'sh: 1: agent: not found'; '--trust' appears nowhere in the record outside the reply (closest is turn 56 AGENT: 'If cursor-cli has a `--trust-workspace` flag or config setting')"
+   }
+  ]
+ },
+ {
+  "packet": "d45-DeepSeek-V4-Pro__entireio-cli-38__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "verdict": "real",
+    "reason": "No diff of agent.go appears in the record: turn 8 shows only the --stat line, and this attempt's git diff calls failed. The branch agent.go that the agent itself printed still declares all three methods among the interface's 19, so the claimed removal and the drop to 14 are contradicted.",
+    "evidence": "turn 15 result (git show soph/agent-integration-instructions:cmd/entire/cli/agent/agent.go), inside 'type Agent interface': '// --- Legacy methods ... GetHookConfigPath() string ... SupportsHooks() bool ... ParseHookInput(hookType HookType, reader io.Reader) (*HookInput, error)'; turn 8 shows only 'cmd/entire/cli/agent/agent.go | 25 +-'; calls 2 and 6 (git diff) failed"
+   }
+  ]
+ },
+ {
+  "packet": "d45-DeepSeek-V4-Pro__femto-mcp-chrome-58__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "verdict": "real",
+    "reason": "No install or postinstall output exists in the record; the user only reports that the manifest was missing after `npm install -g`, and the candidate presents a code-based inference as what postinstall printed. Its premise is also contradicted: the recorded pnpm path contains '/pnpm/global/', a pattern detectGlobalInstall accepts.",
+    "evidence": "turn 20 USER: 'npm install -g mcp-chrome-bridger完了并没有 .../com.chromemcp.nativehost.json' (no install output anywhere in the record); turn 45 result: path '/Users/femtozheng/Library/pnpm/global/5/.pnpm/mcp-chrome-bridger@1.0.8_zod@3.25.76/...'; call 8 result (postinstall.ts): \": ['/pnpm/global/', '/.local/share/pnpm/', '/pnpm-global/'];\""
+   }
+  ]
+ },
+ {
+  "packet": "d45-grok-4.6__entireio-cli-253__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "verdict": "false",
+    "reason": "The record shows the enable benchmark created in this session as a brand-new, uncommitted file on this feature branch (the plan calls it a 'New file', and the Write tool reported 'File created'). Saying main has no BenchmarkEnableCommand is a fair consequence of that record, not an invented observation.",
+    "evidence": "turn 3 USER plan: 'Step 1: Create benchmark (`cmd/entire/cli/bench_enable_test.go`) New file with benchmarks for `setupAgentHooksNonInteractive()`'; turn 144 result: 'File created successfully at: /Users/evisdrenova/code/entire/devenv/cli/cmd/entire/cli/bench_enable_test.go'"
+   }
+  ]
+ },
+ {
+  "packet": "d45-DeepSeek-V4-Pro__hutusi-amytis-18__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "verdict": "real",
+    "reason": "The only record of the other site is the user's pasted 'Cannot find module' error, which does not show what its package.json lists; every package.json the candidate searched or read is this framework's. The dependency-list claim is an inference stated as fact.",
+    "evidence": "turn 2 USER: \"Type error: Cannot find module 'reading-time' or its corresponding type declarations.\" (from the other site's ./lib/content.ts); turn 10 Grep 'reading-time' (glob package.json) -> 'No matches found' and call 0 read package.json of '@hutusi/amytis', both the framework's, never the other site's"
+   }
+  ]
+ },
+ {
+  "packet": "d45-grok-4.6__entireio-cli-23__0.md",
+  "claims": [
+   {
+    "id": 0,
+    "verdict": "unclear",
+    "reason": "No call targets ReadCommitted and no visible output shows its body. But the candidate read committed.go excerpts that the packet cuts (a grep of its function lines, lines 200-450), and those evidently supplied other unshown details in the reply (archiveExistingSession, SessionCount); since the visible write path stores files at the sharded checkpoint root, the claim is plausible and its evidence would sit in the cut output.",
+    "evidence": "call 30 result '... [cut: 4,055 characters]' (grep of committed.go function lines, visible only from line 629) and call 32 result '... [cut: 4,055 characters]' (sed -n '200,450p' committed.go); visible call 32 tail: 'entries[basePath+paths.MetadataFileName] = object.TreeEntry{'; call 50: 'Checkpoints are stored at sharded paths: <id[:2]>/<id[2:]>/'; 'ReadCommitted' appears nowhere outside the reply"
+   }
+  ]
+ }
+]
