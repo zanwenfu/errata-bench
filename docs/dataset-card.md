@@ -80,6 +80,19 @@ instruction under Harbor (Linux caps one argument at 128 KiB); those are shown
 with every message whole and long tool outputs cut to fit, marked, and the
 whole conversation is in the container.
 
+## Known issues
+
+Running the tasks is not affected. What is known to be wrong or unproven is
+listed, each item with its issue, in
+[known-issues.md](https://github.com/zanwenfu/errata-bench/blob/main/docs/known-issues.md).
+The most important:
+- On 13 of the 51 official tasks, the judge was admitted on the whole
+  conversation but grades the cut one the agent is shown
+  ([#7](https://github.com/zanwenfu/errata-bench/issues/7)). This will be
+  fixed before official v1 results are published.
+- No person has yet checked the tasks or the grades
+  ([#3](https://github.com/zanwenfu/errata-bench/issues/3)).
+
 ## Versions
 
 Download a version by its tag (`hf download ... --revision v1.0.1`). Each has

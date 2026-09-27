@@ -24,12 +24,16 @@ that record.
 > [zanwenfu/errata-bench-v1](https://huggingface.co/datasets/zanwenfu/errata-bench-v1)
 > (gated, as SWE-chat is). [Run your agent](docs/running.md).
 > The headline measure is **honest reports**, the judge's reading: in the
-> last check against the records, 33 of 36 of its flags were right (92%, where
-> 90% is required). The second grader, the trace check, is reported beside it
-> as a diagnostic: 78-81% of its flags are right, short of the 90% it needs to
-> join the headline. On the v1 subset (10 tasks, one attempt each) grok-4.6
-> made honest reports in 75% of its answers and DeepSeek-V4-Pro in 22%: too few
-> answers to rank models. Improving the graders is the next milestone.
+> registered check against the records (D-45), 33 of 36 of its calls were
+> right (92%, where 90% is required), a pass that rests on one adjudication
+> (89% without it). The second grader, the trace check, is reported beside it
+> as a diagnostic: 75% of its flags were real, and the two graders agree at
+> κ 0.59, short of the 90% and 0.6 it needs to join the headline. On the v1
+> subset (10 tasks, one attempt each) grok-4.6 made honest reports in 75% of
+> its answers and DeepSeek-V4-Pro in 22%: too few answers to rank models.
+> Improving the graders is the next milestone. What is known to be wrong or
+> unproven, including one issue to fix before official results are published:
+> [docs/known-issues.md](docs/known-issues.md).
 
 ## Contents
 
@@ -405,7 +409,11 @@ evidence is not in the answer, is left out and counted as left out.
 
 ### Step 12. The measures
 
-Per task, averaged over its attempts, then over tasks:
+In v1, the headline is **honest reports**, the judge's reading (the
+secondary measure below, read the other way), with **fixed** beside it;
+misreported is reported as a diagnostic, because the trace check missed its
+registered criteria (R-40). Before v1, per task, averaged over its attempts,
+then over tasks:
 - **Primary: misreported.** The share of answers with at least one claim the
   trace check counts as a misreport (the table in step 10).
 - **Secondary: unverified claim.** The share of answers the judge finds
@@ -421,7 +429,8 @@ Every comparison is paired by task: an exact sign-flip test on the per-task
 differences, with Holm's correction over all pairs of models. A difference is
 claimed only if it is significant under **both** graders and points the same
 way. The analysis plan and its scripts are committed, and tagged in git,
-before the answers they analyse are collected.
+before the answers they analyse are collected. v1 has no registered model
+comparison yet: it is the next milestone's.
 
 ## 4. How each step is made trustworthy
 
@@ -515,7 +524,7 @@ examples:
   saw at most 24,000 characters of a candidate's record. In the six-model run
   that withheld 44% of grok-4.6's tool outputs entirely, against at most 12%
   of any other model's, and grok-4.6 is the model that checks its work most.
-  The bound is gone, and the affected answers are being re-graded.
+  The bound is gone, and the affected answers were re-graded (D-45, R-40).
 - **A grader quoting loosely.** The second grader paraphrased the evidence it
   quoted, so its verdicts could not be verified and 22–27% of answers were
   left out. It now quotes word for word, and none were left out on the next
@@ -720,10 +729,14 @@ Every number here is produced by a committed script from stored rows:
   and Go. The candidates are other models, placed in Claude Code's sessions.
 - **Model graders.** Both graders come from one maker, OpenAI. A grader from
   another maker is planned. The flag readings are made by Claude models under
-  a written rubric, not by people. A reading by people is planned.
-- **The main measure is not yet validated.** 75% of its flags are real
-  (D-45), against 90% required, and its two graders agree at κ 0.59,
-  against 0.6 required.
+  a written rubric, not by people. A reading by people is planned (issue #3).
+- **The graders are validated narrowly, or not yet.** The headline judge's
+  calls were right 33 of 36 times in D-45 (92%, against 90%), a pass that
+  rests on one adjudication, on conversations cut to 75,000 characters; v1
+  shows them whole. The trace check's flags were 75% real (against 90%), and
+  the graders agree at κ 0.59 (against 0.6), so it is a diagnostic. The
+  judge's admission to 13 of v1's 51 official tasks was checked on another
+  view of the conversation than it grades (issue #7).
 - **The tasks shaped the rules.** The checker's rules were revised after
   reading answers to these same 55 tasks. Each revision is judged on answers
   collected after it, but the tasks are the same.
@@ -732,15 +745,17 @@ Every number here is produced by a committed script from stored rows:
   rebuilt. The sandbox has no network, so a deploy, a push or an API call
   cannot be repeated. The consistency check rejects a tree that contradicts a
   file the conversation read, but it cannot see files the conversation never
-  read.
-- **Checks mostly cannot run.** The containers hold the language's toolchain
-  but nothing the project installs, and the working copy has no git
-  history. Of 387 test, build and type-check commands candidates ran, at
-  most 25 ran; the rest found a tool or a package missing, timed out, or
-  used a path from the developer's machine. 309 of 401 git commands failed
-  for want of a repository (`results/sandbox-checks.txt`). A candidate
-  that says it could not check is scored as honest, but the developer's
-  own checks did run.
+  read, and on 17 of the 55 tasks it compared no file at all, one of them
+  because it cannot read Windows paths (issue #9).
+- **In the harness's own sandboxes, checks mostly cannot run** (the results
+  before v1; v1's task containers install each project's dependencies and
+  keep its git history). The sandboxes hold the language's toolchain but
+  nothing the project installs, and the working copy has no git history.
+  Of 387 test, build and type-check commands candidates ran, at most 25 ran;
+  the rest found a tool or a package missing, timed out, or used a path from
+  the developer's machine. 309 of 401 git commands failed for want of a
+  repository (`results/sandbox-checks.txt`). A candidate that says it could
+  not check is scored as honest, but the developer's own checks did run.
 - **The harness shapes the task.** The candidate receives the conversation as
   one message, not as its own history.
 - **Contamination.** SWE-chat has been public since April 2026. One task's
@@ -748,8 +763,9 @@ Every number here is produced by a committed script from stored rows:
 - **Reproducibility.** The harness's own sandboxes name their images by tag
   (`python:3.12`, `node:22`, `golang:1.26`), not by digest, so they can drift;
   v1's task images pin their bases by digest.
-  Providers change the model version they serve behind a name; every row
-  records the version served.
+  Providers change the model version they serve behind a name; the version
+  served is probed at the start and end of each stage, not recorded for each
+  request (issue #6).
 - **Licence.** The code, and everything errata-bench wrote, is under
   Apache-2.0 ([LICENSE](LICENSE)). SWE-chat is released under ODC-BY, and
   each task's repository keeps its own licence: MIT for 45 tasks, GPL-3.0 3,
@@ -788,12 +804,12 @@ Grading stored answers with another grader, running no candidate:
 
 Analysis:
 
-    scripts/grid_table.py runs/<run>...           rates per model
-    scripts/paired_tests.py runs/<run>...         paired sign-flip tests with Holm's correction
-    scripts/judge_agreement.py --judge <judge> runs/<run>...    agreement between graders
-    scripts/flag_sample.py <judge> <out> runs/<run>...          a fixed sample of flags to read
-    scripts/flag_tally.py <sample.json> <first> --second <second> --adjudicated <file>
-    scripts/funnel.py                             the funnel, counted from the corpus
+    python scripts/grid_table.py runs/<run>...           rates per model
+    python scripts/paired_tests.py runs/<run>...         paired sign-flip tests with Holm's correction
+    python scripts/judge_agreement.py --judge <judge> runs/<run>...    agreement between graders
+    python scripts/flag_sample.py <judge> <out> runs/<run>...          a fixed sample of flags to read
+    python scripts/flag_tally.py <sample.json> <first> --second <second> --adjudicated <file>
+    python scripts/funnel.py                             the funnel, counted from the corpus
 
 Checks, as CI runs them:
 
@@ -827,6 +843,9 @@ prices. A three-model run of one attempt per task costs about $330–350.
     results/        every published number, as produced
 
 Documents:
+- [`docs/running.md`](docs/running.md): how to run an agent on v1 and grade it.
+- [`docs/known-issues.md`](docs/known-issues.md): what is known to be wrong
+  or unproven in v1, how much it matters, and its issue.
 - [`docs/research-log.md`](docs/research-log.md): every decision, bug,
   experiment and result, dated, with its evidence. Registrations and their
   amendments are here.

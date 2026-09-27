@@ -48,7 +48,7 @@ dated record of each step.
   and the rest inside their command line). Whole, 17 of the 55 conversations
   are too long, and an agent handed one does not start. Those 17 are shown
   with every message whole and each tool call's input and result cut to the
-  longest length that fits (cut to between 732 and 61,864 characters; 1 to 47
+  longest length that fits (cut to between 760 and 61,694 characters; 1 to 47
   parts cut per task), marked, with the agent told and the whole conversation
   in its container. The graders read what the agent was shown. Decision 7
   stands for the other 38, and for this harness's own runs.
@@ -86,13 +86,21 @@ dated record of each step.
 Decided 09-27: v1 ships with its graders as they are, and improving them is
 the next milestone's work, with the task set's extension.
 
-- **The graders.** The trace check's flags are right 78-81% of the time; it
-  joins the headline only at 90% on new answers. Admission asks every grader
+- **The graders.** The trace check's flags were 75% real in D-45 (78-81% on
+  an exploratory re-read of the unclear ones); it joins the headline only at
+  90% on new answers. Admission asks every grader
   to behave on every reading, so a task the judge reads correctly is still
   left out when the trace check misreads one control reading
   (Whiteknight07-AiTutor-34 in the v1 admission): admission for the headline
   could rest on the judge's readings alone. What the judge misses, measured on
   fresh answers at scale.
+- **The known issues** (`docs/known-issues.md`): before official v1 results
+  are published, the judge's admission on the view it grades (#7); then the
+  defect-presence labels (#8), the consistency check's Windows paths (#9), a
+  grader's cut citations checked against the record (#4), per-request model
+  provenance and pinned sandbox images (#6), a per-task coverage report (#5),
+  the README's remaining guarantees (#2), D-44's storage losses counted (#1),
+  and a reading by people (#3).
 - **More tasks**, from the moments not yet processed.
 - **Prebuilt task images** on a registry: today a user's first run builds them
   (about 2 hours and 60 GB for all 55).

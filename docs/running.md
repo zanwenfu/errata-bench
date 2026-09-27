@@ -7,7 +7,9 @@ Terminal-Bench 2.0), so any agent Harbor runs can be tested; the answers are
 graded by errata-bench's own graders, with your judge key.
 
 Every command on this page has been run, on a laptop or a Linux server; what
-is not ready yet is listed at the end.
+is not ready yet is listed at the end. What is known to be wrong or unproven,
+including one issue to fix before official results are published, is in
+[known-issues.md](known-issues.md).
 
 ## What you need
 
@@ -51,11 +53,11 @@ check on each task) and `SHA256SUMS`. Below, `release/v1` stands for it.
 
 For maintainers, the same folder is built from the SWE-chat corpus:
 
-    scripts/freeze_tasks.py runs/<run> release/v1          # needs the corpus and GitHub
-    scripts/export_harbor.py release/v1                     # writes release/v1/harbor/
+    python scripts/freeze_tasks.py runs/<run> release/v1    # needs the corpus and GitHub
+    python scripts/export_harbor.py release/v1               # writes release/v1/harbor/
     python -m errata_harbor.digests release/v1/harbor       # in Harbor's environment
-    scripts/admit_judge.py release/v1 --out <admission>     # the official judge's check, paid
-    scripts/build_dataset.py release/v1 --admission <admission> --out <dataset>
+    python scripts/admit_judge.py release/v1 --out <admission>   # the official judge's check, paid
+    python scripts/build_dataset.py release/v1 --admission <admission> --out <dataset>
 
 ## 2. Run an agent
 
@@ -112,7 +114,7 @@ the official judge, done once and shipped: it is admitted to 51 of the 55 tasks
 (it misread one task's known answers, and on three others one of its readings
 of a control went wrong), so v1's official scores are over those 51. To grade with another judge, put it
 through the same check first, with your key (about $4 a task):
-`scripts/admit_judge.py release/v1 --out <dir>`, then `--admission <dir>`.
+`python scripts/admit_judge.py release/v1 --out <dir>`, then `--admission <dir>`.
 Results graded by any judge but the official one are that judge's, not
 official.
 
@@ -132,7 +134,10 @@ values (`per_task`). `official` says whether every trial ran its task as
 published (its content digest, no host added but a model API, web search
 off), graded by the official judge with three readings; if not,
 `why_not_official` says why. `dataset_version` says which version of the
-tasks they were graded against.
+tasks they were graded against. Until
+[#7](https://github.com/zanwenfu/errata-bench/issues/7) is fixed, official
+scores over 13 of the 51 tasks rest on the judge's check on another view of
+the conversation ([known-issues.md](known-issues.md)).
 
 ## Cost and time
 

@@ -8956,14 +8956,20 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
 
   | model | answers | honest reports | fixed | fixed and honest |
   |---|---|---|---|---|
-  | grok-4.6 | 6 | 83% [50-100] | 50% | 33% |
+  | grok-4.6 | 8 | 75% [50-100] | 50% | 38% |
   | DeepSeek-V4-Pro | 9 | 22% [0-56] | 22% | 0% |
+
+  *(Corrected 09-27, 20:1x UTC, B-274. grok-4.6's row first read "6 | 83%
+  [50-100] | 50% | 33%", written before two of its re-run trials were graded;
+  `runs/v1-subset-graded/results.json` has the 8 answers above, as the README
+  does.)*
 
   Too few answers to compare models: this run checks the pipeline and the
   graders, not the models.
-  - *The graders, read against the evidence*: every one of the 15 settled
-    judgements agrees with what the trace and the tree show. Fourteen were
-    unanimous across three readings. DeepSeek-V4-Pro often answered at once,
+  - *The graders, read against the evidence*: every one of the 17 settled
+    judgements agrees with what the trace and the tree show (first written as
+    15, before the re-run trials' two answers were read; corrected with the
+    table). Fourteen of the first 15 were unanimous across three readings. DeepSeek-V4-Pro often answered at once,
     with no call, restating the original agent's work as done ("The fix has
     been deployed to production", having checked nothing); the judge flagged
     each. One strictness to study in the next milestone: a general claim ("the
@@ -9062,3 +9068,79 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     tasks, although Hugging Face drops the executable bit (Harbor's digest
     reads contents only). So a user's run of a downloaded task can be
     official. The same digests come out on macOS and on the Linux server.
+- **09-27, 20:1x UTC** — **The six open issues audited, and four new
+  problems found.** A cloud session had opened issues #1 to #6 on 09-26,
+  audited at 1049c2d6d. None had been read since, and v1 was released without
+  them. Each was checked against 473c9bb08 (three read-only reviews, their
+  claims re-checked by hand):
+  - **#1, D-44 and D-45 completed: mostly done by 09-26's work.** D-45 was
+    recovered, not restarted. Its blind readings were settled, and all four
+    criteria are published (R-40), each reproducing byte for byte from the
+    saved readings. Still open: the output D-44 never stored is not counted.
+    Its answers hold 527 storage cuts in 77 answers, 3,415,116 characters
+    (grok-4.6 49 answers, DeepSeek-V4-Pro 26, Mistral-Large-3 2). And the
+    README reported D-45 loosely (B-274).
+  - **#2, the README's guarantees: not fixed.** "Every gate on every
+    reading", "the defect must be present", "compared with every file the
+    conversation read" and "every row records the version served" all still
+    stood. The last is corrected here; the rest stay open under #2.
+  - **#3, a reading by people: not done.** It was parked for v1 (plan item 6).
+  - **#4, cut citations: not fixed.** `trace.cut_cited` still checks a
+    citation's form, not the record the grader was shown. It weighs less now
+    that the trace check is a diagnostic.
+  - **#5, reconstruction coverage: not done.** No per-task report exists. v1
+    removed two of the three kinds of clipping for new runs.
+  - **#6, provenance: partly.** v1's task images are pinned by digest. The
+    harness's own sandboxes still name theirs by tag, and the served model is
+    probed only at each stage's start and end.
+  - **B-271 · The official judge was admitted on whole conversations but grades
+    17 long tasks on a cut view** (#7). The 17 tasks whose conversations are
+    too long to hand an agent whole are shown to it with long tool outputs cut
+    to fit (`tool_cap`), and grading shows the graders that same cut view. But
+    admission read each task's `grading/controls.json`, whose `cut`
+    conversation is the whole one: 17 of 17, against 0 of 17 equal to the
+    graded view. 13 of the 17 are among the 51 official tasks. The 4 tasks
+    left out are all among the 17, which suggests long conversations are where
+    the judge is weakest. The v1 subset is unaffected: its one long task is not
+    admitted. Two fixes: admit the judge again on the graded view (paid, at
+    most about $100), or grade those 17 on the whole conversation, which the
+    agent had in its container (free, but a change of rule). To settle before
+    official v1 results are published.
+  - **B-272 · The defect-presence label overstates on 18 of 55 tasks** (#8).
+    `presence.py` labels every check that is not file-only "token", even when
+    it found nothing or had nothing to look for. That covers all 12 tasks of
+    kind `none`, and 4 `present` tasks with nothing checkable: entireio-cli-283,
+    femto-mcp-chrome-58, hutusi-amytis-15 and hutusi-amytis-349. It also covers
+    armelhbobdad-bmad-module-skill-forge-194, whose text is in the tree split
+    by a Markdown link, and entireio-cli-241 ("file"), whose file is at
+    `cmd/entire/cli/strategy/hooks.go`, not where the signature said. All six
+    `present` tasks are official. Grading does not read the label.
+  - **B-273 · The consistency check cannot read Windows paths** (#9).
+    `relative()` splits a path with `Path.parts`, and on Linux and macOS a
+    backslash path is one part. So on oddessentials-ado-git-repo-insights-69,
+    3 files the conversation read, all in the tree, were not found, and
+    nothing was compared. Run offline over the 55 frozen trees: 166 files read
+    before the cut, 144 compared (none differing), 22 not found. 17 tasks
+    compared no file, and all 55 are "consistent".
+  - **B-274 · v1's docs stated things that were wrong** (#10, fixed here).
+    - `docs/running.md` and the README ran scripts that are not executable
+      (mode 100644), so each failed with "permission denied".
+    - The README's status block gave the trace check's exploratory 78-81% for
+      the registered 75%, and left out κ 0.59 and that the judge's pass rests
+      on one adjudication.
+    - Steps 12 and 13 still gave the pre-v1 measures, and section 4 said the
+      re-grading was still to come.
+    - The limitations described the harness's sandboxes as v1's.
+    - The v1 subset's table in this log was stale (corrected above).
+    - The plan's cap range was stale.
+  - **What it changes.** v1 runs as documented: nothing here affects running
+    an agent or grading it. B-271 affects which tasks the official score may
+    count, so it comes before any official v1 result. The rest are next
+    milestone work. They are listed with their issues and weight in
+    `docs/known-issues.md`, now linked from the README, `docs/running.md` and
+    the dataset card.
+  - *Lesson.* A check that certifies a grader must run on the view the grader
+    will be shown. When the release was frozen, admission and grading each
+    read a sound view, but not the same one, and no guard compared the two.
+    And an issue tracker nobody reads is not a record: open issues are now
+    part of each session's first look.
