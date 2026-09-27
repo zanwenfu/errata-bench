@@ -8735,7 +8735,7 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     pyarrow through the harness's edit replay); the check had tested only
     that the install named them. It now installs the whole lock. Then:
     answered, three calls, the file it wrote found, its instruction found.
-- **09-27, 06:5x UTC** — **The verifier keeps what an answer row keeps.** It
+- **09-27, 06:3x UTC** — **The verifier keeps what an answer row keeps.** It
   had kept the files the judge shows (the first 60 by path, bodies cut past
   200,000 characters), which is not what the harness's answer rows hold: those
   are capped by `_capped` (the defect's file first, then the smallest, 40,000
