@@ -9420,7 +9420,8 @@ with _ctx60.redirect_stdout(_io60.StringIO()):
                           str(_admit135.calibration.parent), "--rows-only"])
 _rows135 = {r["harbor"]["trial"]: r for r in _rows135_of(_Paths135(_run135).answers)}
 _ok135 = _rows135.get("h1__1", {})
-check(_rc135 == 0 and _ok135.get("environment") == "harbor:claude-code" and _ok135.get("model") == "maker/model-x"
+check(_rc135 == 0 and _ok135.get("environment") == "harbor:claude-code" and _ok135.get("model") == "model-x"
+      and _ok135["harbor"]["model"] == "maker/model-x"
       and _ok135.get("transcript") == _shown135 and _ok135["structure"]["executed"] is True
       and _ok135["structure"]["checked"] is True and _ok135["harbor"]["official"] is True
       and _ok135.get("rules", "").startswith(_hb135.FRAMING.split("\n")[0]) and _gr135.CLOSED in _ok135["rules"]
@@ -9451,6 +9452,29 @@ check(sorted(r["run"] for r in _graded135) == [0, 1, 5] and _shown135 in seen["c
       and all(_gr135.NOTE.split("{agent}")[0] in g and "five tools" not in g for g in seen["given"]),
       f"and the grading stage reads them unchanged: the three gradable answers, with the conversation the agent "
       f"was shown and what it was told, not the harness's rules: {sorted(r['run'] for r in _graded135)}")
+
+# A judge is not let grade its own model's answers: a trial's model, named by
+# its provider ("openai/the-grader"), is compared by its own name.
+_self135 = Path(tempfile.mkdtemp()) / "job"
+_st135 = _trial135(_self135, "h1__7")
+_r135 = json.loads((_st135 / "result.json").read_text())
+_r135["agent_info"]["model_info"] = {"name": "the-grader", "provider": "openai"}
+(_st135 / "result.json").write_text(json.dumps(_r135))
+_run135s = Path(tempfile.mkdtemp()) / "graded"
+with _ctx60.redirect_stdout(_io60.StringIO()):
+    _gh135.main([str(_rel135), str(_self135), "--out", str(_run135s), "--admission", str(_admit135.calibration.parent),
+                 "--rows-only"])
+_env135 = os.environ.get("ERRATA_JUDGE_MODEL")
+os.environ["ERRATA_JUDGE_MODEL"] = "the-grader"
+try:
+    _sg135 = asyncio.run(stage_grade(_Paths135(_run135s), 10**9, concurrency=2))
+finally:
+    os.environ.pop("ERRATA_JUDGE_MODEL", None)
+    if _env135 is not None:
+        os.environ["ERRATA_JUDGE_MODEL"] = _env135
+check(_sg135.failed == 1 and any("would grade answers written by the-grader" in n for n in _sg135.notes)
+      and not _rows135_of(_Paths135(_run135s).attempts),
+      f"and a judge is refused the answers of its own model, whatever provider named it: {_sg135.notes[:1]}")
 
 print("\n136. a judge is admitted to the release's tasks from the release itself, not the corpus (v1 step 4)")
 # The admission stages read each task's conversations through one function,

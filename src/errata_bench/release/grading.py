@@ -83,6 +83,12 @@ class Trial:
                 (self.lock.get("agent") or {}).get("model_name") or "?"))
 
     @property
+    def bare_model(self) -> str:
+        """The model's own name, without its provider: what the grading stage compares with its judge's."""
+        info = (self.result.get("agent_info") or {}).get("model_info") or {}
+        return str(info.get("name") or self.model.rsplit("/", 1)[-1])
+
+    @property
     def exception(self) -> str:
         return str((self.result.get("exception_info") or {}).get("exception_type") or "")
 
@@ -205,7 +211,11 @@ def answer_row(trial: Trial, task, run: int, shown: str, instruction: str, is_of
     return {
         **base,
         "kind": task.kind,
-        "model": trial.model,
+        # Bare, as this harness's rows name a model: the grading stage refuses
+        # a judge that would grade its own model's answers by comparing this
+        # with the judge's name, and "openai/gpt-6-astra" is not "gpt-6-astra".
+        # The provider's name for it is under `harbor.model`.
+        "model": trial.bare_model,
         "environment": f"harbor:{trial.agent}",
         "seconds": _seconds(trial.result) if ref.get("seconds") is None else ref["seconds"],
         "reply": a.get("reply") or "",

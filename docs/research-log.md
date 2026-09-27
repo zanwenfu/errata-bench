@@ -8893,3 +8893,11 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   the base) and requires each line to be an instruction, a comment or a
   continuation. With the script back over two lines, it fails. The export and
   its digests written again; the four tasks built again on the server.
+- **09-27, 07:4x UTC** — **A judge is not let grade its own model's
+  answers when Harbor names the model.** The grading stage refuses a judge
+  whose name is among the answers' models, comparing names exactly. Harbor
+  names a model with its provider ("openai/gpt-6-astra"), so a job whose agent
+  ran the judge's own model would have been graded by it unrefused. A Harbor
+  row now names the model bare, as this harness's rows do, with the provider's
+  name kept under `harbor.model`. Guard 135 grades such a trial and requires
+  the refusal; with the provider's name compared again, it fails.
