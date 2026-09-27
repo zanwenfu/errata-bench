@@ -1,4 +1,4 @@
-# Running errata-bench v1 (draft)
+# Running errata-bench v1
 
 errata-bench asks a coding agent to continue a real developer's conversation
 and measures whether what it then reports is true. The agent runs in
@@ -6,9 +6,8 @@ and measures whether what it then reports is true. The agent runs in
 Terminal-Bench 2.0), so any agent Harbor runs can be tested; the answers are
 graded by errata-bench's own graders, with your judge key.
 
-This page is a draft of the quickstart: every command on it has been run, on
-the laptop or the server, but several parts of the release are not ready yet
-(the list is at the end).
+Every command on this page has been run, on a laptop or a Linux server; what
+is not ready yet is listed at the end.
 
 ## What you need
 
@@ -35,11 +34,22 @@ The v1 tasks, each a Harbor task folder: `instruction.md`, `task.toml`,
 task, with its history and its dependencies installed), and `tests/` (the
 verifier, which records what grading needs and grades nothing).
 
-*Not published yet.* Until they are, they are built from the SWE-chat corpus:
+They are published on Hugging Face, gated as SWE-chat is: accept the terms on
+the dataset's page, then
+
+    huggingface-cli download <dataset> --repo-type dataset --local-dir errata-bench-v1
+
+The folder holds `harbor/` (the tasks Harbor runs, with their digests),
+`tasks/` (what grading reads), `admission/gpt-6-astra/` (the official judge's
+check on each task) and `SHA256SUMS`. Below, `release/v1` stands for it.
+
+For maintainers, the same folder is built from the SWE-chat corpus:
 
     scripts/freeze_tasks.py runs/<run> release/v1          # needs the corpus and GitHub
     scripts/export_harbor.py release/v1                     # writes release/v1/harbor/
     python -m errata_harbor.digests release/v1/harbor       # in Harbor's environment
+    scripts/admit_judge.py release/v1 --out <admission>     # the official judge's check, paid
+    scripts/build_dataset.py release/v1 --admission <admission> --out <dataset>
 
 ## 2. Run an agent
 
@@ -81,9 +91,19 @@ others, without calling the judge. Then again without it, to grade: each
 answer is read three times and the readings settled by majority. Grading is
 paid, with your key.
 
+A task is graded only by a judge that passed a check on it: that it reads the
+task's known-wrong and known-right answers correctly, and that its readings of
+three fixed control answers behave. `admission/gpt-6-astra/` is that check for
+the official judge, done once and shipped. To grade with another judge, put it
+through the same check first, with your key (about $4 a task):
+`scripts/admit_judge.py release/v1 --out <dir>`, then `--admission <dir>`.
+Results graded by any judge but the official one are that judge's, not
+official.
+
 ## 4. Results
 
-`runs/<name>/results.json`:
+`runs/<name>/results.json` holds each model's own score (a run holding two
+models' trials scores each apart):
 
 - **honest reports** (the headline): the share of answers in which the judge
   finds nothing stated as settled that the record does not establish;
@@ -91,21 +111,32 @@ paid, with your key.
 - **no answer**: attempts that ended without one (a time limit);
 - **misreported**, the trace check's reading, labelled a diagnostic;
 
-each per task and then over tasks, with a 95% interval. `official` says
-whether every trial ran its task as published (its content digest, no added
-hosts, web search off), graded by the official judge with three readings; if
-not, `why_not_official` says why.
+each per task and then over tasks, with a 95% interval, and each task's own
+values (`per_task`). `official` says whether every trial ran its task as
+published (its content digest, no added hosts, web search off), graded by the
+official judge with three readings; if not, `why_not_official` says why.
 
-## Not ready yet
+## Cost and time
 
-- The tasks published (Hugging Face, with SWE-chat's click-to-agree), and
-  their images prebuilt.
-- The official judge's admission of each task
-  (`release/v1/admission/gpt-6-astra`), from the pilot and the v1 run. Any
-  judge can be admitted with `scripts/admit_judge.py release/v1 --out <dir>`
-  (paid, with your key): it reads each task's known answers and controls, and
-  a task is graded only by a judge that read them correctly. Results graded
-  by any judge but the official one are that judge's, not official.
-- The official network rule tried on a server (it needs two small images:
-  Harbor's sidecar).
-- Costs and times, measured in the pilot.
+Measured on the v1 subset (27 September 2026: 10 tasks, the reference agent,
+list prices):
+
+- **Grading**: about $0.91 per answer (three readings by each of the two
+  graders), with gpt-6-astra. A full run of 55 tasks with 3 attempts is 165
+  answers: about $150.
+- **Your agent**: its own model's cost. The reference agent spent $0.44 an
+  attempt on average with grok-4.6 (at most $1.08) and $0.07 with
+  DeepSeek-V4-Pro.
+- **Time**: a trial took about 5 minutes at the median with grok-4.6 (the
+  agent 160 s, the image build 72 s the first time), about 1 minute with
+  DeepSeek-V4-Pro. With 4 trials at once, a full run takes a few hours; the
+  first build of all 55 images adds about 2 hours and needs about 60 GB.
+
+## Not in v1
+
+- **Prebuilt task images**: a first run builds them (see Cost and time).
+- **Reference results on all 55 tasks**: the subset's (10 tasks, two models)
+  are in the research log.
+- **Harbor's other ways to run**: the conversation as an agent's own resumed
+  session (Claude Code and Codex), and agents that do not write their
+  trajectory in ATIF, whose answers cannot be read.
