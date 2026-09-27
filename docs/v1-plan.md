@@ -15,6 +15,8 @@ dated record of each step.
 | 4 | **Users bring their own API keys**, for their agent's model and for grading. The official judge is fixed: its model and version, its rules, three readings settled by majority. Only results graded that way are official; the results file says which judge graded it. A command tests any other judge on our known-answer checks, and its results are marked unofficial. We pay only for the reference results we publish. | decided |
 | 5 | **Licences and data**: Apache-2.0 for our code; tasks published on Hugging Face behind the same click-to-agree step as SWE-chat, credited to it, with SWE-chat's removal requests followed; the six GPL/AGPL tasks kept, each with its licence file; the reading files already in the repo kept public, with SWE-chat's credit and a removal process. | recommended; to be confirmed at the release step |
 | 6 | Reading by people | parked |
+| 7 | **The conversation is shown whole**, to candidates and graders, not shortened to 75,000 characters. The candidate sees what the original agent saw, and the claims that could not be settled because the stored record was cut go away. It costs about 35% more grading (about $0.34 more per answer per grader, measured on D-45's grading calls). | decided 09-27 |
+| 8 | **The environments are built on the server**, in its own worktree, with every image and container named `errata-*`, away from the other tenant's. | decided 09-27 |
 
 ## What the checks of 27 September found
 
@@ -54,7 +56,7 @@ dated record of each step.
 
 | Step | What | Status |
 |---|---|---|
-| 1 | **The graders, on stored answers.** B-269; re-read what D-45 left unclear; the majority rule (`settled(rule="majority")`); trick probes for the judge and the trace check, and a per-task check that tells its grader it was verified; a first look at what the judge misses. | done, except the probes' paid run (under $10, Azure credits), waiting for your OK |
+| 1 | **The graders, on stored answers.** B-269; re-read what D-45 left unclear; the majority rule (`settled(rule="majority")`); trick probes for the judge and the trace check, and a per-task check that tells its grader it was verified; a first look at what the judge misses. | done; the probes' run approved 09-27 and under way |
 | 2 | **Environments.** Per task: the rebuilt tree with its history, dependencies installed, the original paths, pinned images; each task's own checks confirmed to run. | in progress: all 55 tasks frozen and checked (`scripts/freeze_tasks.py`, 685 MB, outside git); the images need Docker, not running on the laptop |
 | 3 | **Harbor and a frozen release.** Each task frozen once (tree, conversation, grading references), so running needs neither the corpus nor GitHub; exported as Harbor tasks; the grader as the verifier; ATIF read into our record; our reference agent as a Harbor agent. Tested with stand-in models. | not started |
 | 4 | **The user's side.** One command to run, grade and report; bring-your-own-key setup; the official judge; the judge-testing command; results stamped with the benchmark version; a quickstart with cost and time. And a sweep for what else would stop an outside user: our billing guard made local, no silent default model, check rows that record their code version, a container test in CI. | not started |

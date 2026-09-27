@@ -866,6 +866,9 @@ async def verify(*, model: str = MODEL, context: str = "", given: str = "") -> l
             "flagged": flagged,
             "ok": flagged == must_flag,
             "claims": [c.claim[:120] for c in result.claims][:3],
+            # What it cost, as every grading row says (09-27: the probe rows were
+            # priced by a per-row estimate because they said nothing).
+            "usage": getattr(result, "_usage", None),
         }
 
     return list(await asyncio.gather(*(one(*p) for p in PROBES)))
