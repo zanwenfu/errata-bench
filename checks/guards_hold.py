@@ -10042,6 +10042,14 @@ check(_tr139.cut_citation("turn 9 [... more characters not shown]", _conv139, _r
       and _tr139.cut_citation("call 1 [output not shown: characters]", _conv139, _rec139) == "invented",
       "and a cut quoted without its count is matched by its kind, and one of a kind never shown is invented")
 
+# The note beside `misreported` in every results.json quoted the exploratory
+# 78-81% re-read, not the registered result (found by the website's fact-check).
+from errata_bench.release import report as _report143
+
+check("44 of 59" in _report143.MISREPORT_PRECISION and "78" not in _report143.MISREPORT_PRECISION,
+      f"and the label beside the trace check's number quotes its registered result: "
+      f"{_report143.MISREPORT_PRECISION}")
+
 print("\nlast. what the suite hands back")
 
 # Last, what the suite hands back -- at the very end, where it can see every

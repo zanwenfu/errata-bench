@@ -9283,3 +9283,7 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
       for 165.
   - *Checked.* Twelve more mutants, each caught; every suite; the v1.0.2 labels
     recomputed with the final code, and unchanged.
+  - *Found by the website's fact-check (09-27, 22:4x UTC).* `report.py`
+    labelled `misreported` in every `results.json` with the exploratory 78%
+    (the re-read of D-45's unclear items), not the registered 75% (44 of 59)
+    and κ 0.59. It now quotes the registered result, and a guard holds it.
