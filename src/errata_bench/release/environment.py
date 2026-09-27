@@ -78,7 +78,9 @@ INSTALLS = {
     "package-lock.json": ("npm ci", "npm install"),
     "yarn.lock": ("yarn install --frozen-lockfile", "yarn install"),
     "go.mod": ("go mod download", "go mod download"),
-    "uv.lock": ("uv sync --frozen", "uv sync"),
+    # With the project's extras: Pavel401-BugViper-85 declares pytest only in
+    # its "dev" extra, and the developer, who ran the tests, had it installed.
+    "uv.lock": ("uv sync --frozen --all-extras", "uv sync --frozen"),
     "poetry.lock": ("pip install --no-cache-dir poetry && poetry config virtualenvs.in-project true "
                     "&& poetry install --no-root", "poetry lock && poetry install --no-root"),
     "requirements.txt": ("pip install --no-cache-dir -r requirements.txt",
@@ -192,8 +194,8 @@ def recipe(task: dict, files: list[str], package_jsons: dict[str, str],
             # pytest only when the project names it (Pavel401-BugViper-85 does not,
             # and "No module named pytest" said nothing about the container).
             pyproject = pyprojects.get(f"{folder}/pyproject.toml" if folder else "pyproject.toml", "")
-            r.checks.append((folder, "uv run --frozen python -m pytest --collect-only -q" if "pytest" in pyproject
-                             else "uv run --frozen python -m compileall -q ."))
+            r.checks.append((folder, "uv run --frozen --all-extras python -m pytest --collect-only -q"
+                             if "pytest" in pyproject else "uv run --frozen --all-extras python -m compileall -q ."))
     r.tools = list(dict.fromkeys(r.tools))
     if not r.installs:
         r.notes.append("no lockfile: nothing to install")

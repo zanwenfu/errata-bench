@@ -8703,7 +8703,8 @@ check([i[:2] for i in _two129.installs] == [("", "bun install --frozen-lockfile"
       f"{[i[:2] for i in _two129.installs]}")
 _mix129 = _env129.recipe(_T129, ["package.json", "pnpm-lock.yaml", "pyproject.toml", "uv.lock", "go.mod"],
                          {"package.json": json.dumps({"scripts": {"test": "vitest run"}})})
-check([i[1] for i in _mix129.installs] == ["pnpm install --frozen-lockfile", "go mod download", "uv sync --frozen"]
+check([i[1] for i in _mix129.installs] == ["pnpm install --frozen-lockfile", "go mod download",
+                                           "uv sync --frozen --all-extras"]
       and "corepack install -g pnpm@9" in _mix129.tools and len(_mix129.checks) == 3,
       f"pnpm, Go and uv side by side each install and each get a check: {[i[1] for i in _mix129.installs]}")
 _df129 = _env129.dockerfile(_ws129)
@@ -8748,8 +8749,8 @@ check(("", "bun install", "bun install", "package.json") in _new129.installs
       f"test is no check: {_new129.installs} {_new129.checks} {_new129.notes}")
 _py129 = _env129.recipe(_T129, ["pyproject.toml", "uv.lock", "tools/pyproject.toml", "tools/uv.lock"], {},
                         {"pyproject.toml": "[dependency-groups]\ndev = [\"pytest>=8\"]\n", "tools/pyproject.toml": "[project]\n"})
-check(("", "uv run --frozen python -m pytest --collect-only -q") in _py129.checks
-      and ("tools", "uv run --frozen python -m compileall -q .") in _py129.checks,
+check(("", "uv run --frozen --all-extras python -m pytest --collect-only -q") in _py129.checks
+      and ("tools", "uv run --frozen --all-extras python -m compileall -q .") in _py129.checks,
       f"a Python project is checked with pytest only when it names pytest, and compiled otherwise: {_py129.checks}")
 check(_env129.environment_failure("Error: Cannot find module 'vite'\nRequire stack:")
       and not _env129.environment_failure("a.tsx(4,2): error TS2307: Cannot find module '@p/c' or its corresponding type declarations."),
