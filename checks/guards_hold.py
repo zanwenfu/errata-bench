@@ -8866,6 +8866,63 @@ _sh131 = _atif131.call_of("shell", {"command": ["bash", "-lc", "go test ./..."]}
 check(_ed131["command"] == "str_replace /w/b.py" and _ed131["old_text"] == "print()"
       and _sh131["command"] == "bash -lc go test ./...",
       "an editor's operation is not taken for a shell command, and a command given as a list is run together")
+# What Harbor's own conversions write (read from its source, 09-27). Claude
+# Code, seeded with the conversation, marks none of it as copied; puts its
+# subagents' steps in the main list, marked as a sidechain; and adds sections
+# of its own to a result, keeping the exact text beside it.
+_instr131 = "Is the fix in?\nCheck it, then tell me."
+_cc131 = {"agent": {"name": "claude-code"}, "steps": [
+    {"step_id": 1, "source": "user", "message": "the developer's old request"},
+    {"step_id": 2, "source": "agent", "message": "Old reply.",
+     "tool_calls": [{"tool_call_id": "old", "function_name": "Bash", "arguments": {"command": "rm -rf old"}}],
+     "observation": {"results": [{"source_call_id": "old", "content": "done"}]}},
+    {"step_id": 3, "source": "user", "message": "Is the fix in?  Check it,\nthen tell me.\n\n(sent from the task)"},
+    {"step_id": 4, "source": "agent", "message": "Subagent: found it.", "extra": {"is_sidechain": True},
+     "tool_calls": [{"tool_call_id": "g1", "function_name": "Grep", "arguments": {"pattern": "fix"}}],
+     "observation": {"results": [{"source_call_id": "g1", "content": "a.py:1"}]}},
+    {"step_id": 5, "source": "agent", "message": "Running the tests.",
+     "tool_calls": [{"tool_call_id": "t1", "function_name": "Bash", "arguments": {"command": "npm test"}}],
+     "observation": {"results": [{"source_call_id": "t1", "content": "FAIL 2\n[stdout]\nFAIL 2\n[exit_code]\n1",
+                                  "extra": {"tool_result_metadata": {"raw_tool_result": {"content": "FAIL 2"}}}}]}},
+    {"step_id": 6, "source": "agent", "message": "The fix is in; two tests still fail."},
+    {"step_id": 7, "source": "agent", "message": "Subagent done.", "extra": {"is_sidechain": True}}]}
+_ansc131, _callc131 = _atif131.record_of(_cc131, _instr131)
+check(_ansc131 == "The fix is in; two tests still fail." and [c["name"] for c in _callc131] == ["subagent: Grep", "Bash"]
+      and not any("rm -rf old" in str(c) for c in _callc131) and _callc131[1]["result"] == "FAIL 2",
+      f"a seeded run is read from the instruction on, a subagent's steps in the main list are its, and a result is "
+      f"what the agent received: {_ansc131!r}, {[(c['name'], c['result']) for c in _callc131]}")
+# The seeded conversation comes first, so a user step in it that happens to
+# carry the instruction's words is not where the attempt began.
+check(_atif131.instruction_at([{"source": "user", "message": _instr131}, {"source": "agent", "message": "x"},
+                               {"source": "user", "message": _instr131}], _instr131) == 2,
+      "and it begins at the last user step carrying the instruction")
+# OpenHands writes each call on the step that made it and again, under the
+# same id, on the step with its result; it ends with a `finish` call.
+_oh131 = {"agent": {"name": "openhands"}, "steps": [
+    {"step_id": 1, "source": "user", "message": _instr131},
+    {"step_id": 2, "source": "agent", "message": "Running command: npm test",
+     "tool_calls": [{"tool_call_id": "c1", "function_name": "execute_bash", "arguments": {"command": "npm test"}}]},
+    {"step_id": 3, "source": "agent", "message": "Command `npm test` executed with exit code 1.",
+     "tool_calls": [{"tool_call_id": "c1", "function_name": "execute_bash", "arguments": {"command": "npm test"}}],
+     "observation": {"results": [{"source_call_id": "c1", "content": "1 failing"}]}},
+    {"step_id": 4, "source": "agent", "message": "All done! What's next on the agenda?",
+     "tool_calls": [{"tool_call_id": "c2", "function_name": "finish",
+                     "arguments": {"message": "Fixed the parser; one test still fails."}}]}]}
+_anso131, _callo131 = _atif131.record_of(_oh131, _instr131)
+check(_anso131 == "Fixed the parser; one test still fails." and [c["name"] for c in _callo131]
+      == ["execute_bash", "finish"] and _callo131[0]["result"] == "1 failing",
+      f"a call written twice under one id is read once, with its result, and a finish call's message is the "
+      f"answer: {_anso131!r}, {[c['name'] for c in _callo131]}")
+# A run stopped by its time limit ends on a call. What it said on the way
+# (Codex writes such a message as a step of its own) is not an answer.
+_to131 = {"agent": {"name": "codex"}, "steps": [
+    {"step_id": 1, "source": "user", "message": _instr131},
+    {"step_id": 2, "source": "agent", "message": "I'll start by reading the code."},
+    {"step_id": 3, "source": "agent", "message": "",
+     "tool_calls": [{"tool_call_id": "k1", "function_name": "shell", "arguments": {"command": ["npm", "test"]}}],
+     "observation": {"results": [{"source_call_id": "k1", "content": "..."}]}}]}
+check(_atif131.record_of(_to131, _instr131)[0] == "",
+      "a run that stopped on a call has no answer: what it said on the way did not end its work")
 
 print("\n132. a model's v1 score: honest reports first, fixed beside it, an empty answer counted apart (v1 step 4)")
 # The headline is the judge's reading (decision 1). An answer that ended empty

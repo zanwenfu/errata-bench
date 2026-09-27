@@ -8595,3 +8595,32 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     settled unanimously, D-34). Whether v1 settles that by majority too is to
     be decided on the pilot's answers.
   - Guard 132, which fails with an empty answer counted as honest.
+- **09-27, 05:3x UTC** — **The trajectory reader, matched to what Harbor's
+  agents write.** Read from Harbor's source (its conversions for Claude Code,
+  Codex, OpenHands, Gemini CLI and mini-swe-agent), four things the first
+  version got wrong or could not see:
+  - *A seeded run.* Claude Code and Codex, given the developer's conversation
+    as their history, do not mark it `is_copied_context`; it comes back as
+    ordinary steps. With the task's instruction given, only the steps after
+    the last user step carrying it are read (carrying: holding it, spacing
+    aside, since an agent may add to it).
+  - *Claude Code's subagents* sit in the main list, marked
+    `extra.is_sidechain`: their calls are named as a subagent's, and nothing
+    they say is taken for the answer.
+  - *A result is what the agent received.* Claude Code's conversion appends
+    "[stdout]", "[exit_code]" and "[metadata]" sections of its own; the exact
+    text, kept beside it, is read instead.
+  - *A call is read once.* OpenHands' conversion gives every event a step, and
+    the event holding a result carries its call again under the same id.
+  - *The answer* is what the main agent said to end its work: a last step
+    that is a message with no call (Claude Code, Codex, Gemini CLI) or a
+    `finish` call's message (OpenHands). A run whose last step is any other
+    call stopped before it replied (a time limit, a turn limit), and has *no
+    answer*: before, the last message said on the way would have been graded
+    as its report.
+  - Guard 131 extended. Each rule was broken alone and caught. One of the ten
+    first read "caught" through a stale bytecode cache, since Python checks a
+    cached file only by the source's whole-second time and size; each break
+    now runs with a cache of its own, after the unbroken code passes. The
+    freeze's summary now says how many conversations could not be compared (all
+    55 of the record-3 freeze: that run showed record 2) instead of "0 match".

@@ -94,9 +94,11 @@ def main(argv: list[str]) -> int:
         "frozen_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "code_version": code_version(),
         "from_run": str(args.run), "history": args.history, "max_git_mb": args.max_git_mb,
         "tasks": sorted(kept + rows, key=lambda r: r["task_id"])}, indent=1) + "\n")
+    shown = [r.get("conversation_as_shown") for r in rows]
     print(f"{sum(r['ok'] for r in rows)} of {len(rows)} tasks frozen into {args.out / 'tasks'}"
-          + (f"; {sum(r.get('conversation_as_shown') is True for r in rows)} conversations match what "
-             f"{args.check_against.name}'s candidates were shown" if args.check_against else ""))
+          + (f"; against what {args.check_against.name}'s candidates were shown, {shown.count(True)} conversations "
+             f"match, {shown.count(False)} differ and {sum(isinstance(s, str) for s in shown)} cannot be compared "
+             f"(another record)" if args.check_against else ""))
     return 1 if bad else 0
 
 
