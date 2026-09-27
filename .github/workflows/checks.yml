@@ -52,3 +52,39 @@ jobs:
 
       - name: The driver scripts parse
         run: bash -n scripts/*.sh
+
+  harbor-side:
+    # Harbor cannot share the locked environment (Harbor 0.23.0 needs openai
+    # below 3), so it has its own, as a user's would; and the verifier runs in
+    # the pinned Python image every task's image is built on. No model calls.
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      PYTHONUNBUFFERED: "1"
+      ERRATA_DOTENV: "0"
+      ERRATA_NO_CORPUS: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: errata-bench's locked environment, and Harbor's
+        run: |
+          python -m venv .venv
+          .venv/bin/pip install -q -r requirements-lock.txt
+          .venv/bin/pip install -q --no-deps -e .
+          python -m venv harbor-env
+          harbor-env/bin/pip install -q harbor==0.23.0
+          harbor-env/bin/pip install -q --no-deps -e .
+
+      - name: harbor_agents
+        env:
+          ERRATA_REQUIRE_HARBOR: "1"
+        run: harbor-env/bin/python checks/harbor_agents.py
+
+      - name: verifier_in_container
+        env:
+          ERRATA_REQUIRE_DOCKER: "1"
+        run: .venv/bin/python checks/verifier_in_container.py

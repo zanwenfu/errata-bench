@@ -8823,3 +8823,15 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   controls read against the release's conversations, the corpus's function
   back afterwards; two breaks, each caught. The official judge's admission is
   for the pilot.
+- **09-27, 07:0x UTC** — **The Harbor side in CI.** CI ran only the offline
+  suites in errata-bench's locked environment, where Harbor cannot be
+  installed, so `checks/harbor_agents.py` was only ever SKIPPED there. A second
+  job, `harbor-side`, builds both environments as a user would (the lock, and
+  Harbor 0.23.0 with errata-bench beside it, no dependencies) and runs, each
+  required rather than skippable (ERRATA_REQUIRE_HARBOR, ERRATA_REQUIRE_DOCKER):
+  `harbor_agents.py`, and `verifier_in_container.py`, new, which runs the
+  verifier in the pinned python:3.12 image every task's image is built on, with
+  the network closed, where guard 133 could only run it with `python -S` on
+  the host's Python. Run on the server (where that image already was): Python
+  3.12.14, the answer, the calls, the three changes and the defect's token
+  gone.

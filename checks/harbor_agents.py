@@ -3,8 +3,9 @@
     python checks/harbor_agents.py
 
 Run with Harbor's environment's Python (`errata_harbor` says how it is set up):
-Harbor cannot share errata-bench's locked environment, so CI does not install it
-and this check says it was skipped, never that it passed. Each agent is run
+Harbor cannot share errata-bench's locked environment, so where Harbor is not
+installed this check says it was skipped, never that it passed, unless
+ERRATA_REQUIRE_HARBOR=1 (CI's Harbor job sets it), when that is a failure. Each agent is run
 against a fake environment: its trajectory must be valid ATIF by Harbor's own
 validator, and read by `errata_bench.release.atif` into the answer and calls.
 The reference agent's runner needs errata-bench's own dependencies, and runs
@@ -22,6 +23,9 @@ sys.path.insert(0, "src")
 try:
     import harbor  # noqa: F401
 except ImportError:
+    if __import__("os").environ.get("ERRATA_REQUIRE_HARBOR") == "1":
+        print("FAIL: Harbor is required here (ERRATA_REQUIRE_HARBOR=1) and is not installed in this Python")
+        sys.exit(1)
     print("SKIPPED: Harbor is not installed in this Python, so nothing was checked "
           "(run it with Harbor's environment's Python; see src/errata_harbor/__init__.py)")
     sys.exit(0)

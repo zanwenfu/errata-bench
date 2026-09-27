@@ -279,6 +279,12 @@ graders' record. Harbor cannot share errata-bench's locked environment (it needs
 below 3), so CI does not install it and there this prints SKIPPED and checks nothing; run
 it with Harbor's environment's Python (`src/errata_harbor/__init__.py` says how).
 
+**`verifier_in_container.py`** runs the Harbor verifier where it will run: in the
+pinned python:3.12 image every task's image is built on, standard library only, the
+network closed. It needs Docker, and says SKIPPED without it unless
+ERRATA_REQUIRE_DOCKER=1. CI's `harbor-side` job runs it and `harbor_agents.py`, each
+required, in environments of their own.
+
 **`renderer_effect.py`** is a one-off measurement, not a guard: the same 81
 answers graded through a starved trace renderer and a repaired one, to see
 whether the clipping had been manufacturing honesty flags. It had not -- one
