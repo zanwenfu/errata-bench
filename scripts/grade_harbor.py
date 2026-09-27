@@ -10,8 +10,9 @@ the judge's admission of each task (calibration.jsonl, controls.jsonl,
 gate.jsonl), copied from --admission, a run directory where that judge was put
 through the known answers; and answers.jsonl, from the trials. Then each answer
 is read --passes times (`stages.scoring.stage_grade`) and <run dir>/results.json
-written: the measures (`release.report.score`), which judge read them, and
-whether every trial ran its task as published (`grading.official`).
+written: each model's own measures (`release.report.score`; a run holding two
+models' trials scores each apart), which judge read them, and whether every
+trial ran its task as published (`grading.official`).
 
 The judge is ERRATA_JUDGE_MODEL, called with your own key (ERRATA_PROVIDER=azure
 with AZURE_OPENAI_BASE_URL and AZURE_OPENAI_API_KEY, or OPENAI_API_KEY). Grading
@@ -59,6 +60,31 @@ def shown_for(task: Task, folder: Path) -> tuple[str, str]:
     turns = json.loads((folder / "shown_turns.json").read_text())
     instruction, shown, _ = harbor_mod.fitted(meta, whole, turns, task.cut_turn)
     return instruction, shown
+
+
+def results_of(paths: Paths, judge: str, passes: int) -> dict:
+    """The run's results: each model's own score (never two models' answers in one), and whether it is official."""
+    from errata_bench.release.report import OFFICIAL_JUDGE, score
+    from errata_bench.score.judge import can_be_scored
+    from errata_bench.stages.scoring import controlled
+
+    admitted = {r["task_id"] for r in load(paths.calibration) if can_be_scored(r)} & controlled(paths)
+    readings, answers = load(paths.attempts), [r for r in load(paths.answers) if not r.get("error")]
+    common = ({f"the judge is {judge}, not {OFFICIAL_JUDGE}"} if judge != OFFICIAL_JUDGE else set()) | (
+        {f"{passes} readings per answer, not 3"} if passes != 3 else set())
+    models = {}
+    for model in sorted({a.get("model") for a in answers}):
+        mine = [a for a in answers if a.get("model") == model]
+        s = score([r for r in readings if r.get("model") == model], tasks=admitted)
+        why = sorted({w for a in mine for w in (a.get("harbor") or {}).get("why_not_official", [])} | common)
+        s.update({"agents": sorted({(a.get("harbor") or {}).get("agent") for a in mine}),
+                  "official": not why, "why_not_official": why})
+        models[model] = s
+    rows = load(paths.answers)
+    return {"benchmark": "errata-bench", "written_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+            "code_version": code_version(), "judge": judge, "passes": passes, "admitted_tasks": sorted(admitted),
+            "trials": {"on_record": len(rows), "graded": len(answers), "not_gradable": len(rows) - len(answers)},
+            "models": models}
 
 
 def main(argv: list[str]) -> int:
@@ -125,35 +151,19 @@ def main(argv: list[str]) -> int:
         return 2
 
     from errata_bench.llm import judge_model
-    from errata_bench.release.report import OFFICIAL_JUDGE, score
-    from errata_bench.score.judge import can_be_scored
-    from errata_bench.stages.scoring import controlled, stage_grade
+    from errata_bench.stages.scoring import stage_grade
 
     progress = asyncio.run(stage_grade(paths, args.limit, args.concurrency, passes=args.passes))
     print(progress.line().strip())
-    admitted = {r["task_id"] for r in load(paths.calibration) if can_be_scored(r)} & controlled(paths)
-    result = score(load(paths.attempts), tasks=admitted)
-    graded = [r for r in rows if not r.get("error")]
-    every_official = bool(graded) and all((r.get("harbor") or {}).get("official") for r in graded)
-    result.update({
-        "written_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
-        "code_version": code_version(),
-        "judge": judge_model(), "passes": args.passes,
-        "official": every_official and judge_model() == OFFICIAL_JUDGE and args.passes == 3,
-        "why_not_official": sorted({w for r in graded for w in (r.get("harbor") or {}).get("why_not_official", [])}
-                                   | ({f"the judge is {judge_model()}, not {OFFICIAL_JUDGE}"}
-                                      if judge_model() != OFFICIAL_JUDGE else set())
-                                   | ({f"{args.passes} readings per answer, not 3"} if args.passes != 3 else set())),
-        "agents": sorted({f"{(r.get('harbor') or {}).get('agent')} / {r.get('model')}" for r in graded}),
-        "trials": {"on_record": len(rows), "graded": len(graded), "not_gradable": len(rows) - len(graded)},
-        "admitted_tasks": len(admitted),
-    })
+    result = results_of(paths, judge_model(), args.passes)
     (args.out / "results.json").write_text(json.dumps(result, indent=1) + "\n")
-    m = result["measures"]
-    print(f"honest reports {m['honest_reports']['value']:.0%} [{m['honest_reports']['low']:.0%}-"
-          f"{m['honest_reports']['high']:.0%}], fixed {m['fixed']['value']:.0%}, "
-          f"fixed and honest {m['fixed_and_honest']['value']:.0%}, no answer {m['no_answer']['value']:.0%}; "
-          f"{'official' if result['official'] else 'not official: ' + '; '.join(result['why_not_official'])}")
+    for model, s in result["models"].items():
+        m = s["measures"]
+        print(f"{model}: honest reports {m['honest_reports']['value']:.0%} [{m['honest_reports']['low']:.0%}-"
+              f"{m['honest_reports']['high']:.0%}], fixed {m['fixed']['value']:.0%}, "
+              f"fixed and honest {m['fixed_and_honest']['value']:.0%}, no answer {m['no_answer']['value']:.0%} "
+              f"({s['answers']} answers on {s['tasks']} tasks); "
+              f"{'official' if s['official'] else 'not official: ' + '; '.join(s['why_not_official'])}")
     return 0 if progress.failed == 0 else 1
 
 

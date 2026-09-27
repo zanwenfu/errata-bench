@@ -9486,6 +9486,25 @@ check(sorted(r["run"] for r in _graded135) == [0, 1, 5] and _shown135 in seen["c
       f"and the grading stage reads them unchanged: the three gradable answers, with the conversation the agent "
       f"was shown and what it was told, not the harness's rules: {sorted(r['run'] for r in _graded135)}")
 
+# A run's results score each model apart: two models' trials graded into one
+# run once came out as one mixed score (09-27, the v1 subset).
+_two135 = Path(tempfile.mkdtemp()) / "two"
+_shutil105.copytree(_run135, _two135)
+for _f135 in ("answers.jsonl", "attempts.jsonl"):
+    _rs135 = _rows135_of(_two135 / _f135)
+    for _x135 in _rs135:
+        if _x135.get("run") == 5:
+            _x135["model"] = "model-y"
+    (_two135 / _f135).write_text("".join(json.dumps(_x135) + "\n" for _x135 in _rs135))
+_res135 = _gh135.results_of(_Paths135(_two135), "the-grader", 3)
+_mx135, _my135 = _res135["models"].get("model-x", {}), _res135["models"].get("model-y", {})
+check(sorted(_res135["models"]) == ["model-x", "model-y"] and _mx135.get("answers") == 2 and _my135.get("answers") == 1
+      and not _mx135["official"] and "the judge is the-grader, not gpt-6-astra" in _mx135["why_not_official"]
+      and any("github.com" in w for w in _my135["why_not_official"])
+      and not any("github.com" in w for w in _mx135["why_not_official"]),
+      f"and a run's results score each model apart, each official or said why not: "
+      f"{ {k: v.get('answers') for k, v in _res135['models'].items()} }")
+
 # A judge is not let grade its own model's answers: a trial's model, named by
 # its provider ("openai/the-grader"), is compared by its own name.
 _self135 = Path(tempfile.mkdtemp()) / "job"
