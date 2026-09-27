@@ -8601,12 +8601,13 @@ check(not _ign127.ok and _ign127.differ == ["local.txt"] and "differs from the r
       f"a working copy that differs from the tree attempts started from is refused, naming the file: "
       f"{_ign127.differ} {_ign127.reason[:60]}")
 _small127 = Path(tempfile.mkdtemp()) / "t127s"
-_fs127 = _fz127.freeze(_task127, _turns127, _small127, branch="feature/x", max_git_mb=0.0)
+_fs127 = _fz127.freeze(_task127, _turns127, _small127, branch="feature/x", max_git_mb=0.0, language="Python")
 _ss127 = Path(tempfile.mkdtemp())
 if _fs127.ok:
     with _tf127.open(_small127 / "workspace.tar.gz") as _t:
         _t.extractall(_ss127, filter="tar")
 check(_fs127.ok and json.loads((_small127 / "task.json").read_text())["history"] == 1
+      and json.loads((_small127 / "task.json").read_text())["language"] == "Python"
       and _g127("log", "--format=%s", cwd=_ss127 / "workspace").splitlines() == ["c2"]
       and _fs127.digest == _fr127.digest,
       "a past over the size budget is fetched shallower, down to the commit alone, the depth recorded and "

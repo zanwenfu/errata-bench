@@ -24,7 +24,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
-from errata_bench.corpus.sessions import CORPUS  # noqa: E402
+from errata_bench.corpus.sessions import CORPUS, load_repos  # noqa: E402
 from errata_bench.corpus.turns import load_session_turns  # noqa: E402
 from errata_bench.project import code_version  # noqa: E402
 from errata_bench.release.freeze import HISTORY, MAX_GIT_MB, freeze  # noqa: E402
@@ -64,10 +64,12 @@ def main(argv: list[str]) -> int:
                 seen[a["task_id"]] = a["transcript"]
     turns = load_session_turns({t.session_id for t in tasks})
     named = branches({t.session_id for t in tasks})
+    repos = load_repos()
     rows, bad = [], 0
     for t in tasks:
         f = freeze(t, turns_of(turns, t), args.out / "tasks" / t.task_id, branch=named.get(t.session_id),
-                   history=args.history, max_git_mb=args.max_git_mb, scratch=args.scratch)
+                   history=args.history, max_git_mb=args.max_git_mb, scratch=args.scratch,
+                   language=getattr(repos.get(t.repo_id), "language", None))
         row = {"task_id": t.task_id, "ok": f.ok, "files": f.files, "branch": f.branch, "workdir": f.workdir}
         if not f.ok:
             row["reason"], row["differ"] = f.reason, f.differ[:20]

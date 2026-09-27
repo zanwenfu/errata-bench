@@ -199,10 +199,11 @@ def controls_of(task: Task, turns: list[dict]) -> dict:
 
 
 def freeze(task: Task, turns: list[dict], out: Path, *, branch: str | None, history: int = HISTORY,
-           max_git_mb: float = MAX_GIT_MB, scratch: Path | None = None) -> Frozen:
+           max_git_mb: float = MAX_GIT_MB, scratch: Path | None = None, language: str | None = None) -> Frozen:
     """Freeze one task into ``out`` (its own folder), checked against the reference tree.
 
-    ``turns`` are the task's session turns as `turns_of` gives them.
+    ``turns`` are the task's session turns as `turns_of` gives them; ``language``
+    is the repository's, as the corpus records it, which decides its container.
     """
     from ..score.attempt import transcript_for, with_lost_calls
 
@@ -249,7 +250,7 @@ def freeze(task: Task, turns: list[dict], out: Path, *, branch: str | None, hist
         (out / "task.json").write_text(json.dumps({
             "task_id": task.task_id, "repo_id": task.repo_id, "repo_url": task.repo_url, "sha": task.sha,
             "branch": result.branch, "workdir": result.workdir, "session_workdir": session_workdir,
-            "history": depth, "kind": task.kind,
+            "history": depth, "kind": task.kind, "language": language,
             "license": task.license_type, "copyleft": task.is_copyleft, "fingerprint": fingerprint(task),
             "files": n, "tree_digest": got,
             "workspace_sha256": hashlib.sha256((out / "workspace.tar.gz").read_bytes()).hexdigest(),
