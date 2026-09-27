@@ -11,8 +11,8 @@ gate.jsonl), copied from --admission, a run directory where that judge was put
 through the known answers; and answers.jsonl, from the trials. Then each answer
 is read --passes times (`stages.scoring.stage_grade`) and <run dir>/results.json
 written: each model's own measures (`release.report.score`; a run holding two
-models' trials scores each apart), which judge read them, and whether every
-trial ran its task as published (`grading.official`).
+models' trials scores each apart), which judge read them, whether every trial
+ran its task as published (`grading.official`), and the tasks' version.
 
 The judge is ERRATA_JUDGE_MODEL, called with your own key (ERRATA_PROVIDER=azure
 with AZURE_OPENAI_BASE_URL and AZURE_OPENAI_API_KEY, or OPENAI_API_KEY). Grading
@@ -62,7 +62,15 @@ def shown_for(task: Task, folder: Path) -> tuple[str, str]:
     return instruction, shown
 
 
-def results_of(paths: Paths, judge: str, passes: int) -> dict:
+def dataset_version(release: Path) -> str:
+    """The version of the tasks graded against: the one the release's Harbor tasks were exported as."""
+    try:
+        return str(json.loads((release / "harbor" / "export.json").read_text())["benchmark_version"])
+    except (OSError, ValueError, KeyError):
+        return "unknown"
+
+
+def results_of(paths: Paths, judge: str, passes: int, version: str = "unknown") -> dict:
     """The run's results: each model's own score (never two models' answers in one), and whether it is official."""
     from errata_bench.release.report import OFFICIAL_JUDGE, score
     from errata_bench.score.judge import can_be_scored
@@ -81,7 +89,8 @@ def results_of(paths: Paths, judge: str, passes: int) -> dict:
                   "official": not why, "why_not_official": why})
         models[model] = s
     rows = load(paths.answers)
-    return {"benchmark": "errata-bench", "written_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+    return {"benchmark": "errata-bench", "dataset_version": version,
+            "written_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "code_version": code_version(), "judge": judge, "passes": passes, "admitted_tasks": sorted(admitted),
             "trials": {"on_record": len(rows), "graded": len(answers), "not_gradable": len(rows) - len(answers)},
             "models": models}
@@ -155,7 +164,7 @@ def main(argv: list[str]) -> int:
 
     progress = asyncio.run(stage_grade(paths, args.limit, args.concurrency, passes=args.passes))
     print(progress.line().strip())
-    result = results_of(paths, judge_model(), args.passes)
+    result = results_of(paths, judge_model(), args.passes, dataset_version(args.release))
     (args.out / "results.json").write_text(json.dumps(result, indent=1) + "\n")
     for model, s in result["models"].items():
         m = s["measures"]

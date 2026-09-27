@@ -9598,6 +9598,56 @@ check([r["task_id"] for r in _rows135_of(_only136 / "tasks.jsonl")] == ["a1"]
 check(attempt_mod.control_conversations_for is _render136 and _no136 == 2 and "ERRATA_JUDGE_MODEL" in _e136.getvalue(),
       "and afterwards the conversations are the corpus's again; with no judge named, nothing is read")
 
+print("\n137. the model APIs an agent may reach: the main providers', none a host code, packages or pages come "
+      "from; a run that adds another region's stays official, one that adds anything else does not (v1.0.1)")
+# v1.0 allowed five providers, so an agent on any other had to add its host
+# and lost its official standing, though its network was no more open.
+_mh137 = _hb135.MODEL_HOSTS
+_NEVER137 = ("github.com", "api.github.com", "codeload.github.com", "raw.githubusercontent.com",
+             "objects.githubusercontent.com", "gitlab.com", "bitbucket.org", "huggingface.co", "cdn-lfs.huggingface.co",
+             "pypi.org", "files.pythonhosted.org", "registry.npmjs.org", "proxy.golang.org", "crates.io",
+             "storage.googleapis.com", "www.googleapis.com", "s3.amazonaws.com", "a-bucket.s3.amazonaws.com",
+             "abc.execute-api.us-east-1.amazonaws.com", "bedrock.us-east-1.amazonaws.com",
+             "x.bedrock-runtime.us-east-1.amazonaws.com", "bedrock-runtime.us-east-1.amazonaws.com.evil.io",
+             "us-central1-aiplatform.googleapis.com.evil.io", "acct.blob.core.windows.net", "evilopenai.azure.com",
+             "www.google.com", "www.bing.com", "duckduckgo.com", "api.tavily.com",
+             "api.exa.ai", "api.firecrawl.dev", "google.serper.dev", "api.perplexity.ai", "web.archive.org",
+             "chatgpt.com", "claude.ai", "*.amazonaws.com", "*.googleapis.com", "*.ai", "10.0.0.0/8", "1.2.3.4")
+# Not host names at all: Harbor refuses them, and so does `model_host`.
+_MALFORMED137 = ("evil.io/.openai.azure.com", "evil.io?.openai.azure.com", "api.x.ai:443", "https://api.x.ai")
+_opened137 = [h for h in _NEVER137 if _hb135.model_host(h)
+              or any(w.startswith("*.") and (h == w[2:] or h.endswith(w[1:])) for w in _mh137)]
+_opened137 += [h for h in _MALFORMED137 if _hb135.model_host(h)]
+check(len(set(_mh137)) == len(_mh137) >= 25 and all(_hb135._HOST.fullmatch(h) and h == h.lower() for h in _mh137)
+      and not any("*" in h[1:] for h in _mh137) and {"api.anthropic.com", "api.openai.com", "api.x.ai",
+      "api.deepseek.com", "openrouter.ai", "bedrock-runtime.us-east-1.amazonaws.com"} <= set(_mh137)
+      and not _opened137,
+      f"the tasks allow {len(_mh137)} model API hosts, each a name or a leading wildcard, and none of them, nor a "
+      f"region's Bedrock or Vertex AI endpoint, is a host code, packages, storage or web search is served from: "
+      f"{_opened137}")
+_regional137 = ("bedrock-runtime.eu-west-1.amazonaws.com", "bedrock-runtime-fips.us-gov-west-1.amazonaws.com",
+                "europe-west4-aiplatform.googleapis.com", "API.X.AI.", "myresource.openai.azure.com")
+check(all(_hb135.model_host(h) for h in _regional137),
+      f"and a host added to a run is a model API when the tasks allow it, or it is another region's Bedrock or "
+      f"Vertex AI endpoint, written in any case: {[h for h in _regional137 if not _hb135.model_host(h)]}")
+_job137 = Path(tempfile.mkdtemp()) / "job"
+_job137.mkdir(parents=True)
+for _n137, _h137 in (("h1__1", ("bedrock-runtime.eu-west-1.amazonaws.com", "api.x.ai")),
+                     ("h1__2", ("bedrock-runtime.eu-west-1.amazonaws.com", "storage.googleapis.com")),
+                     ("h1__3", ("evilopenai.azure.com",))):
+    _trial135(_job137, _n137, hosts=_h137)
+_o137 = {t.name: _gr135.official(t, {"h1": _digest135}) for t in _gr135.read_trials([_job137])}
+check(_o137["h1__1"] == (True, []) and _o137["h1__2"][0] is False and _o137["h1__3"][0] is False
+      and any("storage.googleapis.com" in w and "bedrock" not in w for w in _o137["h1__2"][1])
+      and any("evilopenai.azure.com" in w for w in _o137["h1__3"][1]),
+      f"so a run that adds another region's endpoint, or a host the tasks allow, is official; one that adds "
+      f"anything else is not, and says which host: {_o137}")
+(_rel135 / "harbor" / "export.json").write_text(json.dumps({"benchmark_version": _hb135.VERSION, "tasks": []}))
+_res137 = _gh135.results_of(_Paths135(_run135), "the-grader", 3, _gh135.dataset_version(_rel135))
+check(_res137.get("dataset_version") == _hb135.VERSION == "1.0.1"
+      and _gh135.dataset_version(Path(tempfile.mkdtemp())) == "unknown",
+      f"and results say which version of the tasks they were graded against: {_res137.get('dataset_version')}")
+
 print("\nlast. what the suite hands back")
 
 # Last, what the suite hands back -- at the very end, where it can see every

@@ -166,5 +166,25 @@ check(nanswer == "Reached: api.openai.com. Blocked: github.com." and len(ncalls)
       and len(NetworkCheck(logs_dir=nlogs).hosts) == len(NetworkCheck.HOSTS),
       f"an HTTP answer of any status is reached, a failed connection blocked, and its hosts are asked for: {nanswer!r}")
 
+print("\n4. a task's network as Harbor reads it: the model APIs as written, and the verifier's closed")
+from harbor.models.task.config import NetworkAllowlistEntryType as Entry
+from harbor.models.task.config import TaskConfig, classify_network_allowlist_entry, normalize_allowed_hosts
+
+from errata_bench.release import harbor as hb
+
+config = TaskConfig.model_validate_toml(hb.task_toml(
+    {"task_id": "t-1", "repo_id": "o/r", "sha": "0" * 40, "workdir": "/home/dev/r"}))
+policy = config.agent.explicit_phase_policy()
+kinds = {classify_network_allowlist_entry(h) for h in policy.allowed_hosts}
+check(policy.network_mode.value == "allowlist" and policy.allowed_hosts == list(hb.MODEL_HOSTS)
+      and kinds == {Entry.HOSTNAME, Entry.WILDCARD_HOSTNAME}
+      and config.verifier.explicit_phase_policy().network_mode.value == "no-network",
+      f"Harbor takes each of the {len(hb.MODEL_HOSTS)} model API hosts as written, names and leading wildcards only, "
+      f"and closes the verifier's network: {sorted(k.value for k in kinds)}")
+regional = ["bedrock-runtime.eu-west-1.amazonaws.com", "europe-west4-aiplatform.googleapis.com"]
+check(normalize_allowed_hosts(regional) == regional and all(hb.model_host(h) for h in regional),
+      "and another region's Bedrock or Vertex AI endpoint is one Harbor adds to a run as written "
+      "(--allow-agent-host), and one that keeps the run official")
+
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 sys.exit(1 if FAIL else 0)

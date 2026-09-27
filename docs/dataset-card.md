@@ -68,12 +68,27 @@ your own key.
 | `manifest.json` | how each task was frozen |
 | `SHA256SUMS` | every file's digest |
 
+While the agent works, its container reaches model APIs and nothing else: the
+main providers' (Anthropic, OpenAI, Google, xAI, DeepSeek, Mistral, Kimi, GLM,
+MiniMax, Qwen, Groq, Together, Fireworks, Cerebras, NVIDIA, OpenRouter,
+Vercel's AI Gateway, Azure, AWS Bedrock), as each `task.toml` lists them.
+
 The 55 tasks: Go, TypeScript, JavaScript, Python, Shell and Astro repositories;
 defects the agent introduced, defects already present, and mistakes in how the
 agent worked. 17 conversations are too long to hand to an agent as one
 instruction under Harbor (Linux caps one argument at 128 KiB); those are shown
 with every message whole and long tool outputs cut to fit, marked, and the
 whole conversation is in the container.
+
+## Versions
+
+Download a version by its tag (`hf download ... --revision v1.0.1`). Each has
+its own task digests, so grade a trial with the version it ran.
+
+- **v1.0.1**: the model APIs an agent may reach widened from five providers
+  to the main ones above, so an agent on another provider runs officially.
+  Nothing else in the tasks changed.
+- **v1.0**: the first release.
 
 ## Licences
 

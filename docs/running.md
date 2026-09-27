@@ -36,9 +36,14 @@ verifier, which records what grading needs and grades nothing).
 
 They are published on Hugging Face as
 [zanwenfu/errata-bench-v1](https://huggingface.co/datasets/zanwenfu/errata-bench-v1),
-gated as SWE-chat is: accept the terms on the dataset's page, then
+gated as SWE-chat is: accept the terms on the dataset's page, sign in with a
+token from your Hugging Face account, then download this version:
 
-    huggingface-cli download zanwenfu/errata-bench-v1 --repo-type dataset --local-dir errata-bench-v1
+    hf auth login
+    hf download zanwenfu/errata-bench-v1 --repo-type dataset --revision v1.0.1 --local-dir errata-bench-v1
+
+`hf` comes with `pip install huggingface_hub`; its old name,
+`huggingface-cli`, no longer works.
 
 The folder holds `harbor/` (the tasks Harbor runs, with their digests),
 `tasks/` (what grading reads), `admission/gpt-6-astra/` (the official judge's
@@ -62,9 +67,17 @@ In Harbor's environment, with your model's key in the environment:
 - `-k 3`: three attempts at each task, as the official results use.
 - `--ak disable_web_search=true` for Claude Code and Codex: their web search
   runs on the provider's side and would reach past the container's network.
-- Do not add hosts with `--allow-agent-host`: an official run reaches only
-  the model APIs listed in each task's `task.toml`. If your provider is not
-  among them, the run is still gradable, but not official.
+- While the agent works it reaches model APIs and nothing else. Each task's
+  `task.toml` lists them: Anthropic, OpenAI, Google (Gemini, and Vertex AI
+  globally and in us-central1), xAI, DeepSeek, Mistral, Moonshot (Kimi),
+  Z.ai (GLM), MiniMax, Alibaba (Qwen), Groq, Together, Fireworks, Cerebras,
+  NVIDIA, OpenRouter, Vercel's AI Gateway, Azure, and AWS Bedrock in
+  us-east-1. For Bedrock or Vertex AI in another region, add that region's
+  endpoint, and the run stays official:
+  `--allow-agent-host bedrock-runtime.<region>.amazonaws.com` or
+  `--allow-agent-host <region>-aiplatform.googleapis.com`. A run that adds
+  any other host is still gradable, but not official; if your provider is
+  missing, open an issue.
 - errata-bench's reference agent, its own five-tool loop, runs any model it
   can reach through the OpenAI API, Azure OpenAI, or any endpoint that speaks
   OpenAI's API: `-a errata_harbor.agents:Reference -m openai/<model>`, with
@@ -116,8 +129,10 @@ models' trials scores each apart):
 
 each per task and then over tasks, with a 95% interval, and each task's own
 values (`per_task`). `official` says whether every trial ran its task as
-published (its content digest, no added hosts, web search off), graded by the
-official judge with three readings; if not, `why_not_official` says why.
+published (its content digest, no host added but a model API, web search
+off), graded by the official judge with three readings; if not,
+`why_not_official` says why. `dataset_version` says which version of the
+tasks they were graded against.
 
 ## Cost and time
 
@@ -134,6 +149,16 @@ list prices):
   agent 160 s, the image build 72 s the first time), about 1 minute with
   DeepSeek-V4-Pro. With 4 trials at once, a full run takes a few hours; the
   first build of all 55 images adds about 2 hours and needs about 60 GB.
+
+## Versions
+
+- **v1.0.1** (27 September 2026): the model APIs an agent may reach widened
+  from five providers (Anthropic, OpenAI, Gemini, OpenRouter, Azure) to those
+  listed above, so an agent on another provider runs officially. The tasks
+  are otherwise unchanged: the same instructions, images and verifier. A
+  task's digest covers its `task.toml`, so each version has its own digests:
+  grade a trial with the folder of the version it ran.
+- **v1.0** (27 September 2026): the first release.
 
 ## Not in v1
 

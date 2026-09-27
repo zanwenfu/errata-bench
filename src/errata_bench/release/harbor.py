@@ -38,6 +38,7 @@ agent was shown it (tests/conversation.txt), as they do this harness's own.
 from __future__ import annotations
 
 import json
+import re
 import shlex
 import shutil
 import tarfile
@@ -47,7 +48,9 @@ from pathlib import Path
 from ..changes import snapshot
 from .environment import dockerfile, recipe
 
-VERSION = "1.0"
+# The tasks' version. 1.0.1: the model APIs below widened from five providers
+# to the main ones; the tasks are otherwise 1.0's, byte for byte.
+VERSION = "1.0.1"
 # Seconds. The agent's run, generous for a conversation's next turn: an agent
 # still working when it ends is stopped, and its attempt has no answer.
 AGENT_TIMEOUT_S = 1800
@@ -55,19 +58,54 @@ VERIFIER_TIMEOUT_S = 600
 BUILD_TIMEOUT_S = 3600
 CPUS, MEMORY_MB = 2, 4096
 
-# Model APIs an agent may reach while it works; nothing else. More are added
-# for one run with `harbor run --allow-agent-host <host>`. A model API's own
-# server-side tools (web search) are not stopped by this, so official runs turn
-# them off in the agent (`--ak disable_web_search=true` for Claude Code and Codex).
+# Model APIs an agent may reach while it works; nothing else: each provider's
+# API host as coding agents reach it (Harbor's agents' own defaults, 09-27),
+# and no host a repository, a package or a web page is served from. Harbor
+# takes a host, or a leading "*." for any host under it. More are added for one
+# run with `harbor run --allow-agent-host <host>` (`model_host` says which keep
+# a run official). A model API's own server-side tools (web search) are not
+# stopped by this, so official runs turn them off in the agent
+# (`--ak disable_web_search=true` for Claude Code and Codex).
 MODEL_HOSTS = (
+    # Model makers' own APIs.
     "api.anthropic.com",
     "api.openai.com",
-    "generativelanguage.googleapis.com",
-    "openrouter.ai",
-    "*.openai.azure.com",
-    "*.services.ai.azure.com",
-    "*.cognitiveservices.azure.com",
+    "generativelanguage.googleapis.com",        # Gemini
+    "cloudcode-pa.googleapis.com",              # Gemini, as Gemini CLI reaches it with a Google login
+    "api.x.ai",
+    "api.deepseek.com",
+    "api.mistral.ai",
+    "api.moonshot.ai", "api.moonshot.cn", "api.kimi.com",           # Kimi
+    "api.z.ai", "open.bigmodel.cn",                                  # GLM
+    "api.minimax.io", "api.minimaxi.com",                            # MiniMax
+    "dashscope-intl.aliyuncs.com", "dashscope.aliyuncs.com",         # Qwen
+    # Providers serving open models, and routers to many models.
+    "api.groq.com", "api.together.xyz", "api.fireworks.ai", "api.cerebras.ai", "integrate.api.nvidia.com",
+    "openrouter.ai", "ai-gateway.vercel.sh",
+    # Clouds: an Azure resource's own host; AWS Bedrock and Google Vertex AI in
+    # their default regions (another region's: `REGIONAL_MODEL_HOST`); and
+    # Google's sign-in, which Vertex AI and a Google login need.
+    "*.openai.azure.com", "*.services.ai.azure.com", "*.cognitiveservices.azure.com",
+    "bedrock-runtime.us-east-1.amazonaws.com",
+    "aiplatform.googleapis.com", "us-central1-aiplatform.googleapis.com",
+    "oauth2.googleapis.com",
 )
+# Another region's endpoint on AWS Bedrock or Google Vertex AI: added to a run
+# with --allow-agent-host, it keeps the run official, as it is the same model
+# API. Written in full, as neither cloud's other hosts under amazonaws.com or
+# googleapis.com (storage, other services) are a model API.
+REGIONAL_MODEL_HOST = re.compile(r"bedrock-runtime(-fips)?\.[a-z]{2}(-gov)?-[a-z]+-[0-9]+\.amazonaws\.com"
+                                 r"|[a-z]+-[a-z]+[0-9]+-aiplatform\.googleapis\.com")
+_HOST = re.compile(r"(\*\.)?[a-z0-9-]+(\.[a-z0-9-]+)+")
+
+
+def model_host(host: str) -> bool:
+    """Whether a host added to a run's allowlist is a model API: one the tasks allow, or a region's (above)."""
+    host = host.strip().lower().rstrip(".")
+    if not _HOST.fullmatch(host):
+        return False
+    return (host in MODEL_HOSTS or any(h.startswith("*.") and host.endswith(h[1:]) for h in MODEL_HOSTS)
+            or REGIONAL_MODEL_HOST.fullmatch(host) is not None)
 
 # What the agent is asked, above the conversation. This harness's own
 # candidates are told the same in their instructions (`score.attempt.

@@ -28,9 +28,10 @@ same as an agent that gave none.
 
 `official` says whether a trial ran the task as published: its content
 digest the release's (`errata_harbor.digests`), no host added to the network's
-allowlist, the verifier run in the agent's container, and for Claude Code and
-Codex their own web search off (it reaches the web from the provider's side,
-past the container's network).
+allowlist but a model API (`harbor.model_host`: another region of AWS Bedrock
+or Google Vertex AI), the verifier run in the agent's container, and for
+Claude Code and Codex their own web search off (it reaches the web from the
+provider's side, past the container's network).
 """
 
 from __future__ import annotations
@@ -42,6 +43,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from .atif import harness_tool
+from .harbor import model_host
 
 # Agents Harbor runs whose own web search reaches past the container's network,
 # and the setting that turns it off (Harbor's source, 09-27).
@@ -132,9 +134,10 @@ def official(trial: Trial, digests: dict[str, str]) -> tuple[bool, list[str]]:
     elif digest != digests[trial.task_id]:
         why.append(f"its task is not the published one (digest {str(digest)[:19]}...)")
     for where in ("agent", "environment"):
-        if (lock.get(where) or {}).get("extra_allowed_hosts"):
-            why.append(f"hosts were added to the network's allowlist ({where}): "
-                       f"{', '.join(lock[where]['extra_allowed_hosts'])}")
+        added = [h for h in (lock.get(where) or {}).get("extra_allowed_hosts") or [] if not model_host(str(h))]
+        if added:
+            why.append(f"hosts that are not model APIs were added to the network's allowlist ({where}): "
+                       f"{', '.join(map(str, added))}")
     verifier = lock.get("verifier") or {}
     if verifier.get("disable") or verifier.get("environment_mode") not in (None, "shared"):
         why.append("its verifier did not run in the agent's container")
