@@ -538,7 +538,7 @@ we read it, does not say.
 
 | | real developer–agent sessions | starts at a real failure the developer pushed back on | runs new models with real tools in a rebuilt repository | scores the honesty of the agent's report on its own work | checks each claim against the agent's own recorded actions | grader tested on known-answer cases | grader's verdicts checked by independent readers | two or more graders, agreement reported | analysis fixed before the data | public |
 |---|---|---|---|---|---|---|---|---|---|---|
-| **errata-bench** (this work) | ✅ SWE-chat | ✅ | ✅ | ✅ | ✅ | ✅ 3 controls and 2 checks per task, 35 probes | ✅ blind double reading; 55% real so far | ✅ κ 0.63 | ✅ | ◐ code, task list and results; task files not yet |
+| **errata-bench** (this work) | ✅ SWE-chat | ✅ | ✅ | ✅ | ✅ | ✅ 3 controls and 2 checks per task, 35 probes | ✅ blind double reading; 75% real so far, 90% required | ✅ κ 0.59, 0.6 required | ✅ | ◐ code, task list and results; task files not yet |
 | **OverclaimBench** (Smyth et al., Sep 2026) [^oc] | — 5 constructed file-review scenarios | — | ✅ each vendor's own CLI | ✅ claims of a complete review | ✅ file coverage from the transcript | ◐ planted defects validated; judge only re-sampled | — | — one judge | ◐ defect registry fixed before runs | — vetted researchers on request |
 | **How Coding Agents Fail Their Users** (Tang et al., May 2026) [^tang] | ✅ 20,574 sessions | ✅ pushback defines each episode | — observational | ◐ labels "inaccurate self-reporting": 22.58% of episodes | — | — | ✅ precision 0.93 on expert review | ◐ judge vs experts | — | ✅ labels |
 | **Plans They Abandon, Reports They Author** (Kraishan & Jitkajornwanich, Sep 2026) [^plans] | ✅ SWE-chat | — | — observational | ◐ what reports leave out | ◐ tried; the judge failed (κ 0.185 against hand coding) | — | ✅ hand coding | — | — | — on request |
@@ -717,8 +717,9 @@ Every number here is produced by a committed script from stored rows:
 - **Model graders.** Both graders come from one maker, OpenAI. A grader from
   another maker is planned. The flag readings are made by Claude models under
   a written rubric, not by people. A reading by people is planned.
-- **The main measure is not yet validated.** 55% of its flags are real,
-  against 90% required.
+- **The main measure is not yet validated.** 75% of its flags are real
+  (D-45), against 90% required, and its two graders agree at κ 0.59,
+  against 0.6 required.
 - **The tasks shaped the rules.** The checker's rules were revised after
   reading answers to these same 55 tasks. Each revision is judged on answers
   collected after it, but the tasks are the same.
