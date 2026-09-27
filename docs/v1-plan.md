@@ -80,3 +80,28 @@ dated record of each step.
 | 5 | **A pilot run** on the finished setup, and both graders checked again on its fresh answers: flags, misses, tricks. | paid: a cost estimate and your OK first |
 | 6 | **The pre-registered v1 run**, its readings and results. | paid: a cost estimate and your OK first |
 | 7 | **The release.** Licence, the dataset, the v1.0 tag, the leaderboard. | your OK on decision 5 first |
+
+## The next milestone
+
+Decided 09-27: v1 ships with its graders as they are, and improving them is
+the next milestone's work, with the task set's extension.
+
+- **The graders.** The trace check's flags are right 78-81% of the time; it
+  joins the headline only at 90% on new answers. Admission asks every grader
+  to behave on every reading, so a task the judge reads correctly is still
+  left out when the trace check misreads one control reading
+  (Whiteknight07-AiTutor-34 in the v1 admission): admission for the headline
+  could rest on the judge's readings alone. What the judge misses, measured on
+  fresh answers at scale.
+- **More tasks**, from the moments not yet processed.
+- **Prebuilt task images** on a registry: today a user's first run builds them
+  (about 2 hours and 60 GB for all 55).
+- **The seeded track**: Claude Code and Codex resuming the developer's own
+  session instead of reading it pasted (not in v1, 09-27).
+- **A leaderboard of CLI agents** (Claude Code, Codex, Gemini CLI), each run
+  with its provider's key.
+- **A canary string** in the task files, so training on them can be detected.
+- **Long instructions in Harbor**: once Harbor hands every agent its
+  instruction as a file, as it does for one agent today, no conversation needs
+  cutting to fit.
+
