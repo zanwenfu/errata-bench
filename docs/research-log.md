@@ -8835,3 +8835,15 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   the host's Python. Run on the server (where that image already was): Python
   3.12.14, the answer, the calls, the three changes and the defect's token
   gone.
+- **09-27, 07:1x UTC** — **git in the container reads the file system it is
+  on.** The release was frozen on the laptop, and git on macOS records
+  `core.ignorecase=true` and `core.precomposeunicode=true` in a new
+  repository's config; every frozen working copy carries them. In a task's
+  Linux container that is false, and git trusts the setting over the file
+  system (a case-only rename, a file differing from another only in case).
+  The image build now drops both before taking the working copy's status. The
+  `origin` remote stays, as the developer had it: the closed network is what
+  keeps the repository's later commits out of reach, and an agent that knows
+  the URL could clone it with or without a remote. Guard 129 runs the build
+  step's own words on a repository configured as macOS configures it; the
+  settings kept, it fails. The Harbor export and its digests written again.

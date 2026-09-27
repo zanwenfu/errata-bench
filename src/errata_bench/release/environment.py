@@ -215,10 +215,16 @@ def dockerfile(r: Recipe, base: str | None = BASE_TAG) -> str:
     where = shlex.quote(r.workdir)
     lines = ([BASE_DOCKERFILE.rstrip("\n"), f"# errata-bench v1: {r.task_id}"] if base is None
              else [f"# errata-bench v1: {r.task_id}", f"FROM {base}"])
+    # The working copy was frozen on macOS, whose git records a case-insensitive
+    # file system (core.ignorecase, core.precomposeunicode); in a Linux
+    # container that is false, and git would treat it as true. Dropped, git
+    # reads the file system it is on.
     lines += ["COPY workspace.tar.gz /tmp/workspace.tar.gz",
              f"RUN mkdir -p \"$(dirname {where})\" && tar -xzf /tmp/workspace.tar.gz -C /tmp "
              f"&& mv /tmp/workspace {where} && rm /tmp/workspace.tar.gz "
-             f"&& cd {where} && git status --porcelain > /errata/status-before.txt"]
+             f"&& cd {where} && (git config --unset-all core.ignorecase || true) "
+             f"&& (git config --unset-all core.precomposeunicode || true) "
+             f"&& git status --porcelain > /errata/status-before.txt"]
     lines += [f"RUN {tool}" for tool in r.tools]
     for folder, strict, lenient, lock in r.installs:
         lines.append("RUN " + install_line(r.workdir, folder, strict, lenient, lock))

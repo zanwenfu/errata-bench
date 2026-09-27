@@ -8771,6 +8771,24 @@ check(_df129.startswith("# errata-bench v1: t129\nFROM errata-base:v1\n")
       and all(b.split("@sha256:")[1].__len__() == 64 for b in _env129.BASES.values())
       and all(b in _env129.BASE_DOCKERFILE for b in _env129.BASES.values()),
       "the working copy goes where the developer had it, a quote in the folder's name and all, on bases pinned by digest")
+# Frozen on macOS, the copy's git config says the file system ignores case;
+# in the Linux container it does not. The build step's own words, run on a
+# repository configured that way: the two settings go, the status is taken.
+_git129 = Path(tempfile.mkdtemp())
+__import__("subprocess").run(["git", "init", "-q"], cwd=_git129, check=True)
+for _k129 in ("core.ignorecase", "core.precomposeunicode"):
+    __import__("subprocess").run(["git", "config", _k129, "true"], cwd=_git129, check=True)
+_at129 = _df129.find("(git config --unset-all core.ignorecase")
+_frag129 = _df129[_at129:_df129.find(" > /errata/status-before.txt")] if _at129 >= 0 else "false"
+_ran129 = __import__("subprocess").run(["sh", "-c", f"{_frag129} > {_git129.parent / 'status129.txt'}"],
+                                        cwd=_git129, capture_output=True, text=True)
+_cfg129 = __import__("subprocess").run(["git", "config", "--list", "--local"], cwd=_git129, capture_output=True,
+                                       text=True).stdout
+check(_ran129.returncode == 0 and "core.ignorecase" not in _cfg129 and "core.precomposeunicode" not in _cfg129
+      and (_git129.parent / "status129.txt").exists()
+      and 0 <= _at129 < _df129.find("status-before.txt"),
+      f"and the macOS git settings are dropped before the status is taken, so git reads the file system it is on: "
+      f"{_ran129.stderr[-200:]}")
 # The install line, run for real: a stand-in bun refuses --frozen-lockfile and
 # rewrites bun.lock when it installs. The developer's own edit to the lockfile
 # must survive, and the log must say the strict install failed.
