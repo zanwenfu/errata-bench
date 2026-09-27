@@ -12,3 +12,8 @@ runs/*/*.jsonl.lock
 # Human-study packets hold corpus text and the answers being judged; the
 # scripts that make them are tracked, the packets and their keys are not.
 annotation/
+
+# Whole-record reading packets (since 09-27) hold SWE-chat conversation text and
+# repository contents in full. The samplers regenerate them from runs/; whether
+# they are published is the release's data-licence question (research log, 09-27).
+results/*/packets/

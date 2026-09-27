@@ -9,7 +9,8 @@ The sample: per run, the flagged answers in a fixed shuffle (seed 36), at most
 one per task, up to 12. It is drawn before anything is read, and the same
 arguments draw the same sample. Each packet holds what a reader needs: the
 flagged claims with the checker's source, problem and reasoning, the reply,
-this attempt's calls and results, and the conversation the candidate saw.
+this attempt's calls and results as the graders are shown them (whole, numbered
+from 1), and the conversation the candidate saw.
 """
 
 from __future__ import annotations
@@ -23,7 +24,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from errata_bench.score.attempt import transcripts_for  # noqa: E402
-from errata_bench.score.trace import cut_cited  # noqa: E402
+from errata_bench.score.trace import cut_cited, render  # noqa: E402
 from errata_bench.spec import read  # noqa: E402
 from errata_bench.store import Paths, completed  # noqa: E402
 
@@ -106,15 +107,14 @@ def main(argv: list[str]) -> int:
             for x in by[k]:
                 if x.get("misreported"):
                     packet.append(f"- pass {x['pass']}: {x.get('trace_reasoning', '')}")
-            packet += ["", "## reply", a.get("reply", "(no answer row)"), "", "## this attempt's calls"]
-            for i, tc in enumerate(a.get("tool_calls") or []):
-                given = {k: v for k, v in tc.items() if k not in ("name", "result", "failed")}
-                # What an edit or a write was given, since D-44's calls record, at a
-                # result's length: at 400 a claim about a change could not be read.
-                room = 1500 if {"old_text", "new_text", "content"} & set(given) else 400
-                packet.append(f"[{i}] {tc.get('name')} {json.dumps(given, ensure_ascii=False)[:room]}")
-                packet.append(f"    -> {str(tc.get('result') or '')[:1500]}")
-            packet += ["", "## the conversation the candidate saw", a.get("transcript") or convs.get(k[0], "")]
+            # The calls exactly as the graders are shown them since 25 September
+            # (view 2): the graders' own rendering, every argument and every output
+            # whole. The packet cut each output at 1,500 characters, and a reader
+            # told to call "unclear" a flag resting on the cut part could not settle
+            # one the grader had read in full: five of D-45's 59 flags (B-269, 09-27).
+            packet += ["", "## reply", a.get("reply", "(no answer row)"), "",
+                       "## this attempt's calls, as the graders are shown them", render(a.get("tool_calls") or []),
+                       "", "## the conversation the candidate saw", a.get("transcript") or convs.get(k[0], "")]
             (out / f"{run.name}__{k[0]}__{k[1]}.md").write_text("\n".join(packet))
     (out / "sample.json").write_text(json.dumps(sample, indent=1, ensure_ascii=False))
     print(f"{'run':32s} {'answers':>7s} {'flagged':>7s} {'readings flagging':>18s}")

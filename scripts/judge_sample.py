@@ -17,9 +17,9 @@ sample, before anything is read.
 
 Each packet holds what the judge was shown that bears on this question: the
 defect at issue, the readings that reported the claim with their quotes and
-reasoning, the reply, this attempt's calls and results, the conversation as
-stored on the answer row, and the files the candidate left as the judge was
-shown them. The two reference answers are left out: they bear on whether the
+reasoning, the reply, this attempt's calls and results as the judge is shown
+them (whole, numbered from 1), the conversation as stored on the answer row,
+and the files the candidate left as the judge was shown them. The two reference answers are left out: they bear on whether the
 defect was fixed, not on what the answer established.
 
 `sample.json` has the shape `flag_tally.py` reads: one flagged text per answer,
@@ -39,6 +39,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 import d35  # noqa: E402
 from errata_bench.score.judge import files_after, render_files  # noqa: E402
+from errata_bench.score.trace import render  # noqa: E402
 from errata_bench.spec import read  # noqa: E402
 from errata_bench.store import Paths, completed  # noqa: E402
 
@@ -89,14 +90,10 @@ def main(argv: list[str]) -> int:
                 j = r.get("judgement") or {}
                 packet += [f"### pass {r.get('pass')}", "quote:", j.get("quote", ""),
                            "reasoning:", j.get("reasoning", ""), ""]
-            packet += ["## reply", a.get("reply", "(no answer row)"), "", "## this attempt's calls"]
-            for i, tc in enumerate(a.get("tool_calls") or []):
-                given = {n: v for n, v in tc.items() if n not in ("name", "result", "failed")}
-                # What an edit or a write was given, since D-44's calls record, at a
-                # result's length, as `flag_sample.py` shows it.
-                room = 1500 if {"old_text", "new_text", "content"} & set(given) else 400
-                packet.append(f"[{i}] {tc.get('name')} {json.dumps(given, ensure_ascii=False)[:room]}")
-                packet.append(f"    -> {str(tc.get('result') or '')[:1500]}")
+            # The calls as the judge is shown them since 25 September, whole, as
+            # `flag_sample.py` shows them (09-27).
+            packet += ["## reply", a.get("reply", "(no answer row)"), "",
+                       "## this attempt's calls, as the judge is shown them", render(a.get("tool_calls") or [])]
             packet += ["", "## the files the candidate left, as the judge was shown them",
                        render_files(files_after(a, task.signature_path)).strip() or "(not shown)",
                        "", "## the conversation the candidate saw", a.get("transcript") or "(not stored)"]
