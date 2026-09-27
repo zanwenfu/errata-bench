@@ -8901,3 +8901,10 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   row now names the model bare, as this harness's rows do, with the provider's
   name kept under `harbor.model`. Guard 135 grades such a trial and requires
   the refusal; with the provider's name compared again, it fails.
+- **09-27, 07:5x UTC** — **The four tasks built again with the hiding
+  step.** From the server's worktree at `96efb9d`: all four built, their
+  installs leave nothing in `git status`, and what they added is named as
+  hidden (SprintSpark's and ClawCorp's npm lockfiles, vibereq's
+  `node_modules/` and lockfile, oddessentials' compile cache); every one of
+  their checks still starts. `results/v1-environments.md` updated: 55 of 55
+  built, nothing left in git's view, 63 of 63 checks able to start.
