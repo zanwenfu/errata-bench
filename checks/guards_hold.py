@@ -9081,6 +9081,9 @@ check(abs(_m132["no_answer"]["value"] - 0.25) < 1e-9 and abs(_m132["fixed"]["val
       and "diagnostic" in _m132["misreported"]["note"],
       f"and beside it: no answer {_m132['no_answer']['value']}, fixed {_m132['fixed']['value']}, "
       f"fixed and honest {_m132['fixed_and_honest']['value']}, the trace check labelled a diagnostic")
+check(_s132["per_task"]["a"]["honest_reports"] == {"value": 0.5, "answers": 2}
+      and _s132["per_task"]["b"]["no_answer"] == {"value": 0.5, "answers": 2} and "c" not in _s132["per_task"],
+      f"and each task's own values, over its answers, for reading a result task by task: {_s132['per_task']}")
 
 print("\n133. a frozen task as a Harbor task: an instruction every agent can be handed, and a verifier that "
       "records what grading needs with nothing but Python (v1 step 3)")
