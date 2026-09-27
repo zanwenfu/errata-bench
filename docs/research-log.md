@@ -8442,7 +8442,7 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - The milestone's plan and decisions are now in `docs/v1-plan.md`.
   - *Correction, 04:1x.* This entry was first labelled 04:2x, a time not yet
     reached when it was written; its commit is 03:45.
-- **09-27, 04:1x UTC** — **v1 step 2 begins: every task frozen once.** Every
+- **09-27, 04:0x UTC** — **v1 step 2 begins: every task frozen once.** Every
   attempt so far rebuilt its task: the repository fetched from GitHub, the
   session's edits replayed from the corpus, the conversation rendered from the
   corpus's parquet. Someone outside has neither the gated corpus nor a
@@ -8477,7 +8477,7 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - Guard 127 checks all of it on a local repository, and fails with the
     replay, the tree comparison or the size budget removed. The release will be
     frozen again from a tagged commit.
-- **09-27, 04:4x UTC** — **Every check row now says which code wrote it (v1
+- **09-27, 04:1x UTC** — **Every check row now says which code wrote it (v1
   step 4).** Answer and grading rows have carried `code_version` since G-05;
   the checks did not: calibration, the gate, the controls, the instrument
   checks and both probe sets. D-45 had to mark the check rows it copied by
@@ -8487,7 +8487,7 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   wrong code. Guard 128 reads the stored rows of every writer, a failed call's
   included, and fails with the gate's or the instrument checks' stamp removed.
   Readers are unchanged: the spend guard prices check rows by count.
-- **09-27, 04:5x UTC** — **Three decisions, the user's.** (1) The new probes
+- **09-27, 04:3x UTC** — **Three decisions, the user's.** (1) The new probes
   may run on gpt-6-astra, on the Azure credits, estimated under $10: 8 judge
   probes and 37 trace-check probes, three runs each (`results/v1-probes/`).
   (2) The per-task environments are built on the server. (3) v1 shows the
@@ -8495,7 +8495,7 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   grading calls: 30,251 input tokens a call on average, 20,965 of them cached;
   the conversations shown averaged 30,505 characters, and whole they average
   about 86,000, so about 14,000 more tokens a call, about 35% more grading.
-- **09-27, 05:0x UTC** — **The new probes, run: every one as it must be, on
+- **09-27, 04:3x UTC** — **The new probes, run: every one as it must be, on
   every run.** gpt-6-astra, on the Azure credits, at ae6229289
   (`results/v1-probes/`).
   - *The judge's 8, three runs: 8 of 8 each time.* It flags a false "all 48
@@ -8511,7 +8511,7 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - *Cost.* $0.32 for the judge's 24 calls, from their stored usage; about
     $5.55 for the trace check's 111, at the spend guard's per-row estimate,
     since those rows stored no usage. They do now (`trace.verify`).
-- **09-27, 05:4x UTC** — **The environments: how each task's container is
+- **09-27, 04:4x UTC** — **The environments: how each task's container is
   built (v1 step 2).** `errata_bench.release.environment`, run by
   `scripts/build_environments.py` on the server.
   - *Checked first.* The server's own freeze of the 55 tasks, from its own
@@ -8559,3 +8559,8 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - Guard 110 now expects record 3; guard 130 fails with record 3 cutting, the
     fallback leaving the conversation whole, or any longer result replacing.
     The freezer's check compares only with a run of the same record.
+  - *Correction, 05:2x.* Four earlier entries of today carried times ahead of
+    the clock, estimated rather than read. Each now carries its commit's time:
+    the freeze 04:0x (was 04:1x), the check rows 04:1x (was 04:4x), the user's
+    decisions and the probes 04:3x (were 04:5x and 05:0x), the environments
+    04:4x (was 05:4x).
