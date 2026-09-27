@@ -9359,6 +9359,60 @@ check(sorted(r["run"] for r in _graded135) == [0, 1, 5] and _shown135 in seen["c
       f"and the grading stage reads them unchanged: the three gradable answers, with the conversation the agent "
       f"was shown and what it was told, not the harness's rules: {sorted(r['run'] for r in _graded135)}")
 
+print("\n136. a judge is admitted to the release's tasks from the release itself, not the corpus (v1 step 4)")
+# The admission stages read each task's conversations through one function,
+# which renders them from the corpus; from a release, they are read from what
+# the freeze kept, and the function is the corpus's again afterwards.
+_rel136 = Path(tempfile.mkdtemp()) / "release"
+(_rel136 / "tasks" / "a1" / "grading").mkdir(parents=True)
+(_rel136 / "tasks" / "a1" / "grading" / "task.json").write_text(json.dumps(make_task("a1").to_json()))
+(_rel136 / "tasks" / "a1" / "grading" / "controls.json").write_text(json.dumps({
+    "cut": "THE-FROZEN-CUT conversation", "resolution": "THE-FROZEN-RESOLUTION conversation", "last_action": None}))
+_spec136 = _iu135.spec_from_file_location("admit_judge136", "scripts/admit_judge.py")
+_aj136 = _iu135.module_from_spec(_spec136)
+_spec136.loader.exec_module(_aj136)
+_render136 = attempt_mod.control_conversations_for
+_out136 = Path(tempfile.mkdtemp()) / "admission"
+seen["context"].clear()
+_given136 = []
+
+
+async def _cal136(task, *, model=None, conversations=None):
+    # The suite's stand-in judge calls every answer solved, so the known pair
+    # would never separate; this one reads it correctly, and says what it read.
+    _given136.append(conversations)
+    return Calibration(task.task_id, failed_outcome="off_target", resolution_outcome="solved",
+                       failed_solved=False, resolution_solved=True, failed_outcome_swapped="off_target",
+                       resolution_outcome_swapped="solved", failed_solved_swapped=False,
+                       resolution_solved_swapped=True)
+
+
+_env136 = os.environ.get("ERRATA_JUDGE_MODEL")
+_saved136 = judge_mod.calibrate
+judge_mod.calibrate = _cal136
+os.environ["ERRATA_JUDGE_MODEL"] = "the-grader"
+try:
+    with _ctx60.redirect_stdout(_io60.StringIO()) as _o136:
+        _rc136 = _aj136.main([str(_rel136), "--out", str(_out136), "--passes", "1", "--concurrency", "2"])
+finally:
+    judge_mod.calibrate = _saved136
+    os.environ.pop("ERRATA_JUDGE_MODEL", None)
+_cal136 = _rows135_of(_out136 / "calibration.jsonl")
+_con136 = _rows135_of(_out136 / "controls.jsonl")
+check(_cal136 and _cal136[0]["task_id"] == "a1" and _cal136[0]["judge_model"] == "the-grader"
+      and _given136 and (_given136[0] or {}).get("cut") == "THE-FROZEN-CUT conversation"
+      and {r["control"] for r in _con136} >= {c.name for c in __import__("errata_bench.instrument.control",
+                                                                           fromlist=["x"]).CONTROLS}
+      and any("THE-FROZEN-" in c for c in seen["context"]),
+      f"the known answers and every control read, against the conversations the release kept: "
+      f"{len(_cal136)} calibration, {len(_con136)} control rows, contexts {[c[:22] for c in seen['context']][:3]}")
+with _ctx60.redirect_stderr(_io60.StringIO()) as _e136:
+    _no136 = _aj136.main([str(_rel136), "--out", str(Path(tempfile.mkdtemp()) / "x")])
+if _env136 is not None:
+    os.environ["ERRATA_JUDGE_MODEL"] = _env136
+check(attempt_mod.control_conversations_for is _render136 and _no136 == 2 and "ERRATA_JUDGE_MODEL" in _e136.getvalue(),
+      "and afterwards the conversations are the corpus's again; with no judge named, nothing is read")
+
 print("\nlast. what the suite hands back")
 
 # Last, what the suite hands back -- at the very end, where it can see every

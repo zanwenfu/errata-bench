@@ -8809,3 +8809,17 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   Azure host counted and a name that merely contains azure.com not; guard 112
   asks for its Claude judge on Azure, where those probes run. Four breaks,
   each caught.
+- **09-27, 07:0x UTC** — **A judge admitted from the release.** A task is
+  graded only by a judge admitted to it: one that reads its known pair
+  correctly in both orders, and whose readings of its controls behave. Both
+  admission stages read each task's conversations through
+  `control_conversations_for`, which renders them from the corpus; the freeze
+  kept exactly its output (`grading/controls.json`). `scripts/admit_judge.py`
+  runs the two stages unchanged, with that function reading the release while
+  it runs (`release.admission.conversations_from`), and its output is what
+  `grade_harbor.py --admission` reads. It refuses without a named judge, and
+  is paid: about 4 readings per task for the known pair and 2 per control and
+  pass. Guard 136, with the suite's stand-ins: the known pair and all three
+  controls read against the release's conversations, the corpus's function
+  back afterwards; two breaks, each caught. The official judge's admission is
+  for the pilot.
