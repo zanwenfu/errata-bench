@@ -167,8 +167,9 @@ Each run also has a log beside it (`runs/<run>.log`, `runs/<run>.admit.log`).
 - **Provenance on every row.** Each answer and grading row records the code
   that wrote it (`code_version`, a commit), the model or judge (`model`,
   `judge_model`), and its identity (`task_id`, `run`, `pass`). Check rows
-  (calibration, controls, instrument checks, probes) do not yet record the
-  code version; a copied one is marked `copied_from`.
+  (calibration, the gate, controls, instrument checks, probes) record it too
+  since 27 September; older ones do not, and a copied one is marked
+  `copied_from`.
 - **Nothing overwritten.** A run redone keeps the old one under a new name
   (`*-aborted-*`, `*.pre-scope2-0924` and so on), and the research log says
   why.

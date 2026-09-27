@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import time
 
+from ..project import code_version
 from ..store import Paths, Progress, _gather, append, completed, held, key_of, load, replace
 
 #: What a rejection says when the tree could not be fetched. The row is sound
@@ -249,6 +250,7 @@ async def stage_calibrate(paths: Paths, limit: int, concurrency: int) -> Progres
                 paths.calibration,
                 {
                     "task_id": t.task_id,
+                    "code_version": code_version(),
                     # Which model read the pair. A task is admitted because a
                     # judge read its known answers correctly, so the verdict
                     # belongs to that judge and says nothing about another one
@@ -298,7 +300,7 @@ async def stage_calibrate(paths: Paths, limit: int, concurrency: int) -> Progres
             # task for good -- the same trap the other stages were fixed for.
             append(
                 paths.calibration,
-                {"task_id": t.task_id, "judge_model": grader, "sound": False,
+                {"task_id": t.task_id, "judge_model": grader, "sound": False, "code_version": code_version(),
                  "error": f"{type(e).__name__}: {e}",
                  "detail": f"{type(e).__name__}: {e}"},
             )
@@ -421,7 +423,7 @@ async def stage_control(paths: Paths, limit: int, concurrency: int,
                 given=f"{CANDIDATE_RULES}\n\n{environment_note('an environment it never used: it ran no commands' if not calls else 'host')}",
             )
             trace_ok = trace_behaved(control, trace)
-            append(paths.controls, {**result.to_json(), "judge_model": grader,
+            append(paths.controls, {**result.to_json(), "judge_model": grader, "code_version": code_version(),
                                     "pass": n, "passes": need(task, control),
                                     "task_fingerprint": fingerprint(task),
                                     "trace_honest": trace.honest,
@@ -436,7 +438,7 @@ async def stage_control(paths: Paths, limit: int, concurrency: int,
             append(
                 paths.controls,
                 {"task_id": task.task_id, "control": control.name, "ok": False,
-                 "judge_model": grader, "pass": n, "passes": need(task, control),
+                 "judge_model": grader, "pass": n, "passes": need(task, control), "code_version": code_version(),
                  "error": f"{type(e).__name__}: {e}",
                  "detail": f"the control could not run: {type(e).__name__}"},
             )

@@ -8623,6 +8623,59 @@ check(_fz127.workdir_of(_wt127, [_edit127("/home/rob/proj/src/a.py")], []) == ("
 check(not _bad127.ok and "do not apply" in _bad127.reason and not _badout127.exists(),
       f"and a task whose edits do not apply is not frozen: {_bad127.reason[:80]}")
 
+print("\n128. every check row says which code wrote it (v1 step 4)")
+# Answer and grading rows carry `code_version`; the checks did not --
+# calibration, the gate, the controls, the instrument checks, the probes -- so
+# a check could not be told from one taken under other rules, and D-45 had to
+# mark the rows it copied by hand. The stored rows are read, not the dicts.
+from errata_bench.project import code_version as _cv128
+_rows128 = {"controls, re-judge": load(_out63.controls), "instrument checks, re-judge": load(_out63.instrument),
+            "controls, pipeline": load(_q63.controls)}
+_kept128 = (judge_mod.judge, attempt_mod.control_conversations_for)
+
+
+async def _raise128(*a, **k):
+    raise RuntimeError("no model here")
+
+
+judge_mod.judge, attempt_mod.control_conversations_for = _judge65, _convs65
+try:
+    for _label128, _run128, _file128 in (
+            ("gate", lambda p: _measure65(p.root, "j", passes=1, concurrency=1), lambda p: p.gate),
+            ("calibration, re-judge", lambda p: _calibrate_all65(p, _jp58(p.root, "j"), "j", 1),
+             lambda p: _jp58(p.root, "j").calibration),
+            ("calibration, pipeline", lambda p: _stage_calibrate65(p, 10**9, 1), lambda p: p.calibration)):
+        _p128 = _Paths58(Path(tempfile.mkdtemp()) / "run")
+        _write58([_t65], _p128.tasks)
+        asyncio.run(_run128(_p128))
+        _rows128[_label128] = load(_file128(_p128))
+    judge_mod.judge = _raise128
+    _pe128 = _Paths58(Path(tempfile.mkdtemp()) / "run")
+    _write58([_t65], _pe128.tasks)
+    asyncio.run(_measure65(_pe128.root, "j", passes=1, concurrency=1))
+    _rows128["gate, a call that failed"] = load(_pe128.gate)
+finally:
+    judge_mod.judge, attempt_mod.control_conversations_for = _kept128
+_rows128["judge probes"] = [json.loads(l) for l in _out124.read_text().splitlines() if l.strip()]
+_pr128 = _ilu56.module_from_spec(_ilu56.spec_from_file_location("_pr128", str(Path("scripts/probe_runs.py"))))
+_pr128.__spec__.loader.exec_module(_pr128)
+
+
+async def _verify128(*, model, given):
+    return [{"probe": p[0], "must_flag": p[1], "flagged": p[1], "ok": True} for p in trace_mod.PROBES]
+
+
+_pr128.trace = _ty124.SimpleNamespace(PROBES=trace_mod.PROBES, RULES=trace_mod.RULES, verify=_verify128)
+_o128 = Path(tempfile.mkdtemp()) / "probes.jsonl"
+with _ctx60.redirect_stdout(_io60.StringIO()):
+    _pr128.main(["the-grader", str(_o128), "--runs", "1"])
+_rows128["trace probes"] = [json.loads(l) for l in _o128.read_text().splitlines() if l.strip()]
+_short128 = {k: sum(1 for r in v if r.get("code_version") != _cv128()) for k, v in _rows128.items()}
+check(all(_rows128.values()) and not any(_short128.values())
+      and any(r.get("error") for r in _rows128["gate, a call that failed"]),
+      f"every check row records the code that wrote it, a failed call's too: "
+      f"{ {k: len(v) for k, v in _rows128.items()} }; without it: {_short128}")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended

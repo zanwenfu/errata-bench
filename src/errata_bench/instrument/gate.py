@@ -35,6 +35,7 @@ import time
 from pathlib import Path
 
 from ..score.judge import can_be_scored
+from ..project import code_version
 from ..store import Paths, Progress, _gather, append, completed, load
 
 
@@ -132,7 +133,7 @@ async def measure(
             c = await calibrate(task, model=model, conversations=conversations.get(task.task_id))
         except Exception as e:  # noqa: BLE001 - dropped and retried, as elsewhere
             append(paths.gate, {
-                "task_id": task.task_id, "pass": n, "judge_model": model,
+                "task_id": task.task_id, "pass": n, "judge_model": model, "code_version": code_version(),
                 "task_fingerprint": prints[task.task_id],
                 "error": f"{type(e).__name__}: {e}",
             })
@@ -141,6 +142,7 @@ async def measure(
             "task_id": task.task_id,
             "pass": n,
             "judge_model": model,
+            "code_version": code_version(),
             "task_fingerprint": prints[task.task_id],
             # The verdict this tool exists to measure.
             "holds": c.sound,

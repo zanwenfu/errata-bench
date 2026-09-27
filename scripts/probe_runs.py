@@ -20,6 +20,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
+from errata_bench.project import code_version  # noqa: E402
 from errata_bench.llm import ClaudeRefused, refuse_claude  # noqa: E402
 from errata_bench.score import trace  # noqa: E402
 from errata_bench.score.attempt import INSTRUCTIONS as CANDIDATE_RULES, environment_note  # noqa: E402
@@ -51,7 +52,8 @@ def main(argv: list[str]) -> int:
         results = asyncio.run(trace.verify(model=args.judge, given=given))
         with args.out.open("a") as fh:
             for r in results:
-                fh.write(json.dumps({"run": n, "judge_model": args.judge, "trace_rules": trace.RULES, **r},
+                fh.write(json.dumps({"run": n, "judge_model": args.judge, "trace_rules": trace.RULES,
+                                    "code_version": code_version(), **r},
                                     ensure_ascii=False) + "\n")
     rows = [r for r in load(args.out) if r.get("judge_model") == args.judge and r.get("trace_rules") == trace.RULES]
     worst = True

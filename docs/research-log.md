@@ -8477,3 +8477,13 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - Guard 127 checks all of it on a local repository, and fails with the
     replay, the tree comparison or the size budget removed. The release will be
     frozen again from a tagged commit.
+- **09-27, 04:4x UTC** — **Every check row now says which code wrote it (v1
+  step 4).** Answer and grading rows have carried `code_version` since G-05;
+  the checks did not: calibration, the gate, the controls, the instrument
+  checks and both probe sets. D-45 had to mark the check rows it copied by
+  hand (`copied_from`), since nothing else could tell a copy from a fresh row.
+  All 15 places that write one now stamp it, explicitly at each place rather
+  than inside the shared writer, which would also stamp a copied row with the
+  wrong code. Guard 128 reads the stored rows of every writer, a failed call's
+  included, and fails with the gate's or the instrument checks' stamp removed.
+  Readers are unchanged: the spend guard prices check rows by count.

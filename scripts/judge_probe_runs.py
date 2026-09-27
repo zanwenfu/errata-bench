@@ -23,6 +23,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
+from errata_bench.project import code_version  # noqa: E402
 from errata_bench.llm import ClaudeRefused, refuse_claude  # noqa: E402
 from errata_bench.score import judge as judge_mod  # noqa: E402
 from errata_bench.score.judge_probes import PROBE_CONTEXT, PROBE_TASK, PROBES  # noqa: E402
@@ -66,7 +67,8 @@ def main(argv: list[str]) -> int:
         results = asyncio.run(ask(args.judge, missing))
         with args.out.open("a") as fh:
             for r in results:
-                fh.write(json.dumps({"run": n, "judge_model": args.judge, "judge_rules": judge_mod.RULES, **r},
+                fh.write(json.dumps({"run": n, "judge_model": args.judge, "judge_rules": judge_mod.RULES,
+                                    "code_version": code_version(), **r},
                                     ensure_ascii=False) + "\n")
     rows = [r for r in load(args.out) if mine(r)]
     worst = True

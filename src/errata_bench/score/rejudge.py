@@ -38,6 +38,7 @@ import time
 from pathlib import Path
 
 from .judge import HEDGED, PASSING, PASSING_WITH_HEDGE, can_be_scored, line_holds, outcome_of
+from ..project import code_version
 from ..store import (
     Paths, Progress, _gather, _gather_in_turn, _succeeded, append, completed, held, in_turn, load, replace,
 )
@@ -111,13 +112,14 @@ async def calibrate_all(src: Paths, out: Paths, model: str, concurrency: int) ->
             c = await calibrate(t, model=model, conversations=conversations.get(t.task_id))
         except Exception as e:
             append(out.calibration, {
-                "task_id": t.task_id, "judge_model": model, "sound": False,
+                "task_id": t.task_id, "judge_model": model, "sound": False, "code_version": code_version(),
                 "error": f"{type(e).__name__}: {e}",
             })
             return False
         append(out.calibration, {
             "task_id": t.task_id,
             "judge_model": model,
+            "code_version": code_version(),
             "sound": c.sound,
             "strict": c.strict,
             "separates": c.separates,
@@ -224,7 +226,7 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int,
         except Exception as e:
             append(out.controls, {
                 "task_id": task.task_id, "control": control.name, "judge_model": model,
-                "pass": n, "passes": need(task, control),
+                "pass": n, "passes": need(task, control), "code_version": code_version(),
                 "ok": False, "error": f"{type(e).__name__}: {e}",
             })
             return False
@@ -246,7 +248,7 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int,
         trace_ok = trace_behaved(control, trace)
         row = result.to_json()
         row.update({
-            "judge_model": model,
+            "judge_model": model, "code_version": code_version(),
             "pass": n, "passes": need(task, control),
             "trace_honest": trace.honest,
             "trace_misreported": bool(trace.misreported),
@@ -281,14 +283,14 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int,
             # same thing for every judge and every run.
             for r in await probe_trace(model=model, given=rules):
                 append(out.controls, {
-                    "task_id": "(trace probe)", "control": f"probe:{r['probe']}",
+                    "task_id": "(trace probe)", "control": f"probe:{r['probe']}", "code_version": code_version(),
                     "judge_model": model, "ok": r["ok"], "trace_ok": r["ok"],
                     "must_flag": r["must_flag"], "flagged": r["flagged"],
                     "detail": "as expected" if r["ok"] else
                               ("missed what it must flag" if r["must_flag"] else "flagged what is fine"),
                 })
         except Exception as e:
-            append(out.controls, {"task_id": "(trace probe)", "control": "probe", "ok": False,
+            append(out.controls, {"task_id": "(trace probe)", "control": "probe", "ok": False, "code_version": code_version(),
                                   "judge_model": model, "error": f"{type(e).__name__}: {e}"})
     p.took_s = time.monotonic() - t0
     return p
@@ -332,7 +334,7 @@ async def instrument_all(src: Paths, out: Paths, model: str, concurrency: int,
     async def one(task, control, n):
         conv = conversations.get(task.task_id) or {}
         action = conv.get("last_action")
-        base = {"task_id": task.task_id, "control": control.name, "judge_model": model,
+        base = {"task_id": task.task_id, "control": control.name, "judge_model": model, "code_version": code_version(),
                 "pass": n, "passes": want, "task_fingerprint": fingerprint(task)}
         if not control.applicable(task, action, conv.get("cut") or ""):
             append(out.instrument, {**base, "applicable": False, "ok": False, "trace_ok": None,
