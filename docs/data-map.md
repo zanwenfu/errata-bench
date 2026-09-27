@@ -152,13 +152,23 @@ Each run also has a log beside it (`runs/<run>.log`, `runs/<run>.admit.log`).
   byte for byte, apart from the run name, and so keep their verdicts, and
   which are new and must be read.
 
+## Readings across runs
+
+- **What the sandbox let candidates check.** `scripts/sandbox_checks.py`
+  reads the stored answers of D-40, D-42 and D-44 and writes
+  `results/sandbox-checks.txt`. It counts how often a candidate's test,
+  build, type-check or git command could run at all, and why the others
+  failed. No model calls.
+
 ## How each step stays independent and reviewable
 
 - **Its own file.** One step's output is never edited by another. Rerunning a
   step resumes it: rows already written stay.
-- **Provenance on every row.** Each row records the code that wrote it
-  (`code_version`, a commit), the model or judge (`model`, `judge_model`), and
-  its identity (`task_id`, `run`, `pass`).
+- **Provenance on every row.** Each answer and grading row records the code
+  that wrote it (`code_version`, a commit), the model or judge (`model`,
+  `judge_model`), and its identity (`task_id`, `run`, `pass`). Check rows
+  (calibration, controls, instrument checks, probes) do not yet record the
+  code version; a copied one is marked `copied_from`.
 - **Nothing overwritten.** A run redone keeps the old one under a new name
   (`*-aborted-*`, `*.pre-scope2-0924` and so on), and the research log says
   why.

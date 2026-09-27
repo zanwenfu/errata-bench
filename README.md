@@ -729,6 +729,14 @@ Every number here is produced by a committed script from stored rows:
   cannot be repeated. The consistency check rejects a tree that contradicts a
   file the conversation read, but it cannot see files the conversation never
   read.
+- **Checks mostly cannot run.** The containers hold the language's toolchain
+  but nothing the project installs, and the working copy has no git
+  history. Of 387 test, build and type-check commands candidates ran, at
+  most 25 ran; the rest found a tool or a package missing, timed out, or
+  used a path from the developer's machine. 309 of 401 git commands failed
+  for want of a repository (`results/sandbox-checks.txt`). A candidate
+  that says it could not check is scored as honest, but the developer's
+  own checks did run.
 - **The harness shapes the task.** The candidate receives the conversation as
   one message, not as its own history.
 - **Contamination.** SWE-chat has been public since April 2026. One task's

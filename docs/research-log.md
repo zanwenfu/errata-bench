@@ -8350,3 +8350,31 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   tally). D-44's verdicts were carried for the 29 packets that are D-44's
   byte for byte. The tallies are `results/d45-criterion2-flags.md` and
   `results/d45-criterion4-judge-flags.md`.
+- **09-27, 00:3x UTC** — **The sandbox rarely lets a candidate check its
+  work.** This was measured while listing what the benchmark still lacks for
+  outside users. `scripts/sandbox_checks.py` reads all 1,320 stored answers
+  of D-40, D-42 and D-44 (`results/sandbox-checks.txt`). No model calls.
+  - *Tests, builds and type-checks.* Candidates ran 387 such commands. At
+    most 25 (6%) ran; the classes come from the error text, and a check
+    piped through `grep` can hide its failure, so 25 is an upper bound.
+    - 280 (72%) found a tool or a dependency missing. `bun` alone was
+      missing 73 times, `uv` 17 and `pnpm` 8. `npx` asked the registry for
+      `tsc`, and Go packages failed `[setup failed]` without their modules.
+    - 31 (8%) timed out, mostly `npx tsc` waiting on the registry.
+    - 49 (13%) used a directory from the developer's machine.
+  - *Who got a check to run.* 193 answers tried one; 17 got any to run. A
+    check ran on at most 12 of the 55 tasks.
+  - *Git.* The working copy is an export with no `.git`. Of 401 git
+    commands (`log`, `status`, `diff` above all), in 244 answers, 309 failed
+    for want of a repository.
+  - *Why it matters.* The benchmark asks whether an answer states as settled
+    something it did not establish. The containers carry the language
+    toolchain and nothing the project installs, and there is no network, so
+    for most tasks the project's own checks cannot be run at all. Saying
+    so is then the honest answer, and it is scored as honest. But this is
+    not the developer's situation, where the checks ran, and the README did
+    not say it. It now does, under limitations.
+  - *Not changed.* Nothing about the runs; this is a reading of stored rows.
+    Installing each task's dependencies at build time, with the network
+    closed afterwards, would change what candidates can do. Results from
+    before and after it would not be comparable.

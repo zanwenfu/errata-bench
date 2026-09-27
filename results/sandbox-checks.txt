@@ -1,0 +1,56 @@
+scripts/sandbox_checks.py runs/d40-DeepSeek-V4-Flash runs/d40-DeepSeek-V4-Pro runs/d40-grok-4.6 runs/d40-Kimi-K2.7-Code runs/d40-MAI-Thinking-1 runs/d40-Mistral-Large-3 runs/d42-DeepSeek-V4-Pro runs/d42-grok-4.6 runs/d42-Mistral-Large-3 runs/d44-DeepSeek-V4-Pro runs/d44-grok-4.6 runs/d44-Mistral-Large-3
+
+1320 answers to 55 tasks, from 12 run directories
+
+test, build and type-check commands: 387
+  out of time         1  (0%)
+  network refused     1  (0%)
+  path missing       49  (13%)
+  timed out          31  (8%)
+  tool missing      125  (32%)
+  package missing   155  (40%)
+  ran                25  (6%)
+
+answers that ran such a command: 193 of 1320; of those, answers where at least one of them ran: 17
+tasks where a candidate tried one: 37 of 55; tasks where one ever ran: 12
+programs the shell could not find: {'bun': 73, 'uv': 17, 'pnpm': 8, 'tsc': 7, 'astro': 4, './node_modules/.bin/tsc': 4, 'python': 2, 'bunx': 2, 'vite': 1, 'node_modules/.bin/tsc': 1, 'npx': 1, 'npm': 1, './entire': 1, 'rudel': 1, 'node_modules/.bin/prettier': 1, './node_modules/.bin/bun': 1}
+
+git commands: 401, in 244 answers: {'path missing': 32, 'other': 60, 'no repository': 309}
+
+per run directory:
+  d40-DeepSeek-V4-Flash        {'path missing': 7, 'package missing': 27, 'tool missing': 15, 'ran': 2, 'timed out': 6}
+  d40-DeepSeek-V4-Pro          {'path missing': 24, 'timed out': 10, 'package missing': 28, 'tool missing': 19, 'ran': 3}
+  d40-grok-4.6                 {'timed out': 3, 'tool missing': 15, 'package missing': 10, 'ran': 2}
+  d40-Kimi-K2.7-Code           {'timed out': 2, 'package missing': 45, 'tool missing': 43, 'ran': 6, 'path missing': 1, 'network refused': 1}
+  d40-MAI-Thinking-1           {'package missing': 15, 'tool missing': 8, 'ran': 8, 'out of time': 1, 'path missing': 2}
+  d40-Mistral-Large-3          {'tool missing': 1}
+  d42-DeepSeek-V4-Pro          {'path missing': 8, 'timed out': 5, 'package missing': 16, 'tool missing': 6}
+  d42-grok-4.6                 {'timed out': 1, 'tool missing': 4, 'package missing': 6}
+  d44-DeepSeek-V4-Pro          {'path missing': 7, 'timed out': 3, 'tool missing': 7, 'package missing': 5}
+  d44-grok-4.6                 {'timed out': 1, 'tool missing': 7, 'package missing': 3, 'ran': 4}
+
+examples:
+  path missing:
+    blittle-pressy-158: 'cd /Users/.../dev/pressy && npx tsc --noEmit --project packages/@press' -> 'exit 2'
+    blittle-pressy-158: 'cd /Users/.../dev/pressy && npx tsc --noEmit --project packages/@press' -> 'exit 2'
+    entireio-cli-163: 'cd /Users/.../Projects/devenv/cli && go build ./e2e/...' -> 'exit 2'
+  package missing:
+    blittle-pressy-158: 'npx tsc --noEmit --project packages/@pressy/components/tsconfig.json 2' -> 'exit 0'
+    blittle-pressy-158: 'cd packages/@pressy/components && npx tsc --noEmit --project tsconfig.' -> 'exit 0'
+    blittle-pressy-158: 'cd /work && npx --no-install tsc --noEmit --project packages/@pressy/c' -> 'exit 0'
+  tool missing:
+    dipasqualew-vibereq-200: 'cd /work/apps/cli && bun install 2>&1' -> 'exit 127'
+    femto-mcp-chrome-58: 'pnpm root -g 2>&1; echo "==="; ls "$(pnpm root -g 2>/dev/null)/mcp-chr' -> 'exit 2'
+    hutusi-amytis-349: 'bun -e "\nconst { getAllSeries, getSeriesData } = require(\'./src/lib/ma' -> 'exit 127'
+  ran:
+    entireio-cli-163: 'go build -mod=mod ./e2e/agents/ 2>&1' -> 'exit 0'
+    entireio-cli-163: 'go vet ./e2e/agents/ 2>&1' -> 'exit 0'
+    hutusi-amytis-349: 'npx jest tests/unit --passWithNoTests 2>&1 || npx vitest run tests/uni' -> 'exit 2'
+  timed out:
+    hutusi-amytis-82: 'npx tsc --noEmit 2>&1 | head -50' -> 'exit 124'
+    cyyeh-duckdb-data-agent-64: 'cd frontend && npx tsc --noEmit 2>&1 | head -30' -> 'exit 124'
+    obsessiondb-rudel-123: 'cd apps/web && npx tsc --noEmit --pretty 2>&1 | head -50' -> 'exit 124'
+  network refused:
+    melagiri-code-insights-53: 'pnpm -v && node -v && npm -v && gh --version' -> 'refused: the network is unavailable in t'
+  out of time:
+    entireio-cli-57: 'go build ./... 2>&1 | tail -5' -> 'refused: this attempt has run out of tim'
