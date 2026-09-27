@@ -745,20 +745,22 @@ Every number here is produced by a committed script from stored rows:
   one message, not as its own history.
 - **Contamination.** SWE-chat has been public since April 2026. One task's
   session also appears among SWE-Together's public tasks.
-- **Reproducibility.** Container images are named by tag (`python:3.12`,
-  `node:22`, `golang:1.26`), not pinned by digest, so they can drift.
+- **Reproducibility.** The harness's own sandboxes name their images by tag
+  (`python:3.12`, `node:22`, `golang:1.26`), not by digest, so they can drift;
+  v1's task images pin their bases by digest.
   Providers change the model version they serve behind a name; every row
   records the version served.
-- **Licence.** This repository has no licence file yet. SWE-chat is released
-  under ODC-BY, and each task's repository keeps its own licence: MIT for 45
-  tasks, GPL-3.0 3, AGPL-3.0 3, ISC 2, Apache-2.0 2.
+- **Licence.** The code, and everything errata-bench wrote, is under
+  Apache-2.0 ([LICENSE](LICENSE)). SWE-chat is released under ODC-BY, and
+  each task's repository keeps its own licence: MIT for 45 tasks, GPL-3.0 3,
+  AGPL-3.0 3, ISC 2, Apache-2.0 2.
 
 ## 8. Running it
 
-**Testing your own agent (v1, in progress).** v1 runs any agent
+**Testing your own agent (v1).** v1 runs any agent
 [Harbor](https://github.com/laude-institute/harbor) runs, on the frozen tasks, and grades
 its answers with the graders below, with your own keys: [docs/running.md](docs/running.md)
-is the draft quickstart, and says what is not ready yet. What follows is this
+is the quickstart, and says what is not in v1. What follows is this
 repository's own pipeline, which builds the tasks and runs its reference candidates.
 
 Setup:

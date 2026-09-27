@@ -9017,3 +9017,48 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   honest reports first, fixed beside it. What it is not yet, the next
   milestone: graders good enough for the trace check to join the headline,
   more tasks, prebuilt images, the seeded track, a leaderboard of CLI agents.
+- **09-27, 19:3x UTC** — **v1.0.1: the model APIs widened, and the download
+  command fixed.** v1.0 let a task's agent reach five providers' APIs
+  (Anthropic, OpenAI, Gemini, OpenRouter, Azure). An agent on any other
+  provider (xAI, DeepSeek, Bedrock, Vertex AI, Kimi...) had to add its host
+  with `--allow-agent-host`, and grading then called the run not official,
+  though nothing but a model API had been opened (the user asked, 09-27,
+  whether models and platforms were fixed for users).
+  - Each task now allows 30 hosts, `harbor.MODEL_HOSTS`, taken from the
+    defaults of Harbor's own agents: the model makers' APIs, Groq, Together,
+    Fireworks, Cerebras, NVIDIA, OpenRouter, Vercel's AI Gateway, Azure, and
+    Bedrock and Vertex AI in their default regions. Harbor takes only a whole
+    host or a leading `*.`, and `*.amazonaws.com` or `*.googleapis.com` would
+    open storage and every other service there. So another region's Bedrock
+    or Vertex AI endpoint is added per run, and grading keeps such a run
+    official (`harbor.model_host`, the pattern written in full). Any other
+    added host still makes a run not official, and grading names it.
+  - Only the tasks' `task.toml` and `tests/task.json` changed (the version and
+    the hosts); instructions, images and verifier are v1.0's, byte for byte,
+    so v1.0 and v1.0.1 results are comparable. Each version has its own
+    digests, so results now name the version they were graded against
+    (`dataset_version`).
+  - *Checked on the server*, from inside a v1.0.1 task's container
+    (NetworkCheck, no model): all 27 named hosts reached; GitHub, PyPI, npm,
+    Hugging Face, Google Storage, `www.googleapis.com`, S3, Google Search and
+    unlisted Bedrock and Vertex AI regions refused. With
+    `--allow-agent-host bedrock-runtime.eu-west-1.amazonaws.com`, that host
+    reached and nothing else added. With `huggingface.co` added, it reached.
+    `grade_harbor.py --rows-only` graded the three trials official, official,
+    and not official (huggingface.co named). Guards section 137 and
+    harbor_agents section 4 (Harbor's own validator takes every host); nine
+    mutants of the new rules, each caught by a fresh-cache run.
+  - *B-270.* docs/running.md's download command, `huggingface-cli download`,
+    fails under huggingface_hub 1.x ("deprecated and no longer works. Use
+    `hf` instead"). The page said every command on it had been run; this one
+    had not been run as written, so every user following v1.0's
+    instructions would have failed at the first step. It is now
+    `hf auth login`, then `hf download ... --revision v1.0.1`.
+  - *Published*: on Hugging Face, `v1.0` tags the first release's revision,
+    and `v1.0.1` one commit of the 114 files that changed. Checked with the
+    documented command itself: `hf download --revision v1.0.1` into a fresh
+    folder took 39 s. All 1,454 files matched SHA256SUMS. Harbor's digests,
+    recomputed on the downloaded copy, equal the published ones for all 55
+    tasks, although Hugging Face drops the executable bit (Harbor's digest
+    reads contents only). So a user's run of a downloaded task can be
+    official. The same digests come out on macOS and on the Linux server.
