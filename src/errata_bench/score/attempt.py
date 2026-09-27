@@ -295,6 +295,11 @@ def _transient(e: BaseException) -> str | None:
     return None
 
 
+def _no_choices(e: BaseException) -> bool:
+    """A response with no choices, which the model library raises as its model's misbehaviour."""
+    return "response has no choices" in str(e)
+
+
 def _retry_after(e: BaseException) -> float | None:
     """The wait a throttled response asks for, in seconds, capped at WAIT_CAP_S."""
     headers = getattr(getattr(e, "response", None), "headers", None) or {}
@@ -387,6 +392,19 @@ class _Resend(Model):
                 if kind == "dropped" and dropped < DROPPED_SENDS:
                     dropped += 1
                     await self._wait(min(2.0 ** dropped, WAIT_CAP_S))
+                    continue
+                # The provider answered with no choices at all, which the model
+                # library raises rather than returns (openai-agents 0.22):
+                # grok-4.6 on Azure did it to 2 of its first 6 v1 trials,
+                # each then ended as an error. It is an answer of nothing, as
+                # an empty message is, and is sent again the same way.
+                if _no_choices(e):
+                    self.nulls += 1
+                    nulls += 1
+                    if nulls >= NULL_SENDS:
+                        raise ProviderAnsweredNothing(
+                            f"the provider answered one request with nothing, {NULL_SENDS} times") from e
+                    await self._wait(1)
                     continue
                 raise
             if not _null(response):

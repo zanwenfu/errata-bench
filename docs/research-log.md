@@ -8925,3 +8925,26 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - The user asked for the graders to be run on a subset now, the benchmark
     to be production-ready today, and grader improvement listed as the next
     milestone. `scripts/admit_judge.py --only` admits a judge on a subset.
+- **09-27, 08:3x UTC** — **The v1 subset, under way, and a provider error it
+  found.** On the user's instruction the graders are run on a subset first:
+  10 tasks (four languages, the three kinds of defect, one conversation cut to
+  fit), the reference agent in Harbor on the server under the official rule
+  with grok-4.6 and DeepSeek-V4-Pro, one attempt each, and gpt-6-astra
+  admitted and grading; about $45 at list prices, on the Azure credits.
+  - *The admission* on the 10: every known pair read correctly; 9 tasks
+    admitted. Whiteknight07-AiTutor-34 is not: on one of three readings of the
+    developer's accepted answer the trace check called two of its details
+    unsupported, and admission asks every grader to behave every time. It
+    passed all nine readings in D-44, when the conversation was cut to 75,000
+    characters; v1 shows it whole. Kept as the rule is: grader changes are the
+    next milestone (the user's call, 09-27). With the user's approval the
+    official judge is being admitted on all 55 (about $190), the 10's rows
+    reused, marked copied.
+  - *Found*: 2 of grok-4.6's first 6 trials ended in an error, "ChatCompletion
+    response has no choices (possible provider error payload)": the provider
+    answering with nothing, which the model library raises instead of
+    returning, so the harness's resend of an empty response (B-255) never saw
+    it. It is now resent the same way, counted, and an error after five
+    (guard 96; with the rule removed, it fails). The reference agent's record
+    carries a digest of its own code (`package_sha256`), since in a container
+    it has no git history to be named by, and the graded row keeps it.

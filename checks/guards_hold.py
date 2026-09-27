@@ -6548,6 +6548,37 @@ try:
         _raised96 = _e96
     check(_raised96 is not None and _all96.inner.sent == attempt_mod.NULL_SENDS,
           f"and nothing, every time, is an error rather than an answer: sent {_all96.inner.sent}, raised {_raised96!r}")
+    # A response with no choices, which the model library raises instead of
+    # returning (grok-4.6 on Azure, 2 of its first 6 v1 trials): nothing, too.
+    from agents.exceptions import ModelBehaviorError as _MBE96
+    _NONE96 = "ChatCompletion response has no choices (possible provider error payload)"
+
+    class _Raises96(_Inner96):
+        async def get_response(self, *args, **kwargs):
+            self.sent += 1
+            reply = self.replies.pop(0) if self.replies else _MBE96(_NONE96)
+            if isinstance(reply, Exception):
+                raise reply
+            return reply
+
+    _nc96 = attempt_mod._Resend(_Raises96([_MBE96(_NONE96), _said96]))
+    try:
+        _ncgot96 = asyncio.run(_nc96.get_response(None, "x", None, [], None, [], None, previous_response_id=None,
+                                                  conversation_id=None, prompt=None))
+    except Exception as _e96n:  # noqa: BLE001 - the failure is the assertion
+        _ncgot96 = _e96n
+    _ncall96 = attempt_mod._Resend(_Raises96([]))
+    try:
+        asyncio.run(_ncall96.get_response(None, "x", None, [], None, [], None, previous_response_id=None,
+                                          conversation_id=None, prompt=None))
+        _ncraised96 = None
+    except Exception as _e96m:  # noqa: BLE001
+        _ncraised96 = _e96m
+    check(_ncgot96 is _said96 and _nc96.nulls == 1 and _nc96.inner.sent == 2
+          and isinstance(_ncraised96, attempt_mod.ProviderAnsweredNothing)
+          and _ncall96.inner.sent == attempt_mod.NULL_SENDS,
+          f"and a response with no choices is nothing too: sent again, counted, and an error after "
+          f"{attempt_mod.NULL_SENDS}: {_ncgot96!r:.60} {_ncraised96!r:.60}")
 finally:
     attempt_mod.asyncio.sleep = _sleep96
 
@@ -9332,8 +9363,10 @@ check(_rec134["ended_by"] == "answered" and not _rec134["error"] and _ans134 == 
 check(_traj134["schema_version"] == "ATIF-v1.7" and _traj134["steps"][0] == {"step_id": 1, "source": "user",
                                                                              "message": "Is x set?"}
       and [s["step_id"] for s in _traj134["steps"]] == list(range(1, len(_traj134["steps"]) + 1))
-      and _rec134["limits"] == {"seconds": 60, "turns": 10} and len(_rec134["tool_calls"]) == 3,
-      "and its trajectory begins with the instruction, numbered from one, and its record says its limits")
+      and _rec134["limits"] == {"seconds": 60, "turns": 10} and len(_rec134["tool_calls"]) == 3
+      and len(_rec134.get("package_sha256") or "") == 64 and _rec134["package_sha256"] == _ra134.package_digest(),
+      "and its trajectory begins with the instruction, numbered from one, and its record says its limits and "
+      "which code it ran, by digest")
 _words134 = lambda s: " ".join(s.split())
 check(_words134(_ra134.SYSTEM).rstrip(".") in _words134(attempt_mod.INSTRUCTIONS)
       and not any(w in _ra134.SYSTEM.lower() for w in ("network", "do not exist", "little else", "no .git")),

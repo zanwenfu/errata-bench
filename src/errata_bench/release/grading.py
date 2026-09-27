@@ -180,6 +180,7 @@ def answer_row(trial: Trial, task, run: int, shown: str, instruction: str, is_of
             "harbor": {"job": trial.path.parent.name, "trial": trial.name, "agent": trial.agent,
                        "agent_version": (trial.result.get("agent_info") or {}).get("version"),
                        "model": trial.model, "task_digest": (trial.lock.get("task") or {}).get("digest"),
+                       "agent_code": (trial.reference or {}).get("package_sha256"),
                        "official": is_official}}
     a = trial.answer
     if trial.exception and trial.exception != TIMED_OUT:

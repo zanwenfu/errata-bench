@@ -91,6 +91,21 @@ def _stand_in_provider():
     return Provider()
 
 
+def package_digest() -> str:
+    """The digest of this package's own code, as it ran: which version of the loop a trial used.
+
+    In a task's container the package has no git history to name it by, so its
+    files are: every .py file under the package, by path and contents.
+    """
+    import hashlib
+
+    root = Path(__file__).resolve().parents[1]
+    h = hashlib.sha256()
+    for f in sorted(root.rglob("*.py")):
+        h.update(f.relative_to(root).as_posix().encode() + b"\0" + f.read_bytes() + b"\0")
+    return h.hexdigest()
+
+
 def trajectory_of(instruction: str, model: str, reply: str, calls: list, session_id: str) -> dict:
     """The run in ATIF (v1.7): the instruction, each call with its result, and the answer when there is one."""
     steps: list[dict] = [{"step_id": 1, "source": "user", "message": instruction}]
@@ -125,7 +140,7 @@ async def run(instruction: str, out: Path, model: str, seconds: int, turns: int,
     started = time.monotonic()
     talk = await converse(model, instruction, context, provider, turns, instructions=SYSTEM)
     record = {
-        "agent": "errata-reference", "version": VERSION, "model": model,
+        "agent": "errata-reference", "version": VERSION, "package_sha256": package_digest(), "model": model,
         "limits": {"seconds": seconds, "turns": turns},
         "reply": talk.reply, "ended_by": talk.ended_by, "out_of_time": talk.ran_out,
         "final_report_forced": talk.forced, "final_report_error": talk.report_error, "error": talk.error,
