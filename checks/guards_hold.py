@@ -8487,6 +8487,142 @@ with _ctx60.redirect_stdout(_out126b):
 check(_rc126b == 1 and "unsettled" in _out126b.getvalue(),
       f"and with the readings disagreeing and nothing adjudicated it tallies nothing: exit {_rc126b}")
 
+print("\n127. a frozen task is the developer's working copy: its past and not its future, and the tree every attempt had")
+# v1 step 2: each task frozen once, so running it needs neither the corpus nor
+# GitHub. Here with a local repository: a commit after the task's, tags before
+# and after it, a session that edits one file and creates another, and a
+# complaint after the cut. No network: the remote is a path.
+import hashlib as _hl127
+import subprocess as _sp127
+import tarfile as _tf127
+from errata_bench.release import freeze as _fz127
+
+_o127 = Path(tempfile.mkdtemp()) / "origin"
+_o127.mkdir()
+
+
+def _g127(*a, cwd=None):
+    return _sp127.run(["git", *a], cwd=cwd or _o127, check=True, capture_output=True, text=True).stdout.strip()
+
+
+_g127("init", "-q", "-b", "main")
+_g127("config", "user.email", "t@t")
+_g127("config", "user.name", "t")
+(_o127 / "app").mkdir()
+(_o127 / "app" / "main.py").write_text("x = 1\n")
+(_o127 / "run.sh").write_text("#!/bin/sh\necho hi\n")
+(_o127 / "run.sh").chmod(0o755)
+_g127("add", "-A")
+_g127("commit", "-qm", "c1")
+_g127("tag", "v0-before")
+(_o127 / "app" / "util.py").write_text("y = 2\n")
+_g127("add", "-A")
+_g127("commit", "-qm", "c2")
+_c2_127 = _g127("rev-parse", "HEAD")
+(_o127 / "app" / "main.py").write_text("x = 3  # the fix, made after the session\n")
+_g127("commit", "-qam", "c3 the future")
+_c3_127 = _g127("rev-parse", "HEAD")
+_g127("tag", "v9-after")
+_turns127 = [
+    {"turn_number": 1, "turn_type": "user", "role": "user", "session_id": "s127",
+     "content": "Please set x to 2 and write some notes."},
+    {"turn_number": 2, "turn_type": "tool_use", "tool_name": "Edit", "tool_call_id": "e1", "session_id": "s127",
+     "file_path": "/Users/dev/app/app/main.py",
+     "content": json.dumps({"file_path": "/Users/dev/app/app/main.py", "old_string": "x = 1", "new_string": "x = 2"})},
+    {"turn_number": 3, "turn_type": "tool_result", "tool_call_id": "e1", "session_id": "s127",
+     "content": "The file /Users/dev/app/app/main.py has been updated."},
+    {"turn_number": 4, "turn_type": "tool_use", "tool_name": "Write", "tool_call_id": "w1", "session_id": "s127",
+     "file_path": "/Users/dev/app/notes.md",
+     "content": json.dumps({"file_path": "/Users/dev/app/notes.md", "content": "notes\n"})},
+    {"turn_number": 5, "turn_type": "tool_result", "tool_call_id": "w1", "session_id": "s127",
+     "content": "File created successfully at: /Users/dev/app/notes.md"},
+    {"turn_number": 6, "turn_type": "assistant", "role": "assistant", "session_id": "s127", "content": "Done."},
+    {"turn_number": 7, "turn_type": "user", "role": "user", "session_id": "s127",
+     "content": "THE-COMPLAINT-AFTER-THE-CUT: that is wrong."},
+]
+_task127 = _Task58("t127", "owner/app", f"file://{_o127}", _c2_127, "s127", 6, 7, 7, 9,
+                   "wrong " * 10, "right " * 10, "a defect", "present")
+_out127 = Path(tempfile.mkdtemp()) / "t127"
+_fr127 = _fz127.freeze(_task127, _turns127, _out127, branch="feature/x")
+_ws127 = Path(tempfile.mkdtemp())
+# Unpacked only when written, so a freeze that failed is reported below, not raised here.
+if (_out127 / "workspace.tar.gz").exists():
+    with _tf127.open(_out127 / "workspace.tar.gz") as _t:
+        _t.extractall(_ws127, filter="tar")
+else:
+    _sp127.run(["git", "init", "-q", str(_ws127 / "workspace")], check=True)
+_w127 = _ws127 / "workspace"
+_meta127 = json.loads((_out127 / "task.json").read_text()) if (_out127 / "task.json").exists() else {}
+check(_fr127.ok and _fr127.files == 4 and _meta127.get("workdir") == "/Users/dev/app"
+      and _meta127.get("branch") == "feature/x",
+      f"it freezes, on the session's branch, in the folder the session worked in: {_fr127.ok} {_fr127.reason} "
+      f"{_meta127.get('workdir')} {_meta127.get('branch')}")
+_log127 = _g127("log", "--format=%s", cwd=_w127).splitlines()
+_objects127 = _sp127.run(["git", "cat-file", "-e", _c3_127], cwd=_w127, capture_output=True).returncode
+check(_log127 == ["c2", "c1"] and _objects127 != 0 and _g127("tag", cwd=_w127) == ""
+      and _g127("branch", "--show-current", cwd=_w127) == "feature/x",
+      f"its history is the task's commit and what came before it: no later commit, no tag at all: {_log127}")
+# Unstripped: the first column of `git status --short` is a space for a change not staged.
+_status127 = _sp127.run(["git", "status", "--short"], cwd=_w127, capture_output=True, text=True).stdout.splitlines()
+check((_w127 / "app" / "main.py").read_text() == "x = 2\n" and (_w127 / "notes.md").read_text() == "notes\n"
+      and os.access(_w127 / "run.sh", os.X_OK)
+      and sorted(_status127) == [" M app/main.py", "?? notes.md"],
+      f"the session's edits are on it, uncommitted, as the developer's `git status` showed them: {_status127}")
+check(_meta127.get("tree_digest") == _fz127.tree_digest(_w127)[0] and (_out127 / "workspace.tar.gz").exists()
+      and _meta127.get("workspace_sha256") == _hl127.sha256((_out127 / "workspace.tar.gz").read_bytes()).hexdigest(),
+      "and the digests it records are of what it wrote")
+_conv127 = (_out127 / "conversation.txt").read_bytes().decode("utf-8") if _fr127.ok else ""
+_grading127 = json.loads((_out127 / "grading" / "turns.json").read_text()) if _fr127.ok else []
+check("THE-COMPLAINT-AFTER-THE-CUT" not in _conv127 and "right right" not in _conv127
+      and any("THE-COMPLAINT-AFTER-THE-CUT" in str(t.get("content")) for t in _grading127)
+      and _fr127.ok and json.loads((_out127 / "grading" / "references.json").read_text())["criterion"].startswith("right"),
+      "the conversation stops at the cut and holds no reference answer; the graders' folder has both")
+_badout127 = Path(tempfile.mkdtemp()) / "t127b"
+_bad127 = _fz127.freeze(_Task58("t127b", "owner/app", f"file://{_o127}", _c2_127, "s127", 6, 7, 7, 9,
+                                "w", "r", "d", "present"),
+                        [{**_turns127[1], "content": json.dumps({"file_path": "/Users/dev/app/app/main.py",
+                                                                 "old_string": "not in the file", "new_string": "z"})}],
+                        _badout127, branch=None)
+_oi127 = Path(tempfile.mkdtemp()) / "ignored"
+_oi127.mkdir()
+for _a in (("init", "-q", "-b", "main"), ("config", "user.email", "t@t"), ("config", "user.name", "t")):
+    _g127(*_a, cwd=_oi127)
+(_oi127 / "keep.txt").write_text("k\n")
+(_oi127 / "local.txt").write_text("l\n")
+(_oi127 / ".gitattributes").write_text("local.txt export-ignore\n")
+_g127("add", "-A", cwd=_oi127)
+_g127("commit", "-qm", "i1", cwd=_oi127)
+(_oi127 / "keep.txt").write_text("k2\n")
+_g127("commit", "-qam", "i2", cwd=_oi127)
+_ign127 = _fz127.freeze(_Task58("t127i", "owner/ignored", f"file://{_oi127}", _g127("rev-parse", "HEAD", cwd=_oi127),
+                                "s127", 6, 7, 7, 9, "w", "r", "d", "present"), [], Path(tempfile.mkdtemp()) / "t127i",
+                        branch=None)
+check(not _ign127.ok and _ign127.differ == ["local.txt"] and "differs from the reference tree" in _ign127.reason,
+      f"a working copy that differs from the tree attempts started from is refused, naming the file: "
+      f"{_ign127.differ} {_ign127.reason[:60]}")
+_small127 = Path(tempfile.mkdtemp()) / "t127s"
+_fs127 = _fz127.freeze(_task127, _turns127, _small127, branch="feature/x", max_git_mb=0.0)
+_ss127 = Path(tempfile.mkdtemp())
+if _fs127.ok:
+    with _tf127.open(_small127 / "workspace.tar.gz") as _t:
+        _t.extractall(_ss127, filter="tar")
+check(_fs127.ok and json.loads((_small127 / "task.json").read_text())["history"] == 1
+      and _g127("log", "--format=%s", cwd=_ss127 / "workspace").splitlines() == ["c2"]
+      and _fs127.digest == _fr127.digest,
+      "a past over the size budget is fetched shallower, down to the commit alone, the depth recorded and "
+      "the working files the same")
+_wt127 = Path(tempfile.mkdtemp())
+(_wt127 / "src").mkdir()
+(_wt127 / "src" / "a.py").write_text("")
+_edit127 = lambda p: {"args": {"file_path": p}}
+check(_fz127.workdir_of(_wt127, [_edit127("/home/rob/proj/src/a.py")], []) == ("/home/rob/proj", "/home/rob/proj")
+      and _fz127.workdir_of(_wt127, [_edit127("E:\\projects\\proj\\src\\a.py")], [])
+      == ("/work", "E:\\projects\\proj")
+      and _fz127.workdir_of(_wt127, [], [{"file_path": "src/a.py"}]) == ("/work", ""),
+      "the folder is the session's own; a Windows session's is recorded, and its container folder is /work")
+check(not _bad127.ok and "do not apply" in _bad127.reason and not _badout127.exists(),
+      f"and a task whose edits do not apply is not frozen: {_bad127.reason[:80]}")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended

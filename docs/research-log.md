@@ -8420,7 +8420,7 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - *Drawn, reading in progress.* What the judge misses: 12 answers it did not
     flag (4 per model, the first 4 of a fixed draw of 8), read twice and blind
     (`scripts/judge_misses_sample.py`, `results/d45-misses/`).
-- **09-27, 04:2x UTC** — **What the judge misses: a first screen.** Every
+- **09-27, 03:4x UTC** — **What the judge misses: a first screen.** Every
   earlier reading of the judge read only answers it had flagged. 12 answers
   it passed in D-45 (settled by majority; 4 per model, the first 4 of a fixed
   draw of 8 per run, `scripts/judge_misses_sample.py`) were read twice and
@@ -8440,3 +8440,40 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     packet readings; the full sample of 24 answers was cut to 12 for that
     reason before anything was read.
   - The milestone's plan and decisions are now in `docs/v1-plan.md`.
+  - *Correction, 04:1x.* This entry was first labelled 04:2x, a time not yet
+    reached when it was written; its commit is 03:45.
+- **09-27, 04:1x UTC** — **v1 step 2 begins: every task frozen once.** Every
+  attempt so far rebuilt its task: the repository fetched from GitHub, the
+  session's edits replayed from the corpus, the conversation rendered from the
+  corpus's parquet. Someone outside has neither the gated corpus nor a
+  guarantee that a repository still exists. `scripts/freeze_tasks.py`
+  (`errata_bench.release.freeze`) freezes each task into `release/v1/tasks/`,
+  which stays out of git. No model calls.
+  - *What a frozen task is.* The developer's working copy at the cut: the
+    task's commit with up to 100 commits of its past, fetched by commit with
+    `--no-tags`, so nothing after it and no tag; on the session's branch as the
+    corpus records it (54 of 55 do; entireio-cli-23 gets `work`); with the
+    session's edits replayed as uncommitted changes, which `git status` shows.
+    Beside it the conversation the candidate is shown, and a `grading/` folder
+    for the graders only: the reference answers, the defect and its signature,
+    the controls' conversations, the task row, and the turns up to the
+    resolution, from which any rendering can be made again. `task.json` records
+    the folder the developer worked in, read from the session's paths.
+  - *Checked.* All 55 froze. Each working copy has the same files as the tree
+    every attempt has started from (`fetch`, `export_tree`, `replay`), file by
+    file, and each conversation is byte for byte the one D-44's candidates were
+    shown. One first compared as different: a text-mode read had turned its 25
+    carriage returns into newlines. Conversations are now written and compared
+    as bytes. A second freeze from scratch gave the same working files for all
+    55; the archives' bytes differ, since git's own files differ between
+    fetches, so the tree digest is what says two freezes agree.
+  - *Two cases met on the way.* oddessentials-ado-git-repo-insights-69 ran on
+    Windows (`E:\projects\ado-git-repo-insights`), which no Linux folder can
+    be: its container folder is `/work`, and the session's folder is recorded.
+    Safecast-safecast-new-map-95 commits its compiled binaries, about 80 MB
+    each, and 100 commits of its past came to 579 MB: past a budget of 200 MB
+    the past is fetched a quarter as deep, and it keeps 6 commits. The 55 come
+    to 685 MB.
+  - Guard 127 checks all of it on a local repository, and fails with the
+    replay, the tree comparison or the size budget removed. The release will be
+    frozen again from a tagged commit.

@@ -17,3 +17,7 @@ annotation/
 # repository contents in full. The samplers regenerate them from runs/; whether
 # they are published is the release's data-licence question (research log, 09-27).
 results/*/packets/
+
+# Frozen tasks (scripts/freeze_tasks.py): repository trees with history and
+# SWE-chat text, staged for the release, not for git.
+/release/

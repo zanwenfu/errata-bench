@@ -39,7 +39,7 @@ directories made before the split, and what happens when a candidate or a
 grading fails. Its ninth section requires that every served-model probe the
 stages made went to its stand-in, so none of it reaches the network.
 
-**`guards_hold.py`** is one hundred and twenty-six numbered sections, one per guard, after a section 0: what the
+**`guards_hold.py`** is one hundred and twenty-seven numbered sections, one per guard, after a section 0: what the
 attempt and grade stages refuse to do; the gate asked repeatedly; the
 reference-answer control and when it is not applicable; the clean-pass
 standard and the hedged one priced side by side; permanent git loss; the
@@ -199,7 +199,12 @@ that answer too; section 125 has `settled(rule="majority")` settle each observat
 readings made it, derive the outcome from those and quote a reading that agrees, while every
 existing caller keeps the rule that one reading's finding decides; section 126 has what the judge
 missed tallied from two blind readings, with an interval that holds at zero, and nothing tallied
-while a disagreement is unsettled.
+while a disagreement is unsettled; section 127 has a frozen task be the developer's working copy:
+the task's commit and its past, never a later commit or any tag, on the session's branch, in
+the folder it worked in, with its edits uncommitted, the same files as the tree every attempt
+has started from, and a conversation that stops at the cut; a working copy that differs from
+that tree is refused, naming the file, and a Windows session's folder is recorded while its
+container folder is /work.
 Section 0 has the suite
 start as CI does, with no credential in its environment and `.env` never read (B-264: a
 stand-in corpus that gave every session a turn let section 41 call the model provider with the
