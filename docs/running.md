@@ -94,10 +94,11 @@ not, `why_not_official` says why.
 - The tasks published (Hugging Face, with SWE-chat's click-to-agree), and
   their images prebuilt.
 - The official judge's admission of each task
-  (`release/v1/admission/gpt-6-astra`), from the pilot and the v1 run. Any judge can be admitted
-  with `scripts/admit_judge.py release/v1 --out <dir>` (paid, with your key), and its results
-  are then that judge's, not official.
+  (`release/v1/admission/gpt-6-astra`), from the pilot and the v1 run. Any
+  judge can be admitted with `scripts/admit_judge.py release/v1 --out <dir>`
+  (paid, with your key): it reads each task's known answers and controls, and
+  a task is graded only by a judge that read them correctly. Results graded
+  by any judge but the official one are that judge's, not official.
 - The official network rule tried on a server (it needs two small images:
   Harbor's sidecar).
-- A command to test another judge on the known answers.
 - Costs and times, measured in the pilot.
