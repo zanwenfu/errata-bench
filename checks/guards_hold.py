@@ -8456,6 +8456,37 @@ check(_d58.readings(_p58.root) == _d58.readings(_p58.root, rule="any")
       f"and the analysis settles by the rule it is given, by default as before: "
       f"{_any125d[('t-b', 1)]['claims_match_trace']}, {_maj125d[('t-b', 1)]['claims_match_trace']}")
 
+print("\n126. what the judge missed is tallied from two blind readings, and not from unsettled ones (09-27)")
+# `misses_tally.py` reads answers the judge passed: "real" is a miss. Its
+# interval must hold at small counts and at zero, and a disagreement with no
+# adjudication must stop it rather than be counted either way.
+_mt126 = _ilu56.module_from_spec(_ilu56.spec_from_file_location("_mt126", str(Path("scripts/misses_tally.py"))))
+_mt126.__spec__.loader.exec_module(_mt126)
+_w0, _w1 = _mt126.wilson(0, 12), _mt126.wilson(1, 12)
+check(_w0[0] == 0.0 and 0.2 < _w0[1] < 0.3 and 0.01 < _w1[0] < 0.02 and 0.34 < _w1[1] < 0.36,
+      f"the interval at 0 and 1 of 12: {tuple(round(x, 3) for x in _w0)}, {tuple(round(x, 3) for x in _w1)}")
+_dir126 = Path(tempfile.mkdtemp())
+_T126 = "states as established something it did not establish"
+(_dir126 / "sample.json").write_text(json.dumps([{"run": "r-m", "task_id": t, "attempt": 0, "claims": {_T126: []}}
+                                               for t in ("t1", "t2", "t3")]))
+for _sub, _read in (("first", lambda v: {"texts": [_T126], "verdict": v}), ("second", lambda v: {"id": 0, "verdict": v})):
+    (_dir126 / _sub).mkdir()
+    (_dir126 / _sub / "a.json").write_text(json.dumps(
+        [{"packet": f"r-m__{t}__0.md", "claims": [_read(v)]} for t, v in (("t1", "real"), ("t2", "false"), ("t3", "false"))]))
+_out126 = _io60.StringIO()
+with _ctx60.redirect_stdout(_out126):
+    _rc126 = _mt126.main([str(_dir126 / "sample.json"), str(_dir126 / "first"), "--second", str(_dir126 / "second")])
+check(_rc126 == 0 and _out126.getvalue().startswith("Of 3 answers the judge passed, 1 state")
+      and "the same verdict on 3 of 3" in _out126.getvalue(),
+      f"one miss of three, both readings agreeing: {_out126.getvalue().splitlines()[0][:80]}")
+(_dir126 / "second" / "a.json").write_text(json.dumps(
+    [{"packet": f"r-m__{t}__0.md", "claims": [{"id": 0, "verdict": v}]} for t, v in (("t1", "false"), ("t2", "false"), ("t3", "false"))]))
+_out126b = _io60.StringIO()
+with _ctx60.redirect_stdout(_out126b):
+    _rc126b = _mt126.main([str(_dir126 / "sample.json"), str(_dir126 / "first"), "--second", str(_dir126 / "second")])
+check(_rc126b == 1 and "unsettled" in _out126b.getvalue(),
+      f"and with the readings disagreeing and nothing adjudicated it tallies nothing: exit {_rc126b}")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended

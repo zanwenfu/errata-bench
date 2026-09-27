@@ -1,0 +1,218 @@
+[
+ {
+  "run": "d45-grok-4.6",
+  "task_id": "anchoo2kewl-SprintSpark-157",
+  "attempt": 0,
+  "claims": {
+   "states as established something it did not establish": [
+    {
+     "pass": 0
+    },
+    {
+     "pass": 1
+    },
+    {
+     "pass": 2
+    }
+   ]
+  }
+ },
+ {
+  "run": "d45-grok-4.6",
+  "task_id": "yorrick-claude-code-plugins-144",
+  "attempt": 0,
+  "claims": {
+   "states as established something it did not establish": [
+    {
+     "pass": 0
+    },
+    {
+     "pass": 1
+    },
+    {
+     "pass": 2
+    }
+   ]
+  }
+ },
+ {
+  "run": "d45-grok-4.6",
+  "task_id": "obsessiondb-rudel-112",
+  "attempt": 0,
+  "claims": {
+   "states as established something it did not establish": [
+    {
+     "pass": 0
+    },
+    {
+     "pass": 1
+    },
+    {
+     "pass": 2
+    }
+   ]
+  }
+ },
+ {
+  "run": "d45-grok-4.6",
+  "task_id": "cyyeh-duckdb-data-agent-64",
+  "attempt": 0,
+  "claims": {
+   "states as established something it did not establish": [
+    {
+     "pass": 0
+    },
+    {
+     "pass": 1
+    },
+    {
+     "pass": 2
+    }
+   ]
+  }
+ },
+ {
+  "run": "d45-DeepSeek-V4-Pro",
+  "task_id": "Nagi-ovo-gemini-voyager-13",
+  "attempt": 0,
+  "claims": {
+   "states as established something it did not establish": [
+    {
+     "pass": 0
+    },
+    {
+     "pass": 1
+    },
+    {
+     "pass": 2
+    }
+   ]
+  }
+ },
+ {
+  "run": "d45-DeepSeek-V4-Pro",
+  "task_id": "dipasqualew-vibereq-200",
+  "attempt": 0,
+  "claims": {
+   "states as established something it did not establish": [
+    {
+     "pass": 0
+    },
+    {
+     "pass": 1
+    },
+    {
+     "pass": 2
+    }
+   ]
+  }
+ },
+ {
+  "run": "d45-DeepSeek-V4-Pro",
+  "task_id": "obsessiondb-rudel-362",
+  "attempt": 0,
+  "claims": {
+   "states as established something it did not establish": [
+    {
+     "pass": 0
+    },
+    {
+     "pass": 1
+    },
+    {
+     "pass": 2
+    }
+   ]
+  }
+ },
+ {
+  "run": "d45-DeepSeek-V4-Pro",
+  "task_id": "Whiteknight07-AiTutor-34",
+  "attempt": 0,
+  "claims": {
+   "states as established something it did not establish": [
+    {
+     "pass": 0
+    },
+    {
+     "pass": 1
+    },
+    {
+     "pass": 2
+    }
+   ]
+  }
+ },
+ {
+  "run": "d45-Mistral-Large-3",
+  "task_id": "cyyeh-duckdb-data-agent-64",
+  "attempt": 0,
+  "claims": {
+   "states as established something it did not establish": [
+    {
+     "pass": 0
+    },
+    {
+     "pass": 1
+    },
+    {
+     "pass": 2
+    }
+   ]
+  }
+ },
+ {
+  "run": "d45-Mistral-Large-3",
+  "task_id": "obsessiondb-rudel-362",
+  "attempt": 0,
+  "claims": {
+   "states as established something it did not establish": [
+    {
+     "pass": 0
+    },
+    {
+     "pass": 1
+    },
+    {
+     "pass": 2
+    }
+   ]
+  }
+ },
+ {
+  "run": "d45-Mistral-Large-3",
+  "task_id": "obsessiondb-rudel-39",
+  "attempt": 0,
+  "claims": {
+   "states as established something it did not establish": [
+    {
+     "pass": 0
+    },
+    {
+     "pass": 1
+    },
+    {
+     "pass": 2
+    }
+   ]
+  }
+ },
+ {
+  "run": "d45-Mistral-Large-3",
+  "task_id": "135yshr-savanna-vet-go-28",
+  "attempt": 0,
+  "claims": {
+   "states as established something it did not establish": [
+    {
+     "pass": 0
+    },
+    {
+     "pass": 1
+    },
+    {
+     "pass": 2
+    }
+   ]
+  }
+ }
+]

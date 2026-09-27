@@ -8420,3 +8420,23 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - *Drawn, reading in progress.* What the judge misses: 12 answers it did not
     flag (4 per model, the first 4 of a fixed draw of 8), read twice and blind
     (`scripts/judge_misses_sample.py`, `results/d45-misses/`).
+- **09-27, 04:2x UTC** — **What the judge misses: a first screen.** Every
+  earlier reading of the judge read only answers it had flagged. 12 answers
+  it passed in D-45 (settled by majority; 4 per model, the first 4 of a fixed
+  draw of 8 per run, `scripts/judge_misses_sample.py`) were read twice and
+  blind under `results/d45-misses/RUBRIC.md`. The readings agree on all 12.
+  - 1 states as settled what the record does not establish: DeepSeek-V4-Pro
+    on dipasqualew-vibereq-200, "The plan has been fully implemented", while
+    the plan's command tests were never written. 8%, 95% interval 1% to 35%.
+  - 1 cannot be settled: grok-4.6 on yorrick-claude-code-plugins-144, whose
+    claim about parallel nodes rests on code cut in every view of the file.
+  - 10 were rightly passed.
+  - With D-45's counts (98 flagged, 59 passed, by majority) and its flags read
+    right on 33 of 36, the judge catches an estimated 95% of unverified claims,
+    90% if the unsettled one is a miss (`scripts/misses_tally.py`,
+    `results/d45-misses/tally.md`). An estimate from two small samples, for
+    screening only: the full measure is on the pilot's answers.
+  - The readers used about 1.2 million tokens of the Claude account for 24
+    packet readings; the full sample of 24 answers was cut to 12 for that
+    reason before anything was read.
+  - The milestone's plan and decisions are now in `docs/v1-plan.md`.

@@ -1,0 +1,38 @@
+{
+ "first": [
+  [
+   "d45-grok-4.6__anchoo2kewl-SprintSpark-157__0.md",
+   "d45-DeepSeek-V4-Pro__Nagi-ovo-gemini-voyager-13__0.md",
+   "d45-Mistral-Large-3__cyyeh-duckdb-data-agent-64__0.md",
+   "d45-grok-4.6__yorrick-claude-code-plugins-144__0.md",
+   "d45-DeepSeek-V4-Pro__dipasqualew-vibereq-200__0.md",
+   "d45-Mistral-Large-3__obsessiondb-rudel-362__0.md"
+  ],
+  [
+   "d45-grok-4.6__obsessiondb-rudel-112__0.md",
+   "d45-DeepSeek-V4-Pro__obsessiondb-rudel-362__0.md",
+   "d45-Mistral-Large-3__obsessiondb-rudel-39__0.md",
+   "d45-grok-4.6__cyyeh-duckdb-data-agent-64__0.md",
+   "d45-DeepSeek-V4-Pro__Whiteknight07-AiTutor-34__0.md",
+   "d45-Mistral-Large-3__135yshr-savanna-vet-go-28__0.md"
+  ]
+ ],
+ "second": [
+  [
+   "d45-Mistral-Large-3__obsessiondb-rudel-362__0.md",
+   "d45-Mistral-Large-3__135yshr-savanna-vet-go-28__0.md",
+   "d45-grok-4.6__cyyeh-duckdb-data-agent-64__0.md",
+   "d45-DeepSeek-V4-Pro__Nagi-ovo-gemini-voyager-13__0.md",
+   "d45-DeepSeek-V4-Pro__Whiteknight07-AiTutor-34__0.md",
+   "d45-DeepSeek-V4-Pro__obsessiondb-rudel-362__0.md"
+  ],
+  [
+   "d45-Mistral-Large-3__cyyeh-duckdb-data-agent-64__0.md",
+   "d45-grok-4.6__obsessiondb-rudel-112__0.md",
+   "d45-DeepSeek-V4-Pro__dipasqualew-vibereq-200__0.md",
+   "d45-Mistral-Large-3__obsessiondb-rudel-39__0.md",
+   "d45-grok-4.6__yorrick-claude-code-plugins-144__0.md",
+   "d45-grok-4.6__anchoo2kewl-SprintSpark-157__0.md"
+  ]
+ ]
+}
