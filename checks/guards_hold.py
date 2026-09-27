@@ -9167,6 +9167,37 @@ check(_be133(_rt133, 7, max_chars=_RC133, record=3, tool_cap=None) == _be133(_rt
       and _be133(_rt133, 7, max_chars=_RC133, record=3, tool_cap=500).count("more characters not shown") == 2,
       "the conversation's rendering is unchanged unless a cap is asked for, and a cap cuts the call and the result")
 
+print("\n134. the reference agent runs the harness's own loop on a task's working copy, and writes its run in ATIF "
+      "(v1 step 3)")
+# errata_harbor.agents:Reference installs this in a task's container. Here with
+# the stand-in model: the real loop (`converse`), the real tools on a real
+# working copy, and the trajectory the task's verifier reads.
+from errata_bench.release import reference_agent as _ra134
+_tree134 = Path(tempfile.mkdtemp()) / "work"
+_tree134.mkdir()
+(_tree134 / "main.py").write_text("x = 1\n")
+_sp134 = __import__("subprocess")
+_sp134.run(["git", "init", "-q"], cwd=_tree134, check=True)
+_out134 = _tree134.parent / "logs"
+_rec134 = asyncio.run(_ra134.run("Is x set?", _out134, _ra134.STAND_IN, 60, 10, _tree134))
+_traj134 = json.loads((_out134 / "trajectory.json").read_text())
+_ans134, _calls134 = __import__("errata_bench.release.atif", fromlist=["x"]).record_of(_traj134, "Is x set?")
+check(_rec134["ended_by"] == "answered" and not _rec134["error"] and _ans134 == _ra134.STAND_IN_REPLY
+      and [c["name"] for c in _calls134] == ["list_dir", "run_command", "write_file"]
+      and "main.py" in _calls134[0]["result"] and _calls134[1]["result"].startswith("exit 0")
+      and (_tree134 / _ra134.STAND_IN_WRITES).exists(),
+      f"the stand-in runs through the loop's own tools on the working copy, and its run reads back as its "
+      f"answer and three calls: {_rec134['ended_by']} {_rec134['error']!r} {[c['name'] for c in _calls134]}")
+check(_traj134["schema_version"] == "ATIF-v1.7" and _traj134["steps"][0] == {"step_id": 1, "source": "user",
+                                                                             "message": "Is x set?"}
+      and [s["step_id"] for s in _traj134["steps"]] == list(range(1, len(_traj134["steps"]) + 1))
+      and _rec134["limits"] == {"seconds": 60, "turns": 10} and len(_rec134["tool_calls"]) == 3,
+      "and its trajectory begins with the instruction, numbered from one, and its record says its limits")
+_words134 = lambda s: " ".join(s.split())
+check(_words134(_ra134.SYSTEM).rstrip(".") in _words134(attempt_mod.INSTRUCTIONS)
+      and not any(w in _ra134.SYSTEM.lower() for w in ("network", "do not exist", "little else", "no .git")),
+      "its system prompt is the harness's own words for its tools, and none of what held only in its sandbox")
+
 print("\nlast. what the suite hands back")
 
 # Last, what the suite hands back -- at the very end, where it can see every

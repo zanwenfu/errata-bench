@@ -39,7 +39,7 @@ directories made before the split, and what happens when a candidate or a
 grading fails. Its ninth section requires that every served-model probe the
 stages made went to its stand-in, so none of it reaches the network.
 
-**`guards_hold.py`** is one hundred and thirty-three numbered sections, one per guard, after a section 0: what the
+**`guards_hold.py`** is one hundred and thirty-four numbered sections, one per guard, after a section 0: what the
 attempt and grade stages refuse to do; the gate asked repeatedly; the
 reference-answer control and when it is not applicable; the clean-pass
 standard and the hedged one priced side by side; permanent git loss; the
@@ -275,8 +275,9 @@ two of those were the expensive stages, and every other suite was green.
 
 **`harbor_agents.py`** runs `errata_harbor`'s agents against a fake environment and
 checks that each writes a trajectory Harbor's own validator accepts, read into the
-graders' record. Harbor is an optional extra, not installed in CI, so there it prints
-SKIPPED and checks nothing; run it where Harbor is installed (`pip install -e '.[harbor]'`).
+graders' record. Harbor cannot share errata-bench's locked environment (it needs openai
+below 3), so CI does not install it and there this prints SKIPPED and checks nothing; run
+it with Harbor's environment's Python (`src/errata_harbor/__init__.py` says how).
 
 **`renderer_effect.py`** is a one-off measurement, not a guard: the same 81
 answers graded through a starved trace renderer and a repaired one, to see

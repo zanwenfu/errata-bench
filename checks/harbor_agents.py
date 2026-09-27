@@ -2,11 +2,13 @@
 
     python checks/harbor_agents.py
 
-Harbor is not one of errata-bench's own dependencies (its extra, `harbor`), so
-CI does not install it and this check says it was skipped, never that it
-passed. Where it is installed, each agent is run against a fake environment:
-its trajectory must be valid ATIF by Harbor's own validator, and read by
-`errata_bench.release.atif` into the answer and the calls it made.
+Run with Harbor's environment's Python (`errata_harbor` says how it is set up):
+Harbor cannot share errata-bench's locked environment, so CI does not install it
+and this check says it was skipped, never that it passed. Each agent is run
+against a fake environment: its trajectory must be valid ATIF by Harbor's own
+validator, and read by `errata_bench.release.atif` into the answer and calls.
+The reference agent's runner needs errata-bench's own dependencies, and runs
+with errata-bench's Python: ERRATA_BENCH_PYTHON, or this repository's .venv.
 """
 
 import asyncio
@@ -20,7 +22,8 @@ sys.path.insert(0, "src")
 try:
     import harbor  # noqa: F401
 except ImportError:
-    print("SKIPPED: Harbor is not installed here, so nothing was checked (pip install -e '.[harbor]')")
+    print("SKIPPED: Harbor is not installed in this Python, so nothing was checked "
+          "(run it with Harbor's environment's Python; see src/errata_harbor/__init__.py)")
     sys.exit(0)
 
 from harbor.environments.base import ExecResult
@@ -62,6 +65,76 @@ check(answer == REPLY and [c["name"] for c in calls] == ["run_command"] * 3
       and [atif.harness_tool(c) for c in calls] == ["run_command"] * 3
       and calls[1]["result"] == "exit 0\nran: git status --short\n",
       f"and its trajectory reads as its answer and its three calls, with their results: {answer[:60]!r}")
+
+print("\n2. the reference agent: installed from this package and its lock, handed the instruction as a file")
+import os
+import subprocess
+from errata_bench.release import reference_agent as ref
+from errata_harbor.agents import Reference
+
+
+class RecordingEnvironment(FakeEnvironment):
+    """A fake container that also records what is uploaded into it."""
+
+    def __init__(self):
+        super().__init__()
+        self.uploads, self.envs = [], []
+
+    async def upload_dir(self, source_dir, target_dir):
+        self.uploads.append((Path(source_dir), target_dir))
+
+    async def upload_file(self, source_path, target_path):
+        self.uploads.append((Path(source_path).name, target_path, Path(source_path).read_bytes()))
+
+    async def exec(self, command, cwd=None, env=None, timeout_sec=None, user=None):
+        self.envs.append(dict(env or {}))
+        return await super().exec(command, cwd=cwd, env=env, timeout_sec=timeout_sec, user=user)
+
+
+long = "x" * 300_000
+fake_key = "not-a-real-key-for-this-check"
+os.environ["OPENAI_API_KEY"] = fake_key
+renv = RecordingEnvironment()
+agent = Reference(logs_dir=Path(tempfile.mkdtemp()), model_name="openai/some-model")
+asyncio.run(agent.install(renv))
+asyncio.run(agent.run(long, renv, AgentContext()))
+del os.environ["OPENAI_API_KEY"]
+package, lock = Reference.source()
+dirs = [u for u in renv.uploads if len(u) == 2]
+files = {u[1]: u[2] for u in renv.uploads if len(u) == 3}
+check(dirs == [(package, f"{Reference.HOME}/src/errata_bench")] and package.name == "errata_bench"
+      and not list(package.rglob(".env")) and files.get(f"{Reference.HOME}/requirements-lock.txt") == lock.read_bytes(),
+      "it uploads errata_bench's package folder alone (no .env anywhere in it) and this repository's lock")
+check(renv.ran[0].endswith("mkdir -p /installed-agent/errata/src")
+      and any("uv pip install" in c and c.endswith("-r /installed-agent/errata/requirements-lock.txt")
+              for c in renv.ran),
+      f"and installs the whole lock, the set every check runs with: {[c[-70:] for c in renv.ran[:2]]}")
+check(files.get(f"{Reference.HOME}/instruction.md") == long.encode()
+      and any("-m errata_bench.release.reference_agent /installed-agent/errata/instruction.md /logs/agent "
+              "--model openai/some-model" in c for c in renv.ran)
+      and all(long not in c for c in renv.ran),
+      "the instruction goes as a file, never on a command line, whatever its length")
+check(renv.envs[-1].get("OPENAI_API_KEY") == fake_key and renv.envs[-1].get("ERRATA_DOTENV") == "0"
+      and renv.envs[-1].get("PYTHONPATH") == f"{Reference.HOME}/src",
+      "and the model's key is passed from where Harbor runs, with no .env read inside")
+# The runner, as it runs in the container: its trajectory must be valid ATIF.
+work = Path(tempfile.mkdtemp())
+(work / "a.py").write_text("x = 1\n")
+subprocess.run(["git", "init", "-q"], cwd=work, check=True)
+(work.parent / "instruction.md").write_text("Is x set?")
+# absolute, not resolved: resolved, the link leads past the virtual environment to its base Python.
+bench_python = os.environ.get("ERRATA_BENCH_PYTHON") or str(Path(".venv/bin/python").absolute())
+done = subprocess.run([bench_python, "-m", "errata_bench.release.reference_agent", str(work.parent / "instruction.md"),
+                       str(work.parent / "logs"), "--model", ref.STAND_IN], cwd=work, capture_output=True, text=True,
+                      env={**os.environ, "PYTHONPATH": str(Path("src").resolve()), "ERRATA_DOTENV": "0"}, timeout=120)
+raw = (work.parent / "logs" / "trajectory.json").read_text() if done.returncode == 0 else "{}"
+try:
+    Trajectory.model_validate_json(raw)
+    valid = True
+except Exception as e:  # noqa: BLE001 - the failure is the assertion
+    valid = f"{type(e).__name__}: {str(e)[:200]}"
+check(done.returncode == 0 and valid is True,
+      f"and the runner's trajectory is valid ATIF by Harbor's own validator: {valid} {done.stderr[-300:]}")
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 sys.exit(1 if FAIL else 0)

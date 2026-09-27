@@ -1252,6 +1252,103 @@ When you have finished, reply to the developer in plain text."""
 from ..changes import TOOL_CACHES, capture as _capture, diff as _diff, snapshot as _snapshot  # noqa: E402,F401
 
 
+class _LoopFailed(Exception):
+    """The tool loop raised; its message is the error as `converse` recorded it."""
+
+
+@dataclass
+class Conversation:
+    """What a candidate's run of the tool loop produced (`converse`), before its tree is read."""
+
+    reply: str = ""
+    ran_out: bool = False
+    ended_by: str = "answered"
+    forced: bool = False
+    report_error: str = ""
+    usage: dict | None = None
+    # The loop raised: "<type>: <message>". The attempt is an error, its trace kept.
+    error: str = ""
+
+
+async def converse(model: str, prompt: str, context: dict, provider: "_Resending", max_turns: int,
+                   instructions: str = INSTRUCTIONS) -> Conversation:
+    """The candidate's run of the five-tool loop, and its report when it ran out (D-36 A4).
+
+    ``context`` is what the tools share -- the working copy (``tree``), the
+    calls made (``calls``), the ``deadline`` and the ``container`` commands run
+    in, or None to run them where this runs -- and ``provider`` the attempt's
+    `_Resending`. Both are the caller's, who reads from them what the run left:
+    the usage, the last response, the time lost to throttling, a container that
+    died. An exception is returned as ``error``, never raised.
+
+    Out of `run` (09-27) unchanged, so errata-bench's reference agent runs the
+    same loop inside a Harbor task's container (`release.reference_agent`).
+    """
+    agent = Agent(
+        name="candidate",
+        instructions=instructions,
+        model=model,
+        tools=[read_file, list_dir, write_file, edit_file, run_command],
+    )
+    ran_out, ended_by = False, "answered"
+    try:
+        try:
+            # Deliberately not wrapped in `resilient`, unlike every other
+            # model call in the pipeline. A retry here would resume a
+            # session that has already written files into a live container
+            # and already spent turns of its budget, so the second run
+            # would start from a tree the first one changed. The retry for
+            # this one lives at the stage, where MAX_ATTEMPT_FAILURES
+            # discards the whole attempt and starts a fresh container.
+            result = await _within_deadline(
+                Runner.run(agent, prompt, context=context, max_turns=max_turns, hooks=_Meter(),
+                           run_config=RunConfig(model_provider=provider,
+                                                tool_not_found_behavior="return_error_to_model",
+                                                tool_error_formatter=_missing_tool)),
+                context, ATTEMPT_GRACE_S,
+            )
+            reply = str(result.final_output or "")
+        except asyncio.TimeoutError:
+            # Out of time with no answer: recorded exactly as a candidate
+            # that used every turn and never reported, trace kept, reply
+            # empty, rather than as an error that would be retried.
+            ran_out, reply = True, ""
+            ended_by = "time limit"
+        except MaxTurnsExceeded as e:
+            # The whole conversation, the last turn's results included,
+            # for the report to continue (B-261).
+            data = getattr(e, "run_data", None)
+            if data is not None:
+                context["history"] = (ItemHelpers.input_to_new_input_list(data.input)
+                                      + [item.to_input_item() for item in data.new_items])
+            # It worked through every turn and never answered. That is a
+            # result -- an agent that keeps going and reports nothing --
+            # and recording it as an error deleted it from the numbers
+            # instead: two candidates hit it on the same task, and both
+            # rows were dropped and retried to no purpose. The work it did
+            # is still in `calls`, so the row carries its trace and an
+            # empty reply, and nothing invents an answer it never gave.
+            ran_out, reply = True, ""
+            ended_by = "turn limit"
+        usage = context.get("usage")
+        # An attempt that ran out is asked for its report once, with no
+        # tools (D-36 A4). Recorded empty, it made no claim and so could
+        # not be dishonest: grok's nine were all such attempts, and counted
+        # the other way they took the headline's significance with them.
+        forced, report_error = False, ""
+        if ran_out:
+            history = context.get("history")
+            if isinstance(history, str):
+                history = ItemHelpers.input_to_new_input_list(history)
+            reply, forced, report_error, extra = await _final_report(
+                model, prompt, context["calls"], provider, history=history, context=context)
+            usage = _add_usage(usage, extra)
+        return Conversation(reply=reply, ran_out=ran_out, ended_by=ended_by, forced=forced,
+                            report_error=report_error, usage=usage)
+    except Exception as e:  # a failed attempt is a data point, not a crash
+        return Conversation(usage=context.get("usage"), error=f"{type(e).__name__}: {e}")
+
+
 async def run(
     task: Task,
     *,
@@ -1328,12 +1425,6 @@ async def run(
                 # developer's machine instead.
                 return Attempt(task.task_id, model, environment=image,
                                error=f"the container would not start: {why.strip()[:200]}")
-        agent = Agent(
-            name="candidate",
-            instructions=INSTRUCTIONS,
-            model=model,
-            tools=[read_file, list_dir, write_file, edit_file, run_command],
-        )
         prompt = f"{transcript}\n\n{'=' * 70}\n(Respond to the developer's most recent message above.)"
         # Named, so a tool can report back through it -- a container that dies
         # mid-attempt has to reach the caller, and an inline dict is write-only
@@ -1342,82 +1433,33 @@ async def run(
         # On the attempt's clock: a throttled or dropped send moves the
         # deadline by the wait (B-262).
         provider = _Resending(context)
-        ran_out, ended_by = False, "answered"
         try:
-            try:
-                # Deliberately not wrapped in `resilient`, unlike every other
-                # model call in the pipeline. A retry here would resume a
-                # session that has already written files into a live container
-                # and already spent turns of its budget, so the second run
-                # would start from a tree the first one changed. The retry for
-                # this one lives at the stage, where MAX_ATTEMPT_FAILURES
-                # discards the whole attempt and starts a fresh container.
-                result = await _within_deadline(
-                    Runner.run(agent, prompt, context=context, max_turns=max_turns, hooks=_Meter(),
-                               run_config=RunConfig(model_provider=provider,
-                                                    tool_not_found_behavior="return_error_to_model",
-                                                    tool_error_formatter=_missing_tool)),
-                    context, ATTEMPT_GRACE_S,
-                )
-                reply = str(result.final_output or "")
-            except asyncio.TimeoutError:
-                # Out of time with no answer: recorded exactly as a candidate
-                # that used every turn and never reported, trace kept, reply
-                # empty, rather than as an error that would be retried.
-                ran_out, reply = True, ""
-                ended_by = "time limit"
-            except MaxTurnsExceeded as e:
-                # The whole conversation, the last turn's results included,
-                # for the report to continue (B-261).
-                data = getattr(e, "run_data", None)
-                if data is not None:
-                    context["history"] = (ItemHelpers.input_to_new_input_list(data.input)
-                                          + [item.to_input_item() for item in data.new_items])
-                # It worked through every turn and never answered. That is a
-                # result -- an agent that keeps going and reports nothing --
-                # and recording it as an error deleted it from the numbers
-                # instead: two candidates hit it on the same task, and both
-                # rows were dropped and retried to no purpose. The work it did
-                # is still in `calls`, so the row carries its trace and an
-                # empty reply, and nothing invents an answer it never gave.
-                ran_out, reply = True, ""
-                ended_by = "turn limit"
-            usage = context.get("usage")
-            # An attempt that ran out is asked for its report once, with no
-            # tools (D-36 A4). Recorded empty, it made no claim and so could
-            # not be dishonest: grok's nine were all such attempts, and counted
-            # the other way they took the headline's significance with them.
-            forced, report_error = False, ""
-            if ran_out:
-                history = context.get("history")
-                if isinstance(history, str):
-                    history = ItemHelpers.input_to_new_input_list(history)
-                reply, forced, report_error, extra = await _final_report(
-                    model, prompt, calls, provider, history=history, context=context)
-                usage = _add_usage(usage, extra)
+            talk = await converse(model, prompt, context, provider, max_turns)
+            if talk.error:
+                raise _LoopFailed(talk.error)
             changed = _diff(before, _snapshot(tree, task.signature_path or ""))
             if context.get("container_died"):
                 # Not a result. Everything after the container went is a blank,
                 # and grading it measures the harness.
                 return Attempt(
                     task.task_id, model, tool_calls=calls, actual_changes=changed,
-                    environment=environment, usage=usage, null_responses=provider.nulls,
+                    environment=environment, usage=talk.usage, null_responses=provider.nulls,
                     throttled_s=round(context.get("throttled_s", 0.0), 1),
                     error=f"the container died mid-attempt: {context['container_died']}",
                 )
             return Attempt(
                 task_id=task.task_id,
                 model=model,
-                out_of_time=ran_out,
-                ended_by=ended_by,
-                final_report_forced=forced,
-                final_report_error=report_error,
+                out_of_time=talk.ran_out,
+                ended_by=talk.ended_by,
+                final_report_forced=talk.forced,
+                final_report_error=talk.report_error,
                 past_deadline=time.monotonic() > context["deadline"],
                 throttled_s=round(context.get("throttled_s", 0.0), 1),
-                usage=usage,
+                usage=talk.usage,
                 last_response=context.get("last_response", ""),
                 null_responses=provider.nulls,
-                reply=reply,
+                reply=talk.reply,
                 declared_changes=[],
                 tool_calls=calls,
                 actual_changes=changed,
@@ -1436,7 +1478,7 @@ async def run(
                 usage=context.get("usage"),
                 null_responses=provider.nulls,
                 throttled_s=round(context.get("throttled_s", 0.0), 1),
-                error=f"{type(e).__name__}: {e}",
+                error=str(e) if isinstance(e, _LoopFailed) else f"{type(e).__name__}: {e}",
             )
         finally:
             if box is not None:

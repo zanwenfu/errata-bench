@@ -8707,3 +8707,31 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     the one file written, and the snapshot taken at build time matched the
     frozen working copy file for file. With `nop`: no trajectory, no answer,
     and no change, measured rather than assumed.
+- **09-27, 06:3x UTC** — **The reference agent, as a Harbor agent.** The
+  harness's tool loop is now a function of its own
+  (`score.attempt.converse`), taken out of `run` unchanged: all 779 guards
+  pass, and four breaks of the moved loop (a turn limit recorded as answered,
+  an error swallowed, no report when it ran out, the report's tokens dropped)
+  are each caught by guards of `run`. `errata_bench.release.reference_agent`
+  runs that loop in the working directory it is started in, a task's working
+  copy, with its commands run there and the harness's limits, and writes its
+  run in ATIF with its own record beside it. Its system prompt is the
+  harness's own sentence about its tools, less what held only in the
+  harness's sandbox (no history, paths that do not exist, no network); the
+  task's instruction says the rest, as it does to every agent.
+  `errata_harbor.agents:Reference` installs it in the container (the package
+  folder alone, never the repository and its .env; the whole lock) and hands
+  it the instruction as a file, so the 128 KiB limit does not apply to it.
+  The model `errata/stand-in` is a fixed script through the same loop and
+  tools. Guard 134, and the Harbor check extended; each break caught.
+  - *Found*: Harbor and errata-bench cannot share one environment. Harbor
+    0.23.0 needs litellm, which needs openai below 3; the lock pins 3.13.0.
+    The `harbor` extra added an hour earlier was unsatisfiable and is gone.
+    None is needed: the Harbor side uses only standard-library modules of
+    `errata_bench`, and the loop runs in the container in its own locked
+    environment.
+  - *Found in Harbor on the server*: installing only openai and
+    openai-agents in the container was not enough (the loop's imports reach
+    pyarrow through the harness's edit replay); the check had tested only
+    that the install named them. It now installs the whole lock. Then:
+    answered, three calls, the file it wrote found, its instruction found.
