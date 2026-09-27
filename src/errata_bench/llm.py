@@ -250,13 +250,6 @@ def configure_client() -> None:
             max_retries=retries,
             http_client=_http_client(),
         )
-        # The SDK uploads a trace of every run to OpenAI's dashboard by
-        # default, whichever provider answered. On Azure that sends the
-        # prompts -- transcripts from other people's repositories -- to a
-        # second company nobody chose, and it was failing with 401 anyway.
-        from agents import set_tracing_disabled
-
-        set_tracing_disabled(True)
     else:
         key = os.environ.get("OPENAI_API_KEY")
         if not key:
@@ -266,6 +259,15 @@ def configure_client() -> None:
             )
         client = AsyncOpenAI(api_key=key, timeout=timeout, max_retries=retries, http_client=_http_client())
     set_default_openai_client(client)
+    # The SDK uploads a trace of every run to OpenAI's dashboard by default,
+    # whichever provider answered. On Azure that sent the prompts --
+    # transcripts from other people's repositories -- to a second company
+    # nobody chose, and it failed with 401 anyway. Off for every provider since
+    # 09-27: someone grading with their own key, through OpenAI or a router, has
+    # not chosen to keep those transcripts in a dashboard either.
+    from agents import set_tracing_disabled
+
+    set_tracing_disabled(True)
 
     # Which API surface the SDK uses. The default is unchanged -- the Responses
     # API, as before -- and chat completions are selected only when asked for,

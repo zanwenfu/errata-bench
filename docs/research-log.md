@@ -8847,3 +8847,13 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   the URL could clone it with or without a remote. Guard 129 runs the build
   step's own words on a repository configured as macOS configures it; the
   settings kept, it fails. The Harbor export and its digests written again.
+- **09-27, 07:2x UTC** — **Traces off for every provider, and any
+  OpenAI-compatible endpoint for the reference agent.** The model library
+  uploads a trace of every run, prompts included, to OpenAI's dashboard unless
+  told not to; only the Azure path told it, since the prompts hold other
+  people's repositories. Someone grading or running the reference agent with
+  their own OpenAI key had it on without choosing it. It is now off whichever
+  provider answers (guard 92 checks both paths; with it off only on Azure, the
+  check fails). The reference agent passes ERRATA_API into the container too,
+  so an endpoint that speaks only OpenAI's chat completions (a router, a local
+  server) works with OPENAI_BASE_URL beside the key; docs/running.md says how.

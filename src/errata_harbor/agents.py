@@ -87,7 +87,7 @@ class Reference(BaseInstalledAgent):
     # Where it is installed in the container.
     HOME = "/installed-agent/errata"
     # The model provider's settings, passed from where Harbor runs when they are set there.
-    FORWARDED = ("OPENAI_API_KEY", "OPENAI_BASE_URL", "ERRATA_PROVIDER", "AZURE_OPENAI_BASE_URL",
+    FORWARDED = ("OPENAI_API_KEY", "OPENAI_BASE_URL", "ERRATA_API", "ERRATA_PROVIDER", "AZURE_OPENAI_BASE_URL",
                  "AZURE_OPENAI_API_KEY", "ERRATA_ATTEMPT_SECONDS", "ERRATA_ATTEMPT_TURNS")
 
     @staticmethod

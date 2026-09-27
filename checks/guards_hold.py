@@ -6239,6 +6239,26 @@ finally:
 _hooks92 = getattr(_cap92.get("http_client"), "event_hooks", {}) or {}
 check(reader._refuse_claude_request in (_hooks92.get("request") or []),
       f"configure_client installs the refusing client: {sorted(_cap92)}")
+# And traces stay off whichever provider answers: the SDK would upload every
+# run's prompts, other people's repositories among them, to OpenAI's dashboard.
+_traced92 = []
+_saved92b = (_oa92.AsyncOpenAI, _ag92.set_default_openai_client, _ag92.set_tracing_disabled,
+             _ag92.set_default_openai_api, reader._client_configured, dict(os.environ))
+_oa92.AsyncOpenAI = lambda **kw: "client"
+_ag92.set_default_openai_client = _ag92.set_default_openai_api = lambda *a, **k: None
+_ag92.set_tracing_disabled = lambda value: _traced92.append(value)
+try:
+    for _p92 in ("azure", ""):
+        os.environ.update({"ERRATA_PROVIDER": _p92, "AZURE_OPENAI_BASE_URL": "https://example.invalid/openai/v1",
+                           "AZURE_OPENAI_API_KEY": "k", "OPENAI_API_KEY": "k"})
+        reader._client_configured = False
+        reader.configure_client()
+finally:
+    (_oa92.AsyncOpenAI, _ag92.set_default_openai_client, _ag92.set_tracing_disabled,
+     _ag92.set_default_openai_api, reader._client_configured) = _saved92b[:5]
+    os.environ.clear()
+    os.environ.update(_saved92b[5])
+check(_traced92 == [True, True], f"and it turns the SDK's tracing off on Azure and off it alike: {_traced92}")
 _env92 = dict(os.environ)
 try:
     os.environ["ERRATA_MODEL"] = "claude-opus-5"

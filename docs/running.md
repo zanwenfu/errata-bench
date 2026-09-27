@@ -53,9 +53,14 @@ In Harbor's environment, with your model's key in the environment:
   the model APIs listed in each task's `task.toml`. If your provider is not
   among them, the run is still gradable, but not official.
 - errata-bench's reference agent, its own five-tool loop, runs any model it
-  can reach through the OpenAI API or Azure OpenAI:
-  `-a errata_harbor.agents:Reference -m openai/<model>` (or set
-  `ERRATA_PROVIDER=azure`, `AZURE_OPENAI_BASE_URL` and `AZURE_OPENAI_API_KEY`).
+  can reach through the OpenAI API, Azure OpenAI, or any endpoint that speaks
+  OpenAI's API: `-a errata_harbor.agents:Reference -m openai/<model>`, with
+  `OPENAI_API_KEY`; for Azure, `ERRATA_PROVIDER=azure`, `AZURE_OPENAI_BASE_URL`
+  and `AZURE_OPENAI_API_KEY`; for another endpoint (a router, a local server),
+  `OPENAI_BASE_URL` and `ERRATA_API=chat_completions` beside the key, and the
+  model named as that endpoint names it (`-m openai/<its name>`). These are
+  passed into the container from where Harbor runs. The same settings choose
+  the judge's endpoint when grading.
 - To try everything before paying for a model:
   `-a errata_harbor.agents:StandIn` (calls no model) or
   `-a errata_harbor.agents:Reference -m errata/stand-in` (the reference agent
