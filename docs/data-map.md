@@ -170,6 +170,7 @@ no model calls.
 |---|---|---|
 | each task frozen: the working copy (`workspace.tar.gz`), `task.json`, the conversation the candidate is shown (`conversation.txt`) and the turns it is rendered from (`shown_turns.json`), and `grading/` (references, controls, the task row, the turns to the resolution) | `scripts/freeze_tasks.py` | `release/v1/tasks/<task>/`, `release/v1/manifest.json` |
 | each task's image, built and its own checks run offline | `scripts/build_environments.py`, on the server | `environment/` in each task folder, `environments.json` |
+| what building every image found, counts and task names only | `scripts/environments_summary.py` | `results/v1-environments.md` |
 | the Harbor tasks: `instruction.md`, `task.toml`, `environment/`, `tests/` | `scripts/export_harbor.py` | `release/v1/harbor/<task>/`, `export.json` |
 | one Harbor trial's record for grading: the answer, every call, what changed | the task's `tests/test.sh` (`errata_bench.release.verify`) | `<job>/<trial>/verifier/answer.json` and `reward.json` |
 | each task's content digest, as Harbor records it for every trial | `python -m errata_harbor.digests`, in Harbor's environment | `release/v1/harbor/digests.json` |
