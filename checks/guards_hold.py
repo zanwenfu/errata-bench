@@ -9204,6 +9204,114 @@ check(_words134(_ra134.SYSTEM).rstrip(".") in _words134(attempt_mod.INSTRUCTIONS
       and not any(w in _ra134.SYSTEM.lower() for w in ("network", "do not exist", "little else", "no .git")),
       "its system prompt is the harness's own words for its tools, and none of what held only in its sandbox")
 
+print("\n135. a Harbor job's trials become the answers this harness grades, each said to be official or why not "
+      "(v1 step 4)")
+# The grading stage is not touched: a trial is read into the row the attempt
+# stage writes, and graded by the same stage, with what the agent was told and
+# where it ran said on the row. A trial that failed is not an answer; one that
+# ran out of time is.
+import hashlib as _hl135
+import importlib.util as _iu135
+from errata_bench.release import grading as _gr135
+from errata_bench.release import harbor as _hb135
+from errata_bench.release.atif import call_of as _call135
+from errata_bench.store import Paths as _Paths135
+
+def _rows135_of(path: Path) -> list[dict]:
+    # Its own: `rows`, the suite's helper, is rebound to a list by a later section.
+    return [json.loads(l) for l in path.read_text().splitlines() if l.strip()] if path.exists() else []
+
+
+_rel135 = Path(tempfile.mkdtemp()) / "release"
+_task135 = make_task("h1")
+_task135.cut_turn = 1
+_fd135 = _rel135 / "tasks" / "h1"
+(_fd135 / "grading").mkdir(parents=True)
+(_fd135 / "grading" / "task.json").write_text(json.dumps(_task135.to_json()))
+_turns135 = [{"turn_number": 1, "turn_type": "user_prompt", "content": "Do the tests pass?"}]
+(_fd135 / "shown_turns.json").write_text(json.dumps(_turns135))
+(_fd135 / "conversation.txt").write_text(__import__("errata_bench.corpus.turns", fromlist=["x"]).build_excerpt(
+    _turns135, 1, max_chars=75_000, record=3))
+(_fd135 / "task.json").write_text(json.dumps({"task_id": "h1", "workdir": "/home/dev/r", "session_workdir": "/home/dev/r"}))
+_ins135, _shown135, _ = _hb135.fitted(json.loads((_fd135 / "task.json").read_text()),
+                                      (_fd135 / "conversation.txt").read_text(), _turns135, 1)
+_digest135 = "sha256:" + "a" * 64
+(_rel135 / "harbor").mkdir()
+(_rel135 / "harbor" / "digests.json").write_text(json.dumps({"h1": _digest135}))
+
+
+def _trial135(job: Path, name: str, *, exception=None, agent="claude-code", kwargs=None, digest=_digest135,
+              reply="The tests pass.", trajectory=True, instruction=_ins135, changes=None, hosts=()):
+    d = job / name
+    (d / "verifier").mkdir(parents=True)
+    (d / "result.json").write_text(json.dumps({
+        "task_name": "errata-bench/h1", "trial_name": name, "started_at": f"2026-09-27T00:00:0{name[-1]}Z",
+        "agent_info": {"name": agent, "version": "2.1", "model_info": {"name": "model-x", "provider": "maker"}},
+        "agent_result": {"n_input_tokens": 100, "n_output_tokens": 20, "n_cache_tokens": 0, "cost_usd": 0.01},
+        "agent_execution": {"started_at": "2026-09-27T00:00:00Z", "finished_at": "2026-09-27T00:01:30Z"},
+        "exception_info": {"exception_type": exception} if exception else None}))
+    (d / "lock.json").write_text(json.dumps({
+        "task": {"digest": digest}, "agent": {"kwargs": {"disable_web_search": "true"} if kwargs is None else kwargs,
+                                              "extra_allowed_hosts": list(hosts)},
+        "environment": {"extra_allowed_hosts": []}, "verifier": {"disable": False, "environment_mode": "shared"}}))
+    (d / "verifier" / "answer.json").write_text(json.dumps({
+        "task_id": "h1", "instruction_sha256": _hl135.sha256(instruction.encode()).hexdigest(),
+        "trajectory": {"present": trajectory}, "reply": reply,
+        "tool_calls": [_call135("Bash", {"command": "npm test"}, "exit 0\n3 passing")],
+        "actual_changes": {} if changes is None else changes, "final_state": {}, "final_state_files": 0,
+        "token_removed": None}))
+    return d
+
+
+_job135 = Path(tempfile.mkdtemp()) / "job"
+_trial135(_job135, "h1__1")
+_trial135(_job135, "h1__2", exception="AgentTimeoutError", reply="")
+_trial135(_job135, "h1__3", exception="NonZeroAgentExitCodeError")
+_trial135(_job135, "h1__4", trajectory=False, reply="")
+_trial135(_job135, "h1__5", instruction="another instruction")
+_trial135(_job135, "h1__6", kwargs={}, hosts=("github.com",))
+_admit135 = fresh(["h1"])
+_run135 = Path(tempfile.mkdtemp()) / "graded"
+_spec135 = _iu135.spec_from_file_location("grade_harbor135", "scripts/grade_harbor.py")
+_gh135 = _iu135.module_from_spec(_spec135)
+_spec135.loader.exec_module(_gh135)
+with _ctx60.redirect_stdout(_io60.StringIO()):
+    _rc135 = _gh135.main([str(_rel135), str(_job135), "--out", str(_run135), "--admission",
+                          str(_admit135.calibration.parent), "--rows-only"])
+_rows135 = {r["harbor"]["trial"]: r for r in _rows135_of(_Paths135(_run135).answers)}
+_ok135 = _rows135.get("h1__1", {})
+check(_rc135 == 0 and _ok135.get("environment") == "harbor:claude-code" and _ok135.get("model") == "maker/model-x"
+      and _ok135.get("transcript") == _shown135 and _ok135["structure"]["executed"] is True
+      and _ok135["structure"]["checked"] is True and _ok135["harbor"]["official"] is True
+      and _ok135.get("rules", "").startswith(_hb135.FRAMING.split("\n")[0]) and _gr135.CLOSED in _ok135["rules"]
+      and _ok135.get("task_fingerprint") == fingerprint(_task135) and _ok135.get("seconds") == 90.0,
+      f"a trial becomes the harness's answer row: its agent's Bash call counted as a command it ran, the "
+      f"conversation it was shown, what it was told, official: {_ok135.get('harbor')}")
+check(_rows135["h1__2"].get("out_of_time") is True and not _rows135["h1__2"].get("error")
+      and "failed: NonZeroAgentExitCodeError" in _rows135["h1__3"].get("error", "")
+      and "no trajectory" in _rows135["h1__4"].get("error", "")
+      and "another instruction" in _rows135["h1__5"].get("error", "")
+      and [_rows135[f"h1__{i}"]["run"] for i in range(1, 7)] == [0, 1, 2, 3, 4, 5],
+      "one that ran out of time is an answer; one that failed, wrote no trajectory or was given another "
+      "instruction is recorded as not gradable, and counted nowhere")
+_why135 = _rows135["h1__6"]["harbor"].get("why_not_official", [])
+_, _other135 = _gr135.official(_gr135.read_trials([_job135 / "h1__1"])[0], {"h1": "sha256:" + "b" * 64})
+check(_rows135["h1__6"]["harbor"]["official"] is False and any("github.com" in w for w in _why135)
+      and any("web search" in w for w in _why135) and _gr135.UNKNOWN in _rows135["h1__6"]["rules"]
+      and any("not the published one" in w for w in _other135),
+      f"and a trial not run as published says why -- a host added, the agent's web search on, another task -- "
+      f"and its graders are not told the network was closed: {_why135}")
+# The rows, graded by the grading stage unchanged, with the suite's stand-in judge.
+seen["context"].clear()
+seen["given"].clear()
+_p135 = _Paths135(_run135)
+asyncio.run(stage_grade(_p135, 10**9, concurrency=2))
+_graded135 = _rows135_of(_p135.attempts)
+check(sorted(r["run"] for r in _graded135) == [0, 1, 5] and _shown135 in seen["context"]
+      and all(_gr135.NOTE.split("{agent}")[0] in g and "five tools" not in g for g in seen["given"]),
+      f"and the grading stage reads them unchanged: the three gradable answers, with the conversation the agent "
+      f"was shown and what it was told, not the harness's rules: {sorted(r['run'] for r in _graded135)}")
+
 print("\nlast. what the suite hands back")
 
 # Last, what the suite hands back -- at the very end, where it can see every

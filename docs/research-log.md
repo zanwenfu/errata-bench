@@ -8748,3 +8748,30 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   the digest of the instruction the agent was given, so grading can match a
   trial to its task's version. Guard 133 updated; the cap's order is guarded
   by the section that has always guarded it.
+- **09-27, 06:4x UTC** — **Grading a Harbor job.** `scripts/grade_harbor.py`
+  reads each trial of a Harbor job (`errata_bench.release.grading`) into the
+  answer row the attempt stage writes for this harness's own candidates, and
+  grades it with the grading stage unchanged: three readings, settled by
+  majority, on the tasks the judge is admitted to. The row says what differs:
+  the environment (`harbor:<agent>`), what the agent was told (the task's own
+  framing, and that it worked in a container with its own tools, the network
+  closed apart from model APIs), and where it came from. A call is counted by
+  what it did (`atif.harness_tool`), so an agent's `Bash` is a command it ran.
+  - *What is graded*: a trial that ran to its verifier with a trajectory on
+    record. One that ran out of time is an answer (it did not answer in time),
+    as in the harness; one that failed otherwise, wrote no trajectory, or was
+    given another instruction than the release's (by its digest) is recorded
+    as not gradable, to be run again, and counted nowhere.
+  - *Official*: Harbor records, for every trial, the task's content digest
+    and the run's settings (lock.json). A trial is official when the digest
+    is the published one (`errata_harbor.digests`, Harbor's own function; the
+    same on the laptop and the server), no host was added to the network's
+    allowlist, the verifier ran in the agent's container, and Claude Code's or
+    Codex's own web search was off, since it reaches the web from the
+    provider's side. Results are official when every graded trial is, the
+    judge is the validated one (gpt-6-astra) and each answer was read three
+    times. A trial not run as published says why, and its graders are not
+    told the network was closed.
+  - Guard 135: a synthetic release and job through the script and the real
+    grading stage with the suite's stand-in judge. `--rows-only` writes the
+    rows without grading, to check a job before paying for its grading.
