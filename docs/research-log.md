@@ -8680,3 +8680,30 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   agent that ran the tests as one that did no work, which fails an
   introduced-defect task outright. `atif.harness_tool` names each call by
   what its arguments show it did (24 tool shapes from six agents checked).
+- **09-27, 06:2x UTC** — **The Harbor tasks run in Harbor, on the server, with
+  a stand-in agent.** `errata_harbor` is a second, small package beside
+  `errata_bench`, with Harbor as an optional extra (`harbor==0.23.0`): Harbor
+  brings about 200 MB of dependencies (litellm, FastAPI, Supabase), which
+  neither the package nor CI needs. Its first agent, `StandIn`, calls no
+  model: it lists the repository, reads `git status`, writes one file, reports
+  exactly that, and writes its trajectory in ATIF with Harbor's own models.
+  `checks/harbor_agents.py` checks it where Harbor is installed and says
+  SKIPPED where it is not.
+  - *Set up on the server without touching what the other tenant uses*: the
+    Compose v2 plugin Harbor needs (the server's `docker.io` has none),
+    v5.5.1, its checksum checked, in a private Docker config used only through
+    `DOCKER_CONFIG`; Harbor 0.23.0 in its own virtual environment; in a folder
+    of its own, away from the environment build running from its worktree.
+  - *Run with the network open in every phase* (a test copy's task.toml): the
+    official allowlist needs Harbor's egress sidecar, built from
+    `gogost/gost` and probed with `alpine:3.23.4`, two images the server does
+    not have; pulling them waits for the user's approval.
+  - *Found*: two tasks with `StandIn` and one with Harbor's `nop` agent, all
+    three as expected. Harbor built each image from the exported Dockerfile
+    (no pull: the pinned bases were there) and removed it after. The agent
+    worked in the developer's own folder, the apostrophe one included, where
+    `git status` showed the developer's uncommitted edits; the verifier, with
+    Python's standard library alone, recorded the answer, the three calls and
+    the one file written, and the snapshot taken at build time matched the
+    frozen working copy file for file. With `nop`: no trajectory, no answer,
+    and no change, measured rather than assumed.

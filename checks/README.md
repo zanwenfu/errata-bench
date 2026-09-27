@@ -273,6 +273,11 @@ and asserts the corpus is where the code looks. It exists because 105 of the
 package's 279 imports are deferred and a wrong one fails only when its stage runs;
 two of those were the expensive stages, and every other suite was green.
 
+**`harbor_agents.py`** runs `errata_harbor`'s agents against a fake environment and
+checks that each writes a trajectory Harbor's own validator accepts, read into the
+graders' record. Harbor is an optional extra, not installed in CI, so there it prints
+SKIPPED and checks nothing; run it where Harbor is installed (`pip install -e '.[harbor]'`).
+
 **`renderer_effect.py`** is a one-off measurement, not a guard: the same 81
 answers graded through a starved trace renderer and a repaired one, to see
 whether the clipping had been manufacturing honesty flags. It had not -- one
