@@ -179,3 +179,43 @@ def diff(before: dict[str, tuple], after: dict[str, tuple]) -> dict[str, str]:
         if path not in after:
             changes[path] = "deleted"
     return changes
+
+
+# How much of the captured tree to keep on the answer row: per file, and in
+# total. The capture holds the file the signature names, every file the
+# candidate changed, and every file still containing the defect's token -- and
+# "changed" is a before-and-after listing of a tree that is bind-mounted into
+# the container, so a candidate that ran the project's build has "changed"
+# every file that build wrote. Five thousand build outputs of 50 KB each is a
+# single 200 MB line, which `append` writes in one go and every later `load`
+# reads back whole, for a stage that only wants to count rows.
+#
+# The total budget is what makes the row bounded; a per-file cap alone does
+# not. The named file goes in first because it is the one the token check
+# reads, then the smallest of the rest, so a row holds as many useful files as
+# it can rather than one enormous one.
+KEPT_FILE_CHARS = 40_000
+KEPT_STATE_CHARS = 2_000_000
+
+
+def capped(state: dict[str, str], first: str = "") -> dict[str, str]:
+    """As much of the captured tree as fits, smallest files after the named one."""
+    def cut(body: str) -> str:
+        if len(body) <= KEPT_FILE_CHARS:
+            return body
+        # Said in the file's own text, so nothing later reads a truncated file
+        # as one in which the token is simply absent.
+        return body[:KEPT_FILE_CHARS] + "\n... [cut: file continues]"
+
+    state = state or {}
+    order = ([first] if first in state else []) + sorted(
+        (k for k in state if k != first), key=lambda k: len(state[k])
+    )
+    out, total = {}, 0
+    for path in order:
+        body = cut(state[path])
+        if total + len(body) > KEPT_STATE_CHARS:
+            break
+        out[path] = body
+        total += len(body)
+    return out

@@ -9147,20 +9147,26 @@ check(_none133.returncode == 0 and _stop133.returncode == 0
       and _nobefore133.returncode == 0 and _nb133.get("actual_changes") is None and _nb133.get("capture_error"),
       "an agent that wrote no trajectory, or stopped on a call, has no answer, and without the build's snapshot "
       "the changes are unknown, never an empty list")
-# What grading reads of the changed files is kept, and nothing else: the first
-# 60 by path as the judge lists them, and whole every file holding the token.
-from errata_bench.release import verify as _vf133
-from errata_bench.score import judge as _jd133
-_state133 = {f"gen/{i:03d}.js": "x" * 10 for i in range(100)}
-_state133["gen/099.js"] = "BROKEN_QUOTES " * 30_000
-_state133["a.py"] = "y" * 300_000
-_kept133, _cut133 = _vf133.kept(_state133, {p: "added" for p in _state133}, "parser.py", "BROKEN_QUOTES")
-check(_vf133.SHOWN_FILES == _jd133.MAX_FILES and _vf133.BODY_CHARS >= _jd133.FILE_CHARS
-      and set(_kept133) == {"a.py", *(f"gen/{i:03d}.js" for i in range(59)), "gen/099.js"}
-      and len(_kept133["a.py"]) == _vf133.BODY_CHARS and _kept133["gen/099.js"] == _state133["gen/099.js"]
-      and "gen/070.js" in _cut133 and "a.py" in _cut133,
-      f"and of the files changed, what grading reads: the judge's first {_jd133.MAX_FILES} by path, a body cut far "
-      f"past what the judge is shown, and whole any file holding the defect's token")
+# The files kept are what an answer row keeps (`changes.capped`, moved out of
+# the attempt stage unchanged), and whether the defect's token survived is
+# read on every captured file before the cap, as the harness reads it.
+from errata_bench.changes import KEPT_FILE_CHARS as _KF133, capped as _capped133
+from errata_bench.stages.scoring import _capped as _stage_capped133
+(_wd133 / "parser.py").write_text("x = 1\n" * 9_000 + "QUOTE = 'BROKEN_QUOTES'\n")
+_late133 = _verify133("after", str(_o133 / "tests"), str(_box133 / "before.json"), str(_box133 / "trajectory.json"),
+                      str(_box133 / "out5"))
+_al133 = json.loads((_box133 / "out5" / "answer.json").read_text()) if _late133.returncode == 0 else {}
+_full133 = {"parser.py": (_wd133 / "parser.py").read_text(), "added.py": "y = 2\n", "run.sh": "#!/bin/sh\n"}
+check(_stage_capped133 is _capped133 and _al133.get("final_state") == _capped133(_full133, "parser.py")
+      and "BROKEN_QUOTES" not in _al133["final_state"]["parser.py"] and len((_wd133 / "parser.py").read_text()) > _KF133
+      and _al133.get("token_removed") is False and _al133.get("final_state_files") == 3
+      and _ans133.get("token_removed") is True,
+      f"the files kept are what an answer row keeps, and the defect's token is looked for before the cap: a "
+      f"token past it still counts as there: {_al133.get('token_removed')}, and gone when fixed: "
+      f"{_ans133.get('token_removed')}")
+check(_ans133.get("instruction_sha256") == __import__("hashlib").sha256(
+          (_o133 / "tests" / "instruction.md").read_bytes()).hexdigest(),
+      "and the instruction the agent was given is named by its digest, so a trial can be matched to its task")
 # The cut rendering: record 3 with tool traffic capped, and nothing else changed.
 _rt133 = _turns133(90_000)
 check(_be133(_rt133, 7, max_chars=_RC133, record=3, tool_cap=None) == _be133(_rt133, 7, max_chars=_RC133, record=3)

@@ -8735,3 +8735,16 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     pyarrow through the harness's edit replay); the check had tested only
     that the install named them. It now installs the whole lock. Then:
     answered, three calls, the file it wrote found, its instruction found.
+- **09-27, 06:5x UTC** — **The verifier keeps what an answer row keeps.** It
+  had kept the files the judge shows (the first 60 by path, bodies cut past
+  200,000 characters), which is not what the harness's answer rows hold: those
+  are capped by `_capped` (the defect's file first, then the smallest, 40,000
+  characters each, 2,000,000 in all), and the judge reads that. The cap moved
+  into `errata_bench.changes` unchanged (`capped`) and the verifier applies
+  it, so a Harbor row and a harness row hold the same files. Whether the
+  defect's token survived is read on every captured file before the cap, as
+  the harness takes its structural reading before capping: a file cut to fit
+  could otherwise lose the token and read as fixed. The verifier also records
+  the digest of the instruction the agent was given, so grading can match a
+  trial to its task's version. Guard 133 updated; the cap's order is guarded
+  by the section that has always guarded it.
