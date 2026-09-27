@@ -47,9 +47,9 @@ def free_gb() -> float:
     return shutil.disk_usage("/").free / 2**30
 
 
-def contents(archive: Path) -> tuple[list[str], dict[str, str]]:
-    """The working copy's files (paths under workspace/, outside .git) and its package.json texts."""
-    files, packages = [], {}
+def contents(archive: Path) -> tuple[list[str], dict[str, str], dict[str, str]]:
+    """The working copy's files (paths under workspace/, outside .git), and its package.json and pyproject.toml texts."""
+    files, packages, pyprojects = [], {}, {}
     with tarfile.open(archive) as tar:
         for m in tar:
             parts = Path(m.name).parts
@@ -57,9 +57,10 @@ def contents(archive: Path) -> tuple[list[str], dict[str, str]]:
                 continue
             rel = "/".join(parts[1:])
             files.append(rel)
-            if parts[-1] == "package.json" and "node_modules" not in parts and len(parts) <= 5:
-                packages[rel] = tar.extractfile(m).read().decode("utf-8", "replace")
-    return files, packages
+            if parts[-1] in ("package.json", "pyproject.toml") and "node_modules" not in parts and len(parts) <= 5:
+                text = tar.extractfile(m).read().decode("utf-8", "replace")
+                (packages if parts[-1] == "package.json" else pyprojects)[rel] = text
+    return files, packages, pyprojects
 
 
 def build_base() -> str:
@@ -72,8 +73,8 @@ def build_base() -> str:
 
 def one(task_dir: Path, keep: bool) -> dict:
     meta = json.loads((task_dir / "task.json").read_text())
-    files, packages = contents(task_dir / "workspace.tar.gz")
-    r = recipe(meta, files, packages)
+    files, packages, pyprojects = contents(task_dir / "workspace.tar.gz")
+    r = recipe(meta, files, packages, pyprojects)
     env = task_dir / "environment"
     env.mkdir(exist_ok=True)
     (env / "Dockerfile").write_text(dockerfile(r))

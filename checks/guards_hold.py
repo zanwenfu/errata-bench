@@ -8709,7 +8709,8 @@ check([i[1] for i in _mix129.installs] == ["pnpm install --frozen-lockfile", "go
 _df129 = _env129.dockerfile(_ws129)
 check(_df129.startswith("# errata-bench v1: t129\nFROM errata-base:v1\n")
       and "mv /tmp/workspace '/Users/stavan/Docs - Stavan'\"'\"'s Mac/AiTutor'" in _df129
-      and _df129.rstrip().endswith("WORKDIR /Users/stavan/Docs - Stavan's Mac/AiTutor")
+      and _df129.rstrip().endswith('WORKDIR "/Users/stavan/Docs - Stavan\'s Mac/AiTutor"')
+      and _env129.docker_word('/a/"b"/$c') == '"/a/\\"b\\"/\\$c"'
       and all(b.split("@sha256:")[1].__len__() == 64 for b in _env129.BASES.values())
       and all(b in _env129.BASE_DOCKERFILE for b in _env129.BASES.values()),
       "the working copy goes where the developer had it, a quote in the folder's name and all, on bases pinned by digest")
@@ -8745,6 +8746,14 @@ check(("", "bun install", "bun install", "package.json") in _new129.installs
       and ("", "bun run test") not in _new129.checks and ("server", "bun run lint") in _new129.checks,
       f"a package.json the session wrote, with no lockfile, is installed unlocked and said so; npm's placeholder "
       f"test is no check: {_new129.installs} {_new129.checks} {_new129.notes}")
+_py129 = _env129.recipe(_T129, ["pyproject.toml", "uv.lock", "tools/pyproject.toml", "tools/uv.lock"], {},
+                        {"pyproject.toml": "[dependency-groups]\ndev = [\"pytest>=8\"]\n", "tools/pyproject.toml": "[project]\n"})
+check(("", "uv run --frozen python -m pytest --collect-only -q") in _py129.checks
+      and ("tools", "uv run --frozen python -m compileall -q .") in _py129.checks,
+      f"a Python project is checked with pytest only when it names pytest, and compiled otherwise: {_py129.checks}")
+check(_env129.environment_failure("Error: Cannot find module 'vite'\nRequire stack:")
+      and not _env129.environment_failure("a.tsx(4,2): error TS2307: Cannot find module '@p/c' or its corresponding type declarations."),
+      "a missing module is the container's; TypeScript's type error naming one is the project's")
 check(_env129.environment_failure("sh: 1: bun: not found") and _env129.environment_failure("FAIL x [setup failed]")
       and not _env129.environment_failure("3 failed, 40 passed\nexit 1"),
       "a check that could not start is told from one that ran and failed")

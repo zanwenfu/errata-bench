@@ -122,13 +122,16 @@ def _runner(folder_files: set[str]) -> str | None:
     return None
 
 
-def recipe(task: dict, files: list[str], package_jsons: dict[str, str]) -> Recipe:
-    """A task's recipe, from its task.json, its working copy's file list and its package.json files.
+def recipe(task: dict, files: list[str], package_jsons: dict[str, str],
+           pyprojects: dict[str, str] | None = None) -> Recipe:
+    """A task's recipe, from its task.json, its working copy's file list and its manifests.
 
-    ``files`` are paths relative to the working copy; ``package_jsons`` maps a
-    package.json's path to its text. Lockfiles under node_modules or deeper than
-    three folders are not the project's own.
+    ``files`` are paths relative to the working copy; ``package_jsons`` and
+    ``pyprojects`` map a package.json's or pyproject.toml's path to its text.
+    Lockfiles under node_modules or deeper than three folders are not the
+    project's own.
     """
+    pyprojects = pyprojects or {}
     r = Recipe(task["task_id"], task["workdir"])
     by_folder: dict[str, set[str]] = {}
     for f in files:
@@ -186,7 +189,11 @@ def recipe(task: dict, files: list[str], package_jsons: dict[str, str]) -> Recip
         if "go.mod" in names:
             r.checks.append((folder, "go build ./... && go vet ./..."))
         if names & {"uv.lock"}:
-            r.checks.append((folder, "uv run --frozen python -m pytest --collect-only -q"))
+            # pytest only when the project names it (Pavel401-BugViper-85 does not,
+            # and "No module named pytest" said nothing about the container).
+            pyproject = pyprojects.get(f"{folder}/pyproject.toml" if folder else "pyproject.toml", "")
+            r.checks.append((folder, "uv run --frozen python -m pytest --collect-only -q" if "pytest" in pyproject
+                             else "uv run --frozen python -m compileall -q ."))
     r.tools = list(dict.fromkeys(r.tools))
     if not r.installs:
         r.notes.append("no lockfile: nothing to install")
@@ -206,8 +213,20 @@ def dockerfile(r: Recipe, base: str = BASE_TAG) -> str:
     for folder, strict, lenient, lock in r.installs:
         lines.append("RUN " + install_line(r.workdir, folder, strict, lenient, lock))
     lines.append(f"RUN cd {where} && git status --porcelain > /errata/status-after.txt")
-    lines.append(f"WORKDIR {r.workdir}")
+    lines.append(f"WORKDIR {docker_word(r.workdir)}")
     return "\n".join(lines) + "\n"
+
+
+def docker_word(text: str) -> str:
+    """A path as one word of a Dockerfile instruction that reads quotes, as WORKDIR does.
+
+    Written bare, Whiteknight07-AiTutor-34's folder ("... Stavan's MacBook
+    Air/...") failed the build: "unexpected end of statement while looking for
+    matching single-quote". Double-quoted, with a quote, a dollar and a
+    backslash escaped, it is the path itself.
+    """
+    return '"' + text.replace("\\", "\\\\").replace('"', '\\"').replace("$", "\\$") + '"'
+
 
 
 def install_line(workdir: str, folder: str, strict: str, lenient: str, lock: str, logdir: str = "/errata") -> str:
@@ -221,10 +240,11 @@ def install_line(workdir: str, folder: str, strict: str, lenient: str, lock: str
     """
     at = shlex.quote(f"{workdir}/{folder}" if folder else workdir)
     label = f"{folder or '.'} {lock}"
+    first = "unlocked" if lock == "package.json" else "strict"
     log, out = shlex.quote(f"{logdir}/install.log"), shlex.quote(f"{logdir}/install-output.log")
     q = shlex.quote
     return (f"cd {at} && cp {q(lock)} /tmp/lock.saved 2>/dev/null; "
-            f"if ( {strict} ) > /tmp/install.out 2>&1; then printf 'strict %s\\n' {q(label)} >> {log}; "
+            f"if ( {strict} ) > /tmp/install.out 2>&1; then printf '{first} %s\\n' {q(label)} >> {log}; "
             f"elif ( {lenient} ) > /tmp/install.out 2>&1; then printf 'lenient %s\\n' {q(label)} >> {log}; "
             f"else printf 'failed %s\\n' {q(label)} >> {log}; fi; "
             f"if [ -f /tmp/lock.saved ]; then cp /tmp/lock.saved {q(lock)}; rm -f /tmp/lock.saved; fi; "
@@ -245,6 +265,13 @@ def check_script(r: Recipe) -> str:
 
 
 def environment_failure(output: str) -> str | None:
-    """The first sign in a check's output that the container lacked something, or None."""
-    m = ENVIRONMENT_FAILURE.search(output or "")
+    """The first sign in a check's output that the container lacked something, or None.
+
+    TypeScript's "error TS2307: Cannot find module '...' or its corresponding
+    type declarations" is a type error the project has -- blittle-pressy-158's
+    workspace packages are not built -- not a module the container lacks, and
+    its lines are left out.
+    """
+    kept = "\n".join(line for line in (output or "").splitlines() if not re.search(r"error TS\d+:", line))
+    m = ENVIRONMENT_FAILURE.search(kept)
     return m.group(0) if m else None
