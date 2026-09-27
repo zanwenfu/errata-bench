@@ -8793,3 +8793,19 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     as writing), the AiTutor row carrying the 118,599-character conversation
     it was shown, and both not official, "its task is not the published one",
     so their graders are told the network may have been open.
+- **09-27, 07:0x UTC** — **The Claude refusal made local to Azure.** Since
+  09-24 every request naming Claude was refused, whatever it was bound for,
+  because on this project's Azure resource Claude bills the user's card and
+  its one key reaches every deployment. For anyone else running the
+  benchmark with their own key that is wrong: a Claude model chosen through
+  Anthropic or a router, as the reference agent's model or as a judge, would
+  be refused. The refusal now covers requests bound for Azure: any request to
+  an `*.azure.com` host naming Claude, refused in the HTTP client whatever the
+  environment says, and where a model is chosen (ERRATA_MODEL, the judge, the
+  served-model probe, the probe scripts) whenever ERRATA_PROVIDER=azure, which
+  every run of this project sets. ERRATA_ALLOW_CLAUDE=1 still lifts it and
+  nothing sets it. Guard 92 now checks both directions: refused bound for
+  Azure (by URL or by ERRATA_PROVIDER, not retried), sent elsewhere, every
+  Azure host counted and a name that merely contains azure.com not; guard 112
+  asks for its Claude judge on Azure, where those probes run. Four breaks,
+  each caught.

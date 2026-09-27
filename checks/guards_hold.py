@@ -6162,12 +6162,15 @@ check(len(_rows91) == 2 and _rows91[-1].get("task_fingerprint") == _fp91(_read91
       f"a reading of an older version is neither done nor counted, and a new one is stamped: "
       f"{len(_rows91)} rows, {observations(_g91.root, 'the-judge')}")
 
-print("\n92. no request reaches a Claude deployment")
+print("\n92. no request reaches a Claude deployment on Azure")
 # 09-24: Claude on Azure bills the user's own card, not the Azure credits, and
 # the project's one key reaches every deployment on the resource. So the HTTP
-# client every model call goes through refuses a request that names Claude,
-# before anything is sent -- and the SDK, which re-raises a hook's error as a
-# connection error, is not allowed to retry it.
+# client every model call goes through refuses a request that names Claude and
+# is bound for Azure, before anything is sent -- and the SDK, which re-raises a
+# hook's error as a connection error, is not allowed to retry it. Only Azure
+# (09-27): elsewhere a Claude model is someone's own choice, paid knowingly.
+# Where each request goes is said explicitly, whatever the shell running this has set.
+_prov92 = os.environ.pop("ERRATA_PROVIDER", None)
 import httpx2 as _hx92
 from openai import AsyncOpenAI as _AO92
 _sent92 = []
@@ -6179,23 +6182,42 @@ def _answer92(request):
         {"index": 0, "finish_reason": "stop", "message": {"role": "assistant", "content": "fine"}}]})
 
 
-_cl92 = _AO92(api_key="k", base_url="https://example.invalid/v1", max_retries=2,
-              http_client=reader._http_client(transport=_hx92.MockTransport(_answer92)))
-_ask92 = lambda m: _cl92.chat.completions.create(model=m, messages=[{"role": "user", "content": "hi"}])
-_ok92 = asyncio.run(_ask92("gpt-6-astra")).choices[0].message.content
+def _client92(base):
+    return _AO92(api_key="k", base_url=base, max_retries=2,
+                 http_client=reader._http_client(transport=_hx92.MockTransport(_answer92)))
+
+
+_az92, _else92 = _client92("https://res.openai.azure.com/openai/v1"), _client92("https://example.invalid/v1")
+_ask92 = lambda cl, m: cl.chat.completions.create(model=m, messages=[{"role": "user", "content": "hi"}])
+_ok92 = asyncio.run(_ask92(_az92, "gpt-6-astra")).choices[0].message.content
 try:
-    asyncio.run(_ask92("claude-opus-5"))
+    asyncio.run(_ask92(_az92, "claude-opus-5"))
     _claude92 = "answered"
 except Exception as _e92:  # noqa: BLE001
     _claude92 = "refused" if reader._refused(_e92) else type(_e92).__name__
 try:
-    asyncio.run(reader.resilient(lambda: _ask92("Claude-Fable-5-1"), pause=0))
+    asyncio.run(reader.resilient(lambda: _ask92(_az92, "Claude-Fable-5-1"), pause=0))
     _res92 = "answered"
 except Exception as _e92b:  # noqa: BLE001
     _res92 = type(_e92b).__name__
 check(_ok92 == "fine" and _claude92 == "refused" and _res92 == "ClaudeRefused" and _sent92 == ["gpt-6-astra"],
-      f"through the SDK, a Claude request is refused unsent, and not retried: sent {_sent92}, "
+      f"through the SDK, a Claude request to Azure is refused unsent, and not retried: sent {_sent92}, "
       f"claude {_claude92}, through resilient {_res92}")
+try:
+    _mine92 = asyncio.run(_ask92(_else92, "claude-opus-5")).choices[0].message.content
+except Exception as _e92m:  # noqa: BLE001 - the failure is the assertion
+    _mine92 = "refused" if reader._refused(_e92m) else type(_e92m).__name__
+os.environ["ERRATA_PROVIDER"] = "azure"
+try:
+    asyncio.run(_ask92(_else92, "claude-opus-5"))
+    _said92 = "answered"
+except Exception as _e92c:  # noqa: BLE001
+    _said92 = "refused" if reader._refused(_e92c) else type(_e92c).__name__
+finally:
+    os.environ.pop("ERRATA_PROVIDER", None)
+check(_mine92 == "fine" and _sent92 == ["gpt-6-astra", "claude-opus-5"] and _said92 == "refused",
+      f"and one bound elsewhere is sent, unless ERRATA_PROVIDER says Azure: sent {_sent92}, "
+      f"with ERRATA_PROVIDER=azure {_said92}")
 # And configure_client puts that client under every call.
 import agents as _ag92
 import openai as _oa92
@@ -6221,31 +6243,44 @@ _env92 = dict(os.environ)
 try:
     os.environ["ERRATA_MODEL"] = "claude-opus-5"
     try:
+        _elsewhere92 = reader.model_name()
+    except reader.ClaudeRefused:
+        _elsewhere92 = "refused"
+    os.environ["ERRATA_PROVIDER"] = "azure"
+    try:
         reader.model_name()
         _named92 = "allowed"
     except reader.ClaudeRefused:
         _named92 = "refused"
+    _probe92 = REAL_SERVED("claude-opus-5")
+    _argv92 = sys.argv[:]
+    sys.argv = ["run.py", "rejudge", "--run", str(Path(tempfile.mkdtemp()) / "r"), "--judge", "claude-opus-5"]
+    _err92 = _io60.StringIO()
+    try:
+        with _ctx60.redirect_stderr(_err92), _ctx60.redirect_stdout(_io60.StringIO()):
+            _run_mod.main()
+        _cli92 = "ran"
+    except SystemExit as _x92:
+        _cli92 = f"exit {_x92.code}"
+    finally:
+        sys.argv = _argv92
     os.environ["ERRATA_ALLOW_CLAUDE"] = "1"
     _lifted92 = reader.model_name()
 finally:
     os.environ.clear()
     os.environ.update(_env92)
-_probe92 = REAL_SERVED("claude-opus-5")
-_argv92 = sys.argv[:]
-sys.argv = ["run.py", "rejudge", "--run", str(Path(tempfile.mkdtemp()) / "r"), "--judge", "claude-opus-5"]
-_err92 = _io60.StringIO()
-try:
-    with _ctx60.redirect_stderr(_err92), _ctx60.redirect_stdout(_io60.StringIO()):
-        _run_mod.main()
-    _cli92 = "ran"
-except SystemExit as _x92:
-    _cli92 = f"exit {_x92.code}"
-finally:
-    sys.argv = _argv92
 check(_named92 == "refused" and _lifted92 == "claude-opus-5" and "refused" in (_probe92.get("error") or "")
       and _cli92 == "exit 2" and "bills the user's own card" in _err92.getvalue(),
-      f"and it is refused where a model is chosen -- ERRATA_MODEL {_named92}, the served probe, "
+      f"and on Azure it is refused where a model is chosen -- ERRATA_MODEL {_named92}, the served probe, "
       f"`run.py rejudge --judge` {_cli92} -- unless ERRATA_ALLOW_CLAUDE=1: {_lifted92}")
+check(_elsewhere92 == "claude-opus-5" and reader.bound_for_azure("https://x.services.ai.azure.com/models")
+      and reader.bound_for_azure("https://r.cognitiveservices.azure.com/openai/v1")
+      and not reader.bound_for_azure("https://openrouter.ai/api/v1")
+      and not reader.bound_for_azure("https://azure.com.example.org/v1"),
+      f"and chosen with no Azure in sight it is allowed ({_elsewhere92}); every Azure host is Azure, and a "
+      f"name that only contains azure.com is not")
+if _prov92 is not None:
+    os.environ["ERRATA_PROVIDER"] = _prov92
 
 print("\n93. the scope gate reads the request in its conversation")
 # B-252: it read only the developer's last message and the defect. 26 of 41
@@ -7526,14 +7561,21 @@ try:
     with _ctx60.redirect_stdout(_io60.StringIO()):
         _c112b = _pr112.main(["gpt-6-astra", str(_out112), "--runs", "2"])
     # Asked with the stand-in still in place: if the refusal were ever lost,
-    # no real call to a Claude deployment could follow from this check.
+    # no real call to a Claude deployment could follow from this check. And on
+    # Azure, where these probes run: the refusal is Azure's (section 92).
     _e112 = _io60.StringIO()
+    _prov112 = os.environ.get("ERRATA_PROVIDER")
+    os.environ["ERRATA_PROVIDER"] = "azure"
     try:
         with _ctx60.redirect_stderr(_e112), _ctx60.redirect_stdout(_io60.StringIO()):
             _pr112.main(["claude-opus-5", str(Path(tempfile.mkdtemp()) / "c.jsonl"), "--runs", "1"])
         _cl112 = "ran"
     except SystemExit as _x:
         _cl112 = _x.code
+    finally:
+        os.environ.pop("ERRATA_PROVIDER", None)
+        if _prov112 is not None:
+            os.environ["ERRATA_PROVIDER"] = _prov112
 finally:
     _pr112.trace.verify = _saved112
 check(len(_rows112) == 2 * len(trace_mod.PROBES) and {r.get("run") for r in _rows112} == {0, 1}

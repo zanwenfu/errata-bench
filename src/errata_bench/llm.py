@@ -114,19 +114,33 @@ def judge_model() -> str:
     return os.environ.get("ERRATA_JUDGE_MODEL") or model_name()
 
 
-# No request goes to a Claude deployment. On Azure it is billed to the user's
-# own card, not to the Azure credits (09-24), and the one key this project
-# holds reaches every deployment on the resource, Claude's included. So the
-# model a request names is read in the HTTP client, and a Claude one is
-# refused before anything is sent -- whoever asks: a stage, a judge, a
-# re-grade, a probe. ERRATA_ALLOW_CLAUDE=1 lifts it; nothing here sets it.
+# No request goes to a Claude deployment on Azure. There it is billed to the
+# user's own card, not to the Azure credits (09-24), and the one key this
+# project holds reaches every deployment on the resource, Claude's included.
+# So the model a request names is read in the HTTP client, and a Claude one
+# bound for Azure is refused before anything is sent -- whoever asks: a stage,
+# a judge, a re-grade, a probe. ERRATA_ALLOW_CLAUDE=1 lifts it; nothing here
+# sets it. Only Azure (09-27): someone running the benchmark with their own
+# key for Claude, directly or through a router, pays for it knowingly, and the
+# refusal would stop them using the model they chose.
 class ClaudeRefused(RuntimeError):
-    """A call to a Claude deployment, refused before anything was sent."""
+    """A call to a Claude deployment on Azure, refused before anything was sent."""
 
 
-def refuse_claude(model) -> None:
-    """Raise if ``model`` names a Claude deployment and nobody has lifted the block."""
-    if model and "claude" in str(model).lower() and os.environ.get("ERRATA_ALLOW_CLAUDE") != "1":
+def bound_for_azure(url: str | None = None) -> bool:
+    """Whether a request goes to Azure: ERRATA_PROVIDER=azure, or ``url`` on an Azure host."""
+    from urllib.parse import urlparse
+
+    if os.environ.get("ERRATA_PROVIDER", "").lower() == "azure":
+        return True
+    host = (urlparse(url).hostname or "") if url else ""
+    return host == "azure.com" or host.endswith(".azure.com")
+
+
+def refuse_claude(model, url: str | None = None) -> None:
+    """Raise if ``model`` names Claude, the request is bound for Azure, and nobody has lifted the block."""
+    if (model and "claude" in str(model).lower() and bound_for_azure(url)
+            and os.environ.get("ERRATA_ALLOW_CLAUDE") != "1"):
         raise ClaudeRefused(
             f"refused to call {model}: a Claude deployment on Azure bills the user's own card, "
             "not the Azure credits. Set ERRATA_ALLOW_CLAUDE=1 to override.")
@@ -147,13 +161,14 @@ async def _refuse_claude_request(request) -> None:
     """The HTTP client's request hook: the model named in the body or the URL."""
     import json
 
-    refuse_claude(str(request.url) if "claude" in str(request.url).lower() else None)
+    url = str(request.url)
+    refuse_claude(url if "claude" in url.lower() else None, url)
     try:
         body = json.loads(request.content or b"{}")
     except Exception:  # noqa: BLE001 - a streamed or unreadable body names no model to refuse
         return
     if isinstance(body, dict):
-        refuse_claude(body.get("model"))
+        refuse_claude(body.get("model"), url)
 
 
 def _http_client(transport=None):
