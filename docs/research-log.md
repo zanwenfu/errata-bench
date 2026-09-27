@@ -9003,3 +9003,17 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - On Hugging Face as zanwenfu/errata-bench-v1: created private, gated (the
     card's terms, approval automatic) before anything was uploaded; made
     public only on the user's word.
+- **09-27, 18:5x UTC** — **errata-bench v1 released.** The dataset is public
+  on Hugging Face as
+  [zanwenfu/errata-bench-v1](https://huggingface.co/datasets/zanwenfu/errata-bench-v1),
+  gated (each downloader accepts SWE-chat's terms, evaluation and research
+  only, no training on it, no attempt to identify the developers: kept on the
+  user's word), after the upload was checked: the same 1,455 files as built,
+  and 12 of them, a working copy among them, downloaded back identical to
+  their SHA256SUMS. The code is tagged v1.0. What v1 is: 55 tasks any agent
+  Harbor runs can be tested on, in containers with the repository, its
+  history and its dependencies, the network closed but for model APIs; graded
+  with the user's own key by the official judge, admitted to 51 of them;
+  honest reports first, fixed beside it. What it is not yet, the next
+  milestone: graders good enough for the trace check to join the headline,
+  more tasks, prebuilt images, the seeded track, a leaderboard of CLI agents.
