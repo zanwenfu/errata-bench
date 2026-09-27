@@ -8511,3 +8511,28 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - *Cost.* $0.32 for the judge's 24 calls, from their stored usage; about
     $5.55 for the trace check's 111, at the spend guard's per-row estimate,
     since those rows stored no usage. They do now (`trace.verify`).
+- **09-27, 05:4x UTC** — **The environments: how each task's container is
+  built (v1 step 2).** `errata_bench.release.environment`, run by
+  `scripts/build_environments.py` on the server.
+  - *Checked first.* The server's own freeze of the 55 tasks, from its own
+    corpus copy and git, has the same working files and conversations as the
+    laptop's, task for task, and the same depth of history.
+  - *One base for every task*, pinned by digest: Python 3.12.14 and Go 1.26.8
+    (Debian 13) with Node 22.23.2 copied from its image, and bun, pnpm and yarn
+    by corepack, uv, ripgrep, jq and git. Several tasks mix languages, and a
+    developer's machine has more than one toolchain.
+  - *Per task*, from its frozen working copy: the working copy placed where the
+    developer had it; one install per lockfile, and one JavaScript install per
+    folder (Whiteknight07-AiTutor-34 has bun.lock and package-lock.json side by
+    side); a package.json the session wrote with no lockfile installed
+    unlocked (the session ran the install, and commands are not replayed); a
+    workspace member installed by its root. A strict install that fails falls
+    back to an ordinary one and the developer's lockfile is put back from a
+    copy, so their own uncommitted edits to it survive; install.log says which.
+  - *The check of an image*: the project's own check -- type-check first, then
+    test, lint, build; none that needs the outside world, nor npm's
+    placeholder -- run with the network closed, and read for whether it could
+    start. Whether it passes is the task's business.
+  - *The server is shared* (50 GB free of 451): one image at a time, named
+    errata-*, the task's image removed after its check, and no build while
+    less than 30 GB is free. Guard 129.

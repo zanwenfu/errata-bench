@@ -8677,6 +8677,78 @@ check(all(_rows128.values()) and not any(_short128.values())
       f"every check row records the code that wrote it, a failed call's too: "
       f"{ {k: len(v) for k, v in _rows128.items()} }; without it: {_short128}")
 
+print("\n129. each task's image: the base, the working copy where it was, one install per lockfile (v1 step 2)")
+# The recipe is read from the frozen working copy. Here on the shapes the 55
+# tasks have: a bun workspace, a folder with two JavaScript lockfiles, folders
+# with their own, pnpm beside uv; and the install run for real, with a stand-in
+# bun that refuses the strict install and rewrites the lockfile.
+from errata_bench.release import environment as _env129
+_T129 = {"task_id": "t129", "workdir": "/Users/stavan/Docs - Stavan's Mac/AiTutor"}
+_ws129 = _env129.recipe(_T129, ["package.json", "bun.lock", "apps/web/package.json", "apps/web/tsconfig.json"],
+                        {"package.json": json.dumps({"packageManager": "bun@1.3.4",
+                                                     "scripts": {"check-types": "turbo run check-types",
+                                                                 "test:env": "doppler run -- bun test"}}),
+                         "apps/web/package.json": json.dumps({"scripts": {"typecheck": "tsc"}})})
+check(_ws129.installs == [("", "bun install --frozen-lockfile", "bun install", "bun.lock")]
+      and _ws129.checks == [("", "bun run check-types")] and _ws129.tools == ["npm install -g bun@1.3.4"],
+      f"a bun workspace installs once at its root, with the bun its package.json names, and checks its types: "
+      f"{_ws129.installs} {_ws129.checks} {_ws129.tools}")
+_two129 = _env129.recipe(_T129, ["package.json", "bun.lock", "package-lock.json", "server/package.json",
+                                 "server/bun.lock", "server/package-lock.json"],
+                         {"package.json": json.dumps({"scripts": {"typecheck": "tsc"}}),
+                          "server/package.json": json.dumps({"scripts": {"test": "bun test"}})})
+check([i[:2] for i in _two129.installs] == [("", "bun install --frozen-lockfile"),
+                                            ("server", "bun install --frozen-lockfile")],
+      f"two JavaScript lockfiles in one folder install once, with bun; a folder with its own installs its own: "
+      f"{[i[:2] for i in _two129.installs]}")
+_mix129 = _env129.recipe(_T129, ["package.json", "pnpm-lock.yaml", "pyproject.toml", "uv.lock", "go.mod"],
+                         {"package.json": json.dumps({"scripts": {"test": "vitest run"}})})
+check([i[1] for i in _mix129.installs] == ["pnpm install --frozen-lockfile", "go mod download", "uv sync --frozen"]
+      and "corepack install -g pnpm@9" in _mix129.tools and len(_mix129.checks) == 3,
+      f"pnpm, Go and uv side by side each install and each get a check: {[i[1] for i in _mix129.installs]}")
+_df129 = _env129.dockerfile(_ws129)
+check(_df129.startswith("# errata-bench v1: t129\nFROM errata-base:v1\n")
+      and "mv /tmp/workspace '/Users/stavan/Docs - Stavan'\"'\"'s Mac/AiTutor'" in _df129
+      and _df129.rstrip().endswith("WORKDIR /Users/stavan/Docs - Stavan's Mac/AiTutor")
+      and all(b.split("@sha256:")[1].__len__() == 64 for b in _env129.BASES.values())
+      and all(b in _env129.BASE_DOCKERFILE for b in _env129.BASES.values()),
+      "the working copy goes where the developer had it, a quote in the folder's name and all, on bases pinned by digest")
+# The install line, run for real: a stand-in bun refuses --frozen-lockfile and
+# rewrites bun.lock when it installs. The developer's own edit to the lockfile
+# must survive, and the log must say the strict install failed.
+_r129 = Path(tempfile.mkdtemp()) / "Docs - Stavan's Mac"
+_r129.mkdir()
+_log129 = Path(tempfile.mkdtemp())
+_bin129 = Path(tempfile.mkdtemp())
+(_bin129 / "bun").write_text("#!/bin/sh\ncase \"$*\" in *--frozen-lockfile*) echo 'lockfile had changes'; exit 1;; esac\n"
+                             "echo rewritten > bun.lock; mkdir -p node_modules; echo installed\n")
+(_bin129 / "bun").chmod(0o755)
+for _a in (("init", "-q"), ("config", "user.email", "t@t"), ("config", "user.name", "t")):
+    _g127(*_a, cwd=_r129)
+(_r129 / "bun.lock").write_text("committed\n")
+_g127("add", "-A", cwd=_r129)
+_g127("commit", "-qm", "c", cwd=_r129)
+(_r129 / "bun.lock").write_text("the session's own edit\n")
+_line129 = _env129.install_line(str(_r129), "", *_env129.INSTALLS["bun.lock"], "bun.lock", logdir=str(_log129))
+_sp127.run(["sh", "-c", _line129], env={**os.environ, "PATH": f"{_bin129}:{os.environ['PATH']}"}, check=True)
+check((_log129 / "install.log").read_text() == "lenient . bun.lock\n"
+      and (_r129 / "bun.lock").read_text() == "the session's own edit\n" and (_r129 / "node_modules").is_dir()
+      and "lockfile had changes" not in (_log129 / "install-output.log").read_text(),
+      f"a strict install that fails falls back, says so, and puts the developer's lockfile back as it was: "
+      f"{(_log129 / 'install.log').read_text().strip()!r}, {(_r129 / 'bun.lock').read_text().strip()!r}")
+_new129 = _env129.recipe(_T129, ["package.json", "apps/cli/package.json", "server/package.json", "server/bun.lock"],
+                         {"package.json": json.dumps({"packageManager": "bun@1.3.9",
+                                                      "scripts": {"test": "echo \"Error: no test specified\" && exit 1"}}),
+                          "server/package.json": json.dumps({"scripts": {"lint": "biome check ."}})})
+check(("", "bun install", "bun install", "package.json") in _new129.installs
+      and ("server", "bun install --frozen-lockfile", "bun install", "bun.lock") in _new129.installs
+      and ("", "bun run test") not in _new129.checks and ("server", "bun run lint") in _new129.checks,
+      f"a package.json the session wrote, with no lockfile, is installed unlocked and said so; npm's placeholder "
+      f"test is no check: {_new129.installs} {_new129.checks} {_new129.notes}")
+check(_env129.environment_failure("sh: 1: bun: not found") and _env129.environment_failure("FAIL x [setup failed]")
+      and not _env129.environment_failure("3 failed, 40 passed\nexit 1"),
+      "a check that could not start is told from one that ran and failed")
+
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended
