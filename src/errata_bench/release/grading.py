@@ -98,10 +98,13 @@ def read_trials(jobs: list[Path]) -> list[Trial]:
     """Every trial in the given job folders (or trial folders), in the order they started."""
     found = []
     for job in jobs:
-        folders = [job] if (job / "result.json").is_file() and (job / "lock.json").is_file() else \
-            sorted(d for d in job.iterdir() if d.is_dir() and (d / "result.json").is_file())
+        # A trial's result.json names its task; a job's, beside its trials'
+        # folders, does not (it holds the job's totals).
+        own = _json(job / "result.json") or {}
+        folders = [job] if "task_name" in own else sorted(
+            d for d in job.iterdir() if d.is_dir() and (d / "result.json").is_file())
         for d in folders:
-            result = _json(d / "result.json") or {}
+            result = own if d == job else (_json(d / "result.json") or {})
             if "task_name" not in result:
                 continue
             trial = Trial(path=d, result=result, lock=_json(d / "lock.json") or {},

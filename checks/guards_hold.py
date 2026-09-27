@@ -9264,6 +9264,11 @@ def _trial135(job: Path, name: str, *, exception=None, agent="claude-code", kwar
 
 
 _job135 = Path(tempfile.mkdtemp()) / "job"
+# As Harbor writes a job: its own result.json and lock.json beside its trials'
+# folders. A reader that took the job's folder for a trial read none (09-27).
+_job135.mkdir(parents=True)
+(_job135 / "result.json").write_text(json.dumps({"id": "j", "stats": {"n_trials": 6}}))
+(_job135 / "lock.json").write_text(json.dumps({"schema_version": 2}))
 _trial135(_job135, "h1__1")
 _trial135(_job135, "h1__2", exception="AgentTimeoutError", reply="")
 _trial135(_job135, "h1__3", exception="NonZeroAgentExitCodeError")

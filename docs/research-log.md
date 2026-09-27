@@ -8775,3 +8775,21 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - Guard 135: a synthetic release and job through the script and the real
     grading stage with the suite's stand-in judge. `--rows-only` writes the
     rows without grading, to check a job before paying for its grading.
+- **09-27, 06:5x UTC** — **Graded rows from real Harbor jobs, and the reader
+  bug they showed.** Run on the server's smoke jobs, `grade_harbor.py
+  --rows-only` read none of their trials: a job's folder, as Harbor writes it,
+  holds its own result.json and lock.json beside its trials' folders, and the
+  reader took it for a trial. The guard's synthetic job had no such files. A
+  trial is now known by its result.json naming a task, and the synthetic job
+  has a job's files, so the old reader fails the guard. Then:
+  - the five earlier smoke trials were all rightly not gradable: four ran
+    before the verifier recorded the instruction's digest, so nothing ties
+    them to the release's instruction, and `nop` wrote no trajectory;
+  - the whole export written to `release/v1/harbor` (55 tasks, 676 MB, outside
+    git) with its digests, and two test copies (their network left open)
+    run again on the server, the stand-in and the reference agent with its
+    stand-in model: both gradable, each call counted by what it did (the
+    reference agent's list_dir as looking, run_command as running, write_file
+    as writing), the AiTutor row carrying the 118,599-character conversation
+    it was shown, and both not official, "its task is not the published one",
+    so their graders are told the network may have been open.
