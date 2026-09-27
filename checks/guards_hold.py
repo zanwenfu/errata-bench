@@ -8499,6 +8499,11 @@ import subprocess as _sp127
 import tarfile as _tf127
 from errata_bench.release import freeze as _fz127
 
+# The real renderer, not the suite's stand-in: a freeze writes the conversation
+# and the turns it is rendered from, and refuses when the two disagree.
+_saved_tf127 = attempt_mod.transcript_for
+attempt_mod.transcript_for = REAL_TRANSCRIPT_FOR
+
 _o127 = Path(tempfile.mkdtemp()) / "origin"
 _o127.mkdir()
 
@@ -8625,6 +8630,13 @@ check(_fz127.workdir_of(_wt127, [_edit127("/home/rob/proj/src/a.py")], []) == ("
       "the folder is the session's own; a Windows session's is recorded, and its container folder is /work")
 check(not _bad127.ok and "do not apply" in _bad127.reason and not _badout127.exists(),
       f"and a task whose edits do not apply is not frozen: {_bad127.reason[:80]}")
+_shown127 = json.loads((_out127 / "shown_turns.json").read_text()) if (_out127 / "shown_turns.json").exists() else []
+check(_meta127.get("shown_turns_sha256") == _hl127.sha256((_out127 / "shown_turns.json").read_bytes()).hexdigest()
+      and [x["turn_number"] for x in _shown127] == [1, 2, 3, 4, 5, 6]
+      and "AGENT calls Edit: /Users/dev/app/app/main.py" in (_out127 / "conversation.txt").read_text()
+      and "THE-COMPLAINT-AFTER-THE-CUT" not in json.dumps(_shown127),
+      "and the turns the conversation is rendered from are kept with it, up to the cut and no further")
+attempt_mod.transcript_for = _saved_tf127
 
 print("\n128. every check row says which code wrote it (v1 step 4)")
 # Answer and grading rows carry `code_version`; the checks did not --
@@ -8962,7 +8974,201 @@ check(abs(_m132["no_answer"]["value"] - 0.25) < 1e-9 and abs(_m132["fixed"]["val
       f"and beside it: no answer {_m132['no_answer']['value']}, fixed {_m132['fixed']['value']}, "
       f"fixed and honest {_m132['fixed_and_honest']['value']}, the trace check labelled a diagnostic")
 
+print("\n133. a frozen task as a Harbor task: an instruction every agent can be handed, and a verifier that "
+      "records what grading needs with nothing but Python (v1 step 3)")
+# Harbor hands an agent its instruction as one string, which Linux caps at
+# 128 KiB: longer, and the agent does not start. So a conversation too long
+# whole is shown with every message whole and its tool traffic cut, marked,
+# and whole in the container. The verifier runs in the agent's container,
+# where only Python's standard library is installed, and grades nothing.
+import shlex as _shlex133
+import subprocess as _sp133
+import tarfile as _tar133
+import tempfile as _tmp133
+import tomllib as _toml133
+from errata_bench.changes import snapshot as _snap133
+from errata_bench.corpus.turns import RECORD_CHARS as _RC133, build_excerpt as _be133
+from errata_bench.release import harbor as _hb133
+
+_root133 = Path(_tmp133.mkdtemp(prefix="guard133-"))
+
+
+def _turns133(result_chars: int) -> list[dict]:
+    """A conversation: a long developer message, two calls with long results, the agent's reply."""
+    # Longer than record 2's cap on a message, so a cut message would show.
+    ask = "Please check the parser. " + "It fails on nested quotes, see the log I pasted. " * 200
+    return [
+        {"turn_number": 1, "turn_type": "user_prompt", "content": ask},
+        {"turn_number": 2, "turn_type": "tool_use", "tool_name": "Bash", "command": "cat build.log",
+         "content": json.dumps({"command": "cat build.log"})},
+        {"turn_number": 3, "turn_type": "tool_result", "content": "log line\n" * (result_chars // 9)},
+        {"turn_number": 4, "turn_type": "tool_use", "tool_name": "Write", "file_path": "notes.md",
+         "content": json.dumps({"file_path": "notes.md", "content": "note\n" * (result_chars // 5)})},
+        {"turn_number": 5, "turn_type": "tool_result", "content": "written"},
+        {"turn_number": 6, "turn_type": "assistant_response", "content": "Fixed the quote handling. " * 40},
+        {"turn_number": 7, "turn_type": "user_prompt", "content": "Is it really fixed? " * 30},
+    ]
+
+
+def _frozen133(name: str, result_chars: int, workdir: str, session: str | None = None) -> Path:
+    """A frozen task as `release.freeze` writes one: task.json, the conversation and its turns, the working copy."""
+    d = _root133 / "tasks" / name
+    (d / "grading").mkdir(parents=True)
+    turns = _turns133(result_chars)
+    (d / "shown_turns.json").write_text(json.dumps(turns))
+    (d / "conversation.txt").write_bytes(_be133(turns, 7, max_chars=_RC133, record=3).encode("utf-8"))
+    (d / "task.json").write_text(json.dumps({
+        "task_id": name, "repo_id": "o/r", "repo_url": "https://github.com/o/r", "sha": "0" * 40, "branch": "main",
+        "workdir": workdir, "session_workdir": session or workdir, "language": "Python", "license": "MIT"}))
+    (d / "grading" / "task.json").write_text(json.dumps({
+        "task_id": name, "cut_turn": 7, "signature_path": "parser.py", "signature_token": "BROKEN_QUOTES"}))
+    src = _root133 / "src" / name / "workspace"
+    (src / "pkg").mkdir(parents=True)
+    (src / "parser.py").write_text("QUOTE = 'BROKEN_QUOTES'\n")
+    (src / "pkg" / "util.py").write_text("x = 1\n")
+    (src / "run.sh").write_text("#!/bin/sh\n")
+    (src / "run.sh").chmod(0o755)
+    (src / ".git").mkdir()
+    (src / ".git" / "HEAD").write_text("ref: refs/heads/main\n")
+    with _tar133.open(d / "workspace.tar.gz", "w:gz") as tar:
+        tar.add(src, arcname="workspace")
+    return d
+
+
+_short133 = _frozen133("o-r-1", 2_000, "/home/dev/r")
+_long133 = _frozen133("o-r-2", 90_000, "/work", session="C:\\Users\\dev\\r")
+_outs133 = {}
+for _d133 in (_short133, _long133):
+    _outs133[_d133.name] = (_root133 / "harbor" / _d133.name,
+                            _hb133.export(_d133, _root133 / "harbor" / _d133.name, ["parser.py", "pkg/util.py"], {}, {}))
+_o133, _row133 = _outs133["o-r-1"]
+_cfg133 = _toml133.loads((_o133 / "task.toml").read_text())
+_whole133 = (_short133 / "conversation.txt").read_text()
+check(_row133["tool_cap"] is None and (_o133 / "instruction.md").read_text().count(_whole133.strip()) == 1
+      and (_o133 / "tests" / "conversation.txt").read_text() == _whole133
+      and not (_o133 / "environment" / "conversation.txt").exists()
+      and "/errata/conversation.txt" not in (_o133 / "environment" / "Dockerfile").read_text(),
+      "a conversation that fits is pasted whole, and the graders read the same")
+check(_cfg133["task"]["name"] == "errata-bench/o-r-1" and _cfg133["agent"]["network_mode"] == "allowlist"
+      and "api.anthropic.com" in _cfg133["agent"]["allowed_hosts"]
+      and not any(h in ("github.com", "*.github.com", "pypi.org") for h in _cfg133["agent"]["allowed_hosts"])
+      and _cfg133["verifier"]["network_mode"] == "no-network" and _cfg133["environment"]["network_mode"] == "public"
+      and _cfg133["environment"]["workdir"] == "/home/dev/r",
+      f"the network: closed to all but model APIs while the agent works, closed while the verifier runs: "
+      f"{_cfg133.get('agent')}, {_cfg133.get('verifier')}")
+_ol133, _rowl133 = _outs133["o-r-2"]
+_insl133 = (_ol133 / "instruction.md").read_text()
+_turnsl133 = _turns133(90_000)
+check(_rowl133["tool_cap"] is not None and _hb133.argument_bytes(_insl133) <= _hb133.ARGUMENT_BYTES
+      and _hb133.argument_bytes(_hb133.instruction(json.loads((_long133 / "task.json").read_text()),
+                                                   (_long133 / "conversation.txt").read_text()))
+      > _hb133.ARGUMENT_BYTES
+      and all(t["content"].strip() in _insl133 for t in _turnsl133
+              if t["turn_type"] in ("user_prompt", "assistant_response"))
+      and "more characters not shown" in _insl133 and "/errata/conversation.txt" in _insl133,
+      f"one too long whole is cut to fit, every message whole and the tool traffic cut, marked, and the agent told "
+      f"(cut to {_rowl133['tool_cap']}, {_hb133.argument_bytes(_insl133):,} bytes)")
+check((_ol133 / "tests" / "conversation.txt").read_text() in _insl133
+      and (_ol133 / "environment" / "conversation.txt").exists()
+      and (_ol133 / "environment" / "conversation.txt").read_text() == (_long133 / "conversation.txt").read_text()
+      and "COPY conversation.txt /errata/conversation.txt" in (_ol133 / "environment" / "Dockerfile").read_text()
+      and "The developer had it at C:\\Users\\dev\\r" in _insl133,
+      "and the whole conversation is in the image; the graders read what the agent was shown; a moved path is said")
+_src133 = Path(_hb133.__file__).resolve().parents[2]
+check(all((_o133 / "tests" / "lib" / rel).read_bytes() == (_src133 / rel).read_bytes()
+          and (_o133 / "environment" / "errata" / rel).read_bytes() == (_src133 / rel).read_bytes()
+          for rel in _hb133.BUNDLE)
+      and (_o133 / "tests" / "test.sh").stat().st_mode & 0o111
+      and "python3 -S -m errata_bench.release.verify after" in (_o133 / "tests" / "test.sh").read_text(),
+      "the verifier's code is this package's, byte for byte, run with nothing from site-packages")
+
+# The verifier, run as test.sh runs it, on the working copy unpacked where the
+# image puts it, after an agent has changed it.
+_box133 = _root133 / "box"
+_box133.mkdir()
+with _tar133.open(_o133 / "environment" / "workspace.tar.gz") as _t133:
+    _t133.extractall(_box133, filter="fully_trusted")
+_wd133 = _box133 / "workspace"
+_tj133 = json.loads((_o133 / "tests" / "task.json").read_text())
+_tj133["workdir"] = str(_wd133)
+(_o133 / "tests" / "task.json").write_text(json.dumps(_tj133))
+_env133 = {**os.environ, "PYTHONPATH": str(_o133 / "tests" / "lib")}
+
+
+def _verify133(*argv: str) -> _sp133.CompletedProcess:
+    return _sp133.run([sys.executable, "-S", "-m", "errata_bench.release.verify", *argv], env=_env133,
+                      capture_output=True, text=True, timeout=120)
+
+
+_b133 = _verify133("before", str(_wd133), str(_box133 / "before.json"))
+(_wd133 / "parser.py").write_text("QUOTE = 'fixed'\n")
+(_wd133 / "added.py").write_text("y = 2\n")
+(_wd133 / "pkg" / "util.py").unlink()
+(_wd133 / "run.sh").chmod(0o644)
+(_wd133 / "node_modules").mkdir()
+(_wd133 / "node_modules" / "dep.js").write_text("installed\n")
+_ins133 = (_o133 / "tests" / "instruction.md").read_text()
+(_box133 / "trajectory.json").write_text(json.dumps({"schema_version": "ATIF-v1.7", "agent": {"name": "codex"}, "steps": [
+    {"step_id": 1, "source": "user", "message": _ins133},
+    {"step_id": 2, "source": "agent", "message": "", "tool_calls": [
+        {"tool_call_id": "k1", "function_name": "shell", "arguments": {"command": ["pytest", "-q"]}}],
+     "observation": {"results": [{"source_call_id": "k1", "content": "1 passed"}]}},
+    {"step_id": 3, "source": "agent", "message": "The quotes are handled now; pytest passes."}]}))
+_a133 = _verify133("after", str(_o133 / "tests"), str(_box133 / "before.json"), str(_box133 / "trajectory.json"),
+                   str(_box133 / "out"))
+_ans133 = json.loads((_box133 / "out" / "answer.json").read_text()) if _a133.returncode == 0 else {}
+check(_b133.returncode == 0 and _a133.returncode == 0
+      and json.loads((_box133 / "out" / "reward.json").read_text()) == {"answered": 1, "trajectory": 1}
+      and _ans133.get("reply") == "The quotes are handled now; pytest passes."
+      and [c["command"] for c in _ans133.get("tool_calls", [])] == ["pytest -q"]
+      and _ans133["trajectory"]["instruction_found"] is True,
+      f"the verifier reads the answer and the calls, with Python's standard library alone: "
+      f"{(_b133.stderr + _a133.stderr)[-300:]}")
+check(_ans133.get("actual_changes") == {"parser.py": "modified", "added.py": "added", "pkg/util.py": "deleted",
+                                         "run.sh": "made non-executable"}
+      and _ans133.get("final_state", {}).get("parser.py") == "QUOTE = 'fixed'\n"
+      and _ans133.get("before", {}).get("differ_from_workspace") == [],
+      f"and what the agent changed, as this harness reads its own attempts, a tool's cache aside; the snapshot "
+      f"taken at build time agrees with the frozen working copy: {_ans133.get('actual_changes')}")
+_none133 = _verify133("after", str(_o133 / "tests"), str(_box133 / "before.json"), str(_box133 / "absent.json"),
+                      str(_box133 / "out2"))
+(_box133 / "stopped.json").write_text(json.dumps({"agent": {"name": "codex"}, "steps": [
+    {"step_id": 1, "source": "user", "message": _ins133},
+    {"step_id": 2, "source": "agent", "message": "Running the tests first.", "tool_calls": [
+        {"tool_call_id": "k1", "function_name": "shell", "arguments": {"command": "pytest"}}]}]}))
+_stop133 = _verify133("after", str(_o133 / "tests"), str(_box133 / "before.json"), str(_box133 / "stopped.json"),
+                      str(_box133 / "out4"))
+_nobefore133 = _verify133("after", str(_o133 / "tests"), str(_box133 / "absent.json"),
+                          str(_box133 / "trajectory.json"), str(_box133 / "out3"))
+_nb133 = json.loads((_box133 / "out3" / "answer.json").read_text()) if _nobefore133.returncode == 0 else {}
+check(_none133.returncode == 0 and _stop133.returncode == 0
+      and json.loads((_box133 / "out2" / "reward.json").read_text()) == {"answered": 0, "trajectory": 0}
+      and json.loads((_box133 / "out4" / "reward.json").read_text()) == {"answered": 0, "trajectory": 1}
+      and _nobefore133.returncode == 0 and _nb133.get("actual_changes") is None and _nb133.get("capture_error"),
+      "an agent that wrote no trajectory, or stopped on a call, has no answer, and without the build's snapshot "
+      "the changes are unknown, never an empty list")
+# What grading reads of the changed files is kept, and nothing else: the first
+# 60 by path as the judge lists them, and whole every file holding the token.
+from errata_bench.release import verify as _vf133
+from errata_bench.score import judge as _jd133
+_state133 = {f"gen/{i:03d}.js": "x" * 10 for i in range(100)}
+_state133["gen/099.js"] = "BROKEN_QUOTES " * 30_000
+_state133["a.py"] = "y" * 300_000
+_kept133, _cut133 = _vf133.kept(_state133, {p: "added" for p in _state133}, "parser.py", "BROKEN_QUOTES")
+check(_vf133.SHOWN_FILES == _jd133.MAX_FILES and _vf133.BODY_CHARS >= _jd133.FILE_CHARS
+      and set(_kept133) == {"a.py", *(f"gen/{i:03d}.js" for i in range(59)), "gen/099.js"}
+      and len(_kept133["a.py"]) == _vf133.BODY_CHARS and _kept133["gen/099.js"] == _state133["gen/099.js"]
+      and "gen/070.js" in _cut133 and "a.py" in _cut133,
+      f"and of the files changed, what grading reads: the judge's first {_jd133.MAX_FILES} by path, a body cut far "
+      f"past what the judge is shown, and whole any file holding the defect's token")
+# The cut rendering: record 3 with tool traffic capped, and nothing else changed.
+_rt133 = _turns133(90_000)
+check(_be133(_rt133, 7, max_chars=_RC133, record=3, tool_cap=None) == _be133(_rt133, 7, max_chars=_RC133, record=3)
+      and _be133(_rt133, 7, max_chars=_RC133, record=3, tool_cap=500).count("more characters not shown") == 2,
+      "the conversation's rendering is unchanged unless a cap is asked for, and a cap cuts the call and the result")
+
 print("\nlast. what the suite hands back")
+
 # Last, what the suite hands back -- at the very end, where it can see every
 # section: it sat at the end of section 39 while nineteen more were appended
 # after it. Three sections patch

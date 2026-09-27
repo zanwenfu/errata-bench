@@ -125,6 +125,35 @@ def call_of(name: str, args: dict | None, result: str) -> dict:
     return call
 
 
+def harness_tool(call: dict) -> str:
+    """The five-tool harness's name for what a call did: run_command, read_file, edit_file, or its own name.
+
+    The structural reading (`score.structure.analyse`) knows the harness's
+    tools: a `run_command` ran something and a `read_file` or `list_dir`
+    looked, and either one is "checked", half of whether an attempt did any
+    work. Claude Code's `Bash`, OpenHands' `execute_bash` and Codex's `shell`
+    all run a command, and read by name they would count as nothing -- an
+    agent that ran the tests read as one that did no work. So a call is named
+    by what its arguments show it did: a command run (not an editor's
+    operation), an edit or a write, or a look at a path or for a pattern.
+    """
+    args = call.get("args") or {}
+    command, path = _first(args, _COMMAND), _first(args, _PATH)
+    changes = (_first(args, _OLD) is not None or _first(args, _NEW) is not None or isinstance(args.get("edits"), list)
+               or (path is not None and _first(args, _BODY) is not None))
+    operation = isinstance(command, str) and path is not None and command.strip() and not any(
+        ch.isspace() for ch in command.strip())
+    if operation:
+        return "read_file" if command.strip() == "view" else "edit_file"
+    if command is not None and not changes:
+        return "run_command"
+    if changes:
+        return "edit_file"
+    if path is not None or any(k in args for k in ("pattern", "glob", "query", "regex")):
+        return "read_file"
+    return call.get("name") or "?"
+
+
 def _sidechain(step: dict) -> bool:
     return bool((step.get("extra") or {}).get("is_sidechain"))
 

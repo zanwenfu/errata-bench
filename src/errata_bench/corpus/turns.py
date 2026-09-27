@@ -256,6 +256,7 @@ def build_excerpt(
     mark_pushback: bool = False,
     fill: bool = False,
     record: int = 1,
+    tool_cap: int | None = None,
 ) -> str:
     """Render the turns leading up to a pushback into something readable.
 
@@ -266,6 +267,11 @@ def build_excerpt(
 
     ``record`` is the rendering's rules (``RECORD``). The default stays 1, what
     the task-building gates read; the candidate and the checker read ``RECORD``.
+
+    ``tool_cap``, with record 3, keeps every message whole and cuts each tool
+    call's input (as record 2 shows a call) and each tool result to that many
+    characters, marked with how much went: the conversation as a Harbor task
+    shows it when whole it is too long to pass to an agent (`release.harbor`).
     """
     result_budget = _fit_result_budget(turns, cut_turn, max_chars, fill=fill, record=record)
     lines: list[str] = []
@@ -289,7 +295,9 @@ def build_excerpt(
             lines.append(f"\n[turn {n}] AGENT (thinking):\n{_cut(content, 1500, record)}")
         elif kind == "tool_use":
             tool = t.get("tool_name") or "?"
-            if record >= 2:
+            if tool_cap is not None and record >= 3:
+                detail = call_shown(t, tool_cap, record=2)
+            elif record >= 2:
                 detail = call_shown(t, record=record)
             else:
                 detail = str(t.get("command") or t.get("file_path") or content[:200])[:220]
@@ -297,7 +305,9 @@ def build_excerpt(
             # turn it was issued with, not its fractional place in the order.
             lines.append(f"[turn {t.get('shown_as', n)}] AGENT calls {tool}: {detail}")
         elif kind == "tool_result":
-            lines.append(f"[turn {n}] -> result: {_cut(content, result_budget, record)}")
+            shown = (_cut(content, tool_cap, 2) if tool_cap is not None and record >= 3
+                     else _cut(content, result_budget, record))
+            lines.append(f"[turn {n}] -> result: {shown}")
 
     text = "\n".join(lines)
     # Record 3 is the whole conversation, whatever its length.

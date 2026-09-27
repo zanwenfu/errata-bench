@@ -43,6 +43,22 @@ dated record of each step.
   graders. Unshortened, 25 of 55 conversations are longer (median 66,000,
   longest 312,000 characters, about 80,000 tokens). Every claim that could not
   be settled was cut there. Showing more is a v1 choice, priced before it is made.
+- **Harbor hands an agent its instruction as one string**, which Linux caps at
+  128 KiB (Claude Code in an environment variable, Codex, Gemini CLI, OpenHands
+  and the rest inside their command line). Whole, 17 of the 55 conversations
+  are too long, and an agent handed one does not start. Those 17 are shown
+  with every message whole and each tool call's input and result cut to the
+  longest length that fits (cut to between 732 and 61,864 characters; 1 to 47
+  parts cut per task), marked, with the agent told and the whole conversation
+  in its container. The graders read what the agent was shown. Decision 7
+  stands for the other 38, and for this harness's own runs.
+- **Grading runs outside the container.** Harbor's verifier runs in the
+  agent's container; ours records the answer, every call and what changed
+  (`answer.json`), with Python's standard library alone, no key and no
+  network. The official grading (three readings, settled by majority, with
+  each task's admission) then runs from those records by the code that grades
+  this harness's own answers, so it is the same grading, and it can be redone
+  without running an agent again.
 - **Harbor** (read from its documentation and source): tasks are
   `instruction.md`, `task.toml`, `environment/Dockerfile` and `tests/`; the
   network can be an allowlist during the agent's run; the verifier gets API
@@ -59,7 +75,7 @@ dated record of each step.
 | 1 | **The graders, on stored answers.** B-269; re-read what D-45 left unclear; the majority rule (`settled(rule="majority")`); trick probes for the judge and the trace check, and a per-task check that tells its grader it was verified; a first look at what the judge misses. | done; the probes' run approved 09-27 and under way |
 | 2 | **Environments.** Per task: the rebuilt tree with its history, dependencies installed, the original paths, pinned images; each task's own checks confirmed to run. | in progress: all 55 tasks frozen and checked (`scripts/freeze_tasks.py`, 685 MB, outside git); the images need Docker, not running on the laptop |
 | 2b | **The whole conversation** (decision 7): record 3 renders it cut nowhere; the graders read it whole, shortened only with the record at a length fallback; the 16 results the corpus table cut (4 tasks) come back whole from the transcripts. | done 09-27 |
-| 3 | **Harbor and a frozen release.** Each task frozen once (tree, conversation, grading references), so running needs neither the corpus nor GitHub; exported as Harbor tasks; the grader as the verifier; ATIF read into our record; our reference agent as a Harbor agent. Tested with stand-in models. | not started |
+| 3 | **Harbor and a frozen release.** Each task frozen once (tree, conversation, grading references), so running needs neither the corpus nor GitHub; exported as Harbor tasks; a verifier that records what grading needs; ATIF read into our record; our reference agent as a Harbor agent. Tested with stand-in models. | in progress: the frozen release, the ATIF reader, the export (`scripts/export_harbor.py`, all 55 load in Harbor 0.23) and the verifier (run end to end on a real task, without Docker) are done; next a trial in Harbor on the server with a stand-in agent, then the reference agent |
 | 4 | **The user's side.** One command to run, grade and report; bring-your-own-key setup; the official judge; the judge-testing command; results stamped with the benchmark version; a quickstart with cost and time. And a sweep for what else would stop an outside user: our billing guard made local, no silent default model, check rows that record their code version, a container test in CI. | not started |
 | 5 | **A pilot run** on the finished setup, and both graders checked again on its fresh answers: flags, misses, tricks. | paid: a cost estimate and your OK first |
 | 6 | **The pre-registered v1 run**, its readings and results. | paid: a cost estimate and your OK first |

@@ -160,6 +160,19 @@ Each run also has a log beside it (`runs/<run>.log`, `runs/<run>.admit.log`).
   build, type-check or git command could run at all, and why the others
   failed. No model calls.
 
+## The v1 release (`release/`, not in git)
+
+Each task frozen once, so it runs with neither the corpus nor GitHub, then
+written as a Harbor task. Rebuilt by the scripts below from a run directory;
+no model calls.
+
+| what | written by | where |
+|---|---|---|
+| each task frozen: the working copy (`workspace.tar.gz`), `task.json`, the conversation the candidate is shown (`conversation.txt`) and the turns it is rendered from (`shown_turns.json`), and `grading/` (references, controls, the task row, the turns to the resolution) | `scripts/freeze_tasks.py` | `release/v1/tasks/<task>/`, `release/v1/manifest.json` |
+| each task's image, built and its own checks run offline | `scripts/build_environments.py`, on the server | `environment/` in each task folder, `environments.json` |
+| the Harbor tasks: `instruction.md`, `task.toml`, `environment/`, `tests/` | `scripts/export_harbor.py` | `release/v1/harbor/<task>/`, `export.json` |
+| one Harbor trial's record for grading: the answer, every call, what changed | the task's `tests/test.sh` (`errata_bench.release.verify`) | `<job>/<trial>/verifier/answer.json` and `reward.json` |
+
 ## How each step stays independent and reviewable
 
 - **Its own file.** One step's output is never edited by another. Rerunning a

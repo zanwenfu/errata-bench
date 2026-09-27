@@ -16,6 +16,10 @@ force-pushes. So each task is frozen here, into ``<out>/tasks/<task_id>/``:
                     and digests of what is here.
   conversation.txt  the conversation the candidate is shown, exactly as
                     `transcript_for` renders it.
+  shown_turns.json  the turns that conversation is rendered from, redacted and
+                    with every result the corpus table cut given back whole
+                    (`candidate_turns`), up to the cut: a rendering of what the
+                    candidate is shown needs these alone (`shown_turns`).
   grading/          what only the graders read: the reference answers, the
                     defect and its signature, the controls' conversations, the
                     task row, and the turns up to the resolution, from which any
@@ -197,6 +201,29 @@ def controls_of(task: Task, turns: list[dict]) -> dict:
             "last_action": last_recorded_action(task, turns)}
 
 
+def shown_turns(task: Task, turns: list[dict]) -> list[dict]:
+    """The turns the candidate's conversation is rendered from, up to the cut: `candidate_turns`'s.
+
+    Rendering them needs the corpus's raw transcripts (a result the table cut
+    is given back whole from them, `recover.whole_results`), so they are kept
+    as rendered from; `release.harbor` renders the conversation again from
+    these alone, cut to fit when whole it is too long to pass to an agent.
+    """
+    from ..score.attempt import candidate_turns
+
+    return [t for t in candidate_turns(task, turns) if (t.get("turn_number") or 0) <= task.cut_turn]
+
+
+def write_shown_turns(task: Task, turns: list[dict], out: Path) -> bool:
+    """Write ``out``/shown_turns.json; True when they render ``out``/conversation.txt exactly (record 3)."""
+    from ..corpus.turns import RECORD, RECORD_CHARS, build_excerpt
+
+    kept = shown_turns(task, turns)
+    (out / "shown_turns.json").write_text(json.dumps(kept, indent=1, ensure_ascii=False) + "\n")
+    shown = build_excerpt(kept, task.cut_turn, max_chars=RECORD_CHARS, record=RECORD)
+    return shown.encode("utf-8") == (out / "conversation.txt").read_bytes()
+
+
 def freeze(task: Task, turns: list[dict], out: Path, *, branch: str | None, history: int = HISTORY,
            max_git_mb: float = MAX_GIT_MB, scratch: Path | None = None, language: str | None = None) -> Frozen:
     """Freeze one task into ``out`` (its own folder), checked against the reference tree.
@@ -234,6 +261,9 @@ def freeze(task: Task, turns: list[dict], out: Path, *, branch: str | None, hist
         # As bytes: a conversation can hold carriage returns from the tools' output, and text mode
         # would translate them on some platforms and on every read.
         (out / "conversation.txt").write_bytes(transcript_for(task, turns).encode("utf-8"))
+        if not write_shown_turns(task, turns, out):
+            result.reason = "the turns kept do not render the conversation the candidate is shown"
+            return result
         grading = {
             "references.json": {
                 "oracle": task.oracle, "criterion": task.criterion, "defect": task.defect, "kind": task.kind,
@@ -254,6 +284,7 @@ def freeze(task: Task, turns: list[dict], out: Path, *, branch: str | None, hist
             "files": n, "tree_digest": got,
             "workspace_sha256": hashlib.sha256((out / "workspace.tar.gz").read_bytes()).hexdigest(),
             "conversation_sha256": hashlib.sha256((out / "conversation.txt").read_bytes()).hexdigest(),
+            "shown_turns_sha256": hashlib.sha256((out / "shown_turns.json").read_bytes()).hexdigest(),
         }, indent=1) + "\n")
         result.ok = True
         return result

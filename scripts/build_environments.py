@@ -27,7 +27,6 @@ import os
 import shutil
 import subprocess
 import sys
-import tarfile
 import time
 from datetime import datetime, timezone
 from pathlib import Path
@@ -36,7 +35,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from errata_bench.project import code_version  # noqa: E402
 from errata_bench.release.environment import (  # noqa: E402
-    BASE_DOCKERFILE, BASE_TAG, check_script, dockerfile, environment_failure, recipe)
+    BASE_DOCKERFILE, BASE_TAG, check_script, dockerfile, environment_failure, recipe, workspace_contents)
 
 
 def docker(*args: str, stdin: str | None = None, timeout: int = 3600) -> subprocess.CompletedProcess:
@@ -45,22 +44,6 @@ def docker(*args: str, stdin: str | None = None, timeout: int = 3600) -> subproc
 
 def free_gb() -> float:
     return shutil.disk_usage("/").free / 2**30
-
-
-def contents(archive: Path) -> tuple[list[str], dict[str, str], dict[str, str]]:
-    """The working copy's files (paths under workspace/, outside .git), and its package.json and pyproject.toml texts."""
-    files, packages, pyprojects = [], {}, {}
-    with tarfile.open(archive) as tar:
-        for m in tar:
-            parts = Path(m.name).parts
-            if len(parts) < 2 or parts[1] == ".git" or not m.isfile():
-                continue
-            rel = "/".join(parts[1:])
-            files.append(rel)
-            if parts[-1] in ("package.json", "pyproject.toml") and "node_modules" not in parts and len(parts) <= 5:
-                text = tar.extractfile(m).read().decode("utf-8", "replace")
-                (packages if parts[-1] == "package.json" else pyprojects)[rel] = text
-    return files, packages, pyprojects
 
 
 def build_base() -> str:
@@ -73,7 +56,7 @@ def build_base() -> str:
 
 def one(task_dir: Path, keep: bool) -> dict:
     meta = json.loads((task_dir / "task.json").read_text())
-    files, packages, pyprojects = contents(task_dir / "workspace.tar.gz")
+    files, packages, pyprojects = workspace_contents(task_dir / "workspace.tar.gz")
     r = recipe(meta, files, packages, pyprojects)
     env = task_dir / "environment"
     env.mkdir(exist_ok=True)

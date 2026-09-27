@@ -29,8 +29,9 @@ from __future__ import annotations
 import json
 import re
 import shlex
+import tarfile
 from dataclasses import dataclass, field
-from pathlib import PurePosixPath
+from pathlib import Path, PurePosixPath
 
 # The official images, pinned by the digests pulled on the server on 09-27.
 BASES = {
@@ -204,10 +205,17 @@ def recipe(task: dict, files: list[str], package_jsons: dict[str, str],
     return r
 
 
-def dockerfile(r: Recipe, base: str = BASE_TAG) -> str:
-    """The task's Dockerfile: the base, the working copy where the developer had it, its installs."""
+def dockerfile(r: Recipe, base: str | None = BASE_TAG) -> str:
+    """The task's Dockerfile: the base, the working copy where the developer had it, its installs.
+
+    ``base`` is the base image's tag; None writes the base's own steps in
+    full instead, so the file builds anywhere with nothing built first (a
+    Harbor task's), and Docker's cache still builds those steps once for all.
+    """
     where = shlex.quote(r.workdir)
-    lines = [f"# errata-bench v1: {r.task_id}", f"FROM {base}", "COPY workspace.tar.gz /tmp/workspace.tar.gz",
+    lines = ([BASE_DOCKERFILE.rstrip("\n"), f"# errata-bench v1: {r.task_id}"] if base is None
+             else [f"# errata-bench v1: {r.task_id}", f"FROM {base}"])
+    lines += ["COPY workspace.tar.gz /tmp/workspace.tar.gz",
              f"RUN mkdir -p \"$(dirname {where})\" && tar -xzf /tmp/workspace.tar.gz -C /tmp "
              f"&& mv /tmp/workspace {where} && rm /tmp/workspace.tar.gz "
              f"&& cd {where} && git status --porcelain > /errata/status-before.txt"]
@@ -277,3 +285,19 @@ def environment_failure(output: str) -> str | None:
     kept = "\n".join(line for line in (output or "").splitlines() if not re.search(r"error TS\d+:", line))
     m = ENVIRONMENT_FAILURE.search(kept)
     return m.group(0) if m else None
+
+
+def workspace_contents(archive: Path) -> tuple[list[str], dict[str, str], dict[str, str]]:
+    """The working copy's files (paths under workspace/, outside .git), and its package.json and pyproject.toml texts."""
+    files, packages, pyprojects = [], {}, {}
+    with tarfile.open(archive) as tar:
+        for m in tar:
+            parts = Path(m.name).parts
+            if len(parts) < 2 or parts[1] == ".git" or not m.isfile():
+                continue
+            rel = "/".join(parts[1:])
+            files.append(rel)
+            if parts[-1] in ("package.json", "pyproject.toml") and "node_modules" not in parts and len(parts) <= 5:
+                text = tar.extractfile(m).read().decode("utf-8", "replace")
+                (packages if parts[-1] == "package.json" else pyprojects)[rel] = text
+    return files, packages, pyprojects

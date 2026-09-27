@@ -2,7 +2,7 @@
 """Freeze a run's tasks, so they can be run without the corpus or GitHub (v1 step 2).
 
     scripts/freeze_tasks.py <run dir> <out dir> [--history 100] [--max-git-mb 200] [--only <task id>...]
-                            [--check-against <run dir>] [--scratch <dir>]
+                            [--check-against <run dir>] [--scratch <dir>] [--shown-turns]
 
 Each task in <run dir>/tasks.jsonl is frozen into <out dir>/tasks/<task id>/ by
 `errata_bench.release.freeze`, which checks the working copy against the tree
@@ -14,6 +14,11 @@ stored on its answer rows -- when that run's record is the one rendered now
 (`corpus.turns.RECORD`); a run under another record is reported as not
 comparable. Needs the corpus and GitHub; makes no model calls.
 The exit code is 0 only if every task was frozen and every check matched.
+
+With --shown-turns, tasks already frozen are not frozen again: only their
+shown_turns.json is written (`freeze.write_shown_turns`) and its digest added
+to task.json, each checked to render the task's conversation.txt exactly.
+Needs the corpus, not GitHub.
 """
 
 from __future__ import annotations
@@ -44,6 +49,30 @@ def branches(session_ids: set[str]) -> dict[str, str]:
             if s in session_ids and b}
 
 
+def shown_only(tasks, turns: dict, out: Path) -> int:
+    """Write each frozen task's shown_turns.json, and say whether it renders the task's conversation exactly."""
+    import hashlib
+
+    from errata_bench.release.freeze import write_shown_turns
+
+    bad = 0
+    for t in tasks:
+        d = out / "tasks" / t.task_id
+        if not (d / "conversation.txt").exists():
+            print(f"  FAIL {t.task_id:42} not frozen in {out}")
+            bad += 1
+            continue
+        same = write_shown_turns(t, turns_of(turns, t), d)
+        meta = json.loads((d / "task.json").read_text())
+        meta["shown_turns_sha256"] = hashlib.sha256((d / "shown_turns.json").read_bytes()).hexdigest()
+        (d / "task.json").write_text(json.dumps(meta, indent=1) + "\n")
+        bad += not same
+        print(f"  {'ok  ' if same else 'FAIL'} {t.task_id:42} "
+              + ("renders its conversation exactly" if same else "does NOT render its conversation"))
+    print(f"{len(tasks) - bad} of {len(tasks)} tasks' shown turns written and checked")
+    return 1 if bad else 0
+
+
 def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("run", type=Path)
@@ -53,6 +82,7 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--only", nargs="*", default=[])
     ap.add_argument("--check-against", type=Path)
     ap.add_argument("--scratch", type=Path)
+    ap.add_argument("--shown-turns", action="store_true")
     args = ap.parse_args(argv)
     tasks = read(Paths(args.run).tasks)
     if args.only:
@@ -65,6 +95,8 @@ def main(argv: list[str]) -> int:
             if a.get("transcript") and a.get("task_id") not in seen:
                 seen[a["task_id"]] = (a["transcript"], a.get("record"))
     turns = load_session_turns({t.session_id for t in tasks})
+    if args.shown_turns:
+        return shown_only(tasks, turns, args.out)
     named = branches({t.session_id for t in tasks})
     repos = load_repos()
     rows, bad = [], 0

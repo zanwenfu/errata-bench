@@ -8624,3 +8624,59 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     now runs with a cache of its own, after the unbroken code passes. The
     freeze's summary now says how many conversations could not be compared (all
     55 of the record-3 freeze: that run showed record 2) instead of "0 match".
+- **09-27, 06:0x UTC** — **The frozen tasks written as Harbor tasks, and a
+  verifier that records what grading needs.** `scripts/export_harbor.py`
+  writes each frozen task as a Harbor task (`errata_bench.release.harbor`):
+  - *instruction.md*: the conversation pasted below a short framing, the
+    same the harness's candidates are told less what only held there (its
+    five tools, a copy with no history, moved paths, no network): the
+    repository is at the developer's path with its history and dependencies,
+    and only the model's API is reachable. The Windows task is told where its
+    paths moved.
+  - *task.toml*: the network open while the image is built and the agent
+    installed, an allowlist of model APIs while the agent works, closed while
+    the verifier runs; 30 minutes for the agent.
+  - *environment/*: the base's steps written in full (nothing to build
+    first), the frozen working copy, its installs, and last a snapshot of the
+    working copy.
+  - *tests/*: the verifier. It writes the agent's answer, every call and what
+    it changed (`answer.json`) as this harness reads its own attempts
+    (`errata_bench.changes`, moved out of `score.attempt` unchanged so it runs
+    with Python's standard library alone), and `reward.json`
+    ({"answered", "trajectory"}). It grades nothing: grading runs outside the
+    container, by the same code, so it needs no key in the container and can be
+    redone without running an agent again. Of the files an agent changed it
+    keeps what grading reads (the judge's first 60 by path, and whole any file
+    holding the defect's token), since a build the agent now can run may
+    change thousands.
+  - *Found while writing it*: Harbor hands every CLI agent its instruction as
+    one string (an environment variable for Claude Code, the quoted command
+    line for Codex, Gemini CLI, OpenHands, mini-swe-agent, OpenCode and
+    Cursor), which Linux caps at 128 KiB. Harbor fixed this for one agent
+    only (its issue 3019). Whole, 17 of the 55 conversations are too long,
+    and the agent would not start. Those are shown with every message whole
+    and each call's input and result cut to the longest length that fits
+    (`build_excerpt`'s new `tool_cap`), marked, and the agent is told that the
+    whole conversation is at /errata/conversation.txt. Record 2's own fitting
+    was tried first and rejected: it also cuts developer messages at 4,000
+    characters, which in 5 of the 12 then-long tasks cut the developer's
+    request itself (a plan's "Files to create", a pasted 62,000-character
+    changelog).
+  - *So the release keeps the turns the conversation is rendered from*
+    (`shown_turns.json`, written by the freeze and backfilled for the 55: each
+    renders its conversation.txt byte for byte), and the export needs neither
+    the corpus nor GitHub.
+  - *Checked*: all 55 load in Harbor 0.23's own task and config models, each
+    instruction under the limit (the largest 120,000 bytes quoted); the
+    verifier run end to end on a real task with a simulated agent, without
+    Docker (answer, calls, three changes, the snapshot matching the frozen
+    working copy). Guard 133, and 127 extended; each rule broken alone was
+    caught. Section 127 had frozen with the suite's stand-in renderer, whose
+    conversation is a fixed placeholder; it now uses the real one.
+- **09-27, 06:0x UTC** — **The trajectory reader names a call by what it
+  did.** The structural reading counts `run_command`, `read_file` and
+  `list_dir`, the harness's tools; Claude Code's `Bash`, OpenHands'
+  `execute_bash` and Codex's `shell` would have counted as nothing, and an
+  agent that ran the tests as one that did no work, which fails an
+  introduced-defect task outright. `atif.harness_tool` names each call by
+  what its arguments show it did (24 tool shapes from six agents checked).
