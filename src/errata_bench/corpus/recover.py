@@ -113,6 +113,61 @@ def raw_calls(path: Path) -> list[dict]:
     return out
 
 
+def raw_results(path: Path) -> dict[str, str]:
+    """Every result the session's main agent received, whole, by the id of its call.
+
+    As `raw_calls` reads the calls: a subagent's results are its own, and the
+    agent saw only the report it returned.
+    """
+    out: dict[str, str] = {}
+    with path.open() as fh:
+        for line in fh:
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(entry, dict):
+                continue
+            message = entry.get("message")
+            if (entry.get("type") != "user" or entry.get("isSidechain")
+                    or not isinstance(message, dict) or not isinstance(message.get("content"), list)):
+                continue
+            for block in message["content"]:
+                if not (isinstance(block, dict) and block.get("type") == "tool_result" and block.get("tool_use_id")):
+                    continue
+                body = block.get("content")
+                if isinstance(body, list):
+                    body = "".join(str(b.get("text", "")) for b in body if isinstance(b, dict))
+                out[str(block["tool_use_id"])] = str(body or "")
+    return out
+
+
+def whole_results(session_id: str, turns: list[dict]) -> list[dict]:
+    """``turns`` with each result the table cut given back whole, from the raw transcript (record 3).
+
+    SWE-chat's conversations table keeps about 10 KB of a result. Up to the
+    cut, it kept less than the transcript for 16 of the 55 tasks' 1,505
+    results, in 4 tasks, 181,960 characters in all (09-27). A result is given
+    back only when the transcript's text begins with what the table kept, so a
+    different result under the same id is never put in its place. Returned
+    unchanged when the session has no transcript in Claude Code's format.
+    """
+    if not has_transcript(session_id):
+        return turns
+    whole = raw_results(transcript_path(session_id))
+    out = []
+    for t in turns:
+        kept = str(t.get("content") or "")
+        full = whole.get(str(t.get("tool_call_id") or ""))
+        # Compared as kept, not stripped: a read's output opens "     1→", and
+        # stripped, not one of the 14 cut reads of the 55 tasks matched (09-27).
+        if (t.get("turn_type") == "tool_result" and full and len(full) > len(kept)
+                and kept.strip() and full.startswith(kept[:200])):
+            t = {**t, "content": full, "whole_from_transcript": True}
+        out.append(t)
+    return out
+
+
 def recover(session_id: str, turns: list[dict]) -> list[dict]:
     """``turns`` with the calls the table lost put back, in order.
 

@@ -579,6 +579,11 @@ def candidate_turns(task: Task, turns: list[dict]) -> list[dict]:
     them; one built before shows the table as its candidates saw it.
     """
     turns = with_lost_calls(task, turns)
+    if RECORD >= 3:
+        # Whole (record 3): the results the corpus table cut, given back from the transcript.
+        from ..corpus.recover import whole_results
+
+        turns = whole_results(task.session_id, turns)
     if task.redacted_turns or task.rewritten_turns:
         return apply_redaction(
             turns,
@@ -597,6 +602,14 @@ def transcript_for(task: Task, turns: list[dict]) -> str:
     stored: the task carries the cut and the redactions, so this is exact.
     """
     return build_excerpt(candidate_turns(task, turns), task.cut_turn, max_chars=RECORD_CHARS, record=RECORD)
+
+
+def resolution_turns(task: Task, turns: list[dict]) -> list[dict]:
+    """The turns the accepted answer was written after: its lost calls put back, and whole under record 3."""
+    from ..corpus.recover import recover, whole_results
+
+    full = recover(task.session_id, turns)
+    return whole_results(task.session_id, full) if RECORD >= 3 else full
 
 
 def resolution_transcript_for(task: Task, turns: list[dict]) -> str:
@@ -709,8 +722,6 @@ def control_conversations_for(tasks) -> dict[str, dict]:
     answer was written after; ``last_action`` the agent's last recorded call
     before the cut, for the accurate-summary control.
     """
-    from ..corpus.recover import recover
-
     turns = load_session_turns({t.session_id for t in tasks})
     out = {}
     for t in tasks:
@@ -719,7 +730,7 @@ def control_conversations_for(tasks) -> dict[str, dict]:
         # record: the cut is what the candidate was shown, and the summary is
         # read against the cut.
         out[t.task_id] = {"cut": transcript_for(t, mine),
-                          "resolution": resolution_transcript_for(t, recover(t.session_id, mine)),
+                          "resolution": resolution_transcript_for(t, resolution_turns(t, mine)),
                           "last_action": last_recorded_action(t, mine)}
     return out
 

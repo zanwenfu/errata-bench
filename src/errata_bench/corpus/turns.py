@@ -83,7 +83,14 @@ FILL_CAP = 10_000
 # at line 56 with nothing to say so -- and the candidate, continuing the agent's
 # work, could not see what its own earlier edits had done either. Record 2 shows
 # each call with what it was given and marks every cut, with how much.
-RECORD = 2
+#
+# Record 3 (v1, 09-27, the user's decision) cuts nothing: every message, every
+# thought, every call's input, every edit of a MultiEdit and every result, as
+# the corpus holds them. Record 2 fitted the conversation into 75,000
+# characters, and every claim D-45's readers could not settle rested on a part
+# it had cut, one the original agent had seen. Unshortened, 25 of the 55
+# conversations are longer (median 66,000 characters, longest 312,000).
+RECORD = 3
 # The most of one call's input record 2 shows; an edit's old and new text share it.
 CALL_CHARS = 1200
 # How long a record-2 conversation may be. Showing edits takes room the results
@@ -95,10 +102,15 @@ CALL_CHARS = 1200
 RECORD_CHARS = 75_000
 # The most edits of one MultiEdit shown, each with its share of CALL_CHARS.
 MULTI_EDITS = 6
+# Record 3's limit on anything: none.
+WHOLE = 10**12
 
 
 def _cut(text: str, limit: int, record: int) -> str:
-    """At most `limit` characters of `text`: record 1 cuts it silently, record 2 says how much went."""
+    """At most `limit` characters of `text`: record 1 cuts it silently, record 2 says how much went,
+    record 3 cuts nothing."""
+    if record >= 3:
+        return text
     if len(text) <= limit or record < 2:
         return text[:limit]
     return f"{text[:limit]} [{len(text) - limit:,} more characters not shown]"
@@ -119,8 +131,10 @@ def _block(text, limit: int) -> str:
     return "\n".join("    | " + line for line in _cut(str(text), limit, 2).split("\n"))
 
 
-def call_shown(t: dict, limit: int = CALL_CHARS) -> str:
-    """A tool call as record 2 shows it: what it acted on, and what it was given."""
+def call_shown(t: dict, limit: int = CALL_CHARS, record: int = 2) -> str:
+    """A tool call as record 2 shows it: what it acted on, and what it was given. Record 3 shows it whole."""
+    if record >= 3:
+        limit = WHOLE
     name = t.get("tool_name") or "?"
     given = _given(t)
     path = t.get("file_path") or given.get("file_path") or given.get("notebook_path") or given.get("path") or ""
@@ -144,14 +158,15 @@ def call_shown(t: dict, limit: int = CALL_CHARS) -> str:
                 f"\n  with:\n{_block(new, limit // 2)}")
     if name == "MultiEdit" and isinstance(given.get("edits"), list):
         edits = given["edits"]
-        share = max(100, limit // (2 * min(len(edits), MULTI_EDITS) or 1))
+        shown = len(edits) if record >= 3 else MULTI_EDITS
+        share = max(100, limit // (2 * min(len(edits), shown) or 1))
         parts = [f"{path}, {len(edits)} edits"]
-        for i, e in enumerate(edits[:MULTI_EDITS], 1):
+        for i, e in enumerate(edits[:shown], 1):
             e = e if isinstance(e, dict) else {}
             parts.append(f"  {i}. replaced:\n{_block(e.get('old_string', ''), share)}"
                          f"\n     with:\n{_block(e.get('new_string', ''), share)}")
-        if len(edits) > MULTI_EDITS:
-            parts.append(f"  [{len(edits) - MULTI_EDITS} more edits not shown]")
+        if len(edits) > shown:
+            parts.append(f"  [{len(edits) - shown} more edits not shown]")
         return "\n".join(parts)
     if name == "Write" and "content" in given:
         body = str(given.get("content") or "")
@@ -189,6 +204,8 @@ def _fit_result_budget(turns: list[dict], cut_turn: int, max_chars: int, fill: b
     record without it (G-77). Only the accepted answer's conversation fills;
     what a candidate is shown is unchanged.
     """
+    if record >= 3:
+        return WHOLE
     fixed = 0
     results = []
     for t in turns:
@@ -273,7 +290,7 @@ def build_excerpt(
         elif kind == "tool_use":
             tool = t.get("tool_name") or "?"
             if record >= 2:
-                detail = call_shown(t)
+                detail = call_shown(t, record=record)
             else:
                 detail = str(t.get("command") or t.get("file_path") or content[:200])[:220]
             # A call recovered from the raw transcript (G-76) is shown under the
@@ -283,7 +300,8 @@ def build_excerpt(
             lines.append(f"[turn {n}] -> result: {_cut(content, result_budget, record)}")
 
     text = "\n".join(lines)
-    if len(text) <= max_chars:
+    # Record 3 is the whole conversation, whatever its length.
+    if record >= 3 or len(text) <= max_chars:
         return text
 
     # Overrun: squeeze tool traffic rather than cutting the conversation. An

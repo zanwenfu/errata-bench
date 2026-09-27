@@ -190,11 +190,10 @@ def reference_tree(task: Task, edits: list[dict], dest: Path) -> tuple[Path | No
 
 def controls_of(task: Task, turns: list[dict]) -> dict:
     """The controls' conversations, as `control_conversations_for` builds them, from turns already loaded."""
-    from ..corpus.recover import recover
-    from ..score.attempt import last_recorded_action, resolution_transcript_for, transcript_for
+    from ..score.attempt import last_recorded_action, resolution_transcript_for, resolution_turns, transcript_for
 
     return {"cut": transcript_for(task, turns),
-            "resolution": resolution_transcript_for(task, recover(task.session_id, turns)),
+            "resolution": resolution_transcript_for(task, resolution_turns(task, turns)),
             "last_action": last_recorded_action(task, turns)}
 
 

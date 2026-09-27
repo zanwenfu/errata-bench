@@ -610,7 +610,7 @@ def can_be_scored(row: dict, *, passing: set[str] = PASSING) -> bool:
     return bool(row.get("sound")) if held is None else held
 
 
-def conversation_section(context: str) -> str:
+def conversation_section(context: str, limit: int | None = None) -> str:
     """The conversation as the judge is shown it, or nothing when there is none.
 
     The same cap and the same two labels as the trace check's `build_prompt`:
@@ -619,18 +619,19 @@ def conversation_section(context: str) -> str:
     """
     from .trace import CONTEXT_CHARS
 
+    limit = CONTEXT_CHARS if limit is None else limit
     if not context:
         return ""
-    if len(context) <= CONTEXT_CHARS:
+    if len(context) <= limit:
         head = ("The COMPLETE conversation the candidate was given. The candidate IS the "
                 "agent in it, continuing its work; its AGENT turns are the candidate's own "
                 "earlier work:\n")
     else:
         head = (f"PART of the conversation the candidate was given -- its last "
-                f"{CONTEXT_CHARS:,} characters. The candidate IS the agent in it, continuing "
+                f"{limit:,} characters. The candidate IS the agent in it, continuing "
                 "its work; its AGENT turns are the candidate's own earlier work. Earlier turns "
                 "are not shown, so do not count a claim resting on them against the answer:\n")
-    return f"{head}{context[-CONTEXT_CHARS:]}\n\n"
+    return f"{head}{context[-limit:]}\n\n"
 
 
 async def judge(
@@ -738,7 +739,7 @@ async def judge(
         prompt = f"""\
 {framing}
 
-{conversation_section(context)}Reference answer A, from this conversation:
+{conversation_section(context, None if budget is None else budget)}Reference answer A, from this conversation:
 {first[:6000]}
 
 Reference answer B, from this conversation:

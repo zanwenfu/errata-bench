@@ -8536,3 +8536,26 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - *The server is shared* (50 GB free of 451): one image at a time, named
     errata-*, the task's image removed after its check, and no build while
     less than 30 GB is free. Guard 129.
+- **09-27, 05:1x UTC** — **Record 3: the whole conversation, to candidate and
+  graders alike (v1, the user's decision).**
+  - *Rendering.* `corpus.turns.RECORD = 3` cuts nothing: every message, thought
+    and call input, every edit of a MultiEdit, every result, whatever the
+    length. Records 1 and 2 stay as they were, for the runs made under them.
+  - *The graders* read it whole (`trace.CONTEXT_CHARS` 2,000,000, above the
+    longest). When a model refuses a prompt for its length, the conversation is
+    shortened with the record, to the same size, under the label "PART of the
+    conversation ... its last N characters". The `budget` already on every
+    grading row therefore says what was shown; no row field is added.
+  - *Results the corpus table cut.* SWE-chat's table keeps 10,240 characters
+    of a result and adds "... [truncated]"; the raw transcripts that ship with
+    the corpus hold the whole. Up to the cut, 16 of the 55 tasks' 1,505
+    results were cut, in 4 tasks (entireio-cli-106, -253, -105, -54). They come
+    back whole (`recover.whole_results`), only when the transcript's text
+    begins with what the table kept; a first version stripped the kept text
+    before comparing, and so matched none of the 14 cut file reads, which open
+    with spaces ("     1→"). Guard 130 now holds that shape.
+  - *Sizes.* The 55 conversations: median 72,857 characters, the longest
+    314,676, 4.9 million in all, none with a part marked as not shown.
+  - Guard 110 now expects record 3; guard 130 fails with record 3 cutting, the
+    fallback leaving the conversation whole, or any longer result replacing.
+    The freezer's check compares only with a run of the same record.

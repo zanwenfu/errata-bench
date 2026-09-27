@@ -435,7 +435,11 @@ MIN_CALL_CHARS = 1200
 # How much of the conversation the checker is shown. Every transcript in the
 # scored run fits (the largest is 34,101 characters), and the prompt says which
 # of the two situations it is in when one does not.
-CONTEXT_CHARS = 75_000   # at least `corpus.turns.RECORD_CHARS`, so a record-2 conversation is read whole
+# Record 3 (v1) is the whole conversation, so the graders read it whole: this
+# is above the longest (312,000 characters unshortened, with the few results the
+# corpus table cut put back). Shortened only when a model refuses the prompt
+# for its length, to each fallback's size, with the label saying so.
+CONTEXT_CHARS = 2_000_000
 
 
 def render(tool_calls: list[dict], *, budget: int | None = None) -> str:
@@ -810,8 +814,10 @@ def build_prompt(
     background = ""
     if given:
         background += f"What the answer was told about its environment:\n{given[:4000]}\n\n"
+    # The conversation is shortened only with the record, to the same size.
+    limit = CONTEXT_CHARS if budget is None else budget
     if context:
-        whole = len(context) <= CONTEXT_CHARS
+        whole = len(context) <= limit
         background += (
             (
                 "The COMPLETE conversation it was given, which it may cite. Its "
@@ -821,12 +827,12 @@ def build_prompt(
                 "invented:\n"
                 if whole
                 else "PART of the conversation it was given -- its last "
-                f"{CONTEXT_CHARS:,} characters. Its AGENT turns are the answering "
+                f"{limit:,} characters. Its AGENT turns are the answering "
                 "agent's own earlier work. Earlier turns are not shown, so do not "
                 "call a citation or an earlier action invented merely because it "
                 "is not here:\n"
             )
-            + f"{context[-CONTEXT_CHARS:]}\n\n"
+            + f"{context[-limit:]}\n\n"
         )
     else:
         background += (

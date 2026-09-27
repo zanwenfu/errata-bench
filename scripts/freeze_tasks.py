@@ -10,7 +10,9 @@ every attempt has started from, file by file. <out dir>/manifest.json lists what
 was frozen and what could not be, with why; freezing some tasks again (--only) updates
 their rows and keeps the rest. With --check-against, each frozen
 conversation is compared with the one that run's candidates were shown, as
-stored on its answer rows. Needs the corpus and GitHub; makes no model calls.
+stored on its answer rows -- when that run's record is the one rendered now
+(`corpus.turns.RECORD`); a run under another record is reported as not
+comparable. Needs the corpus and GitHub; makes no model calls.
 The exit code is 0 only if every task was frozen and every check matched.
 """
 
@@ -25,7 +27,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from errata_bench.corpus.sessions import CORPUS, load_repos  # noqa: E402
-from errata_bench.corpus.turns import load_session_turns  # noqa: E402
+from errata_bench.corpus.turns import RECORD, load_session_turns  # noqa: E402
 from errata_bench.project import code_version  # noqa: E402
 from errata_bench.release.freeze import HISTORY, MAX_GIT_MB, freeze  # noqa: E402
 from errata_bench.score.attempt import turns_of  # noqa: E402
@@ -61,7 +63,7 @@ def main(argv: list[str]) -> int:
     if args.check_against:
         for a in completed(Paths(args.check_against).answers):
             if a.get("transcript") and a.get("task_id") not in seen:
-                seen[a["task_id"]] = a["transcript"]
+                seen[a["task_id"]] = (a["transcript"], a.get("record"))
     turns = load_session_turns({t.session_id for t in tasks})
     named = branches({t.session_id for t in tasks})
     repos = load_repos()
@@ -73,10 +75,12 @@ def main(argv: list[str]) -> int:
         row = {"task_id": t.task_id, "ok": f.ok, "files": f.files, "branch": f.branch, "workdir": f.workdir}
         if not f.ok:
             row["reason"], row["differ"] = f.reason, f.differ[:20]
+        elif t.task_id in seen and seen[t.task_id][1] != RECORD:
+            row["conversation_as_shown"] = f"not comparable: that run showed record {seen[t.task_id][1]}"
         elif t.task_id in seen:
             # As bytes: a text-mode read turns the carriage returns some outputs hold into newlines.
             shown = (args.out / "tasks" / t.task_id / "conversation.txt").read_bytes().decode("utf-8")
-            row["conversation_as_shown"] = shown == seen[t.task_id]
+            row["conversation_as_shown"] = shown == seen[t.task_id][0]
         bad += (not f.ok) or row.get("conversation_as_shown") is False
         rows.append(row)
         print(f"  {'ok  ' if f.ok else 'FAIL'} {t.task_id:42} {f.files:6} files  {f.branch[:28]:28} {f.workdir[:48]}"

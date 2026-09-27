@@ -7373,14 +7373,16 @@ check(f"{'Q' * _turns110.MESSAGE_CHARS} [{5000 - _turns110.MESSAGE_CHARS:,} more
       "a message cut, and an edit's text cut, say so too")
 _task110 = _Task58("t-110", "r/r", "u", "sha", "s-110", 9, 10, 11, 12, "wrong " * 10, "right " * 10,
                    "a defect", "present")
-check(_turns110.RECORD == 2 and "replaced:" in REAL_TRANSCRIPT_FOR(_task110, _t110)   # the real one, not the stand-in
-      and _trace110.CONTEXT_CHARS >= _turns110.RECORD_CHARS,
-      f"the candidate is shown record 2, and the checker and the judge read {_trace110.CONTEXT_CHARS:,} "
-      f"characters of it, no less than the {_turns110.RECORD_CHARS:,} it may be")
+# Since v1 (09-27) the candidate is shown record 3, the whole conversation
+# (section 130); records 1 and 2 are kept, byte for byte, for the runs they were.
+check(_turns110.RECORD == 3 and "replaced:" in REAL_TRANSCRIPT_FOR(_task110, _t110)   # the real one, not the stand-in
+      and _trace110.CONTEXT_CHARS >= 1_000_000,
+      f"the candidate is shown record 3, and the checker and the judge read {_trace110.CONTEXT_CHARS:,} "
+      f"characters of it, more than the longest conversation")
 _p110 = fresh(["task-0"])
 asyncio.run(stage_attempt(_p110, 10**9, concurrency=2, repeats=1))
 _a110 = [json.loads(l) for l in _p110.answers.read_text().splitlines() if l.strip()]
-check(bool(_a110) and all(a.get("record") == 2 for a in _a110),
+check(bool(_a110) and all(a.get("record") == _turns110.RECORD for a in _a110),
       f"and the answer row the stage stores says which record its candidate read: {[a.get('record') for a in _a110]}")
 
 # The flag sample shows the conversation as it was read: the one stored on the
@@ -8758,6 +8760,62 @@ check(_env129.environment_failure("Error: Cannot find module 'vite'\nRequire sta
 check(_env129.environment_failure("sh: 1: bun: not found") and _env129.environment_failure("FAIL x [setup failed]")
       and not _env129.environment_failure("3 failed, 40 passed\nexit 1"),
       "a check that could not start is told from one that ran and failed")
+
+print("\n130. the whole conversation, to candidate and graders alike (record 3, v1)")
+# The user's decision of 09-27. Record 2 fitted the conversation into 75,000
+# characters and every claim D-45's readers could not settle rested on a part it
+# had cut. Record 3 cuts nothing; the graders read it whole and shorten it only
+# when a model refuses the prompt for its length, with the record, to the same
+# size, saying so; and the results the corpus table cut come back whole.
+_edits130 = [{"old_string": f"old {i}", "new_string": f"new {i}"} for i in range(8)]
+_t130 = [{"turn_number": 1, "turn_type": "user_prompt", "content": "U" * 9000},
+         {"turn_number": 2, "turn_type": "assistant_thinking", "content": "T" * 3000},
+         {"turn_number": 3, "turn_type": "tool_use", "tool_name": "MultiEdit", "file_path": "/r/a.py",
+          "content": json.dumps({"file_path": "/r/a.py", "edits": _edits130})},
+         {"turn_number": 4, "turn_type": "tool_use", "tool_name": "Bash", "content": json.dumps({"command": "C" * 5000})},
+         {"turn_number": 5, "turn_type": "tool_result", "content": "R" * 50_000 + "END-OF-RESULT"}]
+_x130 = _turns110.build_excerpt(_t130, 5, max_chars=20_000, record=3)
+check("U" * 9000 in _x130 and "T" * 3000 in _x130 and "C" * 5000 in _x130 and "new 7" in _x130
+      and "END-OF-RESULT" in _x130 and "not shown" not in _x130 and len(_x130) > 20_000,
+      f"record 3 cuts nothing -- a long message, a thought, a command, all eight edits, a long result -- "
+      f"and ignores the length it is given: {len(_x130):,} characters")
+_ctx130 = "conversation " * 20_000
+_pw130 = _trace110.build_prompt("I ran the tests.", [], context=_ctx130)
+_pf130 = _trace110.build_prompt("I ran the tests.", [], context=_ctx130, budget=24_000)
+check("The COMPLETE conversation" in _pw130 and _ctx130 in _pw130
+      and "PART of the conversation it was given -- its last 24,000 characters" in _pf130
+      and _ctx130[-24_000:] in _pf130 and _ctx130[-24_001:] not in _pf130,
+      "the trace check reads it whole, and at a fallback only its last part, the size of the record's, saying so")
+check(judge_mod.conversation_section(_ctx130).startswith("The COMPLETE conversation")
+      and "its last 24,000 characters" in judge_mod.conversation_section(_ctx130, 24_000),
+      "and so does the judge")
+# Whole results: a transcript whose result the table kept in part.
+_tr130 = Path(tempfile.mkdtemp()) / "s130.jsonl"
+_full130 = "line of output\n" * 2000
+_read130 = "".join(f"{i:>6}\u2192line {i}\n" for i in range(1, 2000))
+_tr130.write_text("\n".join(json.dumps(e) for e in [
+    {"type": "user", "message": {"role": "user", "content": "hi"}},
+    {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "a", "content": _full130}]}},
+    {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "b", "content": "other text " * 3000}]}},
+    {"type": "user", "isSidechain": True, "message": {"content": [
+        {"type": "tool_result", "tool_use_id": "c", "content": "subagent " * 3000}]}},
+    {"type": "user", "message": {"content": [{"type": "tool_result", "tool_use_id": "d", "content": _read130}]}}]) + "\n")
+_kept130 = [{"turn_number": 1, "turn_type": "tool_result", "tool_call_id": "a", "content": _full130[:10_000]},
+            {"turn_number": 4, "turn_type": "tool_result", "tool_call_id": "d",
+             "content": _read130[:10_240] + "\n... [truncated]"},
+            {"turn_number": 2, "turn_type": "tool_result", "tool_call_id": "b", "content": "different text"},
+            {"turn_number": 3, "turn_type": "tool_result", "tool_call_id": "c", "content": "subagent " * 10}]
+_saved130 = (recover_mod.transcript_path, recover_mod.has_transcript)
+recover_mod.transcript_path, recover_mod.has_transcript = (lambda sid: _tr130), (lambda sid: True)
+try:
+    _w130 = recover_mod.whole_results("s130", _kept130)
+finally:
+    recover_mod.transcript_path, recover_mod.has_transcript = _saved130
+check(_w130[0]["content"] == _full130 and _w130[0].get("whole_from_transcript") and _w130[1]["content"] == _read130
+      and _w130[2]["content"] == "different text" and _w130[3]["content"] == "subagent " * 10
+      and recover_mod.whole_results("no-transcript", _kept130) == _kept130,
+      "a result the table cut comes back whole from the transcript, never one that differs or a subagent's, "
+      "and nothing changes without a transcript")
 
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
