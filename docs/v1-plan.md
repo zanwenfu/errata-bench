@@ -104,6 +104,13 @@ the next milestone's work, with the task set's extension.
   (about 2 hours and 60 GB for all 55).
 - **The seeded track**: Claude Code and Codex resuming the developer's own
   session instead of reading it pasted (not in v1, 09-27).
+- **The instruction's wording.** Every agent is given the same framing around
+  the conversation (`release.harbor.FRAMING`), and no other wording has been
+  tried. Two or three rewordings, on about 10 tasks with two models, show
+  whether the scores move with it. One earlier harness change moved DeepSeek
+  from 0 to 14 of 21 answers using tools (G-74), so what is measured can
+  depend on how the task is put. About $100 on the Azure credits, confirmed
+  before it runs (added 09-27).
 - **A leaderboard of CLI agents** (Claude Code, Codex, Gemini CLI), each run
   with its provider's key.
 - **A canary string** in the task files, so training on them can be detected.

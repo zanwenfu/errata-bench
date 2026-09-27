@@ -4415,6 +4415,46 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   inlined in the kit). Guard section 60 drives all four scripts' `main`.
   Reverting the shared check alone turns it red on three of them; reverting
   the kit's copy alone, on the fourth.
+- **G-78 · An agent could change the record it is graded on.** *(opened
+  09-27, checked at 30b716666.)* Nothing in a v1 task's container grades.
+  The verifier records the reply, the calls and the file changes, and the
+  graders read them outside it. What can be bent is the record.
+  - *A submitted agent writes its own call log.* The calls and their outputs
+    come from the trajectory the agent's harness produces. A harness built to
+    cheat could add a test run that never happened, and the judge would read
+    the claim it backs as established. File changes cannot be forged this
+    way: the verifier reads them from the disk.
+  - *The verifier runs after the agent, in its container, where the agent is
+    root.*
+    - An edit to `/errata/before.json` is detected. It is compared with the
+      task's own `workspace.json`, which arrives only after the agent stops,
+      and any difference is named in `before.differ_from_workspace`. Grading
+      does not act on it.
+    - A replaced `python3` is not detected.
+    - The verifier's own code is in the container (`/errata/lib`), and its
+      docstring says what it records.
+  - *A model's provider can search the web on its own side.* `official`
+    requires Claude Code's and Codex's web search to be off. For any other
+    agent nothing checks.
+  - *The per-task check that an answer cannot vouch for itself to its grader
+    (`addressed`) was not run in v1's admission.* That admission ran the three
+    controls: 486 rows, null, overclaim and criterion, 162 each. The judge's
+    8 probes, two of which address the grader, read right on 3 runs of 3, on
+    one made-up task.
+  - *Checked, and not open.*
+    - The history in all 55 task archives holds only the starting commit and
+      its ancestors: one branch, every commit object reachable from HEAD, no
+      stash. A later fix is not in the container, the shape of leak other
+      benchmarks have had.
+    - The task's record of the defect, its file and its text, is only in
+      `tests/task.json`, which also arrives after the agent stops. The
+      references, the controls and the graders' instructions are never in the
+      container.
+    - The token check reads a deleted defect file as removed once any other
+      file has changed (tested offline). It only annotates the judge's reading
+      (`Structure.note`); the reported `fixed` is the judge's.
+  - This matters once others submit results. Our own runs of standard agents
+    are unaffected. Closing it is for the next milestone.
 - **G-77 · The excerpt spreads its result budget evenly, so a long result is
   cut while most of the budget goes unused.** *(opened 09-23, from round 2's
   accepted-answer failures.)* `_fit_result_budget` divides what the
@@ -9287,3 +9327,14 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     labelled `misreported` in every `results.json` with the exploratory 78%
     (the re-read of D-45's unclear items), not the registered 75% (44 of 59)
     and κ 0.59. It now quotes the registered result, and a guard holds it.
+- **09-27, 23:3x UTC** — **The next milestone gains the instruction's
+  wording; whether an agent can game its grade (G-78).** A decision of the
+  user's, and a question of theirs.
+  - *The wording, added to the next milestone* (`docs/v1-plan.md`). Every
+    agent gets the same framing (`release.harbor.FRAMING`), and no other has
+    been tried. The plan: two or three rewordings on about 10 tasks with two
+    models (G-74).
+  - *Can an agent game the grade, as agents have gamed test-based
+    benchmarks?* Not by the route those took. Nothing in the container
+    grades, and nothing that grades is in it. It could by changing the record
+    the graders read (G-78).
