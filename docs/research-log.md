@@ -8857,3 +8857,27 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   check fails). The reference agent passes ERRATA_API into the container too,
   so an endpoint that speaks only OpenAI's chat completions (a router, a local
   server) works with OPENAI_BASE_URL beside the key; docs/running.md says how.
+- **09-27, 07:3x UTC** — **Step 2 done: every task's image built and
+  checked, and what the installs left in git's view hidden.** On the server,
+  from its worktree at `a3ba393`, `scripts/build_environments.py` built all 55
+  images (median 1,140 MB, largest 2,654 MB; builds a median 104 s, the longest
+  676 s). Of 77 installs, 72 followed their lockfile strictly; 5 had no
+  lockfile to follow (unlocked), and none failed or needed the lenient
+  retry. The projects' own checks, run with the network closed: 63 in 51
+  tasks, all of which could start; 50 passed and 13 ran and failed, which is
+  the task's own business. Four tasks have no check of their own (three
+  dotfiles repositories, one skills repository). `results/v1-environments.md`
+  has the counts (`scripts/environments_summary.py`, names and counts only).
+  - *Found*: in 4 tasks the installs left new untracked entries in `git
+    status` -- lockfiles npm wrote where the developer had none (SprintSpark,
+    ClawCorp), an unignored `node_modules/` (vibereq), Node's compile cache
+    (oddessentials). An agent running `git status` there would have seen files
+    the developer never had. The image now records each such path in the
+    repository's own `.git/info/exclude`, anchored, and names it in
+    `/errata/install-hidden.txt`: the files stay, since the dependencies need
+    them, and `git status` shows what the developer's did. Anything the
+    developer already had untracked still shows. Guard 129 runs the step on a
+    repository after simulated installs; three breaks (the developer's own
+    file hidden too, the files deleted, nothing named), each caught. The build
+    record reports what was hidden; the four tasks are to be built again with
+    it on the server.

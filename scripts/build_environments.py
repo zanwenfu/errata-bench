@@ -79,12 +79,16 @@ def one(task_dir: Path, keep: bool) -> dict:
     info = docker("run", "--rm", "--network", "none", image, "sh", "-c",
                   "cat /errata/install.log 2>/dev/null; echo '=== output'; tail -n 40 /errata/install-output.log "
                   "2>/dev/null; echo '=== new in git status'; "
-                  "diff /errata/status-before.txt /errata/status-after.txt | grep '^>' | head -20", timeout=300)
+                  "diff /errata/status-before.txt /errata/status-after.txt | grep '^>' | head -20; "
+                  "echo '=== hidden'; cat /errata/install-hidden.txt 2>/dev/null", timeout=300)
     head, _, rest = info.stdout.partition("=== output")
     row["installs"] = [line for line in head.splitlines() if line.strip()]
-    output, _, noise = rest.partition("=== new in git status")
+    output, _, rest = rest.partition("=== new in git status")
+    noise, _, hidden = rest.partition("=== hidden")
     row["install_output_tail"] = output.strip()[-2000:]
     row["install_left_in_git_status"] = [line[2:] for line in noise.splitlines() if line.startswith(">")]
+    # What the installs added and the image hides from git's view (`environment.HIDE_INSTALLED`).
+    row["install_hidden_from_git"] = [line for line in hidden.splitlines() if line.strip()]
     t1 = time.monotonic()
     ran = docker("run", "--rm", "-i", "--network", "none", "--cpus", "2", "--memory", "4g", image, "sh", "-s",
                  stdin=check_script(r), timeout=3600)

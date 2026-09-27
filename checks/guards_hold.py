@@ -8809,6 +8809,34 @@ check(_ran129.returncode == 0 and "core.ignorecase" not in _cfg129 and "core.pre
       and 0 <= _at129 < _df129.find("status-before.txt"),
       f"and the macOS git settings are dropped before the status is taken, so git reads the file system it is on: "
       f"{_ran129.stderr[-200:]}")
+# What the installs add that git would list -- a lockfile npm wrote, a
+# node_modules/ the repository does not ignore -- is hidden from git's view,
+# not deleted: `git status` shows what the developer's did.
+_hide129 = Path(tempfile.mkdtemp())
+_sub129 = __import__("subprocess")
+_sub129.run(["git", "init", "-q"], cwd=_hide129, check=True)
+(_hide129 / "app.js").write_text("x\n")
+(_hide129 / "notes of mine.txt").write_text("the developer's own\n")
+_sub129.run(["git", "add", "app.js"], cwd=_hide129, check=True)
+_errata129 = Path(tempfile.mkdtemp())
+(_errata129 / "status-before.txt").write_text(
+    _sub129.run(["git", "status", "--porcelain"], cwd=_hide129, capture_output=True, text=True).stdout)
+(_hide129 / "node_modules" / "dep").mkdir(parents=True)
+(_hide129 / "node_modules" / "dep" / "index.js").write_text("y\n")
+(_hide129 / "package-lock.json").write_text("{}\n")
+(_hide129 / "compile cache").mkdir()
+(_hide129 / "compile cache" / "c.bin").write_text("z\n")
+_script129 = _env129.HIDE_INSTALLED.replace("/errata/", f"{_errata129}/")
+_hid129 = _sub129.run([sys.executable, "-c", _script129], cwd=_hide129, capture_output=True, text=True)
+_after129 = _sub129.run(["git", "status", "--porcelain"], cwd=_hide129, capture_output=True, text=True).stdout
+check(_hid129.returncode == 0 and _after129 == (_errata129 / "status-before.txt").read_text()
+      and (_errata129 / "install-hidden.txt").exists()
+      and sorted((_errata129 / "install-hidden.txt").read_text().split("\n")) == sorted(
+          ["", "compile cache/", "node_modules/", "package-lock.json"])
+      and (_hide129 / "package-lock.json").exists() and "notes of mine" in _after129
+      and "/errata/install-hidden.txt" in _df129,
+      f"and what the installs add is hidden from git's view, kept on disk and named; the developer's own "
+      f"untracked file still shows: {_after129!r} {_hid129.stderr[-200:]}")
 # The install line, run for real: a stand-in bun refuses --frozen-lockfile and
 # rewrites bun.lock when it installs. The developer's own edit to the lockfile
 # must survive, and the log must say the strict install failed.

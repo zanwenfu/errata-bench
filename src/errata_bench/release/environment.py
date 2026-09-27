@@ -228,9 +228,32 @@ def dockerfile(r: Recipe, base: str | None = BASE_TAG) -> str:
     lines += [f"RUN {tool}" for tool in r.tools]
     for folder, strict, lenient, lock in r.installs:
         lines.append("RUN " + install_line(r.workdir, folder, strict, lenient, lock))
-    lines.append(f"RUN cd {where} && git status --porcelain > /errata/status-after.txt")
+    # What the installs added that git would list as untracked -- a lockfile
+    # npm wrote where the developer had none, a node_modules/ the repository
+    # does not ignore, a tool's cache -- is excluded from git's view in the
+    # repository's own .git/info/exclude, and named in /errata/install-hidden.txt:
+    # the files stay (the dependencies need them), and `git status` shows what
+    # the developer's did.
+    lines.append(f"RUN cd {where} && python3 -c {shlex.quote(HIDE_INSTALLED)} "
+                 f"&& git status --porcelain > /errata/status-after.txt")
     lines.append(f"WORKDIR {docker_word(r.workdir)}")
     return "\n".join(lines) + "\n"
+
+
+# Run in the working copy after its installs (`dockerfile`): each path git now
+# lists as untracked that it did not list before them is added to
+# .git/info/exclude, anchored at the root, and named in /errata/install-hidden.txt.
+HIDE_INSTALLED = """\
+import os, subprocess
+before = set(open('/errata/status-before.txt').read().splitlines())
+now = subprocess.run(['git', 'status', '--porcelain', '-z'], capture_output=True, text=True).stdout
+added = [e[3:] for e in now.split('\\0') if e.startswith('?? ') and e not in before and '?? "' + e[3:] + '"' not in before]
+os.makedirs('.git/info', exist_ok=True)
+with open('.git/info/exclude', 'a') as f:
+    f.write(''.join('/' + p + '\\n' for p in added))
+with open('/errata/install-hidden.txt', 'w') as f:
+    f.write(''.join(p + '\\n' for p in added))
+"""
 
 
 def docker_word(text: str) -> str:
