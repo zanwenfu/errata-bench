@@ -34,10 +34,11 @@ The v1 tasks, each a Harbor task folder: `instruction.md`, `task.toml`,
 task, with its history and its dependencies installed), and `tests/` (the
 verifier, which records what grading needs and grades nothing).
 
-They are published on Hugging Face, gated as SWE-chat is: accept the terms on
-the dataset's page, then
+They are published on Hugging Face as
+[zanwenfu/errata-bench-v1](https://huggingface.co/datasets/zanwenfu/errata-bench-v1),
+gated as SWE-chat is: accept the terms on the dataset's page, then
 
-    huggingface-cli download <dataset> --repo-type dataset --local-dir errata-bench-v1
+    huggingface-cli download zanwenfu/errata-bench-v1 --repo-type dataset --local-dir errata-bench-v1
 
 The folder holds `harbor/` (the tasks Harbor runs, with their digests),
 `tasks/` (what grading reads), `admission/gpt-6-astra/` (the official judge's
@@ -94,7 +95,9 @@ paid, with your key.
 A task is graded only by a judge that passed a check on it: that it reads the
 task's known-wrong and known-right answers correctly, and that its readings of
 three fixed control answers behave. `admission/gpt-6-astra/` is that check for
-the official judge, done once and shipped. To grade with another judge, put it
+the official judge, done once and shipped: it is admitted to 51 of the 55 tasks
+(it misread one task's known answers, and on three others one of its readings
+of a control went wrong), so v1's official scores are over those 51. To grade with another judge, put it
 through the same check first, with your key (about $4 a task):
 `scripts/admit_judge.py release/v1 --out <dir>`, then `--admission <dir>`.
 Results graded by any judge but the official one are that judge's, not

@@ -16,16 +16,20 @@ answer, puts a new model in the agent's place with real tools in a sandbox,
 records everything it does, and then checks every claim in its answer against
 that record.
 
-> **Status (27 September 2026).** The pipeline, the task set (55 tasks) and a
-> pre-registered six-model run (990 answers) are complete. The measurement is
-> still being validated, and this README says plainly where it falls short.
-> With the graders shown the whole record, the judge's reading of unverified
-> claims now passes its accuracy check: 33 of 36 of its calls are right
-> (92%), where 90% is required. The main honesty check does not pass yet: 75%
-> of its flags survive a reading against the records, where 90% is required,
-> and the two graders agree on it at κ 0.59, just under the 0.6 required.
-> Until it passes, model comparisons on the main measure are **not**
-> claimed. [Results so far](#6-results-so-far).
+> **Status: v1 (27 September 2026).** Anyone can now run their own coding
+> agent on errata-bench: 55 tasks as [Harbor](https://github.com/laude-institute/harbor)
+> tasks, each in its own container with the repository, its history and its
+> dependencies, graded with your own key; the official judge passed its check
+> on 51 of them, and official scores are over those. The tasks:
+> [zanwenfu/errata-bench-v1](https://huggingface.co/datasets/zanwenfu/errata-bench-v1)
+> (gated, as SWE-chat is). [Run your agent](docs/running.md).
+> The headline measure is **honest reports**, the judge's reading: in the
+> last check against the records, 33 of 36 of its flags were right (92%, where
+> 90% is required). The second grader, the trace check, is reported beside it
+> as a diagnostic: 78-81% of its flags are right, short of the 90% it needs to
+> join the headline. On the v1 subset (10 tasks, one attempt each) grok-4.6
+> made honest reports in 75% of its answers and DeepSeek-V4-Pro in 22%: too few
+> answers to rank models. Improving the graders is the next milestone.
 
 ## Contents
 

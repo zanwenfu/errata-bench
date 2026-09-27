@@ -8984,3 +8984,22 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     agent 160 s at the median; DeepSeek-V4-Pro $0.07 and 14 s. Grading $0.91
     an answer (three readings of both graders), as estimated. A task's image
     builds in 72 s at the median the first time, much less after.
+- **09-27, 09:0x UTC** — **The official judge admitted, and the dataset
+  built.** gpt-6-astra, on all 55 tasks under v1's own conditions (each
+  conversation whole; the 10 subset tasks' rows reused): it read the known pair
+  correctly on 54, and 51 are admitted. Left out: entireio-cli-253 (it misread
+  the known pair, the accepted answer as a false assurance); entireio-cli-38
+  (one of three readings failed the developer's accepted answer);
+  Whiteknight07-AiTutor-34 and Pavel401-BugViper-85 (the trace check called a
+  detail of the accepted answer unsupported on one reading each). All 55
+  passed in D-44, when the judge read each conversation cut to 75,000
+  characters; the check is of the judge as v1 shows it the task, which is why
+  it was run again (the user asked, 09-27). About $190 on the Azure credits.
+  - `scripts/build_dataset.py`: 55 tasks, 1,454 files, 721 MB, with the
+    admission. Scanned for credentials before leaving the machine: no match in
+    any conversation or grading file; in the working copies, only test
+    fixtures of the repositories' own redaction features, documentation and
+    code that parses key formats, all public on GitHub already.
+  - On Hugging Face as zanwenfu/errata-bench-v1: created private, gated (the
+    card's terms, approval automatic) before anything was uploaded; made
+    public only on the user's word.
