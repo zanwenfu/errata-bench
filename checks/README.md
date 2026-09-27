@@ -39,7 +39,7 @@ directories made before the split, and what happens when a candidate or a
 grading fails. Its ninth section requires that every served-model probe the
 stages made went to its stand-in, so none of it reaches the network.
 
-**`guards_hold.py`** is one hundred and twenty-four numbered sections, one per guard, after a section 0: what the
+**`guards_hold.py`** is one hundred and twenty-five numbered sections, one per guard, after a section 0: what the
 attempt and grade stages refuse to do; the gate asked repeatedly; the
 reference-answer control and when it is not applicable; the clean-pass
 standard and the hedged one priced side by side; permanent git loss; the
@@ -195,7 +195,9 @@ reading packet show each call as the graders are shown it, whole (B-269: packets
 1,500 characters that the graders read in full); section 124 has the judge's eight probes and
 the trace check's two more ask whether an answer addressing its grader is still caught, with a
 flag whose quote is not in the answer counted as a miss, and each task's instrument checks gain
-that answer too.
+that answer too; section 125 has `settled(rule="majority")` settle each observation as most
+readings made it, derive the outcome from those and quote a reading that agrees, while every
+existing caller keeps the rule that one reading's finding decides.
 Section 0 has the suite
 start as CI does, with no credential in its environment and `.env` never read (B-264: a
 stand-in corpus that gave every session a turn let section 41 call the model provider with the
