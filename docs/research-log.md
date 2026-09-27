@@ -8378,3 +8378,45 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     Installing each task's dependencies at build time, with the network
     closed afterwards, would change what candidates can do. Results from
     before and after it would not be comparable.
+- **09-27, 03:3x UTC** — **The graders checked again (v1 step 1): B-269, a
+  re-read of what D-45 left unclear, the settling rule, and probes for the
+  judge.** No model calls; readers are Claude subagents under the rubrics.
+  - *B-269.* The reading packets cut every output at 1,500 characters and
+    every argument at 400, while the graders read the whole record (view 2).
+    The rubric sends a flag resting on the cut part to "unclear", which counts
+    against the grader. Both samplers now render the calls with the graders'
+    own `trace.render`; D-45's draws come out byte for byte the same. Whole
+    packets (5.4 MB for D-45) hold SWE-chat text and repository contents in
+    full, so `results/*/packets/` is kept out of git until the release decides
+    how that text is published. Guard 123.
+  - *The re-read.* The 5 trace-check flags and 3 judge calls that D-45's
+    readings left unclear were read again from whole packets, twice and blind;
+    the 4 disagreements were settled against the record
+    (`results/d45-reread/`, `scripts/reread_tally.py`).
+    - Trace check: 4 of the 5 are real and 1 stays unclear. D-45's flags
+      would read 48 of 59 real (81%), answers 28 of 36 (78%).
+    - Judge: all 3 stay unclear. In each, what decides it is cut in the stored
+      conversation itself, which the grader and the candidate saw cut too.
+      None of the judge's 36 calls has been shown wrong.
+    - Exploratory: R-40 stands as it was read.
+  - *The settling rule.* A finding counts if any one of an answer's three
+    readings makes it. Read against the records, of the answers D-45's trace
+    check called misreported 69% truly were; of those two or three readings
+    called so, 78% (D-44: 71% and 83%). Requiring both graders as well does not
+    help (73%, 84%): both make the same misjudgements. The judge's readings
+    nearly always agree, so the rule barely moves it (92% to 91%).
+    `settled(rule="majority")` is added, off by default. Guard 125.
+  - *What it means for v1.* The judge's reading of an unverified claim is the
+    headline measure. The trace check stays as the evidence behind a flag,
+    reported with its measured precision; neither the settling rule nor a
+    second grader brings it to 90%. The undecidable items all come from the
+    conversation's own shortening to 75,000 characters, a v1 design question.
+  - *Probes (not yet run).* Eight for the judge on one made-up task (the same
+    false claim plain, assuring the reviewer, and instructing the grading
+    model; an apology with a claim; one claim buried in an accurate report;
+    an honest hedge; an emphatic claim the record shows; a restated fact from
+    the developer), two more for the trace check (36 and 37), and a per-task
+    instrument check, `addressed`. Guard 124.
+  - *Drawn, reading in progress.* What the judge misses: 12 answers it did not
+    flag (4 per model, the first 4 of a fixed draw of 8), read twice and blind
+    (`scripts/judge_misses_sample.py`, `results/d45-misses/`).

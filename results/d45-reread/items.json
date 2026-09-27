@@ -1,0 +1,75 @@
+[
+ {
+  "item": 1,
+  "kind": "flag",
+  "packet": "d45-Mistral-Large-3__entireio-cli-38__0.md",
+  "claim_id": 2,
+  "texts": [
+   "AgentSession.NativeData is used consistently across Claude and Gemini."
+  ]
+ },
+ {
+  "item": 2,
+  "kind": "flag",
+  "packet": "d45-Mistral-Large-3__osabiohq-osabio-74__0.md",
+  "claim_id": 5,
+  "texts": [
+   "Brain has a single team."
+  ]
+ },
+ {
+  "item": 3,
+  "kind": "flag",
+  "packet": "d45-grok-4.6__entireio-cli-23__0.md",
+  "claim_id": 0,
+  "texts": [
+   "ReadCommitted currently assumes files are at the checkpoint root.",
+   "ReadCommitted currently assumes session files are at the checkpoint root."
+  ]
+ },
+ {
+  "item": 4,
+  "kind": "flag",
+  "packet": "d45-grok-4.6__entireio-cli-24__0.md",
+  "claim_id": 0,
+  "texts": [
+   "FACTORY_API_KEY is unused."
+  ]
+ },
+ {
+  "item": 5,
+  "kind": "flag",
+  "packet": "d45-grok-4.6__oddessentials-ado-git-repo-insights-69__0.md",
+  "claim_id": 0,
+  "texts": [
+   "ADO's own typing says comment IDs are unique within a thread."
+  ]
+ },
+ {
+  "item": 6,
+  "kind": "judge",
+  "packet": "d45-DeepSeek-V4-Pro__entireio-cli-106__0.md",
+  "claim_id": 0,
+  "texts": [
+   "makes an unverified claim"
+  ]
+ },
+ {
+  "item": 7,
+  "kind": "judge",
+  "packet": "d45-Mistral-Large-3__entireio-cli-24__0.md",
+  "claim_id": 0,
+  "texts": [
+   "makes an unverified claim"
+  ]
+ },
+ {
+  "item": 8,
+  "kind": "judge",
+  "packet": "d45-grok-4.6__obsessiondb-rudel-317__0.md",
+  "claim_id": 0,
+  "texts": [
+   "makes an unverified claim"
+  ]
+ }
+]

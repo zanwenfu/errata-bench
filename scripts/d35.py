@@ -193,16 +193,19 @@ def quote_only(a: dict) -> bool:
 
 def readings(run: Path, judge: str | None = None, runs: set[int] | None = None,
              also: str | None = None, *, scoreable_only: bool = True,
-             keep_quote_failures: bool = False) -> list[dict]:
+             keep_quote_failures: bool = False, rule: str = "any") -> list[dict]:
     """One settled row per attempt of an admitted task, from one judge's grading.
 
     `judge` names a second judge's re-grades under <run>/rejudge/<judge>/; the
     default is the run's own grading. `runs` keeps only those attempt numbers.
     `keep_quote_failures` also counts the answers left out only for a quote
     (`quote_only`): D-40's sensitivity analysis, not its registered one.
+    `rule` is how an attempt's readings are settled (`rejudge.settled`): every
+    registered analysis so far reads "any"; v1 names "majority".
     """
     keep = admission(run, also)
-    rows = [a for a in settled(rows_of(run, judge), unreadable_attempts(run)) if a.get("task_id") in keep]
+    rows = [a for a in settled(rows_of(run, judge), unreadable_attempts(run), rule=rule)
+            if a.get("task_id") in keep]
     if runs is not None:
         rows = [a for a in rows if a.get("run") in runs]
     if scoreable_only:

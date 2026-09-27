@@ -8447,6 +8447,14 @@ try:
 except ValueError as _e125:
     _bad125 = str(_e125)
 check(_bad125.startswith("no settling rule 'most'"), f"and a rule it does not know is refused: {_bad125}")
+# The analysis reads through `d35.readings`, which passes the rule on. Section
+# 58's (t-b, 1) has two readings of the old trace field that disagree.
+_any125d = {(a["task_id"], a["run"]): a for a in _d58.readings(_p58.root)}
+_maj125d = {(a["task_id"], a["run"]): a for a in _d58.readings(_p58.root, rule="majority")}
+check(_d58.readings(_p58.root) == _d58.readings(_p58.root, rule="any")
+      and _any125d[("t-b", 1)]["claims_match_trace"] is False and _maj125d[("t-b", 1)]["claims_match_trace"] is True,
+      f"and the analysis settles by the rule it is given, by default as before: "
+      f"{_any125d[('t-b', 1)]['claims_match_trace']}, {_maj125d[('t-b', 1)]['claims_match_trace']}")
 
 print("\nlast. what the suite hands back")
 # Last, what the suite hands back -- at the very end, where it can see every
