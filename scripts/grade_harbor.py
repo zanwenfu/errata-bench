@@ -53,13 +53,77 @@ def release_tasks(release: Path) -> dict[str, tuple[Task, Path]]:
     return out
 
 
-def shown_for(task: Task, folder: Path) -> tuple[str, str]:
-    """The instruction a trial of this task was given, and the conversation it showed (`harbor.fitted`)."""
+def graded_for(task: Task, folder: Path) -> tuple[str, str]:
+    """The instruction a trial of this task was given, and the conversation its answer is graded against.
+
+    The graders read the whole conversation, which the agent was given: in its
+    instruction, or, for a conversation too long to pass as one argument, cut
+    there and whole in its container (`harbor.fitted`, `harbor.FITTED`). The
+    judge's admission read the same (`admitted_conversation`, #7): on those
+    tasks the cut view had been graded, on a judge admitted on the whole.
+    """
     meta = json.loads((folder / "task.json").read_text())
     whole = (folder / "conversation.txt").read_bytes().decode("utf-8")
     turns = json.loads((folder / "shown_turns.json").read_text())
-    instruction, shown, _ = harbor_mod.fitted(meta, whole, turns, task.cut_turn)
-    return instruction, shown
+    instruction, _, _ = harbor_mod.fitted(meta, whole, turns, task.cut_turn)
+    return instruction, whole
+
+
+def admitted_conversation(folder: Path) -> str | None:
+    """The conversation the judge's admission read at the cut (`release.admission`), or None if absent."""
+    try:
+        return json.loads((folder / "grading" / "controls.json").read_text())["cut"]
+    except (OSError, ValueError, KeyError):
+        return None
+
+
+def admitted_elsewhere(tasks: dict[str, tuple[Task, Path]]) -> list[str]:
+    """The tasks whose admission read another conversation than grading reads: their grades would not be admitted."""
+    return [task_id for task_id, (task, folder) in sorted(tasks.items())
+            if admitted_conversation(folder) != graded_for(task, folder)[1]]
+
+
+def release_problems(tasks: dict[str, tuple[Task, Path]], admission: Path, out: Path,
+                     graded: dict[str, tuple[str, str]]) -> list[str]:
+    """Whatever would make this run's grades not what they claim to be, found before anything is read or paid.
+
+    A task the release holds incompletely; one whose admission read another
+    conversation than grading reads, or none (#7); an admission made on another
+    version of a task, by the fingerprint its rows carry; and rows already on
+    record in ``out`` that were graded on another conversation -- a folder
+    resumed across the fix of #7 would mix the two (09-27 review). ``graded``
+    is filled with each task's instruction and conversation on the way.
+    """
+    from errata_bench.spec import fingerprint
+
+    problems = []
+    for task_id, (task, folder) in sorted(tasks.items()):
+        try:
+            graded[task_id] = graded_for(task, folder)
+        except (OSError, ValueError, KeyError) as e:
+            problems.append(f"{task_id}: the release holds this task incompletely ({type(e).__name__}: {e})")
+            continue
+        admitted = admitted_conversation(folder)
+        if admitted is None:
+            problems.append(f"{task_id}: the release has no conversation the judge's admission read "
+                            f"(grading/controls.json)")
+        elif admitted != graded[task_id][1]:
+            problems.append(f"{task_id}: the judge's admission read another conversation than grading reads")
+    stamps = {task_id: fingerprint(task) for task_id, (task, _) in tasks.items()}
+    for name in ("calibration.jsonl", "controls.jsonl"):
+        for r in load(admission / name) if (admission / name).is_file() else []:
+            stamp = r.get("task_fingerprint")
+            if r.get("task_id") in stamps and stamp and stamp != stamps[r["task_id"]]:
+                problems.append(f"{r['task_id']}: --admission was made on another version of this task "
+                                f"({name}: fingerprint {stamp}, the release's {stamps[r['task_id']]})")
+                break
+    stale = sorted({r["task_id"] for r in load(Paths(out).answers)
+                    if not r.get("error") and r.get("task_id") in graded
+                    and r.get("transcript") is not None and r["transcript"] != graded[r["task_id"]][1]})
+    if stale:
+        problems.append(f"{out} holds rows graded on another conversation than grading now reads "
+                        f"({', '.join(stale[:5])}): grade into a new --out")
+    return problems
 
 
 def dataset_version(release: Path) -> str:
@@ -70,7 +134,62 @@ def dataset_version(release: Path) -> str:
         return "unknown"
 
 
-def results_of(paths: Paths, judge: str, passes: int, version: str = "unknown") -> dict:
+def sha256_of(*files: Path) -> str | None:
+    """One digest over those of the files given that exist, by name and content; None if none does.
+
+    The dataset ships its admission without `gate.jsonl`, so a digest that
+    needed every file named none (09-27).
+    """
+    import hashlib
+
+    present = [f for f in files if f.is_file()]
+    if not present:
+        return None
+    h = hashlib.sha256()
+    for f in present:
+        h.update(f.name.encode() + b"\0" + f.read_bytes() + b"\0")
+    return "sha256:" + h.hexdigest()
+
+
+def grading_data_of(release: Path) -> str | None:
+    """One digest over every task's grading row (tasks/<id>/grading/task.json), each named by its task."""
+    import hashlib
+
+    rows = sorted((release / "tasks").glob("*/grading/task.json"))
+    if not rows:
+        return None
+    h = hashlib.sha256()
+    for f in rows:
+        h.update(f.parent.parent.name.encode() + b"\0" + f.read_bytes() + b"\0")
+    return "sha256:" + h.hexdigest()
+
+
+def manifest_of(release: Path, run: Path) -> dict:
+    """What a run's results were made with, named exactly and with no credential in it (#6)."""
+    provider = ("azure" if os.environ.get("ERRATA_PROVIDER", "").lower() == "azure"
+                else "openai-compatible" if os.environ.get("OPENAI_BASE_URL") else "openai")
+    return {"code_version": code_version(), "dataset_version": dataset_version(release),
+            "task_digests": sha256_of(release / "harbor" / "digests.json"),
+            # What grading reads of each task, by task: v1.0.2 changed it (the
+            # defect labels, #8) and not the tasks, so the tasks' version alone
+            # does not name it.
+            "grading_data": grading_data_of(release),
+            "admission": sha256_of(*(run / name for name in ADMISSION)),
+            "requirements_lock": sha256_of(Path(__file__).resolve().parent.parent / "requirements-lock.txt"),
+            "provider": provider,
+            "api": os.environ.get("ERRATA_API") or ("chat_completions" if provider == "azure" else "responses")}
+
+
+def served_by(rows: list[dict]) -> dict:
+    """How many requests each model served, as the provider named it, per grader (#6)."""
+    counts: dict[str, Counter] = {"judge": Counter(), "trace": Counter()}
+    for r in rows:
+        for grader in counts:
+            counts[grader].update(r.get(f"{grader}_served") or ["not recorded"])
+    return {g: dict(c) for g, c in counts.items()}
+
+
+def results_of(paths: Paths, judge: str, passes: int, version: str = "unknown", manifest: dict | None = None) -> dict:
     """The run's results: each model's own score (never two models' answers in one), and whether it is official."""
     from errata_bench.release.report import OFFICIAL_JUDGE, score
     from errata_bench.score.judge import can_be_scored
@@ -89,7 +208,8 @@ def results_of(paths: Paths, judge: str, passes: int, version: str = "unknown") 
                   "official": not why, "why_not_official": why})
         models[model] = s
     rows = load(paths.answers)
-    return {"benchmark": "errata-bench", "dataset_version": version,
+    return {"benchmark": "errata-bench", "dataset_version": version, "manifest": manifest or {},
+            "served": served_by(readings),
             "written_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "code_version": code_version(), "judge": judge, "passes": passes, "admitted_tasks": sorted(admitted),
             "trials": {"on_record": len(rows), "graded": len(answers), "not_gradable": len(rows) - len(answers)},
@@ -109,6 +229,17 @@ def main(argv: list[str]) -> int:
     args = ap.parse_args(argv)
 
     tasks = release_tasks(args.release)
+    # Refused before anything is read or paid: a judge admitted on one
+    # conversation and grading on another is not admitted to what it grades
+    # (#7), and the same holds for an admission of another task version, or a
+    # folder already holding rows graded on another conversation.
+    graded_cache: dict[str, tuple[str, str]] = {}
+    problems = release_problems(tasks, args.admission, args.out, graded_cache)
+    if problems:
+        print(f"refused: {len(problems)} problem(s), nothing was graded:"
+              + "".join(f"\n  - {p}" for p in problems[:8]) + ("\n  ..." if len(problems) > 8 else ""),
+              file=sys.stderr)
+        return 2
     digest_file = args.release / "harbor" / "digests.json"
     digests = json.loads(digest_file.read_text()) if digest_file.is_file() else {}
     paths = Paths(args.out)
@@ -124,7 +255,6 @@ def main(argv: list[str]) -> int:
     runs = Counter()
     for r in load(paths.answers):
         runs[r["task_id"]] = max(runs[r["task_id"]], int(r.get("run", -1)) + 1)
-    shown_cache: dict[str, tuple[str, str]] = {}
     written = Counter()
     for trial in read_trials(args.jobs):
         if trial.name in on_record:
@@ -133,11 +263,11 @@ def main(argv: list[str]) -> int:
             written["not a task of this release"] += 1
             continue
         task, folder = tasks[trial.task_id]
-        if task.task_id not in shown_cache:
-            shown_cache[task.task_id] = shown_for(task, folder)
-        instruction, shown = shown_cache[task.task_id]
+        if task.task_id not in graded_cache:
+            graded_cache[task.task_id] = graded_for(task, folder)
+        instruction, conversation = graded_cache[task.task_id]
         ok, why = official(trial, digests)
-        row = answer_row(trial, task, runs[task.task_id], shown, instruction, ok)
+        row = answer_row(trial, task, runs[task.task_id], conversation, instruction, ok)
         if why:
             row["harbor"]["why_not_official"] = why
         runs[task.task_id] += 1
@@ -164,7 +294,12 @@ def main(argv: list[str]) -> int:
 
     progress = asyncio.run(stage_grade(paths, args.limit, args.concurrency, passes=args.passes))
     print(progress.line().strip())
-    result = results_of(paths, judge_model(), args.passes, dataset_version(args.release))
+    result = results_of(paths, judge_model(), args.passes, dataset_version(args.release),
+                        manifest_of(args.release, args.out))
+    judges = [m for m in result["served"]["judge"] if m != "not recorded"]
+    if len(judges) > 1:
+        print(f"note: the judge's requests were served by {len(judges)} models: {', '.join(judges)} "
+              f"(results.json, `served`)")
     (args.out / "results.json").write_text(json.dumps(result, indent=1) + "\n")
     for model, s in result["models"].items():
         m = s["measures"]

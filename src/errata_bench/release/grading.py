@@ -164,12 +164,13 @@ def framing(instruction: str) -> str:
     return instruction.split(f"\n\n{RULE}\n\n", 1)[0]
 
 
-def answer_row(trial: Trial, task, run: int, shown: str, instruction: str, is_official: bool) -> dict:
+def answer_row(trial: Trial, task, run: int, conversation: str, instruction: str, is_official: bool) -> dict:
     """The answer row for one trial, as the attempt stage writes one; or an error row saying why not.
 
-    ``task`` is the release's `Task`; ``shown`` the conversation the agent was
-    shown and ``instruction`` its whole instruction, both as the release's
-    export makes them (`harbor.fitted`).
+    ``task`` is the release's `Task`; ``conversation`` the conversation the
+    answer is graded against, the whole one the agent was given (`grade_harbor.
+    graded_for`), and ``instruction`` its whole instruction, as the release's
+    export makes it (`harbor.fitted`).
     """
     import hashlib
 
@@ -201,7 +202,9 @@ def answer_row(trial: Trial, task, run: int, shown: str, instruction: str, is_of
         tool_calls=[SimpleNamespace(name=harness_tool(c), failed=False) for c in calls],
         actual_changes=a["actual_changes"], declared_changes=[])
     structure = analyse(task, attempt, None)
-    structure.token_removed = a.get("token_removed")
+    # The verifier searches for the token as written; where it was not there to
+    # remove, its absence afterwards says nothing (#8).
+    structure.token_removed = a.get("token_removed") if task.token_removal_counts else None
     ref = trial.reference or {}
     out_of_time = bool(ref.get("out_of_time")) or trial.exception == TIMED_OUT
     usage = ref.get("usage")
@@ -239,7 +242,7 @@ def answer_row(trial: Trial, task, run: int, shown: str, instruction: str, is_of
         "structure": structure.to_json(),
         "final_state": a.get("final_state") or {},
         "final_state_files": a.get("final_state_files") or 0,
-        "transcript": shown,
+        "transcript": conversation,
         "record": RECORD,
         "calls": CALLS,
         "rules": f"{framing(instruction)}\n\n{note}",

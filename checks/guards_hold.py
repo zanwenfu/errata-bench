@@ -9401,6 +9401,9 @@ _turns135 = [{"turn_number": 1, "turn_type": "user_prompt", "content": "Do the t
 (_fd135 / "conversation.txt").write_text(__import__("errata_bench.corpus.turns", fromlist=["x"]).build_excerpt(
     _turns135, 1, max_chars=75_000, record=3))
 (_fd135 / "task.json").write_text(json.dumps({"task_id": "h1", "workdir": "/home/dev/r", "session_workdir": "/home/dev/r"}))
+# What the judge's admission read at the cut, as the freeze keeps it (`release.admission`).
+(_fd135 / "grading" / "controls.json").write_text(json.dumps({
+    "cut": (_fd135 / "conversation.txt").read_text(), "resolution": "", "last_action": None}))
 _ins135, _shown135, _ = _hb135.fitted(json.loads((_fd135 / "task.json").read_text()),
                                       (_fd135 / "conversation.txt").read_text(), _turns135, 1)
 _digest135 = "sha256:" + "a" * 64
@@ -9647,6 +9650,397 @@ _res137 = _gh135.results_of(_Paths135(_run135), "the-grader", 3, _gh135.dataset_
 check(_res137.get("dataset_version") == _hb135.VERSION == "1.0.1"
       and _gh135.dataset_version(Path(tempfile.mkdtemp())) == "unknown",
       f"and results say which version of the tasks they were graded against: {_res137.get('dataset_version')}")
+
+print("\n138. a long task's answers are graded on the whole conversation, as the judge was admitted on it (#7)")
+# 17 of v1's conversations are too long to pass an agent whole: its instruction
+# shows them cut, and the container holds them whole. Grading read the cut view,
+# on a judge whose admission read the whole one (#7). It now reads the whole,
+# and refuses a release whose admission read another conversation.
+_rel138 = Path(tempfile.mkdtemp()) / "release"
+_task138 = make_task("h2")
+_task138.cut_turn = 7
+_fd138 = _rel138 / "tasks" / "h2"
+(_fd138 / "grading").mkdir(parents=True)
+(_fd138 / "grading" / "task.json").write_text(json.dumps(_task138.to_json()))
+_turns138 = _turns133(90_000)
+(_fd138 / "shown_turns.json").write_text(json.dumps(_turns138))
+_whole138 = _be133(_turns138, 7, max_chars=_RC133, record=3)
+(_fd138 / "conversation.txt").write_bytes(_whole138.encode("utf-8"))
+(_fd138 / "task.json").write_text(json.dumps({"task_id": "h2", "workdir": "/work", "session_workdir": "/work"}))
+(_fd138 / "grading" / "controls.json").write_text(json.dumps({"cut": _whole138, "resolution": "", "last_action": None}))
+_tasks138 = _gh135.release_tasks(_rel138)
+_ins138, _conv138 = _gh135.graded_for(*_tasks138["h2"])
+_fit138 = _hb135.fitted(json.loads((_fd138 / "task.json").read_text()), _whole138, _turns138, 7)
+check(_fit138[2] is not None and _ins138 == _fit138[0] and _conv138 == _whole138 != _fit138[1]
+      and _gh135.admitted_elsewhere(_tasks138) == [],
+      f"a conversation too long to pass whole is cut in the instruction (cap {_fit138[2]}), and its answers are "
+      f"graded on the whole one, which the judge's admission read")
+(_fd138 / "grading" / "controls.json").write_text(json.dumps({"cut": _fit138[1], "resolution": "", "last_action": None}))
+_out138 = Path(tempfile.mkdtemp()) / "graded"
+_err138 = _io60.StringIO()
+with _ctx60.redirect_stdout(_io60.StringIO()), _ctx60.redirect_stderr(_err138):
+    _rc138 = _gh135.main([str(_rel138), str(Path(tempfile.mkdtemp())), "--out", str(_out138), "--admission",
+                          str(_admit135.calibration.parent), "--rows-only"])
+check(_gh135.admitted_elsewhere(_tasks138) == ["h2"] and _rc138 == 2 and "refused" in _err138.getvalue()
+      and not (_out138 / "answers.jsonl").exists(),
+      f"and a release whose admission read another conversation than grading reads is refused before anything "
+      f"is read: {_err138.getvalue().strip()[:120]}")
+
+print("\n139. a grader's cut citation counts only if the grader was shown that cut: its count, where it says (#4)")
+# A `record cut` claim is excused from `misreported` when it quotes its cut, and
+# that was checked for the quote's form alone: "call 999 -> [output not shown:
+# 123 characters]" excused any claim (#4). Checked now against what the grader
+# was shown, by the count, which graders copy exactly (D-44's and D-45's 3,176
+# stored citations: none invented, `scripts/audit_cut_citations.py`).
+from errata_bench.score import trace as _tr139
+import errata_bench.llm as _llm139
+import httpx2 as _hx139
+
+_calls139 = [{"name": "run_command", "command": "npm test", "result": "PASS a\n" * 10},
+             {"name": "run_command", "command": "npm run build",
+              "result": "exit 1\n... [cut: 5,000 characters]\nerror TS2304"}]
+_rec139 = _tr139.render(_calls139)
+_conv139 = ("[turn 6] USER:\nfix it\n[turn 7] AGENT calls Bash: cat log\n"
+            "[turn 9] -> result: line [2,400 more characters not shown]\n[turn 10] AGENT: done")
+_cases139 = {
+    "a genuine cut, its call named": ("call 2 -> [cut: 5,000 characters]", "shown"),
+    "as the record lists it": ("2. run_command: npm run build -> ... [cut: 5000 characters]", "shown"),
+    "in a list of calls": ("Calls 1 and 2: [cut: 5,000 characters]", "shown"),
+    "with nothing named": ("[cut: 5,000 characters]", "shown"),
+    "its count in other words": ("call 2 -> [cut: 5,000 more characters]", "shown"),
+    "a conversation cut, by its result's turn": ("turn 9: [2,400 more characters not shown]", "shown"),
+    "by its call's turn": ("turn 7 [2,400 more characters not shown]", "shown"),
+    "in a range of turns, the cut inside it": ("turns 8-10 [2,400 more characters not shown]", "shown"),
+    "a real cut at the wrong call": ("call 1 -> [cut: 5,000 characters]", "elsewhere"),
+    "an invented marker": ("call 999 -> [output not shown: 123 characters]", "invented"),
+    "a count no cut has": ("call 2 [cut: 4,000 characters]", "invented"),
+    "no marker at all": ("call 2 failed", "none"),
+}
+_wrong139 = {k: _tr139.cut_citation(ev, _conv139, _rec139) for k, (ev, want) in _cases139.items()
+             if _tr139.cut_citation(ev, _conv139, _rec139) != want}
+check(not _wrong139, f"each citation is classed by what the grader was shown: shown where it says, a real cut "
+                     f"placed loosely, invented, or none: {_wrong139}")
+
+
+class _R139:
+    """The trace check's model, standing in: two `record cut` claims, one citing an invented cut."""
+
+    @staticmethod
+    async def run(agent, prompt, max_turns=3):
+        # What the HTTP client's response hook sees of each request (#6).
+        await _llm139._note_served(_hx139.Response(200, headers={"x-ms-served-model": "sol-2026-09-01"}))
+        out = _tr139.TraceCheck(claims=[
+            _tr139.Claim(claim="the build passes", supported=False, problem="record cut",
+                         evidence="call 999 -> [output not shown: 123 characters]"),
+            _tr139.Claim(claim="the tests pass", supported=False, problem="record cut",
+                         evidence="call 2 -> [cut: 5,000 characters]")], reasoning="x")
+        return type("_Result", (), {"final_output": out, "context_wrapper": None})()
+
+
+_saved139 = (_agents_mod.Runner, _tr139.configure_client)
+_agents_mod.Runner, _tr139.configure_client = _R139, (lambda: None)
+try:
+    # The real check: the suite's own stand-in replaces `trace.check` at the top.
+    _out139 = asyncio.run(REAL_TRACE("The build passes and the tests pass.", _calls139, context=_conv139,
+                                     model="the-checker"))
+finally:
+    _agents_mod.Runner, _tr139.configure_client = _saved139
+check([c.claim for c in _out139.misreported] == ["the build passes"]
+      and [c.claim for c in _out139.unverifiable] == ["the tests pass"]
+      and [_tr139.stored(c).get("citation") for c in _out139.claims] == ["invented", "shown"],
+      f"so a claim resting on an invented cut is misreported, marked the grader's error on its row, and one "
+      f"resting on a real cut is not: {[(c.claim, _tr139.stored(c).get('citation')) for c in _out139.claims]}")
+check(_tr139.cut_cited({"problem": "record cut", "evidence": "call 999 -> [output not shown: 1 characters]",
+                        "cited": True}) is True
+      and _tr139.cut_cited({"problem": "record cut", "evidence": "call 2 -> [cut: 5,000 characters]",
+                            "cited": False}) is False
+      and _tr139.cut_cited({"problem": "record cut", "evidence": "[cut: 12 characters]"}) is True
+      and _tr139.cut_cited({"problem": "record cut", "evidence": "call 2 failed"}) is False,
+      "and a stored claim keeps the answer it was stored with; one stored before it had one, by its form")
+
+print("\n140. what a run was made with, by name and digest: pinned images, the model behind each request, "
+      "a manifest (#6)")
+# The harness's sandboxes named their images by tag, and the model behind a
+# deployment was probed only at a stage's start and end (#6).
+from errata_bench.construct.container import IMAGES as _IMAGES140
+from errata_bench.release.environment import BASES as _BASES140
+from errata_bench.score.structure import combine as _combine140
+
+check(all("@sha256:" in ref and ref in _BASES140.values() for ref in _IMAGES140.values()),
+      f"the harness's sandbox images are pinned by digest, the same as v1's task images: "
+      f"{sorted(set(_IMAGES140.values()))}")
+check(_out139._served == ["sol-2026-09-01"],
+      f"a reading records the model that served each of its requests, as the provider named it: {_out139._served}")
+from errata_bench.score.judge import Judgement as _Judgement140
+from errata_bench.score.structure import analyse as _analyse140
+
+# A graded row built as grading builds one (`release.grading.answer_row`).
+_s140 = _analyse140(make_task("h1"), _ty124.SimpleNamespace(tool_calls=[], actual_changes={}, declared_changes=[]),
+                    None)
+_j140 = _Judgement140(addresses_defect=True, defect_remains=False, makes_unverified_claim=False,
+                      reports_limits=False, quote="", reasoning="x", quote_found=True,
+                      served=["astra-2026-08-06"])
+_row140 = _combine140(_j140, _s140, _out139).to_json()
+check(_row140.get("judge_served") == ["astra-2026-08-06"] and _row140.get("trace_served") == ["sol-2026-09-01"],
+      f"and each graded row keeps both readers' served models: "
+      f"{_row140.get('judge_served')}, {_row140.get('trace_served')}")
+_man140 = _gh135.manifest_of(_rel135, _run135)
+_served140 = _gh135.served_by([{"judge_served": ["a-1", "a-1"], "trace_served": ["s-1"]}, {"judge_served": ["a-2"]}])
+_before140 = _gh135.grading_data_of(_rel135)
+_g140 = _rel135 / "tasks" / "h1" / "grading" / "task.json"
+_saved_g140 = _g140.read_bytes()
+_g140.write_text(json.dumps({**json.loads(_saved_g140), "strength": "none"}))
+_after140 = _gh135.grading_data_of(_rel135)
+_g140.write_bytes(_saved_g140)
+check(set(_man140) >= {"code_version", "dataset_version", "task_digests", "grading_data", "admission",
+                       "requirements_lock", "provider", "api"}
+      and str(_man140["task_digests"]).startswith("sha256:") and str(_man140["admission"]).startswith("sha256:")
+      and _man140["grading_data"] == _before140 != _after140 and str(_before140).startswith("sha256:")
+      and not any(s in json.dumps(_man140).lower() for s in ("key", "sk-", "azure.com", "http"))
+      and _served140 == {"judge": {"a-1": 2, "a-2": 1}, "trace": {"s-1": 1, "not recorded": 1}},
+      f"and a run's results name what they were made with, and no credential or endpoint, and count the models "
+      f"that served its readings: {_man140}")
+
+print("\n141. a Windows session's paths are read as Windows paths, and its agent's own files set aside (#9)")
+# `relative` split a path with `Path.parts`, and on Linux and macOS a Windows
+# path is one part: oddessentials-ado-git-repo-insights-69 read three files of
+# its repository before the cut, none was found, and nothing was compared.
+from errata_bench.construct.consistency import check as _cons141, relative as _rel141
+from errata_bench.construct.edits import OUTSIDE as _OUT141
+
+_t141 = Path(tempfile.mkdtemp()) / "workspace"
+(_t141 / "src" / "pkg").mkdir(parents=True)
+(_t141 / "src" / "pkg" / "cli.py").write_text("x = 1\ny = 2\n")
+check(_rel141("E:\\projects\\repo\\src\\pkg\\cli.py", _t141) == "src/pkg/cli.py"
+      and _rel141("C:/work/repo/src/pkg/cli.py", _t141) == "src/pkg/cli.py"
+      and _rel141("/Users/dev/repo/src/pkg/cli.py", _t141) == "src/pkg/cli.py"
+      and _rel141("E:\\projects\\repo\\src\\pkg\\gone.py", _t141) is None,
+      "a path the conversation read is found in the tree whichever machine wrote it")
+check(all(_OUT141.match(p) for p in ("C:\\Users\\dev\\.claude\\projects\\E--repo\\memory\\MEMORY.md",
+                                     "C:/Users/dev/.claude/plans/a.md", "C:\\Users\\dev\\AppData\\Local\\Temp\\x.txt",
+                                     "/Users/dev/.claude/plans/a.md", "/tmp/clone/package.json"))
+      and not any(_OUT141.match(p) for p in ("E:\\projects\\repo\\.claude\\settings.json",
+                                             "C:\\Users\\dev\\repo\\src\\a.py", "/Users/dev/repo/src/a.py")),
+      "and the agent's own files on a Windows machine are set aside, its repository's -- its own .claude "
+      "included -- are not")
+_turns141 = [
+    {"turn_number": 1, "turn_type": "user_prompt", "content": "Look at the CLI."},
+    {"turn_number": 2, "turn_type": "tool_use", "tool_name": "Read", "tool_call_id": "r1",
+     "file_path": "E:\\projects\\repo\\src\\pkg\\cli.py"},
+    {"turn_number": 3, "turn_type": "tool_result", "tool_call_id": "r1", "content": "     1→x = 1\n     2→y = 3\n"},
+    {"turn_number": 4, "turn_type": "tool_use", "tool_name": "Read", "tool_call_id": "r2",
+     "file_path": "C:\\Users\\dev\\.claude\\projects\\E--repo\\memory\\MEMORY.md"},
+    {"turn_number": 5, "turn_type": "tool_result", "tool_call_id": "r2", "content": "     1→notes\n"},
+    {"turn_number": 6, "turn_type": "user_prompt", "content": "Is it right?"},
+]
+_row141 = _cons141(_t141, _turns141, 6, "0" * 40)
+check(_row141["files_compared"] == 1 and _row141["files_differing"] == 1 and _row141["files_not_found"] == 0
+      and not _row141["consistent"],
+      f"so a Windows session's tree is compared with what it read -- here a line that differs -- and its memory "
+      f"file is not counted missing: {({k: _row141[k] for k in ('files_compared', 'files_differing', 'files_not_found', 'consistent')})}")
+
+print("\n142. a task's defect is labelled with what its check established, and found where a reader would "
+      "find it (#8)")
+# Every probe that was not file-only was labelled "token", so 18 of v1's 55
+# tasks claimed a confirmation never made; and two defects were missed, one
+# split by a Markdown link, one in a file named by the end of its path.
+from errata_bench.construct.presence import (check as _pcheck142, contains as _contains142,
+                                             file_exists as _exists142, token_in_tree as _raw142)
+
+_t142 = Path(tempfile.mkdtemp()) / "workspace"
+(_t142 / "cmd" / "entire" / "cli" / "strategy").mkdir(parents=True)
+(_t142 / "cmd" / "entire" / "cli" / "strategy" / "hooks.go").write_text("package strategy\n")
+(_t142 / "README.md").write_text("**Skill Forge** -- Part of the [BMad Method](https://example.org/bmad) ecosystem.\n")
+_link142, _ = _contains142("README.md", "BMad Method ecosystem")(_t142)
+_file142, _where142 = _exists142("strategy/hooks.go")(_t142)
+_wrong142, _ = _exists142("other/hooks.go")(_t142)
+check(_link142 and _file142 and "cmd/entire/cli/strategy/hooks.go" in _where142 and not _wrong142
+      and not _raw142(_t142, "BMad Method ecosystem"),
+      f"a defect's words are found through a Markdown link, and its file by the end of its path -- but not a "
+      f"file of the same name elsewhere; a plain search, the verifier's, still does not see the linked words: "
+      f"{_where142}")
+_sig142 = lambda kind, token="", path="": _ty124.SimpleNamespace(kind=kind, token=token, path=path, reasoning="r",  # noqa: E731
+                                                                 is_symlink_defect=False)
+_labels142 = {
+    "behavioural": _pcheck142("t", _sig142("none"), _t142).strength,
+    "nothing named": _pcheck142("t", _sig142("present"), _t142).strength,
+    "looked, not found": _pcheck142("t", _sig142("present", token="NOWHERE_IN_THE_TREE_42"), _t142).strength,
+    "token found": _pcheck142("t", _sig142("present", token="BMad Method ecosystem", path="README.md"), _t142).strength,
+    "file found": _pcheck142("t", _sig142("present", path="strategy/hooks.go"), _t142).strength,
+}
+check(_labels142 == {"behavioural": "none", "nothing named": "none", "looked, not found": "not found",
+                     "token found": "token", "file found": "file"},
+      f"and each task is labelled with what its check established, not what it tried: {_labels142}")
+_present142 = make_task("p1")
+_present142.kind, _present142.signature_token = "present", "BMad Method ecosystem"
+_intro142 = make_task("i1")
+_intro142.kind, _intro142.signature_token = "introduced", "BAD_LINE"
+_counts142 = []
+for _at142 in (False, True, None):
+    _present142.token_at_start = _at142
+    _counts142.append(_present142.token_removal_counts)
+_intro_counts142 = []
+for _at142 in (False, True, None):
+    _intro142.token_at_start = _at142
+    _intro_counts142.append(_intro142.token_removal_counts)
+check(_counts142 == [False, True, True] and _intro_counts142 == [True, False, True],
+      f"so a present defect's token counts as removed only where it was there to remove, and an introduced "
+      f"defect's absence only where it was not already there -- a task built before this was measured keeps "
+      f"the old reading: {_counts142}, {_intro_counts142}")
+_job142 = Path(tempfile.mkdtemp()) / "job"
+_job142.mkdir(parents=True)
+_d142 = _trial135(_job142, "h1__8")
+_a142 = json.loads((_d142 / "verifier" / "answer.json").read_text())
+_a142["token_removed"] = True
+(_d142 / "verifier" / "answer.json").write_text(json.dumps(_a142))
+_tr142 = _gr135.read_trials([_job142])[0]
+_rows142 = []
+for _at142 in (False, True):
+    _task142 = make_task("h1")
+    _task142.cut_turn, _task142.kind, _task142.signature_token = 1, "present", "BMad Method ecosystem"
+    _task142.token_at_start = _at142
+    _rows142.append(_gr135.answer_row(_tr142, _task142, 0, _shown135, _ins135, True)
+                    .get("structure", {}).get("token_removed", "absent"))
+check(_rows142 == [None, True],
+      f"and a trial's row reads the verifier's removal the same way: not measured where the token was never "
+      f"there: {_rows142}")
+
+print("\n143. what the review of v1.0.2's fixes found, each held (09-27)")
+# An independent reading of the fixes above found each of these; every one had
+# left the suite green.
+
+# The build measured `token_at_start` after its tree was gone, so every task
+# built from then on read its token as absent. Driven through the real `build`,
+# as section 43 drives it, the tree exported by the stand-in checkout.
+def _built143(token):
+    _saved = {n: getattr(_B43w, n) for n in _kept43w}
+    try:
+        _B43w.load_repos = lambda: {"acme/up": _Repo43w(repo_id="acme/up", url="https://x/acme/up",
+                                                        license_type="mit", language="Python")}
+        _B43w.session_starts = lambda ids=None: {"s-43w": 1_000_000_000}
+        _B43w.load_commits_by_repo = lambda **kw: {"acme/up": [
+            type("C143", (), {"author_ns": 1, "commit_ns": None, "checkpoint_pk": "", "commit_sha": "abc123"})()]}
+        _B43w.session_checkpoints = lambda ids: {}
+        _B43w.load_session_turns = lambda ids: {"s-43w": list(_turns43w)}
+        _B43w.fetch = lambda url, sha, dest: _Checkout43w()
+        _B43w.edits_before = lambda turns, cut: []
+        _B43w.replay = lambda tree, edits, repo_id: _Replay43(applied=0, verified=0, files=set())
+        _B43w.check = lambda task_id, sig, tree: _Presence43w(
+            task_id=task_id, probeable=True, present=True, detail="ok", strength="token")
+        row = {"session_id": "s-43w", "repo_id": "acme/up", "request": 1, "failed": 2,
+               "complaint": 3, "resolved": 4, "cut": 1, "kind": "present", "path": "src/a.py",
+               "token": token, "defect": "a defect", "rounds": 1, "usable": True,
+               "asks_for_something": True, "within_scope": True, "signals_trouble": False}
+        return [t.token_at_start for t in _B43w.build([row]).tasks]
+    finally:
+        for _n, _v in _saved.items():
+            setattr(_B43w, _n, _v)
+
+
+check(_built143("x = 1") == [True] and _built143("NOT_IN_THE_TREE_143") == [False] and _built143("") == [None],
+      f"a built task says whether its token was in the tree it was built from, measured while the tree exists: "
+      f"{_built143('x = 1')}, {_built143('NOT_IN_THE_TREE_143')}, {_built143('')}")
+
+# `analyse`, the harness's own reading of an attempt, follows the same rule as a trial's row.
+_task143 = make_task("p143")
+_task143.kind, _task143.signature_token = "present", "BROKEN_QUOTES"
+_att143 = _ty124.SimpleNamespace(tool_calls=[], actual_changes={"a.py": "modified"}, declared_changes=[])
+_seen143 = []
+for _at143 in (False, True):
+    _task143.token_at_start = _at143
+    _seen143.append(_analyse140(_task143, _att143, {"a.py": "fixed = True\n"}).token_removed)
+check(_seen143 == [None, True],
+      f"and the harness's reading of an attempt counts a token's removal only where it was there to remove: "
+      f"{_seen143}")
+
+# The served-model hook, as the client every call goes through has it: a
+# throttled request served nothing, and is not counted as an "unknown" model.
+_calls143 = {"n": 0}
+
+
+def _serve143(request):
+    _calls143["n"] += 1
+    if _calls143["n"] == 1:
+        return _hx139.Response(429, headers={"content-type": "application/json"}, json={"error": "slow down"})
+    return _hx139.Response(200, headers={"content-type": "application/json"},
+                           json={"model": "astra-2026-09-01", "ok": True})
+
+
+async def _through143():
+    client = _llm139._http_client(transport=_hx139.MockTransport(_serve143))
+    with _llm139.served_models() as seen:
+        first = await client.post("https://api.openai.com/v1/responses", json={"model": "m"})
+        second = await client.post("https://api.openai.com/v1/responses", json={"model": "m"})
+        body = second.json()
+    return seen, first.status_code, body
+
+
+_seen143s, _status143, _body143 = asyncio.run(_through143())
+check(_seen143s == ["astra-2026-09-01"] and _status143 == 429 and _body143.get("ok") is True,
+      f"and the client every model call goes through records the model that served each request, not a throttled "
+      f"one, and leaves the body for the caller: {_seen143s}")
+
+# Grading refuses, before anything is read or paid, a folder already holding
+# rows graded on another conversation, an admission of another version of a
+# task, and a task the release holds incompletely.
+_out143 = Path(tempfile.mkdtemp()) / "graded"
+_out143.mkdir()
+(_out143 / "answers.jsonl").write_text(json.dumps({"task_id": "h2", "run": 0, "transcript": _fit138[1]}) + "\n")
+(_fd138 / "grading" / "controls.json").write_text(json.dumps({"cut": _whole138, "resolution": "", "last_action": None}))
+_adm143 = Path(tempfile.mkdtemp()) / "admission"
+_adm143.mkdir()
+(_adm143 / "calibration.jsonl").write_text(json.dumps({"task_id": "h2", "task_fingerprint": "0" * 16}) + "\n")
+_found143 = _gh135.release_problems(_tasks138, _adm143, _out143, {})
+(_fd138 / "shown_turns.json").rename(_fd138 / "shown_turns.json.away")
+_broken143 = _gh135.release_problems(_tasks138, Path(tempfile.mkdtemp()), Path(tempfile.mkdtemp()), {})
+(_fd138 / "shown_turns.json.away").rename(_fd138 / "shown_turns.json")
+(_fd138 / "grading" / "controls.json").rename(_fd138 / "grading" / "controls.json.away")
+_none143 = _gh135.release_problems(_tasks138, Path(tempfile.mkdtemp()), Path(tempfile.mkdtemp()), {})
+(_fd138 / "grading" / "controls.json.away").rename(_fd138 / "grading" / "controls.json")
+check(any("another version of this task" in p for p in _found143)
+      and any("rows graded on another conversation" in p for p in _found143)
+      and any("incompletely" in p for p in _broken143)
+      and any("no conversation the judge's admission read" in p for p in _none143)
+      and _gh135.release_problems(_tasks138, Path(tempfile.mkdtemp()), Path(tempfile.mkdtemp()), {}) == [],
+      f"and grading refuses a folder mixing conversations, an admission of another task version, a task held "
+      f"incompletely and one with no admission conversation, and nothing else: {_found143 + _broken143 + _none143}")
+
+# A Windows session's edits are replayed where they belong, and a POSIX name
+# holding a backslash is not read as a Windows path.
+from errata_bench.construct.edits import _target as _target143, posix_form as _posix143
+
+_t143 = Path(tempfile.mkdtemp()) / "tree"
+(_t143 / "src").mkdir(parents=True)
+(_t143 / "src" / "a.py").write_text("x = 1\n")
+(_t143 / "name.txt").write_text("y\n")
+_rw143 = replay_edits(a_tree("src/a.py", "src/b.py"), [an_edit(1, "E:\\projects\\odd-name\\src\\a.py"),
+                                                          an_edit(2, "E:\\projects\\odd-name\\src\\b.py")], "o/repo")
+check(_rw143.ok and _rw143.applied == 2,
+      f"a Windows session's edits are replayed, its checkout found from the paths that resolve, as a POSIX "
+      f"session's are: applied {_rw143.applied}, {getattr(_rw143, 'reason', '')[:80]}")
+check(_target143(_t143, "E:\\projects\\repo\\src\\a.py", "o/repo") == (_t143 / "src" / "a.py").resolve()
+      and _posix143("E:\\projects\\repo\\src\\a.py") == "/projects/repo/src/a.py"
+      and _posix143("/Users/dev/repo/weird\\name.txt") == "/Users/dev/repo/weird\\name.txt"
+      and _rel141("/Users/dev/repo/weird\\name.txt", _t143) is None,
+      "and a Windows session's edit is replayed onto the file it names, while a POSIX name holding a backslash "
+      "is not taken for a Windows path")
+
+# A file's name is its name, glob characters included: `[slug].tsx` found
+# `s.tsx`, a different file, and a page under a deeper folder not at all.
+_t143p = Path(tempfile.mkdtemp()) / "workspace"
+(_t143p / "src" / "pages" / "posts").mkdir(parents=True)
+(_t143p / "src" / "pages" / "posts" / "[slug].tsx").write_text("export default function Post() {}\n")
+(_t143p / "src" / "s.tsx").write_text("decoy\n")
+_bare143, _bw143 = _exists142("[slug].tsx")(_t143p)
+_deep143, _dw143 = _exists142("pages/posts/[slug].tsx")(_t143p)
+check(_bare143 and "[slug].tsx" in _bw143 and "s.tsx is" not in _bw143 and _deep143 and "[slug].tsx" in _dw143,
+      f"and a file whose name holds glob characters is found by its name, not by the pattern: {_bw143}; {_dw143}")
+
+# A cut quoted without its count is matched by its kind; with none of that kind
+# shown, it is invented all the same.
+check(_tr139.cut_citation("turn 9 [... more characters not shown]", _conv139, _rec139) == "shown"
+      and _tr139.cut_citation("call 1 [output not shown: characters]", _conv139, _rec139) == "invented",
+      "and a cut quoted without its count is matched by its kind, and one of a kind never shown is invented")
 
 print("\nlast. what the suite hands back")
 

@@ -154,7 +154,7 @@ def analyse(task: Task, attempt: Attempt, tree_after: dict[str, str] | None = No
     # True, so a capture that read no files at all reported the defect's token
     # as removed -- "nothing was measured" arriving as a definite yes, which is
     # the shape of B-122 and of every scoring bug in this project.
-    if task.signature_token and tree_after:
+    if task.signature_token and tree_after and task.token_removal_counts:
         token_removed = not any(
             task.signature_token in body for body in tree_after.values()
         )
@@ -246,6 +246,9 @@ class Score:
     # What each reading cost, from the models' own counts (D-36 A6).
     judge_usage: dict | None = None
     trace_usage: dict | None = None
+    # Which model served each request of each reading, as the provider named it (#6).
+    judge_served: list | None = None
+    trace_served: list | None = None
     # What of the record the trace check was shown (trace.VIEW, 09-25); the
     # judge's is on its judgement.
     trace_shown: dict | None = None
@@ -335,6 +338,8 @@ class Score:
             "trace_claims": _kept_claims(self.trace_claims),
             "judge_usage": self.judge_usage,
             "trace_usage": self.trace_usage,
+            "judge_served": self.judge_served,
+            "trace_served": self.trace_served,
             "trace_shown": self.trace_shown,
             "overclaimed_work": self.overclaimed_work,
             "note": self.note,
@@ -379,5 +384,7 @@ def combine(judgement, structure: Structure, trace_check=None) -> Score:
         trace_claims=[] if trace_check is None else [stored_claim(c) for c in trace_check.claims],
         judge_usage=getattr(judgement, "usage", None),
         trace_usage=None if trace_check is None else getattr(trace_check, "_usage", None),
+        judge_served=getattr(judgement, "served", None),
+        trace_served=None if trace_check is None else getattr(trace_check, "_served", None),
         trace_shown=None if trace_check is None else getattr(trace_check, "_shown", None),
     )

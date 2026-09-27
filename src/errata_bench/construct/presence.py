@@ -29,6 +29,7 @@ declared unprobeable rather than quietly passed or quietly failed.
 
 from __future__ import annotations
 
+import glob
 import re
 
 from dataclasses import dataclass
@@ -48,9 +49,11 @@ class Presence:
     detail: str
     # How much the check actually established. "token" found the defect's own
     # literal string in the tree. "file" found only the file it lives in, which
-    # is all that can be checked for a behavioural defect. "declared" means the
-    # setup is correct by the task's shape rather than by inspection, as for an
-    # introduced defect. Recorded rather than flattened into the boolean,
+    # is all that can be checked for a behavioural defect. "none": nothing could
+    # be looked for. "not found": the check looked and found nothing (#8).
+    # "declared" means the setup is correct by the task's shape rather than by
+    # inspection, as for an introduced defect; "verified", that its token was
+    # checked absent. Recorded rather than flattened into the boolean,
     # because a benchmark that cannot say how strongly each task was validated
     # is asking to be trusted on that point.
     strength: str = "token"
@@ -122,14 +125,12 @@ def contains(path: str, token: str) -> Callable[[Path], tuple[bool, str]]:
         here = within(tree, path)
         if here is None:
             return False, f"{path} is not a path inside the tree"
-        targets = [here]
-        if not targets[0].is_file() and "/" not in path:
-            targets = [q for q in tree.rglob(path) if q.is_file()][:20]
+        targets = _named(tree, path) or [here]
         for target in targets:
-            if target.is_file() and token in target.read_text(errors="replace"):
+            if target.is_file() and _holds(target.read_text(errors="replace"), token):
                 where = target.relative_to(tree)
                 return True, f"{where} contains {token!r}"
-        target = targets[0] if targets else here
+        target = targets[0]
         # Widening the search past the named file is only safe for a token
         # distinctive enough to mean one thing. desplega-ai/agent-swarm's defect
         # is @sentry/cli pinned to 3.2.2; searching the whole tree found "3.2.2"
@@ -148,6 +149,53 @@ def contains(path: str, token: str) -> Callable[[Path], tuple[bool, str]]:
     return probe
 
 
+_LINK = re.compile(r"\[([^\]\n]*)\]\([^)\n]*\)")
+
+
+def _holds(text: str, token: str) -> bool:
+    """Whether ``text`` holds ``token``, read as it renders: a Markdown link's words without its target.
+
+    armelhbobdad-bmad-module-skill-forge-194's README says "Part of the [BMad
+    Method](https://...) ecosystem"; the signature's "BMad Method ecosystem"
+    was reported as in no file, and the task labelled as its token found (#8).
+    """
+    return token in text or ("](" in text and token in _LINK.sub(r"\1", text))
+
+
+def _named(tree: Path, path: str) -> list[Path]:
+    """The files a signature's path names: itself, or, when it is not at the root, the files it ends.
+
+    entireio-cli-241's signature names strategy/hooks.go, which the repository
+    holds at cmd/entire/cli/strategy/hooks.go; only a bare name was searched
+    for below the root, so the file was reported not in the tree (#8).
+    """
+    here = within(tree, path)
+    if here is None:
+        return []
+    if here.is_file():
+        return [here]
+    tail = path.strip("/")
+    hits = [q for q in tree.rglob(glob.escape(Path(tail).name)) if q.is_file()
+            and (("/" not in tail) or q.relative_to(tree).as_posix().endswith("/" + tail))]
+    return sorted(hits)[:20]
+
+
+def token_in_tree(tree: Path, token: str) -> bool:
+    """Whether ``token``, as written, is in a file of ``tree``, searched as the verifier searches (#8).
+
+    Not in .git, and not through a symlink, which `changes.snapshot` skips.
+    """
+    for f in tree.rglob("*"):
+        try:
+            if ".git" in f.relative_to(tree).parts or f.is_symlink():
+                continue
+            if f.is_file() and token in f.read_text(errors="replace"):
+                return True
+        except OSError:
+            continue
+    return False
+
+
 def anywhere(token: str) -> Callable[[Path], tuple[bool, str]]:
     """The defect is a string somewhere in the tree, file unknown."""
 
@@ -156,7 +204,7 @@ def anywhere(token: str) -> Callable[[Path], tuple[bool, str]]:
             if not f.is_file():
                 continue
             try:
-                if token in f.read_text(errors="replace"):
+                if _holds(f.read_text(errors="replace"), token):
                     return True, f"{f.relative_to(tree)} contains {token!r}"
             except OSError:
                 continue
@@ -185,11 +233,11 @@ def file_exists(path: str) -> Callable[[Path], tuple[bool, str]]:
             return False, f"{path} is not a path inside the tree"
         if target.is_file():
             return True, f"{path} is present (behavioural defect, not text-matchable)"
-        # A basename can still be located when the signature gives no directory.
-        if "/" not in path:
-            hits = [p for p in tree.rglob(path) if p.is_file()]
-            if hits:
-                return True, f"{hits[0].relative_to(tree)} is present (matched by name)"
+        # A path not at the root can still be located: a basename anywhere, a
+        # longer path as the end of one (`_named`).
+        hits = _named(tree, path)
+        if hits:
+            return True, f"{hits[0].relative_to(tree)} is present (matched by name)"
         return False, f"{path} is not in the tree"
 
     probe.weak = True  # type: ignore[attr-defined]
@@ -372,5 +420,14 @@ def check(task_id: str, sig, tree: Path) -> Presence:
             return Presence(task_id, present, True, detail, "verified")
         return Presence(task_id, True, True, f"introduced-defect task: {detail}", "declared")
     probeable = not getattr(probe, "unprobeable", False)
-    strength = "file" if getattr(probe, "weak", False) else "token"
+    # What the check established, not what it tried (#8). Labelled "token"
+    # whatever happened, 18 of v1's 55 tasks claimed a confirmation never made:
+    # every behavioural task, four whose signature named nothing to look for,
+    # and two where the check found nothing.
+    if not probeable:
+        strength = "none"
+    elif not present:
+        strength = "not found"
+    else:
+        strength = "file" if getattr(probe, "weak", False) else "token"
     return Presence(task_id, present, probeable, detail, strength)

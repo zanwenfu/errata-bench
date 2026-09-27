@@ -35,7 +35,7 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
-from .edits import OUTSIDE
+from .edits import OUTSIDE, posix_form
 
 READ_TOOLS = frozenset({"Read", "read_file"})
 EDIT_TOOLS = frozenset({"Edit", "MultiEdit", "Write", "NotebookEdit", "edit_file", "write_file"})
@@ -218,8 +218,13 @@ def _results_by_call(turns: list[dict]) -> dict[int, str]:
 
 
 def relative(path: str, tree: Path) -> str | None:
-    """The developer's absolute path as a path in the tree: its longest suffix that exists."""
-    parts = [p for p in Path(path).parts if p not in ("/", "")]
+    """The developer's absolute path as a path in the tree: its longest suffix that exists.
+
+    Split as the machine that wrote it would: on Linux and macOS a Windows path
+    is one part, so none of a Windows session's reads was ever found, and its
+    task compared nothing (#9).
+    """
+    parts = [p for p in Path(posix_form(path)).parts if p not in ("/", "")]
     for i in range(len(parts)):
         candidate = Path(*parts[i:])
         if (tree / candidate).is_file():

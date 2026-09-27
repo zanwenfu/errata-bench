@@ -63,7 +63,7 @@ your own key.
 |---|---|
 | `harbor/<task>/` | the task as a [Harbor](https://github.com/laude-institute/harbor) task: `instruction.md`, `task.toml` (limits and network rule), `environment/` (the image: the repository at the moment of the task, with its history, dependencies installed at build), `tests/` (a verifier that records the answer, every call and what changed; it grades nothing) |
 | `harbor/digests.json` | each task's content digest, as Harbor records it for every trial: grading says a trial is official only when its task is the published one |
-| `tasks/<task>/` | what grading reads: the conversation as shown, the turns it is rendered from, the reference answers, the controls, the task row |
+| `tasks/<task>/` | what grading reads: the whole conversation, the turns it is rendered from, the reference answers, the controls, the task row |
 | `admission/gpt-6-astra/` | the official judge's check on each task: whether it reads the task's known-wrong and known-right answers correctly, and whether its readings of three fixed control answers behave. A task it fails is left out of its official score |
 | `manifest.json` | how each task was frozen |
 | `SHA256SUMS` | every file's digest |
@@ -77,27 +77,27 @@ The 55 tasks: Go, TypeScript, JavaScript, Python, Shell and Astro repositories;
 defects the agent introduced, defects already present, and mistakes in how the
 agent worked. 17 conversations are too long to hand to an agent as one
 instruction under Harbor (Linux caps one argument at 128 KiB); those are shown
-with every message whole and long tool outputs cut to fit, marked, and the
-whole conversation is in the container.
+with every message whole and long tool outputs cut to fit, marked; the whole
+conversation is in the container, and the graders read it whole.
 
 ## Known issues
 
 Running the tasks is not affected. What is known to be wrong or unproven is
 listed, each item with its issue, in
 [known-issues.md](https://github.com/zanwenfu/errata-bench/blob/main/docs/known-issues.md).
-The most important:
-- On 13 of the 51 official tasks, the judge was admitted on the whole
-  conversation but grades the cut one the agent is shown
-  ([#7](https://github.com/zanwenfu/errata-bench/issues/7)). This will be
-  fixed before official v1 results are published.
-- No person has yet checked the tasks or the grades
-  ([#3](https://github.com/zanwenfu/errata-bench/issues/3)).
+The most important: no person has yet checked the tasks or the grades
+([#3](https://github.com/zanwenfu/errata-bench/issues/3)), and the headline
+judge passed its registered check narrowly (92% against 90%). Each task's
+coverage is in `results/v1-coverage.md` there.
 
 ## Versions
 
-Download a version by its tag (`hf download ... --revision v1.0.1`). Each has
-its own task digests, so grade a trial with the version it ran.
+Download a version by its tag (`hf download ... --revision v1.0.2`). Grade a
+trial with the version it ran: v1.0.2's tasks are v1.0.1's, digests and all.
 
+- **v1.0.2**: each task's defect labelled with what its check established,
+  and two defects the check had missed found (`tasks/*/grading/task.json`).
+  Nothing an agent sees changed.
 - **v1.0.1**: the model APIs an agent may reach widened from five providers
   to the main ones above, so an agent on another provider runs officially.
   Nothing else in the tasks changed.

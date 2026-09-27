@@ -31,8 +31,10 @@ not start. Whole, 17 of the 55 conversations are too long. Those are shown with
 every message whole and each tool call's input and each tool result cut to the
 longest length that fits (`corpus.turns.build_excerpt`'s ``tool_cap``), each
 cut marked; the agent is told so, and the whole conversation is in the
-container at /errata/conversation.txt. The graders read the conversation as the
-agent was shown it (tests/conversation.txt), as they do this harness's own.
+container at /errata/conversation.txt. The graders read the whole
+conversation, which the agent was given, as the judge's admission to each task
+did (`scripts/grade_harbor.py`, `graded_for`; #7). tests/conversation.txt keeps
+the view the instruction showed.
 """
 
 from __future__ import annotations

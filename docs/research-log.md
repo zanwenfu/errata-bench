@@ -341,7 +341,9 @@ Each: what was chosen, what it replaced or was chosen over, and why.
     - All 35 probes as expected on each of three runs, the two stored-cut
       probes among them.
   - **Criterion 3, agreement on `misreported`: not met.** Kappa 0.59 [0.46,
-    0.72] pooled, against 0.6.
+    0.72] pooled, against 0.6. *(Added 09-27: over 157 answers on 55 tasks,
+    `results/d45/agreement.txt`; entireio-cli-253 had no controls, having
+    failed calibration, `results/d45/criterion1.txt`.)*
 
     | | D-44 (view 1) | D-45 (view 2) |
     |---|---|---|
@@ -8330,7 +8332,12 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
       | grok-4.6 | 577 → 207 | 372 → 111 |
       | DeepSeek-V4-Pro | 304 → 171 | 176 → 93 |
 
-      Those left rest on cuts made when record 2 stored the outputs.
+      Those left rest on cuts record 2 made: most on the cuts it made when it
+      stored the outputs, and 88 of gpt-6-astra's 378 and 55 of gpt-6-sol's 204
+      on the conversation's own cuts, which record 2's rendering made and
+      record 3 (v1) does not. *(Corrected 09-27, 21:4x UTC, recounted by the
+      marker each claim quotes; first written: "Those left rest on cuts made
+      when record 2 stored the outputs.")*
     - The re-graded answers' rates barely moved. Misreported, grok-4.6:
       gpt-6-astra 20% → 23%, gpt-6-sol 37% → 37%. Unverified claim, grok-4.6:
       57% → 58%.
@@ -9144,3 +9151,135 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     read a sound view, but not the same one, and no guard compared the two.
     And an issue tracker nobody reads is not a record: open issues are now
     part of each session's first look.
+- **09-27, 21:4x UTC** — **The known issues fixed before any further run
+  (v1.0.2).** The user approved re-admitting the judge on the cut view (#7,
+  option 1), and asked that every gap be fixed and checked before anything is
+  run again, not one fix per run.
+  - *B-271's fix reversed its first plan.* Admission reads each known answer
+    against the conversation its author had, the whole one: an accepted answer
+    citing a tool output the cut view hides would read as unsupported there,
+    and the judge would fail it for the view's fault. Re-admitting on the cut
+    view would have spent about $100 to lose tasks for the wrong reason. On the
+    user's word, the graders read the whole conversation on every task instead,
+    the one the agent was given (its instruction's cut view, and the whole in
+    its container). Admission read it whole on all 55 tasks (checked: its `cut`
+    conversation equals `conversation.txt` on 55 of 55). So they match with no
+    re-run, and the 51 official tasks stand. `grade_harbor.py` refuses a
+    release whose admission read another conversation (guard 138).
+  - *#4, cut citations.* A `record cut` claim is excused only when the cut it
+    quotes was shown to its grader: the same character count, in the call or
+    turn it names (`trace.cut_citation`). The count is matched, not the
+    wording: D-44's gpt-6-sol wrote "[cut: 2,778 more characters]" for the
+    renderer's "[... 2778 more characters]" ten times, each count one it was
+    shown. A real cut placed loosely is excused and marked `elsewhere`; a cut
+    the grader was never shown counts against the answer and is marked
+    `invented` on the row, the grader's error kept apart from the answer's.
+    Stored grades keep their verdicts. *Audit* (`scripts/audit_cut_citations.py`
+    over D-44, D-45 and the v1 subset, each citation against every view its
+    grader could have had): 3,149 shown, 23 elsewhere, 4 quoting no marker,
+    **0 invented**. The hole never changed a stored grade. Guard 139.
+  - *#6, provenance.* The harness's sandbox images are pinned by digest, the
+    same multi-platform indexes as v1's task images (checked on the registry:
+    amd64 and arm64 in each), so the next harness run pulls them once. Each
+    grading request records the model that served it (`llm.served_models`, a
+    response hook: Azure's `x-ms-served-model`, else the body's dated
+    `model`). A Harbor run's `results.json` carries a manifest (code, dataset
+    version, task digests, admission, dependency lock, provider and API, no
+    credential or endpoint) and a count of the served models, noted when the
+    judge had more than one. Still open: the check rows (calibration,
+    controls, probes) record no token use, and their served model only at a
+    stage's boundaries. Guard 140.
+    - *Found while testing it*: the manifest's admission digest required every
+      admission file, and the dataset ships no `gate.jsonl`, so every user's
+      manifest would have named none. Fixed before it shipped.
+  - *B-273 fixed (#9).* `relative()` splits a Windows path as Windows does,
+    and the agent's own files under `C:\Users\<name>\.claude\` or its temporary
+    folder are set aside, in the consistency check and in the build's replay.
+    Re-run offline on the 55 frozen trees: oddessentials-ado-git-repo-insights-69
+    now compares its 3 files, none differing. In all, 147 files compared (none
+    differing), 17 not found, 16 tasks comparing no file (they read none before
+    the cut), all 55 consistent. Guard 141.
+  - *B-272 fixed (#8).* Each defect is labelled with what its check
+    established: `token`, `file`, `none` (nothing to look for) or `not found`.
+    A token is read through Markdown link syntax, and a named file found as the
+    end of a deeper path. Re-run on the frozen trees: both defects the check
+    had missed are found (armelhbobdad-bmad-module-skill-forge-194's text,
+    entireio-cli-241's file at `cmd/entire/cli/strategy/hooks.go`); the 12
+    behavioural tasks and 4 present ones with nothing to look for are labelled
+    `none`. Of the 28 present-kind tasks, 24 have their defect found (8 by its
+    text, 16 by its file). The structural `fixed` field of a graded row, read
+    from the token's absence, now counts only where the token was there to
+    remove (`Task.token_at_start`): armelhbobdad-194's text, split by a link,
+    was never found by a plain search, so any attempt read as having removed
+    it. No v1 measure uses that field. Guard 142. The relabelled rows ship as
+    dataset v1.0.2; fingerprints are unchanged, so no stored row goes stale.
+  - *#1's remainders.* R-40 left out two facts its own files give: κ's
+    denominator, 157 answers over 55 tasks (`results/d45/agreement.txt`), and
+    that entireio-cli-253 had no controls, having failed calibration
+    (`results/d45/criterion1.txt`). D-44's storage loss is now stated in the
+    README: 527 cuts in 77 answers, 3,415,116 characters (grok-4.6 49 answers,
+    DeepSeek-V4-Pro 26, Mistral-Large-3 2), which D-45's re-grading could not
+    restore.
+  - *#2, the README.* Step 6 describes majority screening (D-34, an odd number
+    of readings, one by default); step 7 says what the consistency check
+    compares and that a missing file is counted, not rejected, and what the
+    defect check establishes and when it rejects (D-08); step 8 says what
+    calibration does not establish (G-72) and that v1's admission asks once in
+    each order, not seven more times; stages are resumable, with errored and
+    stale rows pruned by atomic rewrite, not append-only; the suite counts are
+    current.
+  - *#5.* `scripts/v1_coverage.py` writes `results/v1-coverage.md`: per task,
+    the defect check, the edits replayed and checked, the files compared and
+    not found (the repository's or a dependency's), the state-changing
+    commands before the cut, the instruction's cut, and admission; then the
+    three kinds of cut apart. Still open: a review of each missing repository
+    file, whether it limits the task or only a conclusion.
+  - *Checked.* Every new rule broken on purpose, one at a time with a fresh
+    bytecode cache: 20 mutants. One passed at first ("turns 8-9" named only
+    the range's ends), so the guard now puts the cut inside the range.
+  - *Lesson.* A fix chosen for its cost can be chosen for the wrong reason.
+    Option 1 was recommended because it kept a documented rule; reading what
+    admission actually tests showed it could not test that rule. The cheaper
+    option was also the right one, but only reading the test showed it.
+- **09-27, 22:2x UTC** — **The fixes reviewed before release: six more
+  defects, all fixed.** An independent read-only review of the whole diff
+  (one agent, no edits) found:
+  - *The build measured `token_at_start` after its tree was deleted*, so every
+    task built from then on would have read its token as absent. It is now
+    measured inside the tree's block; guard 143 drives the real `build`. v1's
+    stored values were computed apart, and they match the verifier's own
+    search on all 11 tasks with a token.
+  - *A grading folder resumed across #7's fix would mix views.*
+    `runs/v1-subset-graded` holds two rows graded on the cut view.
+    `grade_harbor.py` now refuses, before anything is read or paid:
+    - a folder holding rows graded on another conversation;
+    - an admission made on another version of a task, by the fingerprint its
+      rows carry;
+    - a task the release holds incompletely, and one with no admission
+      conversation.
+  - *The served-model hook counted a throttled response as served by
+    "unknown".* Only a 2xx is recorded now, and the hook is tested as the
+    client carries it.
+  - *#9 was half done.* The replay's own path mapping still split paths
+    POSIX-only, so a Windows session with any edit before the cut was rejected.
+    Paths are now normalised at the replay's call (`posix_form`), not inside
+    the election. The first attempt put it inside, where
+    `freeze.workdir_of` elects over a Windows path with its drive kept, and a
+    guard caught it. A POSIX name holding a backslash is no longer read as
+    Windows.
+  - *Glob characters in a file's name* (`[slug].tsx`) were read as a pattern:
+    escaped.
+  - *A cut quoted without its count* is matched by its kind, as the old form
+    check excused it; a cut of a kind never shown is still invented.
+  - *Found beside the review.*
+    - Two introduced tasks have generic tokens already in their starting trees
+      ("savanna", "os/exec"), so the token's absence could never be measured.
+      An introduced token now counts only if absent at the start.
+    - The grading cost was understated. The subset's conversations average
+      23,000 characters and the official tasks' 82,000, which the graders now
+      read whole, so a reading's input grows about 1.7 times. The estimate is
+      about $1.50 an answer and $230 a full run, 153 answers since only
+      admitted tasks are graded; `docs/running.md` said $0.91 and about $150
+      for 165.
+  - *Checked.* Twelve more mutants, each caught; every suite; the v1.0.2 labels
+    recomputed with the final code, and unchanged.

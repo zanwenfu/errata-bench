@@ -29,7 +29,7 @@ from ..corpus.recover import foreign_transcript, has_transcript, recovered, suba
 from ..corpus.sessions import load_repos
 from .consistency import check as consistency_check, tree_changing_git, why_inconsistent
 from .edits import OUTSIDE, edits_before, replay, unreplayed_writes
-from .presence import check, repo_url
+from .presence import check, repo_url, token_in_tree
 from ..corpus.turns import load_session_turns
 from ..find.signature import Signature
 from ..spec import MIN_ORACLE_CHARS, BuildResult, Rejection, Task
@@ -407,6 +407,9 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
                     reject(why_inconsistent(consistent))
                     continue
                 presence = check(task_id, sig, tree)
+                # Measured here, while the tree exists: after the `with` it is
+                # gone, and every token read as absent (09-27 review).
+                token_at_start = token_in_tree(tree, sig.token) if sig.token else None
 
             # Presence is advisory, not a gate. It can only confirm a defect it can
             # find as a string in a file, and twenty-two of the fifty-one defects
@@ -453,6 +456,7 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
                     signature_token=sig.token,
                     strength=presence.strength,
                     presence_detail=presence.detail,
+                    token_at_start=token_at_start,
                     license_type=repo.license_type,
                     is_copyleft=repo.is_copyleft,
                     rounds=row.get("rounds", 1),

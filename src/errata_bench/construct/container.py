@@ -33,6 +33,8 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
+from ..release.environment import BASES
+
 # Concurrency and size, chosen for a 24GB laptop with Docker Desktop holding 8GB
 # and other work already running. Raise deliberately, not by default.
 def max_containers() -> int:
@@ -67,11 +69,14 @@ MOUNT = "/work"
 # a smaller image but a separate download, and pulling 400MB to save disk on a
 # machine already holding the full tag is the wrong trade -- especially when
 # Docker here is sitting on 100GB of images with 97% reclaimable.
+# Pinned by digest, as v1's task images are (`release.environment.BASES`),
+# each a multi-platform index: a tag alone gave the same run another image on
+# another day or machine (#6). An image not yet local is pulled once, by name.
 IMAGES = {
-    "Python": "python:3.12",
-    "TypeScript": "node:22",
-    "JavaScript": "node:22",
-    "Go": "golang:1.26",
+    "Python": BASES["python"],
+    "TypeScript": BASES["node"],
+    "JavaScript": BASES["node"],
+    "Go": BASES["golang"],
     # No Rust (D-31, 09-21). It was listed against an image that was never
     # pulled -- 700 MB nobody wanted to download -- so every Rust task either
     # ran on the host or did not run. The developer's decision is to leave the
@@ -84,8 +89,8 @@ IMAGES = {
     # pulled for other languages. python:3.12 carries bash, git and
     # coreutils, which is what a shell script needs; Astro is a Node
     # framework.
-    "Shell": "python:3.12",
-    "Astro": "node:22",
+    "Shell": BASES["python"],
+    "Astro": BASES["node"],
 }
 
 

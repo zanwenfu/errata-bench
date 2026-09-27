@@ -175,6 +175,9 @@ no model calls.
 | one Harbor trial's record for grading: the answer, every call, what changed | the task's `tests/test.sh` (`errata_bench.release.verify`) | `<job>/<trial>/verifier/answer.json` and `reward.json` |
 | each task's content digest, as Harbor records it for every trial | `python -m errata_harbor.digests`, in Harbor's environment | `release/v1/harbor/digests.json` |
 | a Harbor job graded: the answer rows, the three readings of each, the measures and whether they are official | `scripts/grade_harbor.py` | a run directory: `answers.jsonl`, `attempts.jsonl`, `results.json` |
+| each task's defect check relabelled with what it established (#8, v1.0.2); the originals are in the dataset's v1.0.1 revision | a one-off relabel over the frozen trees, 09-27 (research log, 21:4x) | `release/v1/tasks/<task>/grading/task.json` |
+| how completely each task was rebuilt, and each kind of cut apart (#5) | `scripts/v1_coverage.py` | `results/v1-coverage.md` |
+| every stored `record cut` citation against what its grader was shown (#4) | `scripts/audit_cut_citations.py` | `results/cut-citations.md` |
 
 ## How each step stays independent and reviewable
 

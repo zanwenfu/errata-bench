@@ -32,7 +32,7 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, Field
 
-from ..llm import MODEL, configure_client, resilient, usage_of, with_field_guide
+from ..llm import MODEL, configure_client, resilient, served_models, usage_of, with_field_guide
 from ..spec import Task
 
 class Verdict(BaseModel):
@@ -341,6 +341,8 @@ class Judgement:
     # whole, or the budget it was shortened to because the model refused the
     # whole. None for a Judgement built without asking a model.
     shown: dict | None = None
+    # Which model served each of its requests, as the provider named it (#6).
+    served: list | None = None
 
     @property
     def outcome(self) -> str:
@@ -749,7 +751,8 @@ The CANDIDATE's answer, to be judged:
 {answer if budget is None else answer[:12000]}
 {trace}{render_files(changed)}"""
         try:
-            result = await resilient(lambda: Runner.run(agent, prompt, max_turns=3))
+            with served_models() as seen:
+                result = await resilient(lambda: Runner.run(agent, prompt, max_turns=3))
         except Exception as e:
             if too_long(e) and budget != FALLBACKS[-1]:
                 continue
@@ -771,6 +774,7 @@ The CANDIDATE's answer, to be judged:
         saw_conversation=bool(context),
         usage=usage_of(result),
         shown={"view": VIEW, "budget": budget},
+        served=list(seen),
     )
 
 

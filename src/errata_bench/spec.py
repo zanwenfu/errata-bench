@@ -81,8 +81,12 @@ class Task:
     kind: str  # present | introduced | none
     signature_path: str = ""
     signature_token: str = ""
-    strength: str = "token"  # token | file | declared
+    strength: str = "token"  # token | file | none | not found | declared | verified (`construct.presence`)
     presence_detail: str = ""
+    # Whether the signature's token, as written, is in the starting tree; None
+    # when not measured. Its removal is read as "fixed" only where it was there
+    # to remove (`token_removal_counts`, #8).
+    token_at_start: bool | None = None
     # What the agent ran before writing each of those answers, taken from the
     # transcript. The judge is shown the candidate's tool calls when it asks
     # whether a claim was established, so calibration has to show it the same
@@ -166,6 +170,23 @@ class Task:
         is why the judge is not optional.
         """
         return self.strength == "token" and self.kind == "present"
+
+    @property
+    def token_removal_counts(self) -> bool:
+        """Whether the token's absence afterwards says anything about this task (#8).
+
+        For a present defect, only if the token was there at the start:
+        armelhbobdad-bmad-module-skill-forge-194's text is split by a Markdown
+        link, so a plain search never finds it, and every attempt read as
+        having removed it. For an introduced defect, only if it was not: absent
+        afterwards then means the agent did not produce it, but a generic token
+        already in the tree -- 135yshr-savanna-vet-go-28's "savanna", the
+        project's own name -- can never be absent, whatever the agent did. A
+        task built before this was measured keeps the old reading.
+        """
+        if self.kind == "introduced":
+            return self.token_at_start is not True
+        return self.token_at_start is not False
 
     def to_json(self) -> dict:
         d = dict(self.__dict__)

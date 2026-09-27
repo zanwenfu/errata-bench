@@ -94,13 +94,11 @@ the next milestone's work, with the task set's extension.
   (Whiteknight07-AiTutor-34 in the v1 admission): admission for the headline
   could rest on the judge's readings alone. What the judge misses, measured on
   fresh answers at scale.
-- **The known issues** (`docs/known-issues.md`): before official v1 results
-  are published, the judge's admission on the view it grades (#7); then the
-  defect-presence labels (#8), the consistency check's Windows paths (#9), a
-  grader's cut citations checked against the record (#4), per-request model
-  provenance and pinned sandbox images (#6), a per-task coverage report (#5),
-  the README's remaining guarantees (#2), D-44's storage losses counted (#1),
-  and a reading by people (#3).
+- **The known issues still open** (`docs/known-issues.md`; #4, #6 to #10, #1
+  and #2 fixed in v1.0.2, 09-27): a reading by people of every task and of a
+  blind sample of grades (#3); a review of each repository file a task's
+  conversation read and its tree lacks (#5); the check rows' token use and
+  per-request model (#6).
 - **More tasks**, from the moments not yet processed.
 - **Prebuilt task images** on a registry: today a user's first run builds them
   (about 2 hours and 60 GB for all 55).

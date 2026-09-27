@@ -27,7 +27,7 @@ from __future__ import annotations
 import json
 import re
 from dataclasses import dataclass, field
-from pathlib import Path, PurePosixPath
+from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from ..corpus.timeline import to_repo_relative
 
@@ -45,8 +45,11 @@ EDIT_TOOLS = {"Edit", "Write", "MultiEdit"}
 # before this is consulted, and a path elsewhere -- another checkout, a
 # worktree under another name -- still rejects, because it may be this
 # repository under a name the replay cannot place.
-OUTSIDE = re.compile(r"^(?:/(?:Users|home)/[^/]+|/root|[A-Za-z]:/Users/[^/]+)/\.claude/"
-                     r"|^/(?:private/)?(?:tmp|var/folders)/")
+# A Windows session writes its paths with backslashes (#9): matched as well, so
+# its agent's memory under C:\Users\<name>\.claude\ is set aside like any other.
+OUTSIDE = re.compile(r"^(?:/(?:Users|home)/[^/]+|/root|[A-Za-z]:[\\/]Users[\\/][^\\/]+)[\\/]\.claude[\\/]"
+                     r"|^/(?:private/)?(?:tmp|var/folders)/"
+                     r"|^[A-Za-z]:[\\/]Users[\\/][^\\/]+[\\/]AppData[\\/]Local[\\/]Temp[\\/]")
 
 # Tools that change files and that the replay does not read. Claude Code driven
 # through Zed's ACP adapter names its tools mcp__acp__Edit, Write and Bash, with
@@ -213,13 +216,30 @@ def _checkout_root(tree: Path, paths: list[str]) -> tuple[str, ...] | None:
     return max(votes.items(), key=lambda kv: (kv[1], -len(kv[0])))[0]
 
 
+_DRIVE = re.compile(r"^[A-Za-z]:[\\/]")
+
+
+def posix_form(path: str) -> str:
+    """A path as POSIX writes it: a Windows session's E:\\repo\\src\\a.py as /repo/src/a.py (#9).
+
+    Taken as Windows only when it looks so -- a drive letter, or a backslash in a
+    path not beginning with "/" -- since a POSIX name may hold a backslash, and
+    read as Windows, /repo/weird\\name.txt would be matched to name.txt.
+    """
+    if _DRIVE.match(path) or ("\\" in path and not path.startswith("/")):
+        win = PureWindowsPath(path)
+        parts = [p for p in win.parts[1 if win.anchor else 0:] if p]
+        return ("/" if win.anchor else "") + "/".join(parts)
+    return path
+
+
 def _target(tree: Path, local_path: str, repo_id: str,
             root: tuple[str, ...] | None = None) -> Path | None:
     if root is not None:
-        parts = tuple(PurePosixPath(local_path or "").parts)
+        parts = tuple(PurePosixPath(posix_form(local_path or "")).parts)
         if parts[:len(root)] == root and len(parts) > len(root):
             return _inside(tree, str(Path(*parts[len(root):])))
-    rel = to_repo_relative(local_path or "", repo_id)
+    rel = to_repo_relative(posix_form(local_path or ""), repo_id)
     if not rel:
         return None
     return _inside(tree, rel)
@@ -272,7 +292,10 @@ def replay(tree: Path, edits: list[dict], repo_id: str) -> Replay:
     r = Replay()
     # Where the developer's checkout began, measured from the tree rather than
     # guessed from the directory name.
-    root = _checkout_root(tree, [e["args"].get("file_path", "") for e in edits])
+    # A Windows session's paths in POSIX form, as `_target` reads them (#9). Not
+    # inside the election itself: `release.freeze.workdir_of` elects over a
+    # Windows path with its drive kept, to record where the session was.
+    root = _checkout_root(tree, [posix_form(e["args"].get("file_path", "")) for e in edits])
     # Files this replay created or overwrote itself. An old_string that matches
     # content a Write two turns ago put there is checking the replay, not the
     # commit, so it is applied like any other and counted as evidence of

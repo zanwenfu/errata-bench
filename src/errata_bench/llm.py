@@ -14,6 +14,8 @@ Taken by its importers before the split:
 
 from __future__ import annotations
 
+import contextlib
+import contextvars
 import os
 import re
 from pathlib import Path
@@ -171,11 +173,52 @@ async def _refuse_claude_request(request) -> None:
         refuse_claude(body.get("model"), url)
 
 
+# The models that served the requests of the reading in progress (#6), when a
+# reading is collecting them (`served_models`); None otherwise.
+_SERVED: "contextvars.ContextVar[list | None]" = contextvars.ContextVar("errata_served", default=None)
+
+
+async def _note_served(response) -> None:
+    """The HTTP client's response hook: which model served this request (#6).
+
+    Azure names it in a header (`x-ms-served-model`, the version behind the
+    deployment); OpenAI in the body's `model`, dated. Read only while a reading
+    collects them, and never from a stream.
+    """
+    seen = _SERVED.get()
+    # A throttled or failed request served nothing: recorded, a 429 made every
+    # reading it hit look served by a second, "unknown" model (09-27 review).
+    if seen is None or not 200 <= response.status_code < 300:
+        return
+    model = response.headers.get("x-ms-served-model")
+    if not model and "json" in (response.headers.get("content-type") or ""):
+        try:
+            import json
+
+            await response.aread()
+            body = json.loads(response.content or b"{}")
+            model = body.get("model") if isinstance(body, dict) else None
+        except Exception:  # noqa: BLE001 - provenance is recorded, never fatal
+            model = None
+    seen.append(str(model) if model else "unknown")
+
+
+@contextlib.contextmanager
+def served_models():
+    """Collect the model that served each request made inside, in order (#6)."""
+    seen: list[str] = []
+    token = _SERVED.set(seen)
+    try:
+        yield seen
+    finally:
+        _SERVED.reset(token)
+
+
 def _http_client(transport=None):
     """The HTTP client every model call goes through, with the Claude refusal on it."""
     from openai import DefaultAsyncHttpxClient
 
-    return DefaultAsyncHttpxClient(event_hooks={"request": [_refuse_claude_request]},
+    return DefaultAsyncHttpxClient(event_hooks={"request": [_refuse_claude_request], "response": [_note_served]},
                                    **({"transport": transport} if transport is not None else {}))
 
 

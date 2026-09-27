@@ -7,9 +7,8 @@ Terminal-Bench 2.0), so any agent Harbor runs can be tested; the answers are
 graded by errata-bench's own graders, with your judge key.
 
 Every command on this page has been run, on a laptop or a Linux server; what
-is not ready yet is listed at the end. What is known to be wrong or unproven,
-including one issue to fix before official results are published, is in
-[known-issues.md](known-issues.md).
+is not ready yet is listed at the end. What is known to be wrong or unproven is
+in [known-issues.md](known-issues.md).
 
 ## What you need
 
@@ -42,7 +41,7 @@ gated as SWE-chat is: accept the terms on the dataset's page, sign in with a
 token from your Hugging Face account, then download this version:
 
     hf auth login
-    hf download zanwenfu/errata-bench-v1 --repo-type dataset --revision v1.0.1 --local-dir errata-bench-v1
+    hf download zanwenfu/errata-bench-v1 --repo-type dataset --revision v1.0.2 --local-dir errata-bench-v1
 
 `hf` comes with `pip install huggingface_hub`; its old name,
 `huggingface-cli`, no longer works.
@@ -105,7 +104,10 @@ In errata-bench's environment, with the judge's key:
 `--rows-only` reads the trials and says which can be graded, and why not the
 others, without calling the judge. Then again without it, to grade: each
 answer is read three times and the readings settled by majority. Grading is
-paid, with your key.
+paid, with your key. The graders read each task's whole conversation, as the
+judge's admission to it did, including the 17 whose instruction shows long tool
+outputs cut (the agent has the whole one in its container). Grading refuses a
+release whose admission read another conversation.
 
 A task is graded only by a judge that passed a check on it: that it reads the
 task's known-wrong and known-right answers correctly, and that its readings of
@@ -134,19 +136,24 @@ values (`per_task`). `official` says whether every trial ran its task as
 published (its content digest, no host added but a model API, web search
 off), graded by the official judge with three readings; if not,
 `why_not_official` says why. `dataset_version` says which version of the
-tasks they were graded against. Until
-[#7](https://github.com/zanwenfu/errata-bench/issues/7) is fixed, official
-scores over 13 of the 51 tasks rest on the judge's check on another view of
-the conversation ([known-issues.md](known-issues.md)).
+tasks they were graded against. `manifest` names what made them, with no
+credential or endpoint: the code, the tasks' digests, the admission, the
+dependency lock, the provider and its API. `served` counts the models that
+served the graders' requests, as the provider named them; a run whose judge
+was served by more than one is noted when it is graded.
 
 ## Cost and time
 
 Measured on the v1 subset (27 September 2026: 10 tasks, the reference agent,
 list prices):
 
-- **Grading**: about $0.91 per answer (three readings by each of the two
-  graders), with gpt-6-astra. A full run of 55 tasks with 3 attempts is 165
-  answers: about $150.
+- **Grading**: about $0.91 per answer on the subset (three readings by each of
+  the two graders, gpt-6-astra reading as the judge). The subset's
+  conversations are short, about 23,000 characters on average; the 51 official
+  tasks' average 82,000, and the graders read each whole. A reading's input
+  grows by about 1.7 times, so expect about $1.50 an answer. Only answers on
+  admitted tasks are graded, so a full run (51 tasks, 3 attempts) is 153
+  answers: about $230.
 - **Your agent**: its own model's cost. The reference agent spent $0.44 an
   attempt on average with grok-4.6 (at most $1.08) and $0.07 with
   DeepSeek-V4-Pro.
@@ -157,6 +164,12 @@ list prices):
 
 ## Versions
 
+- **v1.0.2** (27 September 2026): each task's defect labelled with what its
+  check established, and the two defects the check had missed found (#8).
+  Nothing an agent sees changed: the Harbor tasks, their digests and the
+  judge's admission are v1.0.1's. Grading (the code, from the same day) reads
+  each conversation whole (#7), checks a grader's cut citations against what it
+  was shown (#4), and records the model behind each request (#6).
 - **v1.0.1** (27 September 2026): the model APIs an agent may reach widened
   from five providers (Anthropic, OpenAI, Gemini, OpenRouter, Azure) to those
   listed above, so an agent on another provider runs officially. The tasks
