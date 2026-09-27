@@ -243,17 +243,18 @@ def dockerfile(r: Recipe, base: str | None = BASE_TAG) -> str:
 # Run in the working copy after its installs (`dockerfile`): each path git now
 # lists as untracked that it did not list before them is added to
 # .git/info/exclude, anchored at the root, and named in /errata/install-hidden.txt.
-HIDE_INSTALLED = """\
-import os, subprocess
-before = set(open('/errata/status-before.txt').read().splitlines())
-now = subprocess.run(['git', 'status', '--porcelain', '-z'], capture_output=True, text=True).stdout
-added = [e[3:] for e in now.split('\\0') if e.startswith('?? ') and e not in before and '?? "' + e[3:] + '"' not in before]
-os.makedirs('.git/info', exist_ok=True)
-with open('.git/info/exclude', 'a') as f:
-    f.write(''.join('/' + p + '\\n' for p in added))
-with open('/errata/install-hidden.txt', 'w') as f:
-    f.write(''.join(p + '\\n' for p in added))
-"""
+# One line: a Dockerfile ends an instruction at a newline, and a script over
+# several lines broke the build (09-27: "unknown instruction: before").
+HIDE_INSTALLED = (
+    "import os, subprocess; "
+    "before = set(open('/errata/status-before.txt').read().splitlines()); "
+    "now = subprocess.run(['git', 'status', '--porcelain', '-z'], capture_output=True, text=True).stdout; "
+    "added = [e[3:] for e in now.split(chr(0)) if e.startswith('?? ') and e not in before "
+    "and '?? ' + chr(34) + e[3:] + chr(34) not in before]; "
+    "os.makedirs('.git/info', exist_ok=True); "
+    "open('.git/info/exclude', 'a').write(''.join('/' + p + chr(10) for p in added)); "
+    "open('/errata/install-hidden.txt', 'w').write(''.join(p + chr(10) for p in added))"
+)
 
 
 def docker_word(text: str) -> str:

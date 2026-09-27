@@ -8826,8 +8826,11 @@ _errata129 = Path(tempfile.mkdtemp())
 (_hide129 / "package-lock.json").write_text("{}\n")
 (_hide129 / "compile cache").mkdir()
 (_hide129 / "compile cache" / "c.bin").write_text("z\n")
-_script129 = _env129.HIDE_INSTALLED.replace("/errata/", f"{_errata129}/")
-_hid129 = _sub129.run([sys.executable, "-c", _script129], cwd=_hide129, capture_output=True, text=True)
+# The step as the Dockerfile holds it, quoting and all, not the constant it was made from.
+_at129h = _df129.find("python3 -c ")
+_step129 = (_df129[_at129h:_df129.find(" && git status --porcelain > /errata/status-after.txt", _at129h)]
+            if _at129h >= 0 else "false").replace("/errata/", f"{_errata129}/").replace("python3 ", f"{sys.executable} ", 1)
+_hid129 = _sub129.run(["sh", "-c", _step129], cwd=_hide129, capture_output=True, text=True)
 _after129 = _sub129.run(["git", "status", "--porcelain"], cwd=_hide129, capture_output=True, text=True).stdout
 check(_hid129.returncode == 0 and _after129 == (_errata129 / "status-before.txt").read_text()
       and (_errata129 / "install-hidden.txt").exists()
@@ -8837,6 +8840,27 @@ check(_hid129.returncode == 0 and _after129 == (_errata129 / "status-before.txt"
       and "/errata/install-hidden.txt" in _df129,
       f"and what the installs add is hidden from git's view, kept on disk and named; the developer's own "
       f"untracked file still shows: {_after129!r} {_hid129.stderr[-200:]}")
+# Every line of a Dockerfile is an instruction, a comment or the continuation of
+# a line ending in a backslash: a script over several lines inside a RUN broke
+# the build on the server ("unknown instruction: before") while every check of
+# the script itself passed.
+_INSTR129 = ("FROM", "COPY", "RUN", "ENV", "WORKDIR", "ARG", "LABEL", "USER", "CMD", "ENTRYPOINT", "ADD")
+
+
+def _parses129(text: str) -> list[str]:
+    bad, carried = [], False
+    for line in text.splitlines():
+        head = line.strip().split(" ", 1)[0] if line.strip() else ""
+        if not carried and line.strip() and not line.lstrip().startswith("#") and head.upper() not in _INSTR129:
+            bad.append(line[:60])
+        carried = line.rstrip().endswith("\\")
+    return bad
+
+
+_hdf129 = __import__("errata_bench.release.harbor", fromlist=["x"]).harbor_dockerfile(_ws129)
+check(not _parses129(_df129) and not _parses129(_hdf129) and not _parses129(_env129.BASE_DOCKERFILE),
+      f"and every line of the Dockerfiles written is an instruction, a comment or a continuation: "
+      f"{_parses129(_df129)[:2]} {_parses129(_hdf129)[:2]}")
 # The install line, run for real: a stand-in bun refuses --frozen-lockfile and
 # rewrites bun.lock when it installs. The developer's own edit to the lockfile
 # must survive, and the log must say the strict install failed.

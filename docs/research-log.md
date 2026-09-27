@@ -8881,3 +8881,15 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     file hidden too, the files deleted, nothing named), each caught. The build
     record reports what was hidden; the four tasks are to be built again with
     it on the server.
+- **09-27, 07:4x UTC** — **A Dockerfile broken by a script over several
+  lines, and the check that would have caught it.** Rebuilding the four tasks
+  on the server with the hiding step failed at once: "dockerfile parse error
+  on line 13: unknown instruction: before". The step ran a Python script with
+  `python3 -c`, the script spanned several lines, and a Dockerfile ends an
+  instruction at a newline. Guard 129 had run the script itself, which works,
+  and never the Dockerfile's text. The script is now one line; the guard runs
+  the step as the Dockerfile's own RUN line holds it, quoting and all; and a
+  new check reads every Dockerfile written (the task's, the Harbor export's,
+  the base) and requires each line to be an instruction, a comment or a
+  continuation. With the script back over two lines, it fails. The export and
+  its digests written again; the four tasks built again on the server.
