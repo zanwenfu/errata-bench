@@ -188,6 +188,7 @@ async def run(instruction: str, out: Path, model: str, seconds: int, turns: int,
         "usage": talk.usage, "last_response": context.get("last_response", ""),
         "null_responses": getattr(provider, "nulls", 0), "throttled_s": round(context.get("throttled_s", 0.0), 1),
         "throttle_not_given_back_s": round(context.get("not_given_back_s", 0.0), 1), "wall_s": wall,
+        "request_timeout_s": None if model == STAND_IN else request_timeout_s(),
         "tool_calls": rows,
     }
     out.mkdir(parents=True, exist_ok=True)
@@ -212,6 +213,15 @@ _TOO_LONG = re.compile(
 
 # A provider's content filter refusing the request: as deterministic as a length.
 _FILTERED = re.compile(r"content_filter|ResponsibleAIPolicyViolation|content management policy", re.IGNORECASE)
+
+
+def request_timeout_s() -> float:
+    """How long the candidate's client waits for one response (`llm.candidate_client`)."""
+    import os
+
+    from ..llm import REQUEST_TIMEOUT_S
+
+    return float(os.environ.get("ERRATA_TIMEOUT") or REQUEST_TIMEOUT_S)
 
 
 def _too_long(error: str) -> bool:

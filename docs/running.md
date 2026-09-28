@@ -101,10 +101,17 @@ In Harbor's environment, with your model's key in the environment:
   - So does one whose conversation grows past what its model can read.
     These are graded as no answer, not lost.
   - Its commands run without the credentials it holds.
+  - One request to the model may take up to 900 seconds (`ERRATA_TIMEOUT`,
+    passed in when set), and each record says how long it allowed.
 - A throttled deployment slows every trial on it: give each model its own
   job, with `-n` no higher than its rate limit allows. Add `--max-retries 2`,
   so a trial that fails for the infrastructure is run again in place, and
   grade only once every job has ended.
+- To run the failed trials of a finished job again:
+  `harbor jobs resume -p jobs/<name> -f <type>`, with one `-f` for each error
+  type its failed trials show (for example `NonZeroAgentExitCodeError`,
+  `ApiRateLimitError`, `NetworkConnectionError`, `ApiUsageLimitError`). Name
+  `CancelledError` too: it is the default, and any `-f` replaces it.
 - To try everything before paying for a model:
   `-a errata_harbor.agents:StandIn` (calls no model) or
   `-a errata_harbor.agents:Reference -m errata/stand-in` (the reference agent
@@ -127,11 +134,23 @@ others, without calling the judge.
   refuses. The judge would otherwise go to api.openai.com.
 - Requests wait up to 900 seconds and are retried 5 times
   (`ERRATA_TIMEOUT`, `ERRATA_MAX_RETRIES`), 4 at once by default.
-- `python scripts/harbor_spend.py --jobs <jobs> --graded runs/<name>` prices
-  what a run has spent so far, and `scripts/harbor-guard.sh` stops it at a
-  dollar line. The guard stops only process groups started with
-  `scripts/guarded.sh` (which records each group's id), and refuses to start
-  unless each is alive and each job folder exists.
+- The judge must be the one the admission checked; grading refuses any other
+  before it pays for a reading. It also refuses to start in a folder that
+  another grading run holds. Grade a trial run (a smoke test) into a folder
+  of its own: in the run's folder its answers would be counted with the
+  run's.
+- `python scripts/harbor_spend.py --jobs jobs/<name>... --graded runs/<name>
+  --ledger <file>` prices what a run has spent so far. It refuses any folder
+  that is not a Harbor job or a grading run. `scripts/harbor-guard.sh` stops
+  the run at a dollar line.
+  - One ledger for every phase keeps the agents' and the grading's spend in
+    one total.
+  - The guard stops only process groups started with `scripts/guarded.sh`,
+    which records each group's id.
+  - It refuses to start unless each group is alive and each job folder is
+    Harbor's.
+  - It reads each word once, when it starts, so name each job folder, or
+    start the guard after every job has made its folder.
 
 Then again without `--rows-only`, to grade: each answer is read three times and
 the readings settled by majority (README, step 11). Grading is

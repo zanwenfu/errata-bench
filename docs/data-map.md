@@ -10,11 +10,11 @@ says *where* it is.
 |---|---|---|
 | **GitHub** (this repository) | the code, the guard suite (`checks/`), the research log, the README, and `results/`: every summary, table and hand reading, small enough to keep in git | GitHub itself |
 | **The laptop**: `runs/` (not in git) | every run directory: the task-building runs, the first grid, and D-40's runs copied back from the VPS | see below |
-| **The VPS** (a shared server; its address is kept out of the repository): `/root/errata-bench-d40/runs/` | where D-40 runs. Its run directories are written here first | see below |
+| **The run VM** (an Azure VM paid from the Azure credits; its address and names are kept out of the repository) | where the v1 baseline runs, under Harbor. It replaced the VPS, a shared server that ran D-40 to D-45 and was retired on 09-28 | see below |
 
 The SWE-chat corpus is not in git either. On the laptop, `data/swe-chat` links
-to `~/IdeaProject/errata/data/corpora/swe-chat` (1.3 GB of parquet). The VPS
-has its own copy.
+to `~/IdeaProject/errata/data/corpora/swe-chat` (1.3 GB of parquet). The run
+VM has its own copy, from the VPS's.
 
 ## The steps, and the file each one writes
 
@@ -208,4 +208,14 @@ no model calls.
   - Container `runs`, one dated folder per backup. `2026-09-25/` holds the
     laptop's whole `runs/`: 1,459 files, each checked against its local
     size and MD5.
-  - D-44 is added once it is copied back from the VPS.
+  - `2026-09-26-d44/` and `2026-09-26-d45/` hold D-44's and D-45's runs.
+  - `2026-09-28-laptop-runs/` holds the laptop's whole `runs/` on 09-28, the
+    v1 admission and subset runs among it: 1,973 files, each checked against
+    its local size and MD5.
+  - `2026-09-28-vps-final/` holds everything of errata-bench's on the VPS
+    when it was retired: every worktree (`errata-bench*`, with its `runs/`
+    and git history), the Harbor test folder, and the D-40 analysis and flag
+    folders. That is 8,482 files and 6.3 GB. Virtual environments, caches and
+    `.env` files were left out. The same archive is on the laptop and on the
+    run VM, checked there against its SHA-256 manifest; in storage, each file
+    is checked against the laptop's size and MD5.

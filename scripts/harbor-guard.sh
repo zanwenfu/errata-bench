@@ -4,19 +4,23 @@
 # process groups are stopped, then its own containers -- never another
 # tenant's.
 #
-#   STOP=2200 JOBS="jobs/b1-*" PIDS="runs/b1-*.pid" LEDGER=runs/b1-spend.ledger LOG=runs/b1-spend.log \
-#     scripts/harbor-guard.sh                                      # while the Harbor jobs run
-#   STOP=2200 JOBS="jobs/b1-*" GRADED="runs/b1-grade" PIDS="runs/b1-grade.pid" LEDGER=runs/b1-spend.ledger \
-#     LOG=runs/b1-spend.log scripts/harbor-guard.sh                # again, while grading runs
+#   STOP=2200 JOBS="jobs/b1-grok jobs/b1-dsp" PIDS="runs/b1-grok.pid runs/b1-dsp.pid" \
+#     LEDGER=runs/b1-spend.ledger LOG=runs/b1-spend.log scripts/harbor-guard.sh   # while the Harbor jobs run
+#   STOP=2200 JOBS="jobs/b1-grok jobs/b1-dsp" GRADED=runs/b1-grade PIDS=runs/b1-grade.pid \
+#     LEDGER=runs/b1-spend.ledger LOG=runs/b1-spend.log scripts/harbor-guard.sh   # again, while grading runs
 #
 # Each guarded process is started with `scripts/guarded.sh`, which writes its
-# pid file. The same LEDGER in both phases keeps the whole run's spend in one
-# total. The guard refuses to start (exit 2) unless the stop line is a number,
-# every pid file names a live process group, every JOBS word names an existing
-# job folder, every GRADED folder exists (it waits up to 2 minutes for grading
-# to make it), and a first tally runs: a guard that priced nothing used to say
-# it was guarding (09-28 reviews). Once running, a tally that fails twice in a
-# row stops the run as the stop line does. Ends when every group has exited.
+# pid file. One LEDGER for every phase keeps the whole run's spend in one
+# total: the agents' and the grading's, whatever folders a later phase names.
+# Every word of JOBS, PIDS and GRADED is read once, when the guard starts, and
+# a pattern must match: start the guard after every job has made its folder,
+# or name each one. The guard refuses to start (exit 2) unless the stop line is
+# a number, every pid file names a live process group, every JOBS word is a
+# Harbor job folder, every GRADED folder is a grading run that has begun (it
+# waits up to 2 minutes for one), and a first tally runs: a guard that priced
+# nothing used to say it was guarding (09-28 reviews). Once running, a tally
+# that fails twice in a row stops the run as the stop line does. Ends when
+# every group has exited.
 cd "$(dirname "$0")/.." || exit 1
 STOP="${STOP:?set STOP, the dollar line}"; LOG="${LOG:?set LOG}"; PIDS="${PIDS:?set PIDS, the pid files}"
 JOBS="${JOBS:?set JOBS, the job folders}"; LEDGER="${LEDGER:?set LEDGER, the spend ledger}"
@@ -27,22 +31,31 @@ refuse() { say "refused: $*"; exit 2; }
 [[ "$STOP" =~ ^[0-9]+(\.[0-9]+)?$ ]] || refuse "the stop line is not a number: $STOP"
 [ -x "$PY" ] || refuse "no Python at $PY"
 shopt -s nullglob
-# Every word must name something: a glob that matched nothing, and a name that
-# is not there, both refuse. The words are expanded once, here.
-words() { local w m; for w in $1; do m=($w); [ "${#m[@]}" -gt 0 ] || return 1; for x in "${m[@]}"; do printf '%s\n' "$x"; done; done; }
-mapfile -t pidfiles < <(words "$PIDS") || true
-[ "${#pidfiles[@]}" -gt 0 ] && words "$PIDS" > /dev/null || refuse "a pid file pattern matches nothing: $PIDS"
-mapfile -t jobs < <(words "$JOBS") || true
+# Every word must name something. Each is expanded on its own: expanded
+# together, a pattern that matched nothing left the list without a word, and
+# its job went unpriced or its group unstopped (09-28 review).
+words() {
+  local w m x ws; read -ra ws <<< "$1"
+  for w in "${ws[@]}"; do m=($w); [ "${#m[@]}" -gt 0 ] || return 1; for x in "${m[@]}"; do printf '%s\n' "$x"; done; done
+}
+words "$PIDS" > /dev/null || refuse "a pid file pattern matches nothing: $PIDS"
+mapfile -t pidfiles < <(words "$PIDS")
+[ "${#pidfiles[@]}" -gt 0 ] || refuse "no pid file given: $PIDS"
 words "$JOBS" > /dev/null || refuse "a job folder pattern matches nothing: $JOBS"
-for j in "${jobs[@]}"; do [ -d "$j" ] || refuse "not a job folder: $j"; done
+mapfile -t jobs < <(words "$JOBS")
+for j in "${jobs[@]}"; do [ -f "$j/config.json" ] || refuse "not a Harbor job folder (no config.json): $j"; done
 graded=()
+begun() {   # every grading folder named, each with the tasks.jsonl a grading run writes first
+  local g; words "$GRADED" > /dev/null || return 1
+  mapfile -t graded < <(words "$GRADED"); [ "${#graded[@]}" -gt 0 ] || return 1
+  for g in "${graded[@]}"; do [ -f "$g/tasks.jsonl" ] || return 1; done
+}
 if [ -n "$GRADED" ]; then
   waited=0
-  until words "$GRADED" > /dev/null && mapfile -t graded < <(words "$GRADED") && [ "${#graded[@]}" -gt 0 ]; do
-    [ "$waited" -ge "$APPEAR_S" ] && refuse "no grading folder at $GRADED after ${APPEAR_S}s"
+  until begun; do
+    [ "$waited" -ge "$APPEAR_S" ] && refuse "no grading run begun at $GRADED after ${APPEAR_S}s (no tasks.jsonl)"
     sleep 5; waited=$((waited + 5))
   done
-  for g in "${graded[@]}"; do [ -d "$g" ] || refuse "not a grading folder: $g"; done
 fi
 groups=()
 for f in "${pidfiles[@]}"; do

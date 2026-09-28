@@ -139,6 +139,14 @@ and writes an outdated label (the exploratory 78%) into `results.json`.
     inside Harbor's time limit with its record kept, and grades a
     conversation too long for its model as no answer; grading redacts any
     credential it finds.
+  - the reference agent waits up to 900 seconds for one response inside
+    Harbor, as outside it. At the client's 120 seconds, a slow request was
+    sent again and paid again;
+  - a trial is official only with every setting Harbor records left at
+    Harbor's default: no stretched timeouts, extra compose files, mounts,
+    preloaded conversations or added instructions;
+  - grading refuses a judge the admission did not check, and a second
+    grading run in a folder one holds, before it pays for a reading.
 
 - **Cut citations (#4): fixed in v1.0.3, as trace rules 6.**
   - A claim is excused only by a cut the grader was shown, placed where the

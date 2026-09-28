@@ -15,8 +15,9 @@ this agent. It does not rank the models (see "Comparisons").
 ## What runs
 
 - **Code:** tag `v1.0.4`, one commit for everything.
-  - The server's Harbor side and its grading side are both checked out at that
-    commit before the first trial and left untouched until grading ends.
+  - The run's own VM (`scripts/setup_vm.sh`) has its Harbor side and its
+    grading side both checked out at that commit before the first trial. Both
+    are left untouched until grading ends.
   - Every trial's `agent_code` digest must be the same one value. A trial that
     ran other code is run again.
 - **Tasks:** dataset `v1.0.2` (`hf download ... --revision v1.0.2`).
@@ -30,6 +31,10 @@ this agent. It does not rank the models (see "Comparisons").
   - Harbor's agent timeout is 30 minutes, and the agent ends itself before it.
   - Throttling gives working time back, but only up to that ceiling. What is
     not given back is recorded (`throttle_not_given_back_s`).
+  - One request to the model may take up to 900 seconds, as in D-40 to D-45
+    and in grading (`request_timeout_s` in each record). At the client's own
+    120 seconds, a slow request would be dropped and sent again, each paid for
+    and none recorded.
 - **Models:** deployments on Azure AI Foundry, paid by the Azure credits.
   - Stage 2: grok-4.6 and DeepSeek-V4-Pro.
   - Stage 3: Kimi-K2.7-Code, DeepSeek-V4-Flash, Mistral-Large-3 and
@@ -54,6 +59,8 @@ this agent. It does not rank the models (see "Comparisons").
   them and agree on what the measures read (README, step 11).
 - **Client settings:** grading defaults to a 900-second timeout, 5 retries and
   concurrency 4.
+- **One grading run per folder**, with the admission's own judge: grading
+  refuses another judge, and a second grading run in a folder one holds.
 - **Order:** answers are graded task by task, so the judge's prompt is read
   from the provider's cache after the first.
 
@@ -80,8 +87,19 @@ A model's results are **official only when complete**:
 ## Failures
 
 - **An infrastructure failure** is run again: by Harbor up to twice, then once
-  more by hand (`harbor jobs resume -f NonZeroAgentExitCodeError`). Examples:
-  the provider answering nothing, a dropped connection, a build error.
+  more by hand, started with `scripts/guarded.sh` like the job:
+  `harbor jobs resume -p jobs/<name> -f <type>`, with one `-f` for each error
+  type the job's failed trials show. Harbor names a failure from the agent's
+  output:
+  - `NonZeroAgentExitCodeError` for a crash;
+  - `ApiRateLimitError` for throttling;
+  - `NetworkConnectionError` for a timeout;
+  - `ApiUsageLimitError` for a quota, which Harbor never retries by itself;
+  - `CancelledError` for a trial an interrupt stopped. This is the resume's
+    default filter, and any `-f` replaces it, so name it too.
+
+  Examples: the provider answering nothing, a dropped connection, a build
+  error.
 - **Still failing:** the answer is missing, and the model's results are
   reported with their coverage and marked not official.
 - **Results, not failures, none run again:**
@@ -112,10 +130,18 @@ None is claimed from this run.
      `differ_from_workspace`.
    - No install may have failed (`/errata/install.log`).
 2. **Smoke, not results.**
-   - Each of the six models, one attempt, on two tasks, one of them with the
-     longest instruction. Grade those answers (about $10–15).
-   - It is checked for: official trials, no credential in any job folder,
-     readable trajectories, and the served models.
+   - Each of the six models, one attempt, on two tasks: entireio-cli-44, the
+     longest instruction, and femto-mcp-chrome-58, the median. Grade those
+     answers into a folder of their own, so they are never counted with the
+     run's (about $15–30).
+   - It is checked for:
+     - official trials;
+     - no credential in any job folder;
+     - readable trajectories;
+     - the served models;
+     - each deployment's rate limits, which set its `-n`;
+     - the spend tally against the tokens recorded;
+     - no long-context price tier on Azure's usage meters for the day.
 3. **Stage 2:** grok-4.6 and DeepSeek-V4-Pro in full, then graded and read.
 4. **Stage 3:** the other four in full, then graded.
 
@@ -123,9 +149,23 @@ None is claimed from this run.
   - Grading: about $0.9–1.6 an answer, 918 answers.
   - The agents: about $150–250, from D-40's cost per attempt.
 - **Spend guard:** `scripts/harbor-guard.sh` stops the run at **$2,200**,
-  checking every 10 minutes (`scripts/harbor_spend.py`, with a ledger that keeps
-  a retried trial's spend). Each Harbor job and grading process is started
-  with `scripts/guarded.sh`, so the guard knows its process group. The guard
-  is tried once on the server, with a sleeping process, before the run.
+  checking every 10 minutes (`scripts/harbor_spend.py`).
+  - One ledger serves every phase. It holds both the agents' spend and
+    grading's, so no phase forgets an earlier one.
+  - It keeps what any tally saw, even after Harbor deletes a failed attempt's
+    folder to run it again. An attempt that failed and was rerun between two
+    tallies is missed: about 9% of grok-4.6's spend on the subset.
+  - Prices are Azure's list prices. gpt-6's uncached input is priced at its
+    cache-write price, which Azure bills on its own meter: an upper bound.
+    The long-context tiers (twice the price past a length, for grok-4.6 and
+    gpt-6-astra) are not modelled. None was billed through 09-28, and the
+    meters are read again after the smoke.
+  - Each Harbor job and grading process is started with `scripts/guarded.sh`,
+    so the guard knows its process group.
+  - The guard is named each job folder and pid file, or started after every
+    job has made its folder: each word is read once, when it starts.
+  - It is tried on the run VM before the run, by guard sections 151 and 152.
+    It stops a sleeping process past its line, SIGTERM first, and refuses
+    what it cannot guard.
 - **Before anything is shared:** every job folder is searched for any
   credential, and each integrity flag is read by a person.

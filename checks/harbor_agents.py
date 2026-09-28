@@ -98,6 +98,7 @@ class RecordingEnvironment(FakeEnvironment):
 long = "x" * 300_000
 fake_key = "not-a-real-key-for-this-check"
 os.environ["OPENAI_API_KEY"] = fake_key
+os.environ.pop("ERRATA_TIMEOUT", None)   # as a run that sets none
 renv = RecordingEnvironment()
 agent = Reference(logs_dir=Path(tempfile.mkdtemp()), model_name="openai/some-model")
 asyncio.run(agent.install(renv))
@@ -121,6 +122,16 @@ check(files.get(f"{Reference.HOME}/instruction.md") == long.encode()
 check(renv.envs[-1].get("OPENAI_API_KEY") == fake_key and renv.envs[-1].get("ERRATA_DOTENV") == "0"
       and renv.envs[-1].get("PYTHONPATH") == f"{Reference.HOME}/src",
       "and the model's key is passed from where Harbor runs, with no .env read inside")
+# One request may take as long as D-40 to D-45's and grading's did, unless the
+# run sets its own: at the client's 120 s a slow one was sent again and paid
+# again, unrecorded (09-28 review).
+os.environ["ERRATA_TIMEOUT"] = "300"
+renv2 = RecordingEnvironment()
+asyncio.run(agent.run("Answer.", renv2, AgentContext()))
+del os.environ["ERRATA_TIMEOUT"]
+check(renv.envs[-1].get("ERRATA_TIMEOUT") == "900" and renv2.envs[-1].get("ERRATA_TIMEOUT") == "300",
+      f"and a request waits 900 s unless the run forwards its own: {renv.envs[-1].get('ERRATA_TIMEOUT')}, "
+      f"{renv2.envs[-1].get('ERRATA_TIMEOUT')}")
 # The runner, as it runs in the container: its trajectory must be valid ATIF.
 work = Path(tempfile.mkdtemp())
 (work / "a.py").write_text("x = 1\n")

@@ -9586,3 +9586,125 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - *The stored D-45 misses screen* no longer reproduced under the new rule
     (98/59 became 100/63). `settled` takes a scoreability rule. The screen's
     scripts name "all", as it was drawn, and reproduce 98/59.
+- **09-28, 09:2x UTC** — **The last review before v1.0.4, the run's own
+  machine, and what its checks found.**
+  - *The last review* (of 33a61d427, fixed in c2027d82f and 7d774c0f0).
+    - The spend guard refuses to start on:
+      - a stop line that is not a number;
+      - no Python;
+      - a group id of 1 or less, or a group that is not live;
+      - a job word that names no folder;
+      - a grading folder that never appears;
+      - a first tally that fails.
+    - Once running, two failed tallies in a row stop the run.
+    - It stops with SIGTERM: a process launched in the background by a
+      script ignores SIGINT.
+    - The agent's code is read from answers only, and compared across
+      models.
+    - Redaction leaves non-secret names and the conversation alone.
+    - The ledger keys a trial by its resolved path.
+    - Tamper flags read a command as its shell runs it: 29 tamperings are
+      flagged, and none of 24 harmless commands or of 1,522 stored answers.
+  - *The run moves to a VM of its own.*
+    - Why: Harbor builds each task's image, and Docker's build cache reached
+      79.6 GB after 55 trials. The shared VPS had 30 GB free.
+    - The VM has 16 cores and a 256 GB disk. It is paid from the Azure
+      credits and deallocated when idle. `scripts/setup_vm.sh` sets it up.
+    - Before any paid call, it passed:
+      - the suites. The corpus check is skipped, as on CI: the VM holds only
+        a trimmed copy of the corpus, and the run does not read it;
+      - the network rule: the model APIs and our Azure endpoint are reached;
+        GitHub, PyPI and npm are blocked;
+      - StandIn on all 55 tasks: 55 official, none with a changed snapshot,
+        no flag, no redaction;
+      - every image rebuilt and its install log read: 55 built, and no install
+        failed. A first pass reported 9 builds failed. The checker's image
+        tags kept the tasks' capitals, which Docker refuses.
+  - *The guard scripts, break-tested for real on Linux* (macOS has no
+    `setsid`, so section 151 is skipped there). Each fix was broken alone:
+    - *One mutant ended the VM's whole session.* It let the guard accept
+      group id 1. Section 151's test then sent `kill -TERM -- -1`, which
+      reaches every process of the user: the ssh sessions, the break-test
+      runner (its mutant was never restored) and the install check.
+      - The test now loads a net through `BASH_ENV`. A `kill` naming -1 or 1
+        is recorded, not sent.
+      - The net is tried first, and without it no guard is run.
+    - *Two were missed.* Without the check that the stop line is a number,
+      or that Python exists, the guard still refused, because its first tally
+      then failed. But `inf` passes the tally: the spend script reads it as a
+      line never reached.
+      - Each refusal is now checked for its own reason, and `inf` is among
+        the cases.
+    - *One hung* instead of failing: a guard that ignored failed tallies
+      never stopped. The test's waits now time out, stop the guard, and fail.
+    - With the test changed, all 22 are caught, each by a failing check, and
+      no process was left running.
+  - *The VPS archived before it is deleted.*
+    - Contents: every errata-bench folder there, 8,482 files and 6.3 GB.
+      Virtual environments, caches and `.env` files were left out.
+    - Three copies: the laptop, the run VM, and the storage account's
+      `2026-09-28-vps-final/`.
+    - Each copy is checked: SHA-256 on the VM; size and MD5 in storage.
+- **09-28, 10:0x UTC** — **The pre-run review: the spend guard could undercount,
+  and grading could be paid for twice or for nothing; fixed.** An independent
+  read-only review of the run procedure found nothing that would break the
+  run, but found these:
+  - *The ledger carried the agents' spend only.* A later phase whose guard
+    named no earlier grading folder dropped that grading from the total:
+    about $275–490 for stage 2's answers. One ledger now carries both kinds,
+    whatever folders a phase names.
+  - *Wrong folders priced $0 for good.* A folder of jobs, or a grading folder
+    that was not one, was accepted and never grew. The tally now refuses any
+    folder without Harbor's `config.json` or a grading run's `tasks.jsonl`,
+    and the guard waits for a grading run to begin.
+  - *A pattern that matched nothing vanished.* The guard expanded its words
+    together, so `jobs/b1-grok jobs/b1-dsp*` guarded only grok when the
+    other job had not yet made its folder. Each word is now expanded on its
+    own, and one matching nothing refuses.
+  - *Grading with an unadmitted judge only warned.* An `ERRATA_JUDGE_MODEL`
+    left pointing at another model would have paid for every reading, and
+    the results would have been marked not official. Grading now refuses any
+    judge the admission did not check.
+  - *Two graders could share a folder.* Each would pay for every reading, and
+    the duplicate readings would change the majority's settling. Grading now
+    takes the folder's lock, as the pipeline's stages do.
+  - *The agent's requests timed out at 120 s inside Harbor.* `ERRATA_TIMEOUT`
+    was not passed into the container. D-40 to D-45 and grading used 900 s.
+    A dropped request is sent again, each copy paid for and none recorded.
+    The agent now waits 900 s unless the run sets its own, and each record
+    says what it allowed.
+  - *`official()` read two of Harbor's settings.* It now checks every
+    setting Harbor's lock records against Harbor's defaults: the timeout
+    multipliers and overrides, extra compose files, mounts, environment
+    variables, preloaded conversations, extra instructions, MCP servers,
+    skills, and a verifier's own import. None of the 22 stored trial locks
+    is flagged.
+  - *Smaller:*
+    - the documented resume lacked `-p`, and needs one `-f` per error type
+      (any `-f` drops the default `CancelledError`);
+    - the ledger's claim was worded as keeping every retried trial. It keeps
+      what a tally saw: a failed attempt rerun between two tallies is missed,
+      about 9% of grok's spend on the subset;
+    - answers with nothing to read were counted as readings missing usage;
+    - the guard tests' net matched `-1` as text, so `-01` would pass. It now
+      reads numbers. A guard that sent SIGKILL first, or stopped on one failed
+      tally, passed. Both are caught now.
+    - *The net failed to load, and its own self-test caught it.* The
+      break-test runner, started in the background over ssh, failed its first
+      check: the net was not loaded. Ubuntu's bash, at shell level 1 with
+      `SSH_CLIENT` set, takes itself for sshd's shell, reads `~/.bashrc`, and
+      skips `BASH_ENV`. A background job reaches its bash at that level.
+      - The net now raises the shell level.
+      - No guard had run without it: a failed self-test runs none.
+      - The run itself does not rely on `BASH_ENV`.
+  - *Prices.* Azure's usage list (09-20..09-28) shows gpt-6-astra billed on a
+    cache-write meter ($12.50 per million against $10 for input), which the
+    stored usage does not tell apart. The tally now prices gpt-6's uncached
+    input at the write price, an upper bound. No long-context meter was
+    billed for either grok-4.6 or gpt-6-astra, and the tally does not model
+    those tiers. The meters are read again after the smoke. Azure returns no
+    cost figures for this subscription, only the meters.
+  - *Each fix broken alone, on the run VM:* 41 of 41 caught, each by a
+    failing check. These are the 19 new ones and the 22 of the last review.
+    All suites pass on the VM, the guard's real runs included. The corpus
+    check and one check that reads the laptop's runs cannot run there.

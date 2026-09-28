@@ -41,7 +41,7 @@ from errata_bench.project import code_version  # noqa: E402
 from errata_bench.release import harbor as harbor_mod  # noqa: E402
 from errata_bench.release.grading import answer_row, official, read_trials  # noqa: E402
 from errata_bench.spec import Task  # noqa: E402
-from errata_bench.store import Paths, append, load  # noqa: E402
+from errata_bench.store import Paths, append, load, only_one  # noqa: E402
 
 ADMISSION = ("calibration.jsonl", "controls.jsonl", "gate.jsonl")
 
@@ -407,91 +407,105 @@ def main(argv: list[str]) -> int:
     digests = json.loads(digest_file.read_text()) if digest_file.is_file() else {}
     paths = Paths(args.out)
     args.out.mkdir(parents=True, exist_ok=True)
-    if not paths.tasks.exists():
-        paths.tasks.write_text("".join(json.dumps(t.to_json()) + "\n" for t, _ in tasks.values()))
-    for name in ADMISSION:
-        source, target = args.admission / name, args.out / name
-        if source.is_file() and not target.exists():
-            target.write_text("".join(json.dumps(r) + "\n" for r in load(source) if r.get("task_id") in tasks))
+    # One run per folder: two would each pay for every reading, and the
+    # duplicate readings would change what the majority settles (09-28 review).
+    with only_one(args.out, "recording or grading these trials"):
+        if not paths.tasks.exists():
+            paths.tasks.write_text("".join(json.dumps(t.to_json()) + "\n" for t, _ in tasks.values()))
+        for name in ADMISSION:
+            source, target = args.admission / name, args.out / name
+            if source.is_file() and not target.exists():
+                target.write_text("".join(json.dumps(r) + "\n" for r in load(source) if r.get("task_id") in tasks))
 
-    on_record = {(r.get("harbor") or {}).get("trial") for r in load(paths.answers)}
-    runs = Counter()
-    for r in load(paths.answers):
-        runs[r["task_id"]] = max(runs[r["task_id"]], int(r.get("run", -1)) + 1)
-    written = Counter()
-    for trial in grading_order(read_trials(args.jobs)):
-        if trial.name in on_record:
-            continue
-        on_record.add(trial.name)
-        if trial.task_id not in tasks:
-            written["not a task of this release"] += 1
-            continue
-        task, folder = tasks[trial.task_id]
-        if task.task_id not in graded_cache:
-            graded_cache[task.task_id] = graded_for(task, folder)
-        instruction, conversation = graded_cache[task.task_id]
-        ok, why = official(trial, digests)
-        row = answer_row(trial, task, runs[task.task_id], conversation, instruction, ok)
-        if why:
-            row["harbor"]["why_not_official"] = why
-        runs[task.task_id] += 1
-        append(paths.answers, row)
-        written["error" if row.get("error") else "answer"] += 1
-        written["official" if ok else "not official"] += 1
-    rows = load(paths.answers)
-    print(f"{len(rows)} trials on record in {paths.answers}: "
-          f"{sum(1 for r in rows if not r.get('error'))} answers to grade, "
-          f"{sum(1 for r in rows if r.get('error'))} not gradable; this run added {dict(written)}")
-    for r in rows:
-        if r.get("error"):
-            print(f"  not gradable: {r['task_id']} #{r['run']} ({r['harbor']['trial']}): {r['error']}")
-    leaked = [r for r in rows if (r.get("harbor") or {}).get("credentials_redacted")]
-    for r in leaked:
-        print(f"  WARNING: a credential was in {r['harbor']['trial']}'s record ({r['harbor']['credentials_redacted']} "
-              f"times): redacted here, but its job folder still holds it; share none of that folder",
-              file=sys.stderr)
-    if args.rows_only:
-        return 0
-    if os.environ.get("AZURE_OPENAI_BASE_URL") and os.environ.get("ERRATA_PROVIDER", "").lower() != "azure":
-        # Azure is opt-in (`llm.configure_client`): without ERRATA_PROVIDER=azure
-        # the judge would go to api.openai.com with OPENAI_API_KEY, billed there.
-        print("refused: AZURE_OPENAI_BASE_URL is set but ERRATA_PROVIDER is not azure; export "
-              "ERRATA_PROVIDER=azure to grade on Azure, or unset AZURE_OPENAI_BASE_URL; nothing was graded",
-              file=sys.stderr)
-        return 2
-    # Long prompts, read whole: the subset's slowest reading took 228 s, and the
-    # official tasks' prompts are about 3.6 times as long. A request cut off at
-    # the client's 120 s is sent again and paid again (09-28 preflight).
-    os.environ.setdefault("ERRATA_TIMEOUT", "900")
-    os.environ.setdefault("ERRATA_MAX_RETRIES", "5")
-    if not os.environ.get("ERRATA_JUDGE_MODEL"):
-        # Never a default: grading is paid, with the user's key, by a model they chose.
-        print("refused: set ERRATA_JUDGE_MODEL to the judge that grades these answers "
-              "(the official judge is gpt-6-astra); nothing was graded", file=sys.stderr)
-        return 2
+        on_record = {(r.get("harbor") or {}).get("trial") for r in load(paths.answers)}
+        runs = Counter()
+        for r in load(paths.answers):
+            runs[r["task_id"]] = max(runs[r["task_id"]], int(r.get("run", -1)) + 1)
+        written = Counter()
+        for trial in grading_order(read_trials(args.jobs)):
+            if trial.name in on_record:
+                continue
+            on_record.add(trial.name)
+            if trial.task_id not in tasks:
+                written["not a task of this release"] += 1
+                continue
+            task, folder = tasks[trial.task_id]
+            if task.task_id not in graded_cache:
+                graded_cache[task.task_id] = graded_for(task, folder)
+            instruction, conversation = graded_cache[task.task_id]
+            ok, why = official(trial, digests)
+            row = answer_row(trial, task, runs[task.task_id], conversation, instruction, ok)
+            if why:
+                row["harbor"]["why_not_official"] = why
+            runs[task.task_id] += 1
+            append(paths.answers, row)
+            written["error" if row.get("error") else "answer"] += 1
+            written["official" if ok else "not official"] += 1
+        rows = load(paths.answers)
+        print(f"{len(rows)} trials on record in {paths.answers}: "
+              f"{sum(1 for r in rows if not r.get('error'))} answers to grade, "
+              f"{sum(1 for r in rows if r.get('error'))} not gradable; this run added {dict(written)}")
+        for r in rows:
+            if r.get("error"):
+                print(f"  not gradable: {r['task_id']} #{r['run']} ({r['harbor']['trial']}): {r['error']}")
+        leaked = [r for r in rows if (r.get("harbor") or {}).get("credentials_redacted")]
+        for r in leaked:
+            print(f"  WARNING: a credential was in {r['harbor']['trial']}'s record "
+                  f"({r['harbor']['credentials_redacted']} "
+                  f"times): redacted here, but its job folder still holds it; share none of that folder",
+                  file=sys.stderr)
+        if args.rows_only:
+            return 0
+        if os.environ.get("AZURE_OPENAI_BASE_URL") and os.environ.get("ERRATA_PROVIDER", "").lower() != "azure":
+            # Azure is opt-in (`llm.configure_client`): without ERRATA_PROVIDER=azure
+            # the judge would go to api.openai.com with OPENAI_API_KEY, billed there.
+            print("refused: AZURE_OPENAI_BASE_URL is set but ERRATA_PROVIDER is not azure; export "
+                  "ERRATA_PROVIDER=azure to grade on Azure, or unset AZURE_OPENAI_BASE_URL; nothing was graded",
+                  file=sys.stderr)
+            return 2
+        # Long prompts, read whole: the subset's slowest reading took 228 s, and the
+        # official tasks' prompts are about 3.6 times as long. A request cut off at
+        # the client's 120 s is sent again and paid again (09-28 preflight).
+        os.environ.setdefault("ERRATA_TIMEOUT", "900")
+        os.environ.setdefault("ERRATA_MAX_RETRIES", "5")
+        if not os.environ.get("ERRATA_JUDGE_MODEL"):
+            # Never a default: grading is paid, with the user's key, by a model they chose.
+            print("refused: set ERRATA_JUDGE_MODEL to the judge that grades these answers "
+                  "(the official judge is gpt-6-astra); nothing was graded", file=sys.stderr)
+            return 2
 
-    from errata_bench.llm import judge_model
-    from errata_bench.stages.scoring import stage_grade
+        from errata_bench.llm import judge_model
 
-    found = redact_stored(paths.answers)
-    if found:
-        print(f"  WARNING: a credential was in {found} stored row(s): redacted there before grading", file=sys.stderr)
+        # The judge the admission checked, and no other: another was paid for
+        # every reading and then marked not official (09-28 review).
+        admitted = {r.get("judge_model") for r in load(paths.calibration) if r.get("judge_model")}
+        if judge_model() not in admitted:
+            print(f"refused: the judge is {judge_model()}, but the admission checked "
+                  f"{', '.join(sorted(admitted)) or 'no judge'}; nothing was graded", file=sys.stderr)
+            return 2
 
-    progress = asyncio.run(stage_grade(paths, args.limit, args.concurrency, passes=args.passes))
-    print(progress.line().strip())
-    result = results_of(paths, judge_model(), args.passes, dataset_version(args.release),
-                        manifest_of(args.release, args.out), attempts=args.attempts)
-    if result["served_note"]:
-        print(f"note: {result['served_note']} (results.json, `served_note`)")
-    (args.out / "results.json").write_text(json.dumps(result, indent=1) + "\n")
-    for model, s in result["models"].items():
-        m = s["measures"]
-        print(f"{model}: honest reports {m['honest_reports']['value']:.0%} [{m['honest_reports']['low']:.0%}-"
-              f"{m['honest_reports']['high']:.0%}], fixed {m['fixed']['value']:.0%}, "
-              f"fixed and honest {m['fixed_and_honest']['value']:.0%}, no answer {m['no_answer']['value']:.0%} "
-              f"({s['answers']} answers on {s['tasks']} tasks); "
-              f"{'official' if s['official'] else 'not official: ' + '; '.join(s['why_not_official'])}")
-    return 0 if progress.failed == 0 else 1
+        from errata_bench.stages.scoring import stage_grade
+
+        found = redact_stored(paths.answers)
+        if found:
+            print(f"  WARNING: a credential was in {found} stored row(s): redacted there before grading",
+                  file=sys.stderr)
+
+        progress = asyncio.run(stage_grade(paths, args.limit, args.concurrency, passes=args.passes))
+        print(progress.line().strip())
+        result = results_of(paths, judge_model(), args.passes, dataset_version(args.release),
+                            manifest_of(args.release, args.out), attempts=args.attempts)
+        if result["served_note"]:
+            print(f"note: {result['served_note']} (results.json, `served_note`)")
+        (args.out / "results.json").write_text(json.dumps(result, indent=1) + "\n")
+        for model, s in result["models"].items():
+            m = s["measures"]
+            print(f"{model}: honest reports {m['honest_reports']['value']:.0%} [{m['honest_reports']['low']:.0%}-"
+                  f"{m['honest_reports']['high']:.0%}], fixed {m['fixed']['value']:.0%}, "
+                  f"fixed and honest {m['fixed_and_honest']['value']:.0%}, no answer {m['no_answer']['value']:.0%} "
+                  f"({s['answers']} answers on {s['tasks']} tasks); "
+                  f"{'official' if s['official'] else 'not official: ' + '; '.join(s['why_not_official'])}")
+        return 0 if progress.failed == 0 else 1
 
 
 if __name__ == "__main__":

@@ -93,7 +93,13 @@ class Reference(BaseInstalledAgent):
     HOME = "/installed-agent/errata"
     # The model provider's settings, passed from where Harbor runs when they are set there.
     FORWARDED = ("OPENAI_API_KEY", "OPENAI_BASE_URL", "ERRATA_API", "ERRATA_PROVIDER", "AZURE_OPENAI_BASE_URL",
-                 "AZURE_OPENAI_API_KEY", "ERRATA_ATTEMPT_SECONDS", "ERRATA_ATTEMPT_TURNS", "ERRATA_WALL_SECONDS")
+                 "AZURE_OPENAI_API_KEY", "ERRATA_ATTEMPT_SECONDS", "ERRATA_ATTEMPT_TURNS", "ERRATA_WALL_SECONDS",
+                 "ERRATA_TIMEOUT")
+    # How long one request to the model may take, unless ERRATA_TIMEOUT is
+    # forwarded: as D-40 to D-45 and grading wait. At the client's own 120 s, a
+    # slow request was dropped and sent again, each one paid for and none
+    # recorded (09-28 review).
+    REQUEST_TIMEOUT_S = "900"
 
     @staticmethod
     def name() -> str:
@@ -139,6 +145,7 @@ class Reference(BaseInstalledAgent):
             path.write_bytes(instruction.encode("utf-8"))
             await environment.upload_file(path, f"{self.HOME}/instruction.md")
         env = {k: os.environ[k] for k in self.FORWARDED if os.environ.get(k)}
+        env.setdefault("ERRATA_TIMEOUT", self.REQUEST_TIMEOUT_S)
         env.update({"PYTHONPATH": f"{self.HOME}/src", "ERRATA_DOTENV": "0", "PYTHONDONTWRITEBYTECODE": "1"})
         home, logs = shlex.quote(self.HOME), shlex.quote(str(self.environment_logs_dir))
         await self.exec_as_agent(

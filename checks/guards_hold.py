@@ -10952,60 +10952,254 @@ finally:
 _graded151 = (_go151 / "attempts.jsonl").read_text() if (_go151 / "attempts.jsonl").exists() else ""
 check(_key149 not in (_go151 / "answers.jsonl").read_text() and _key149 not in _graded151 and _graded151,
       "and grading redacts a credential in a row stored earlier before any reading is made")
+print("\n152. the pre-run review (09-28): one ledger, real folders, each pattern, the admitted judge, one grader, "
+      "the request timeout, Harbor's defaults")
+# One ledger carries the whole run's spend, grading's too: a later phase that
+# names no grading folder still counts it. Only real folders are priced, an
+# answer with nothing to read is no missing usage, and gpt-6's uncached input
+# is priced as written to its cache, which Azure bills on its own meter.
+_hj152 = Path(tempfile.mkdtemp()) / "job"
+(_hj152 / "a__1" / "agent").mkdir(parents=True)
+(_hj152 / "config.json").write_text("{}")
+(_hj152 / "a__1" / "agent" / "reference-agent.json").write_text(json.dumps({"model": "openai/grok-4.6", "usage": _u150}))
+_ho152 = Path(tempfile.mkdtemp()) / "graded"
+_ho152.mkdir()
+(_ho152 / "tasks.jsonl").write_text("{}\n")
+_ju152 = {"input_tokens": 1_000_000, "cached_tokens": 0, "output_tokens": 0}
+(_ho152 / "attempts.jsonl").write_text(
+    json.dumps({"task_id": "t", "run": 0, "judge_model": "gpt-6-astra", "judge_usage": _ju152, "trace_usage": _ju152})
+    + "\n" + json.dumps({"task_id": "t", "run": 1, "judge_model": "gpt-6-astra", "outcome": "no_answer"}) + "\n")
+_hl152 = Path(tempfile.mkdtemp()) / "ledger.jsonl"
+
+
+def _tally152(*argv):
+    _o, _e = _io60.StringIO(), _io60.StringIO()
+    with _ctx60.redirect_stdout(_o), _ctx60.redirect_stderr(_e):
+        _rc = _hs150.main(list(argv))
+    return _rc, _o.getvalue() + _e.getvalue()
+
+
+_a152 = _tally152("--jobs", str(_hj152), "--graded", str(_ho152), "--ledger", str(_hl152))
+_b152 = _tally152("--jobs", str(_hj152), "--ledger", str(_hl152))
+check(_a152[0] == 0 and "grading $25.00 over 1 readings" in _a152[1] and "halves" not in _a152[1]
+      and "total $33.00" in _b152[1],
+      f"one ledger carries grading's spend into a later phase, an unread answer is no missing usage, and gpt-6's "
+      f"uncached input is priced as a cache write: {_a152[1].strip()[-110:]} | {_b152[1].strip()[-50:]}")
+_c152 = _tally152("--jobs", str(_hj152.parent))
+_d152 = _tally152("--jobs", str(_hj152), "--graded", str(Path(tempfile.mkdtemp())))
+check(_c152[0] == 4 and _d152[0] == 4 and "not a Harbor job" in _c152[1] and "not a grading run" in _d152[1],
+      f"and a folder of jobs, or a folder no grading run made, is refused, not priced $0: {_c152[0]}, {_d152[0]}")
+# Grading refuses a judge the admission did not check, and a second grader in one folder.
+_saved152 = {k: os.environ.get(k) for k in ("ERRATA_JUDGE_MODEL", "AZURE_OPENAI_BASE_URL")}
+_ej152 = _io60.StringIO()
+_oj152 = Path(tempfile.mkdtemp()) / "other-judge"
+try:
+    os.environ["ERRATA_JUDGE_MODEL"] = "another-judge"
+    os.environ.pop("AZURE_OPENAI_BASE_URL", None)
+    with _ctx60.redirect_stdout(_io60.StringIO()), _ctx60.redirect_stderr(_ej152):
+        _rj152 = _gh135.main([str(_rel151), str(_jo151), "--out", str(_oj152), "--admission",
+                              str(_ad151.calibration.parent)])
+finally:
+    for k, v in _saved152.items():
+        if v is None:
+            os.environ.pop(k, None)
+        else:
+            os.environ[k] = v
+check(_rj152 == 2 and "the admission checked the-grader" in _ej152.getvalue()
+      and not (_oj152 / "attempts.jsonl").exists(),
+      f"grading refuses a judge the admission did not check, before any reading: exit {_rj152}")
+import fcntl as _fc152
+
+_lk152 = Path(tempfile.mkdtemp()) / "held"
+_lk152.mkdir()
+with open(_lk152 / "run.lock", "a+") as _h152:
+    _fc152.flock(_h152, _fc152.LOCK_EX | _fc152.LOCK_NB)
+    try:
+        with _ctx60.redirect_stdout(_io60.StringIO()), _ctx60.redirect_stderr(_io60.StringIO()):
+            _gh135.main([str(_rel151), str(_jo151), "--out", str(_lk152), "--admission",
+                         str(_ad151.calibration.parent), "--rows-only"])
+        _held152 = "it went ahead"
+    except SystemExit as _x152:
+        _held152 = str(_x152)
+check("another process" in _held152 and not (_lk152 / "answers.jsonl").exists(),
+      f"and a second grader in a folder another holds is refused before it records anything: {_held152.strip()[:80]}")
+# The candidate's request timeout is recorded, and is the client's unless set.
+_saved152t = os.environ.pop("ERRATA_TIMEOUT", None)
+try:
+    _t152a = _ra134.request_timeout_s()
+    os.environ["ERRATA_TIMEOUT"] = "900"
+    _t152b = _ra134.request_timeout_s()
+finally:
+    os.environ.pop("ERRATA_TIMEOUT", None)
+    if _saved152t is not None:
+        os.environ["ERRATA_TIMEOUT"] = _saved152t
+check(_t152a == 120.0 and _t152b == 900.0, f"the agent's record reads the request timeout it ran with: {_t152a}, {_t152b}")
+# Harbor's other settings: an official trial leaves each at Harbor's default.
+_hd152 = Path(tempfile.mkdtemp()) / "job"
+_hd152.mkdir()
+_why152 = {}
+# As Harbor writes a lock: its defaults spelt out ("timeout_multiplier": 1.0).
+for _nm, _extra in (("h1__1", {"timeout_multiplier": 1.0, "install_only": False, "bridge_inputs": {}, "skills": []}),
+                    ("h1__2", {"timeout_multiplier": 2.0}),
+                    ("h1__3", {"environment": {"extra_docker_compose": ["open.yaml"], "extra_allowed_hosts": []}}),
+                    ("h1__4", {"environment": {"mounts": [{"source": "/data"}], "extra_allowed_hosts": []}}),
+                    ("h1__5", {"agent": {"kwargs": {"disable_web_search": "true"}, "extra_allowed_hosts": [],
+                                         "load_trajectory": "earlier.json"}}),
+                    ("h1__6", {"extra_instructions": [{"digest": "x"}]})):
+    _tdd = _trial135(_hd152, _nm)
+    _lk = json.loads((_tdd / "lock.json").read_text())
+    for _k, _v in _extra.items():
+        _lk[_k] = {**(_lk.get(_k) or {}), **_v} if isinstance(_v, dict) else _v
+    (_tdd / "lock.json").write_text(json.dumps(_lk))
+for _tr in _gr135.read_trials([_hd152]):
+    _why152[_tr.name] = [w for w in _gr135.official(_tr, {"h1": _digest135})[1] if "Harbor settings" in w]
+check(not _why152["h1__1"] and all(_why152[f"h1__{i}"] for i in range(2, 7)),
+      f"a trial with Harbor's timeouts stretched, a compose file or mount added, a conversation preloaded or an "
+      f"instruction added is not official, and one left at Harbor's defaults is: {_why152}")
 # The spend guard and the launcher, run for real where util-linux's setsid is (Linux; CI).
+_netok151 = False
 if __import__("shutil").which("setsid") is None:
     print("  skipped: the spend guard's run needs util-linux setsid (Linux); CI runs it")
 else:
     import subprocess as _sp151
     _gd151 = Path(tempfile.mkdtemp())
+    # A safety net, read by every guard run below (BASH_ENV): a guard that
+    # stopped checking its ids would stop "group 1" -- every process of the
+    # user, this suite and the login with it, as a broken guard did on the run
+    # VM (09-28). The net reads each target after "--" as a number, so -01 is
+    # 1, and records a signal to 1, 0 or every process instead of sending it.
+    # It is tried first; with no net, no guard is run.
+    _net151 = _gd151 / "net.sh"
+    _net151.write_text(
+        'kill() { local a n seen=; for a in "$@"; do if [ -z "$seen" ]; then [ "$a" = "--" ] && seen=1; continue; fi; '
+        'n=${a#-}; case "$n" in ""|*[!0-9]*) ;; *) if [ "$((10#$n))" -le 1 ]; then '
+        'echo "not sent: kill $*" >> "$NET_LOG"; return 0; fi ;; esac; done; '
+        '[ -n "$seen" ] || { echo "not sent, no --: kill $*" >> "$NET_LOG"; return 0; }; builtin kill "$@"; }\n')
+    # SHLVL: Ubuntu's bash, started at level 1 with SSH_CLIENT set, takes itself
+    # for sshd's shell and reads ~/.bashrc in place of BASH_ENV -- as every bash
+    # of a job started in the background from ssh is (09-28, on the run VM).
+    _netenv151 = {"BASH_ENV": str(_net151), "NET_LOG": str(_gd151 / "net.log"), "SHLVL": "3"}
+    _probe151 = _sp151.run(["bash", "-c", "kill -0 -- -1; kill -0 -- -01"], env={**os.environ, **_netenv151},
+                           capture_output=True, text=True)
+    _netlog151 = (_gd151 / "net.log").read_text() if (_gd151 / "net.log").exists() else "(no log)"
+    _netok151 = _netlog151.count("not sent") == 2
+    check(_netok151, "the guard's runs below have their safety net: a signal to every process is recorded, not sent"
+          + ("" if _netok151 else f": exit {_probe151.returncode}, {_probe151.stderr[-200:]!r}, {_netlog151[-200:]!r}"))
+if _netok151:
+    (_gd151 / "net.log").unlink()
     _pid151 = _gd151 / "sleeper.pid"
-    _sp151.run(["bash", "-c", f"nohup scripts/guarded.sh {_pid151} sleep 300 > /dev/null 2>&1 < /dev/null &"], check=True)
-    for _ in range(50):
-        if _pid151.exists() and _pid151.read_text().strip():
-            break
-        __import__("time").sleep(0.1)
-    _grp151 = int(_pid151.read_text())
+    # The sleeper records the signal that ends it: a stop must begin with SIGTERM,
+    # so that Harbor can tear its trials down, not with SIGKILL.
+    def _sleep151(pidfile=_pid151):
+        pidfile.unlink(missing_ok=True)
+        _sp151.run(["bash", "-c", f"nohup scripts/guarded.sh {pidfile} bash -c 'trap \"echo term >> {_gd151}/got-term; "
+                    f"exit 0\" TERM; sleep 300 & wait' > /dev/null 2>&1 < /dev/null &"], check=True)
+        for _ in range(50):
+            if pidfile.exists() and pidfile.read_text().strip():
+                break
+            __import__("time").sleep(0.1)
+        return int(pidfile.read_text())
+
+    _grp151 = _sleep151()
     _gj151 = _gd151 / "job"
     (_gj151 / "a__1" / "agent").mkdir(parents=True)
+    (_gj151 / "config.json").write_text("{}")
     (_gj151 / "a__1" / "agent" / "reference-agent.json").write_text(json.dumps({"model": "openai/grok-4.6", "usage": _u150}))
-    _genv151 = {**os.environ, "STOP": "1", "JOBS": str(_gj151), "PIDS": str(_pid151), "LEDGER": str(_gd151 / "l"),
-                "LOG": str(_gd151 / "log"), "PY": sys.executable, "WAIT_S": "10", "KILL_AFTER_S": "1", "EVERY_S": "1"}
-    _stop151 = _sp151.run(["bash", "scripts/harbor-guard.sh"], env=_genv151, capture_output=True, text=True, timeout=120)
+    _genv151 = {**os.environ, **_netenv151, "STOP": "1", "JOBS": str(_gj151), "PIDS": str(_pid151),
+                "LEDGER": str(_gd151 / "l"), "LOG": str(_gd151 / "log"), "PY": sys.executable, "WAIT_S": "10",
+                "KILL_AFTER_S": "1", "EVERY_S": "1", "APPEAR_S": "20"}
+    # It waits for its grading run to begin, then stops the run past its line.
+    _gg151 = _gd151 / "grading"
+    _stop151 = _sp151.Popen(["bash", "scripts/harbor-guard.sh"], env={**_genv151, "GRADED": str(_gg151)},
+                            stdout=_sp151.DEVNULL, stderr=_sp151.DEVNULL)
+    __import__("time").sleep(2)
+    _gg151.mkdir()
+    (_gg151 / "tasks.jsonl").write_text("{}\n")
+    try:
+        _stopped151 = _stop151.wait(timeout=120)
+    except _sp151.TimeoutExpired:
+        _stop151.kill()
+        _stopped151 = "still guarding after 120s"
     __import__("time").sleep(0.5)
     _alive151 = _sp151.run(["bash", "-c", f"kill -0 -- -{_grp151}"], capture_output=True).returncode == 0
+    _term151 = (_gd151 / "got-term").exists()
     _refusals151 = {}
-    _sp151.run(["bash", "-c", f"nohup scripts/guarded.sh {_pid151} sleep 300 > /dev/null 2>&1 < /dev/null &"], check=True)
-    __import__("time").sleep(0.5)
-    for _label, _over in (("a job name not there", {"JOBS": f"{_gj151} {_gd151}/typo"}), ("a malformed line", {"STOP": "2,200"}),
-                          ("a group id of 1", {"PIDS": str(_gd151 / "one.pid")}), ("no Python", {"PY": "/nonexistent/python"}),
-                          ("a ledger it cannot write", {"LEDGER": "/nonexistent/dir/ledger", "STOP": "1000"})):
-        (_gd151 / "one.pid").write_text("1\n")
-        _r = _sp151.run(["bash", "scripts/harbor-guard.sh"], env={**_genv151, **_over}, capture_output=True, text=True,
-                        timeout=60)
-        _refusals151[_label] = _r.returncode
-    # A tally that fails twice while the run goes on stops it, as the line would.
+    _sleep151()
+    (_gd151 / "one.pid").write_text("1\n")
+    # Each refused for its own reason: a later check refuses most of these too,
+    # but not "inf", which the spend script reads as a line never reached.
+    for _label, _over, _why in (
+            ("a job name not there", {"JOBS": f"{_gj151} {_gd151}/typo"}, "not a Harbor job folder"),
+            ("a folder that is not a Harbor job", {"JOBS": str(_gd151)}, "not a Harbor job folder"),
+            ("a pattern matching nothing beside one that does", {"JOBS": f"{_gj151} {_gd151}/nojob*"},
+             "matches nothing"),
+            ("a grading run that never begins", {"GRADED": str(_gd151 / "never"), "APPEAR_S": "5"},
+             "no grading run begun"),
+            ("a malformed line", {"STOP": "2,200"}, "not a number"),
+            ("an endless line", {"STOP": "inf"}, "not a number"),
+            ("a group id of 1", {"PIDS": str(_gd151 / "one.pid")}, "no usable process group"),
+            ("no Python", {"PY": "/nonexistent/python"}, "no Python at"),
+            ("a ledger it cannot write", {"LEDGER": "/nonexistent/dir/ledger", "STOP": "1000"},
+             "first spend tally failed")):
+        try:
+            _r = _sp151.run(["bash", "scripts/harbor-guard.sh"], env={**_genv151, **_over}, capture_output=True,
+                            text=True, timeout=60)
+            _refusals151[_label] = _r.returncode if _why in _r.stdout else f"{_r.returncode}: {_r.stdout[-100:]!r}"
+        except _sp151.TimeoutExpired:
+            _refusals151[_label] = "not refused: still guarding after 60s"
+    # One failed tally is waited out; two in a row stop the run, as the line would.
+    _count151 = _gd151 / "tallies"
+    _flaky151 = _gd151 / "flaky-python"
+    _flaky151.write_text(f'#!/bin/bash\ncase "$*" in *harbor_spend.py*) n=$(( $(cat {_count151} 2>/dev/null || echo 0) + 1 )); '
+                         f'echo "$n" > {_count151}; [ "$n" -eq 2 ] && exit 1 ;; esac\nexec {sys.executable} "$@"\n')
+    _flaky151.chmod(0o755)
+    _short151 = _gd151 / "short.pid"
+    _sp151.run(["bash", "-c", f"nohup scripts/guarded.sh {_short151} sleep 6 > /dev/null 2>&1 < /dev/null &"], check=True)
+    for _ in range(50):
+        if _short151.exists() and _short151.read_text().strip():
+            break
+        __import__("time").sleep(0.1)
+    try:
+        _once151 = _sp151.run(["bash", "scripts/harbor-guard.sh"],
+                              env={**_genv151, "STOP": "1000", "PIDS": str(_short151), "PY": str(_flaky151),
+                                   "LOG": str(_gd151 / "log1"), "LEDGER": str(_gd151 / "l1")},
+                              capture_output=True, text=True, timeout=60).returncode
+    except _sp151.TimeoutExpired:
+        _once151 = "still guarding after 60s"
     _gj151b = _gd151 / "job2"
     (_gj151b / "a__1" / "agent").mkdir(parents=True)
+    (_gj151b / "config.json").write_text("{}")
     (_gj151b / "a__1" / "agent" / "reference-agent.json").write_text(json.dumps({"model": "openai/grok-4.6", "usage": {}}))
     _fail151 = _sp151.Popen(["bash", "scripts/harbor-guard.sh"], env={**_genv151, "STOP": "1000", "JOBS": str(_gj151b),
                                                                      "LOG": str(_gd151 / "log2"), "LEDGER": str(_gd151 / "l2")},
                             stdout=_sp151.DEVNULL, stderr=_sp151.DEVNULL)
     __import__("time").sleep(2)
     __import__("shutil").rmtree(_gj151b)
-    _fail151.wait(timeout=120)
+    try:
+        _fail151.wait(timeout=120)
+    except _sp151.TimeoutExpired:
+        _fail151.kill()
     __import__("time").sleep(0.5)
     _alive151b = _sp151.run(["bash", "-c", f"kill -0 -- -{int(_pid151.read_text())}"], capture_output=True).returncode == 0
     _nopid151 = _gd151 / "nodir" / "x.pid"
     _ran151 = _sp151.run(["bash", "-c", f"scripts/guarded.sh {_nopid151} touch {_gd151}/ran"], capture_output=True)
-    check(_stop151.returncode == 0 and "STOP LINE" in (_gd151 / "log").read_text() and not _alive151
-          and "still running after" not in (_gd151 / "log").read_text(),
-          f"the guard stops a run past its line with SIGTERM, which a background launch does not ignore: "
-          f"exit {_stop151.returncode}, still alive {_alive151}")
-    check("COULD NOT BE READ" in (_gd151 / "log2").read_text() and not _alive151b,
-          "and stops the run when the spend cannot be read twice in a row")
-    check(all(v == 2 for v in _refusals151.values()) and not (_gd151 / "ran").exists(),
-          f"and refuses to start on a missing job, a malformed line, a group id of 1 or no Python, while the "
-          f"launcher runs nothing it could not record: {_refusals151}")
+    _log151 = (_gd151 / "log").read_text() if (_gd151 / "log").exists() else ""
+    check(_stopped151 == 0 and "STOP LINE" in _log151 and "1 grading folder(s)" in _log151 and not _alive151
+          and _term151 and "still running after" not in _log151,
+          f"the guard waits for its grading run to begin, then stops a run past its line with SIGTERM first, which a "
+          f"background launch does not ignore: exit {_stopped151}, still alive {_alive151}, SIGTERM seen {_term151}")
+    _log151_1 = (_gd151 / "log1").read_text() if (_gd151 / "log1").exists() else ""
+    check(_once151 == 0 and "1 time(s) in a row" in _log151_1 and "COULD NOT BE READ" not in _log151_1
+          and "COULD NOT BE READ" in (_gd151 / "log2").read_text() and not _alive151b,
+          f"and waits out one failed tally, but stops the run when the spend cannot be read twice in a row: "
+          f"exit {_once151}")
+    check(all(v == 2 for v in _refusals151.values()) and not (_gd151 / "ran").exists()
+          and not (_gd151 / "net.log").exists(),
+          f"and refuses, each for its reason, a missing or non-Harbor job, a pattern matching nothing, a grading run "
+          f"that never begins, a malformed or endless line, a group id of 1, no Python and an unwritable ledger, "
+          f"while the launcher runs nothing it could not record: {_refusals151}"
+          + (f"; tried to signal every process: {(_gd151 / 'net.log').read_text()[:200]}"
+             if (_gd151 / "net.log").exists() else ""))
 
 print("\nlast. what the suite hands back")
 

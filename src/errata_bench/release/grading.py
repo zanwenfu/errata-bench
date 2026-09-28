@@ -346,10 +346,45 @@ def redact(answer: dict | None) -> tuple[dict | None, int]:
     return (json.loads(text) if found else answer), found
 
 
+# What Harbor lets a run change besides its hosts, limits and verifier, as its
+# lock records them (0.23): an official trial leaves each unset or at Harbor's
+# default. Two were read before, of these (09-28 review): a multiplier stretches
+# every timeout, and a compose file, a mount or a preloaded conversation can
+# change what the agent has without adding a host.
+_HARBOR_DEFAULTS = (
+    ("", "install_only"), ("", "timeout_multiplier"), ("", "agent_timeout_multiplier"),
+    ("", "verifier_timeout_multiplier"), ("", "agent_setup_timeout_multiplier"),
+    ("", "environment_build_timeout_multiplier"), ("", "extra_instructions"), ("", "user_agent"),
+    ("", "user_persona"), ("", "user_prompt_template"), ("", "bridge_prompt"), ("", "bridge_inputs"), ("", "skills"),
+    ("", "extra_docker_compose"), ("", "source_trial"),
+    ("agent", "override_timeout_sec"), ("agent", "override_setup_timeout_sec"), ("agent", "max_timeout_sec"),
+    ("agent", "load_trajectory"), ("agent", "mcp_servers"), ("agent", "skills"),
+    ("environment", "mounts"), ("environment", "extra_docker_compose"), ("environment", "env"),
+    ("environment", "kwargs"), ("environment", "override_cpus"), ("environment", "override_memory_mb"),
+    ("environment", "override_storage_mb"), ("environment", "override_gpus"), ("environment", "override_tpu"),
+    ("verifier", "override_timeout_sec"), ("verifier", "max_timeout_sec"), ("verifier", "import_path"),
+    ("verifier", "env"), ("verifier", "kwargs"),
+)
+
+
+def _changed_from_harbor(lock: dict) -> list[str]:
+    changed = []
+    for where, field in _HARBOR_DEFAULTS:
+        value = (lock.get(where) or {}).get(field) if where else lock.get(field)
+        default = 1.0 if field.endswith("multiplier") else None
+        if value in (None, False, [], {}, "") or value == default:
+            continue
+        changed.append(f"{where + '.' if where else ''}{field}={str(value)[:60]}")
+    return changed
+
+
 def official(trial: Trial, digests: dict[str, str]) -> tuple[bool, list[str]]:
     """Whether the trial ran the task as published, and if not, why not."""
     why = []
     lock = trial.lock
+    changed = _changed_from_harbor(lock)
+    if changed:
+        why.append(f"Harbor settings were changed from their defaults: {', '.join(changed)}")
     digest = (lock.get("task") or {}).get("digest")
     if digests.get(trial.task_id) is None:
         why.append("the release has no digest for this task")
