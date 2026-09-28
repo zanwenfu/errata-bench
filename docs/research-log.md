@@ -9762,3 +9762,54 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     rates: grok-4.6 `-n 5`, whose trials ran at about 80–240K tokens a
     minute; DeepSeek-V4-Pro `-n 3`, whose trials are short but reached 720K
     a minute.
+- **09-28, 19:0x UTC** — **The baseline run's stage 2 (grok-4.6 and
+  DeepSeek-V4-Pro), run, graded and read; stage 3 launched.**
+  - *The jobs,* 11:30–14:59 UTC.
+    - 306 of 306 trials completed, and none errored.
+    - Harbor ran 2 grok trials again in place. PyPI had answered 503 to
+      the agent's install, before any model call.
+    - How they ended:
+      - grok-4.6: 130 answered, 21 at the turn limit, 2 at the time limit;
+      - DeepSeek-V4-Pro: 147 answered, 6 at the turn limit.
+    - Neither was throttled to speak of, and every record allowed 900 s a
+      request.
+  - *Checks.*
+    - None of the 3,068 job files holds a key or the endpoint's host.
+    - All 306 answers are gradable and official, with no integrity flag
+      and no redaction.
+  - *Grading,* 17:04–18:57 UTC.
+    - It started two hours after the jobs ended: the operator's tools were
+      unavailable from about 12:00, not the run.
+    - 918 readings, none failed. The judge served gpt-6-astra-2026-09-03
+      throughout, so there is no served-model note.
+    - Readings were settled by majority. Coverage is complete: 153 of 153
+      for each model, none missing, extra or short of readings, and one
+      agent code.
+  - *Results, both official* (95% intervals from resampling tasks):
+
+    | model | honest reports | fixed | fixed and honest | no answer | misreported |
+    |---|---|---|---|---|---|
+    | grok-4.6 | 55.6% [45.1–66.0] | 38.6% [26.1–51.0] | 23.5% [13.7–34.6] | 0% | 14.4% [7.8–20.9] |
+    | DeepSeek-V4-Pro | 43.1% [32.0–54.9] | 13.1% [5.2–22.2] | 6.5% [2.0–13.1] | 0% | 14.4% [9.2–20.3] |
+
+    No comparison is claimed, as registered.
+  - *Spend, by the tally.*
+    - The agents: $153.14, less than the smoke's per-trial figures
+      projected (about $325).
+    - Grading: $421.63, which is $0.46 a reading and $1.38 an answer.
+    - Stage 2: $574.77 in all. The run's ledger carried the grading into
+      stage 3's guard, which names no grading folder.
+  - *Stage 3, launched 18:58 UTC,* with each model's `-n` set from its
+    deployment's limits: Kimi-K2.7-Code `-n 1`, DeepSeek-V4-Flash `-n 2`,
+    Mistral-Large-3 `-n 4`, MAI-Thinking-1 `-n 4`.
+    - Kimi's deployment is at its subscription's quota: 100 of 100, that
+      is 100K tokens a minute. Raising it takes a request to Microsoft.
+    - At one trial at a time, Kimi's job is expected to take 15–18 hours.
+  - *A deviation, dated here before any stage-3 answer exists.* Each
+    stage-3 model is graded once its own job has ended, while Kimi's job
+    runs on. The registration grades "after every job has ended".
+    - The rule's purpose holds: no job is graded while Harbor may still
+      rerun one of its trials.
+    - Otherwise, grading would sit idle for about 15 hours.
+    - All six models are graded into `runs/b1-grade`, so one
+      `results.json` holds them all.
