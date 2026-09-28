@@ -93,7 +93,7 @@ class Reference(BaseInstalledAgent):
     HOME = "/installed-agent/errata"
     # The model provider's settings, passed from where Harbor runs when they are set there.
     FORWARDED = ("OPENAI_API_KEY", "OPENAI_BASE_URL", "ERRATA_API", "ERRATA_PROVIDER", "AZURE_OPENAI_BASE_URL",
-                 "AZURE_OPENAI_API_KEY", "ERRATA_ATTEMPT_SECONDS", "ERRATA_ATTEMPT_TURNS")
+                 "AZURE_OPENAI_API_KEY", "ERRATA_ATTEMPT_SECONDS", "ERRATA_ATTEMPT_TURNS", "ERRATA_WALL_SECONDS")
 
     @staticmethod
     def name() -> str:

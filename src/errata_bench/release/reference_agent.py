@@ -34,10 +34,12 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import re
 import sys
 import time
 import uuid
 from pathlib import Path
+from types import SimpleNamespace
 
 VERSION = "1.1"
 STAND_IN = "errata/stand-in"
@@ -51,7 +53,7 @@ WALL_S = 1800
 STOP_BEFORE_WALL_S = 45
 # And how far throttling may push its working deadline: far enough back from
 # the wall that the grace and the forced report still fit before it.
-MARGIN_S = 60
+MARGIN_S = 120
 # The harness's instructions (`score.attempt.INSTRUCTIONS`), less what only
 # held in its sandbox; the task's instruction says the rest.
 SYSTEM = ("You have a working copy of the repository. You can read files, list directories, run commands, "
@@ -163,12 +165,20 @@ async def run(instruction: str, out: Path, model: str, seconds: int, turns: int,
         # Its calls are kept and its reply is empty: an attempt that ran out
         # of time and reported nothing, graded as no answer, not lost.
         talk = Conversation(reply="", ran_out=True, ended_by="wall time", usage=context.get("usage"))
-    if talk.error and _too_long(talk.error):
-        # The conversation grew past what the model can read. That is this
-        # agent on this model -- it keeps the whole history -- not a failure to
-        # retry: retried, it fails the same way. Graded as no answer.
-        talk = Conversation(reply="", ran_out=True, ended_by="context length", usage=talk.usage,
-                            report_error=talk.error)
+    if talk.error and (_too_long(talk.error) or _FILTERED.search(talk.error)):
+        # The conversation grew past what the model can read, or the provider's
+        # filter refused it. That is this agent on this model -- it keeps the
+        # whole history -- not a failure to retry: retried, it fails the same
+        # way, three times over. Graded as no answer.
+        talk = Conversation(reply="", ran_out=True, usage=talk.usage, report_error=talk.error,
+                            ended_by="context length" if _too_long(talk.error) else "content filter")
+    # One reading of the calls for both files: a tool still running in its
+    # thread when the wall stopped the loop could finish between two writes,
+    # and the record and the trajectory would disagree (09-28 review).
+    rows = [c.to_json() for c in list(calls)]
+    kept = [SimpleNamespace(name=r["name"], result=r["result"],
+                            arguments={k: v for k, v in r.items() if k not in ("name", "result", "failed")})
+            for r in rows]
     record = {
         "agent": "errata-reference", "version": VERSION, "package_sha256": package_digest(), "model": model,
         "limits": {"seconds": seconds, "turns": turns},
@@ -178,21 +188,35 @@ async def run(instruction: str, out: Path, model: str, seconds: int, turns: int,
         "usage": talk.usage, "last_response": context.get("last_response", ""),
         "null_responses": getattr(provider, "nulls", 0), "throttled_s": round(context.get("throttled_s", 0.0), 1),
         "throttle_not_given_back_s": round(context.get("not_given_back_s", 0.0), 1), "wall_s": wall,
-        "tool_calls": [c.to_json() for c in calls],
+        "tool_calls": rows,
     }
     out.mkdir(parents=True, exist_ok=True)
     (out / "trajectory.json").write_text(json.dumps(
-        trajectory_of(instruction, model, "" if talk.error else talk.reply, calls, str(uuid.uuid4())),
+        trajectory_of(instruction, model, "" if talk.error else talk.reply, kept, str(uuid.uuid4())),
         ensure_ascii=False, indent=1))
     (out / "reference-agent.json").write_text(json.dumps(record, ensure_ascii=False, indent=1))
     return record
 
 
+# How providers word a request refused for its length. OpenAI's, as
+# `score.trace.too_long` reads the graders'; and the wordings other serving
+# stacks use (vLLM, TGI, Mistral's, Azure AI's), since none of the six
+# candidates overflowed in 1,520 stored attempts and their own is unseen.
+# Matched only on a refusal (400/413), never on a throttle.
+_TOO_LONG = re.compile(
+    r"context_length_exceeded|maximum context length|prompt is too long|too many tokens"
+    r"|maximum prompt length|exceeds? (?:the )?(?:model'?s? )?(?:context|token limit|maximum)"
+    r"|context window|input is too long|too long for the model|reduce the length"
+    r"|inputs? tokens \+ max_new_tokens|max_tokens.{0,40}context|token limit", re.IGNORECASE)
+
+
+# A provider's content filter refusing the request: as deterministic as a length.
+_FILTERED = re.compile(r"content_filter|ResponsibleAIPolicyViolation|content management policy", re.IGNORECASE)
+
+
 def _too_long(error: str) -> bool:
-    """Whether an error is a model refusing a request for its length (as `score.trace.too_long` reads one)."""
-    text = error.lower()
-    return ("context_length_exceeded" in text or "maximum context length" in text
-            or "prompt is too long" in text or "too many tokens" in text)
+    """Whether an error is a model refusing a request for its length: no answer, not a failure to retry."""
+    return bool(_TOO_LONG.search(error)) and not re.search(r"\b429\b|rate limit", error, re.IGNORECASE)
 
 
 def main(argv: list[str]) -> int:

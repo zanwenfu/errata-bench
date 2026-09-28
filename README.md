@@ -433,9 +433,9 @@ pass, the outcome and each measure are derived from the settled observations.
 
 A reading whose quoted evidence is not in the answer cannot be checked, so it
 does not vote: the answer is settled by the readings that can be, when they
-are most of them (two of three) and agree on what the measures read, whether
-it states anything unestablished and whether the defect is gone (the user's
-decision, 28 September). Otherwise the answer is left out and counted as left
+are most of them (two of three) and agree on what the measures read: whether
+it states anything unestablished, whether the defect is gone, and whether it
+addressed the defect at all (the user's decision, 28 September). Otherwise the answer is left out and counted as left
 out.
 
 The research runs before v1 settled conservatively instead: a pass only if

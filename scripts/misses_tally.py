@@ -51,6 +51,10 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--adjudicated", type=Path)
     ap.add_argument("--runs", type=Path, nargs="*", default=[])
     ap.add_argument("--rule", default="majority")
+    # Scored only when every reading could be checked, as the D-45 misses screen
+    # was drawn and tallied (09-27); v1's own grading scores by the readings that
+    # can be (09-28). Named, so the stored screen reproduces.
+    ap.add_argument("--supported", choices=("all", "majority"), default="all")
     ap.add_argument("--flag-precision", help="the share of the judge's flags read as right, as k/n")
     ap.add_argument("--out", type=Path)
     args = ap.parse_args(argv)
@@ -88,7 +92,7 @@ def main(argv: list[str]) -> int:
         _, unverified, asked = d35.ENDPOINTS[1]
         flagged = passed = 0
         for run in args.runs:
-            rows = [a for a in d35.readings(run, rule=args.rule) if asked(a)]
+            rows = [a for a in d35.readings(run, rule=args.rule, supported=args.supported) if asked(a)]
             flagged += sum(1 for a in rows if unverified(a))
             passed += sum(1 for a in rows if not unverified(a))
         lines += ["", f"In those runs, settled by {args.rule}: {flagged} answers flagged, {passed} passed."]

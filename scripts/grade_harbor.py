@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """Grade a Harbor job's trials of errata-bench's tasks (v1 step 4).
 
-    scripts/grade_harbor.py <release dir> <job dir>... --out <run dir> --admission <dir>
-                            [--passes 3] [--concurrency 8] [--limit N] [--rows-only]
+    python scripts/grade_harbor.py <release dir> <job dir>... --out <run dir> --admission <dir>
+                                   [--passes 3] [--attempts 3] [--concurrency 4] [--limit N] [--rows-only]
 
 Each trial (`errata_bench.release.grading`) becomes an answer row, in a run
 directory the grading stage reads: tasks.jsonl, the release's frozen tasks;
@@ -19,6 +19,9 @@ with AZURE_OPENAI_BASE_URL and AZURE_OPENAI_API_KEY, or OPENAI_API_KEY). Grading
 calls that model three times per answer and is paid. With --rows-only nothing
 is graded: the rows are written and counted, to check a job before paying.
 Running again adds trials not yet on record and grades what is left.
+--attempts is how many attempts each task was run for (3 officially): each
+model's `coverage` counts what is missing against it, and a run of another
+number is not official.
 """
 
 from __future__ import annotations
@@ -224,6 +227,34 @@ def served_note(served: dict) -> str | None:
     return None
 
 
+def redact_stored(answers: Path) -> int:
+    """Redact, in place, any credential in rows already on record; how many rows held one.
+
+    Rows recorded by an earlier run, perhaps from a shell without the key to
+    look for, are checked again before any reading sends them (09-28 review).
+    """
+    from errata_bench.release.grading import redact
+
+    cleaned = [redact(r) for r in load(answers)]
+    found = sum(1 for _, n in cleaned if n)
+    if found:
+        tmp = answers.with_suffix(".jsonl.tmp")
+        tmp.write_text("".join(json.dumps(r, ensure_ascii=False) + "\n" for r, _ in cleaned))
+        tmp.replace(answers)
+    return found
+
+
+def grading_order(trials: list) -> list:
+    """The trials by task, then as they started.
+
+    Every answer of a task is then graded together, so the judge's prompt, which
+    opens with the task's conversation, is read from the provider's cache after
+    the first: the v1 subset's first readings, in trial order, were 8-14% cached.
+    Run numbers are unchanged: per task, by start.
+    """
+    return sorted(trials, key=lambda t: (t.task_id, t.started))
+
+
 def coverage_of(model: str, rows: list[dict], readings: list[dict], admitted: set[str], attempts: int,
                 passes: int) -> dict:
     """What a model's results are missing: answers not gradable or never run, and answers short of readings (09-28).
@@ -237,13 +268,20 @@ def coverage_of(model: str, rows: list[dict], readings: list[dict], admitted: se
             or (r.get("error") and str((r.get("harbor") or {}).get("model") or "").split("/")[-1] == model)]
     gradable = Counter(r["task_id"] for r in mine if not r.get("error"))
     missing = {t: attempts - gradable[t] for t in sorted(admitted) if gradable[t] < attempts}
+    # More answers than attempts is a trial run again beside the first, not in
+    # its place: each would count, and the task would weigh more.
+    extra = {t: gradable[t] - attempts for t in sorted(admitted) if gradable[t] > attempts}
     counted = Counter((r.get("task_id"), r.get("run")) for r in readings
                       if r.get("model") == model and not r.get("error"))
     short = sorted(f"{t} #{n}" for r in mine if not r.get("error") and r["task_id"] in admitted
                    for t, n in [(r["task_id"], r.get("run"))] if counted[(t, n)] < passes)
+    # The reference agent's code, by digest (`reference_agent.package_digest`): one
+    # version for all a model's trials. Another agent is named by its version.
+    codes = sorted({str((r.get("harbor") or {}).get("agent_code")) for r in mine
+                    if (r.get("harbor") or {}).get("agent") == "errata-reference"})
     return {"expected": len(admitted) * attempts, "gradable": sum(gradable[t] for t in admitted),
-            "not_gradable": sum(1 for r in mine if r.get("error")), "missing": missing,
-            "short_of_readings": short}
+            "not_gradable": sum(1 for r in mine if r.get("error")), "missing": missing, "extra": extra,
+            "short_of_readings": short, "agent_code": codes}
 
 
 def results_of(paths: Paths, judge: str, passes: int, version: str = "unknown", manifest: dict | None = None,
@@ -256,9 +294,14 @@ def results_of(paths: Paths, judge: str, passes: int, version: str = "unknown", 
     admitted = {r["task_id"] for r in load(paths.calibration) if can_be_scored(r)} & controlled(paths)
     readings, answers = load(paths.attempts), [r for r in load(paths.answers) if not r.get("error")]
     common = ({f"the judge is {judge}, not {OFFICIAL_JUDGE}"} if judge != OFFICIAL_JUDGE else set()) | (
-        {f"{passes} readings per answer, not 3"} if passes != 3 else set())
+        {f"{passes} readings per answer, not 3"} if passes != 3 else set()) | (
+        {f"{attempts} attempts per task, not 3"} if attempts != 3 else set())
     models = {}
-    for model in sorted({a.get("model") for a in answers}):
+    # Every model that ran, a model none of whose trials could be graded included:
+    # it was left out of the results altogether (09-28 review).
+    ran = {a.get("model") for a in answers} | {
+        str((r.get("harbor") or {}).get("model") or "").split("/")[-1] for r in load(paths.answers) if r.get("error")}
+    for model in sorted(m for m in ran if m):
         mine = [a for a in answers if a.get("model") == model]
         s = score([r for r in readings if r.get("model") == model], tasks=admitted)
         cover = coverage_of(model, load(paths.answers), readings, admitted, attempts, passes)
@@ -266,6 +309,12 @@ def results_of(paths: Paths, judge: str, passes: int, version: str = "unknown", 
         if cover["missing"]:
             incomplete.add(f"{sum(cover['missing'].values())} of its {cover['expected']} answers on the admitted "
                            f"tasks are missing: run those trials again")
+        if cover["extra"]:
+            incomplete.add(f"{sum(cover['extra'].values())} answers beyond {attempts} a task: a trial run again "
+                           f"beside the first, not in its place")
+        if cover["agent_code"] and (len(cover["agent_code"]) != 1 or cover["agent_code"] == ["None"]):
+            incomplete.add(f"its trials ran {len(cover['agent_code'])} versions of the agent's code, or one not "
+                           f"recorded: {', '.join(c[:12] for c in cover['agent_code'])}")
         if cover["short_of_readings"]:
             incomplete.add(f"{len(cover['short_of_readings'])} answers have fewer than {passes} readings: "
                            f"grade again into the same folder")
@@ -300,6 +349,13 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--limit", type=int, default=10**9)
     ap.add_argument("--rows-only", action="store_true")
     args = ap.parse_args(argv)
+    # The settings file first, before anything reads the environment: it was
+    # loaded only when a new trial was recorded, so a second run into the same
+    # folder -- the documented `--rows-only`, then grade -- checked the provider
+    # before `.env` said Azure, and went on to api.openai.com (09-28 review).
+    from errata_bench import llm as llm_mod
+
+    llm_mod._load_dotenv()
 
     tasks = release_tasks(args.release)
     # Refused before anything is read or paid: a judge admitted on one
@@ -335,11 +391,7 @@ def main(argv: list[str]) -> int:
     for r in load(paths.answers):
         runs[r["task_id"]] = max(runs[r["task_id"]], int(r.get("run", -1)) + 1)
     written = Counter()
-    # By task, then as they started: every answer of a task graded together, so
-    # the judge's prompt, which opens with the task's conversation, is read from
-    # the provider's cache after the first (the v1 subset's first readings were
-    # 8-14% cached, in trial order). Run numbers are unchanged: per task, by start.
-    for trial in sorted(read_trials(args.jobs), key=lambda t: (t.task_id, t.started)):
+    for trial in grading_order(read_trials(args.jobs)):
         if trial.name in on_record:
             continue
         on_record.add(trial.name)
@@ -392,6 +444,10 @@ def main(argv: list[str]) -> int:
 
     from errata_bench.llm import judge_model
     from errata_bench.stages.scoring import stage_grade
+
+    found = redact_stored(paths.answers)
+    if found:
+        print(f"  WARNING: a credential was in {found} stored row(s): redacted there before grading", file=sys.stderr)
 
     progress = asyncio.run(stage_grade(paths, args.limit, args.concurrency, passes=args.passes))
     print(progress.line().strip())

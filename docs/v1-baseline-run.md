@@ -84,9 +84,12 @@ A model's results are **official only when complete**:
   the provider answering nothing, a dropped connection, a build error.
 - **Still failing:** the answer is missing, and the model's results are
   reported with their coverage and marked not official.
-- **Results, not failures:** an attempt that runs out of time, turns or wall
-  time, or whose conversation grows past what its model can read. Each is
-  graded as no answer, and none is run again.
+- **Results, not failures, none run again:**
+  - an attempt that runs out of its working time or turns is asked once for
+    its report, and graded on it; with no report, it is no answer;
+  - one stopped at the wall, whose conversation grew past what its model can
+    read, or that the provider's content filter refused, is graded as no
+    answer.
 - **A deployment failing on every trial** stops that model's job. It is
   reported as not run.
 
@@ -120,6 +123,9 @@ None is claimed from this run.
   - Grading: about $0.9–1.6 an answer, 918 answers.
   - The agents: about $150–250, from D-40's cost per attempt.
 - **Spend guard:** `scripts/harbor-guard.sh` stops the run at **$2,200**,
-  checking every 10 minutes (`scripts/harbor_spend.py`).
+  checking every 10 minutes (`scripts/harbor_spend.py`, with a ledger that keeps
+  a retried trial's spend). Each Harbor job and grading process is started
+  with `scripts/guarded.sh`, so the guard knows its process group. The guard
+  is tried once on the server, with a sleeping process, before the run.
 - **Before anything is shared:** every job folder is searched for any
   credential, and each integrity flag is read by a person.

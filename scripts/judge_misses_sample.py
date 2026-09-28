@@ -52,12 +52,16 @@ def main(argv: list[str]) -> int:
     ap.add_argument("runs", nargs="+", type=Path)
     ap.add_argument("--per-run", type=int, default=8)
     ap.add_argument("--rule", choices=SETTLE_RULES, default="majority")
+    # Scored only when every reading could be checked, as the D-45 misses screen
+    # was drawn and tallied (09-27); v1's own grading scores by the readings that
+    # can be (09-28). Named, so the stored screen reproduces.
+    ap.add_argument("--supported", choices=("all", "majority"), default="all")
     args = ap.parse_args(argv)
     d35.require_runs(ap, args.runs)
     args.out.mkdir(parents=True, exist_ok=True)
     sample, summary = [], []
     for run in args.runs:
-        settled = {(a["task_id"], a["run"]): a for a in d35.readings(run, rule=args.rule) if ASKED(a)}
+        settled = {(a["task_id"], a["run"]): a for a in d35.readings(run, rule=args.rule, supported=args.supported) if ASKED(a)}
         unflagged = sorted(k for k, a in settled.items() if not UNVERIFIED(a))
         summary.append((run.name, len(settled), len(unflagged)))
         order = unflagged[:]

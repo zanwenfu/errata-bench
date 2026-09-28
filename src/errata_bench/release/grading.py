@@ -52,6 +52,8 @@ from .harbor import model_host
 WEB_SEARCH_OFF = {"claude-code": "disable_web_search", "codex": "disable_web_search"}
 # The reference agent's official limits: `score.attempt.attempt_limits`'s defaults.
 OFFICIAL_LIMITS = (600, 30)
+# And the wall it ends itself before: Harbor's agent timeout (`reference_agent.WALL_S`).
+OFFICIAL_WALL_S = 1800.0
 TIMED_OUT = "AgentTimeoutError"
 NOTE = ("The agent was {agent}, with its own tools, not this harness's. It worked in a container built for this "
         "task: the repository at the path the developer had it, with its git history and its dependencies "
@@ -130,34 +132,95 @@ def read_trials(jobs: list[Path]) -> list[Trial]:
 
 # What the verifier and the record depend on, inside the agent's container
 # (G-78). The agent may read the conversation left at /errata/conversation.txt;
-# it has no reason to write any of these, or to replace the Python the
-# verifier runs on. A project's own `tests/` folder is not `/tests`.
+# it has no reason to change any of these, or the Python the verifier runs on.
+# A project's own `tests/` folder is not `/tests`.
 _PROTECTED = re.compile(r"/errata/(?!conversation\.txt\b)|/errata\b(?!/)|/logs/(?:agent|verifier)"
-                        r"|(?:^|[\s'\"=])/tests\b|before\.json|/usr/(?:local/)?bin/python|/usr/(?:local/)?lib/python")
-# A redirect's target, and the commands that change the paths they are given.
-# `2>/dev/null` and `2>&1` write nothing protected; a command that only reads a
-# protected path (`ls /usr/local/bin/python*`) is not a write (09-28 preflight:
-# 12 of about 1,650 D-40 to D-45 answers flagged so, every one a read).
-_REDIRECT = re.compile(r"\d?>>?\s*(?!&)([^\s;&|<>]+)")
-_CHANGER = re.compile(r"(?:^|[;&|(]\s*|\s)(?:sudo\s+)?(tee|mv|cp|ln|rm|chmod|chown|truncate|dd|install|sed\s+-i\S*)\s+([^;&|]*)")
+                        r"|(?:^|[\s'\"=(])/tests\b|/usr/(?:local/)?bin/python|/usr/(?:local/)?lib/python")
+# Output thrown away, not written: `2>/dev/null`, `2>&1`, `&>/dev/null`.
+_DISCARDED = re.compile(r"&?\d?>>?\s*/dev/null|\d?>&\d")
+# A command that can change a path it names: a redirect, a writing tool at a
+# command's start (not `pip install`), an in-place edit, a script given inline
+# or by heredoc, an archive unpacked into a folder, a delete.
+_CHANGES = re.compile(
+    r">|\btee\b|^\s*(?:sudo\s+)?(?:mv|cp|ln|rm|chmod|chown|truncate|dd|touch|install|rsync|patch)\b"
+    r"|\bsed\b.*\s-\w*i|\bperl\b.*\s-\w*i|\btar\b.*\s-\w*C|\bfind\b.*-delete")
+# A script given inline or by heredoc changes a path only if it writes: an
+# `open(..., "w")`, a delete, a rename, a copy. Reading `sys.path` in one names
+# Python's library and changes nothing (a stored D-45 answer read so, 09-28).
+_SCRIPT = re.compile(r"\b(?:python[\d.]*|perl|ruby|node)\b.*\s-\w*[ce]\b|<<")
+_SCRIPT_WRITES = re.compile(r"""open\([^)]*['"][wax+]|\.write\(|write_(?:text|bytes)|unlink|remove|rename|replace\("""
+                            r"""|rmtree|shutil\.|os\.system|subprocess|chmod|symlink|truncate|File\.write|writeFile""")
+_HEREDOC = re.compile(r"<<-?\s*(['\"]?)(\w+)\1")
+_SEPARATORS = re.compile(r"\n|;|&&|\|\||\|")
+
+
+_ASSIGN = re.compile(r"^\s*(?:export\s+)?([A-Za-z_]\w*)=(\S+)")
+_CD = re.compile(r"^\s*(?:cd|pushd)\s+(\S+)")
+
+
+def _changes_protected(command: str) -> bool:
+    """Whether one part of a command both names a protected path and can change it.
+
+    Judged part by part (`;`, `&&`, `||`, `|`, a new line): a command that reads
+    Python's library in one part and runs `python3 -c` in another changes
+    nothing (six stored answers read so, 09-28). A `cd` into a protected folder,
+    and a variable set to a protected path, carry to the parts after them; a
+    heredoc stays with the command it feeds.
+    """
+    command = command.replace(">|", ">")   # the clobbering redirect: a write, not a pipe
+    parts: list[str] = []
+    rest = command
+    while True:
+        here = _HEREDOC.search(rest)
+        if not here:
+            parts += _SEPARATORS.split(rest)
+            break
+        before = _SEPARATORS.split(rest[:here.start()])
+        after = rest[here.end():]
+        end = re.search(r"^\s*" + re.escape(here.group(2)) + r"\s*$", after, re.MULTILINE)
+        parts += before[:-1] + [before[-1] + "<< " + (after[:end.start()] if end else after)]
+        rest = after[end.end():] if end else ""
+    names: set[str] = set()
+    inside = False
+    for part in parts:
+        kept = _DISCARDED.sub(" ", part)
+        assign, cd = _ASSIGN.match(kept), _CD.match(kept)
+        if assign and _PROTECTED.search(" " + assign.group(2)):
+            names.add(assign.group(1))
+        if cd:
+            inside = bool(_PROTECTED.search(" " + cd.group(1)))
+            continue
+        named = (_PROTECTED.search(" " + kept) or inside
+                 or any(re.search(r"\$\{?" + re.escape(n) + r"\b", kept) for n in names))
+        if named and (_CHANGES.search(kept) or (_SCRIPT.search(kept) and _SCRIPT_WRITES.search(kept))):
+            return True
+    return False
 
 
 def integrity_flags(answer: dict | None) -> list[str]:
-    """Calls that wrote to what the verifier or the record depends on: for a person to read, not a verdict (G-78).
+    """Calls that look like writing to what the verifier or the record depends on: for a person to read (G-78).
 
-    Measured 09-28 on the v1 subset's 22 trials: none flagged. A project's own
-    tests folder, read and run, is not flagged.
+    A heuristic, not a verdict: a command naming a protected path and able to
+    change one is flagged. The snapshot check catches a changed baseline
+    whatever wrote it (`official`). Measured 09-28: none of 1,522 stored D-40
+    to D-45 and v1-subset answers flagged; every tampering the reviews tried is.
     """
     flags = []
     for i, c in enumerate((answer or {}).get("tool_calls") or [], 1):
         command = str(c.get("command") or "")
         if harness_tool(c) in ("write_file", "edit_file"):
-            targets = [str(c.get("path") or "")]
+            refused = str(c.get("result") or "").lstrip().lower().startswith(("refused", "error"))
+            hit = not refused and bool(_PROTECTED.search(" " + str(c.get("path") or "")))
         else:
-            targets = _REDIRECT.findall(command) + [arg for _, args in _CHANGER.findall(command) for arg in args.split()]
-        if any(_PROTECTED.search(" " + target) for target in targets if target):
+            hit = _changes_protected(command)
+        if hit:
             flags.append(f"call {i}: {(command or str(c.get('path') or ''))[:160]}")
     return flags
+
+
+# A variable whose name says it holds a secret: the same rule the agent's
+# commands are stripped by (`score.attempt.command_env`).
+_SECRET_NAME = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTH", re.IGNORECASE)
 
 
 def redact(answer: dict | None) -> tuple[dict | None, int]:
@@ -172,8 +235,7 @@ def redact(answer: dict | None) -> tuple[dict | None, int]:
 
     if answer is None:
         return None, 0
-    secrets = sorted({v for k, v in os.environ.items()
-                      if re.search(r"KEY|TOKEN|SECRET|PASSWORD", k, re.IGNORECASE) and len(v) >= 16},
+    secrets = sorted({v for k, v in os.environ.items() if _SECRET_NAME.search(k) and len(v) >= 16},
                      key=len, reverse=True)
     text = json.dumps(answer, ensure_ascii=False)
     found = 0
@@ -215,6 +277,9 @@ def official(trial: Trial, digests: dict[str, str]) -> tuple[bool, list[str]]:
     if limits and (limits.get("seconds"), limits.get("turns")) != OFFICIAL_LIMITS:
         why.append(f"the reference agent ran with {limits.get('seconds')} s and {limits.get('turns')} turns, "
                    f"not {OFFICIAL_LIMITS[0]} s and {OFFICIAL_LIMITS[1]}")
+    wall = (trial.reference or {}).get("wall_s")
+    if wall is not None and float(wall) != OFFICIAL_WALL_S:
+        why.append(f"the reference agent's wall was {wall} s, not {OFFICIAL_WALL_S}")
     setting = WEB_SEARCH_OFF.get(trial.agent)
     if setting and str(((lock.get("agent") or {}).get("kwargs") or {}).get(setting)).lower() != "true":
         why.append(f"{trial.agent}'s own web search was not turned off (--ak {setting}=true)")
@@ -259,9 +324,11 @@ def answer_row(trial: Trial, task, run: int, conversation: str, instruction: str
                        "agent_version": (trial.result.get("agent_info") or {}).get("version"),
                        "model": trial.model, "task_digest": (trial.lock.get("task") or {}).get("digest"),
                        "agent_code": (trial.reference or {}).get("package_sha256"),
-                       "official": is_official, "integrity_flags": integrity_flags(trial.answer)}}
+                       "official": is_official}}
     a, redacted = redact(trial.answer)
     base["harbor"]["credentials_redacted"] = redacted
+    # From the redacted record: a flag quotes the command, and goes into results.json.
+    base["harbor"]["integrity_flags"] = integrity_flags(a)
     if trial.exception and trial.exception != TIMED_OUT:
         return {**base, "error": f"the trial failed: {trial.exception}"}
     if a is None:

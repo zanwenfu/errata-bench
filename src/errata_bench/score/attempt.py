@@ -290,11 +290,18 @@ WAIT_CAP_S = 60
 NO_CHOICE_SENDS = 10
 
 
+_STATUS_429 = re.compile(r"(?:error code|status(?: code)?|http)\W{0,3}429\b|\b429 too many requests", re.IGNORECASE)
+
+
 def _transient(e: BaseException) -> str | None:
     """"throttled" for a rate limit, "dropped" for a connection or server failure, else None."""
     import openai
 
-    if isinstance(e, openai.RateLimitError) or "429" in str(e)[:200]:
+    # By its status, not by "429" anywhere in the message: a context-length
+    # refusal reading "resulted in 142953 tokens" was taken for a throttle and
+    # waited on thirty times (09-28 review).
+    if (isinstance(e, openai.RateLimitError) or getattr(e, "status_code", None) == 429
+            or _STATUS_429.search(str(e)[:200])):
         return "throttled"
     if isinstance(e, (openai.APIConnectionError, openai.InternalServerError)):
         return "dropped"

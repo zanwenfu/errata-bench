@@ -9521,3 +9521,68 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     code frozen, the 55 images proven with the stand-in first, a smoke run of
     all six models.
   - *Checked:* guard sections 147 to 149, and break-tests of each fix.
+- **09-28, 07:0x UTC** — **The review before v1.0.4: not release-ready, for
+  its two money guards; fixed.** An independent review of v1.0.3..5ea574ea7
+  found no score, verdict or official label changed under the registered
+  procedure. It did find:
+  - *The Azure guard failed open.* `.env` was loaded only when a new trial
+    was recorded, so the documented second run (`--rows-only`, then grade
+    into the same folder) checked the provider before `.env` said Azure. The
+    judge would have gone to api.openai.com. `.env` is now read first.
+  - *The spend guard could guard nothing.*
+    - With no live group or no matching job folder it exited at once, as if
+      the run had ended.
+    - `setsid ... & echo $!` records the wrong group in a shell with job
+      control.
+    - Its second signal cut Harbor's teardown short, which could leave agents
+      running.
+    - Now it refuses to start unless it guards something live and real, and
+      `scripts/guarded.sh` records the group from inside. It waits up to 15
+      minutes after an interrupt, stops only this run's containers (by their
+      compose project), and keeps a ledger of what retried trials spent.
+  - *Not enforced, though registered:*
+    - one agent code per model;
+    - three attempts;
+    - no answers beyond them;
+    - a model with nothing gradable (it was left out of the results).
+
+    All four are enforced now.
+  - *Ten break-tests survived the new guards.* The unsupported reading still
+    voted on the trace check's reading, and flipped a stored D-40 answer.
+    Also:
+    - the agent's ceiling, set to none or to the wall;
+    - completeness not making results unofficial;
+    - the provider's address reaching the agent's commands;
+    - a limit on seconds alone;
+    - a split on `addresses_defect`;
+    - grok's reasoning priced free;
+    - a secret's escaped form;
+    - the grading order;
+    - `/logs` unprotected.
+
+    Each has a test now.
+  - *Context length.* "142953 tokens" contains 429, so a length refusal read
+    as throttling and waited 30 times. Throttling is now read by its status.
+    The length wordings of other serving stacks are matched, and a content
+    filter's refusal is also no answer, since retrying it pays three times.
+  - *Integrity flags.* Ten ways to write slipped past them: a Python
+    one-liner, a heredoc, `perl -pi`, `sed -e ... -i`, a variable holding the
+    path, `>|`, `touch`, `tar -C`, `find -delete`, `cd ... && sed -i`. Three
+    harmless commands were flagged. The rule now judges each part of a
+    command. It carries a `cd` and a variable forward, parses heredocs to
+    their delimiter, and counts an inline script only if it writes. All 20
+    tamperings tried are flagged; of 16 harmless commands none, and of 1,522
+    stored answers none.
+  - *Redaction.*
+    - Rows stored before the key was known are redacted before grading.
+    - The secret rule is the agent side's.
+    - Flags are taken from the redacted record.
+  - *Smaller.*
+    - The record and the trajectory come from one reading of the calls.
+    - The wall is forwarded and checked.
+    - The label of an empty answer says how it ended.
+    - The usage line, README step 11, running.md and the registration say
+      what the code does.
+  - *The stored D-45 misses screen* no longer reproduced under the new rule
+    (98/59 became 100/63). `settled` takes a scoreability rule. The screen's
+    scripts name "all", as it was drawn, and reproduce 98/59.

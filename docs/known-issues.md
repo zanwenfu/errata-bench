@@ -200,13 +200,13 @@ and writes an outdated label (the exploratory 78%) into `results.json`.
 The next milestone extends the task set and improves the graders. In order,
 from [#11](https://github.com/zanwenfu/errata-bench/issues/11):
 
-1. **Before any official results:**
-   - fix #4;
-   - tag `v1.0.3`;
-   - name the dataset release in results;
-   - decide how unscoreable readings are handled;
-   - register the run and its comparison method;
-   - run the Claude Code and Codex baselines.
+1. **The first official results** (done before them: #4 fixed, the dataset
+   release named in results, unscoreable readings decided, the run registered
+   in `docs/v1-baseline-run.md`, and the preflight's findings fixed in v1.0.4):
+   - the baseline run of six models through the reference agent, as
+     registered;
+   - a comparison rule, before any ranking is published;
+   - later, Claude Code and Codex, each with its provider's key.
 2. **Before outside submissions:**
    - verified entries are only runs we execute;
    - grading refuses tampered trials;
