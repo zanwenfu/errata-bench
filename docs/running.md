@@ -225,7 +225,8 @@ list prices):
 - **Time**: a trial took about 5 minutes at the median with grok-4.6 (the
   agent 160 s, the image build 72 s the first time), about 1 minute with
   DeepSeek-V4-Pro. With 4 trials at once, a full run takes a few hours; the
-  first build of all 55 images adds about 2 hours and needs about 60 GB.
+  first build of all 55 images adds about 2 hours, and Docker's build cache
+  grows to about 80 GB.
 
 ## Versions
 
@@ -242,6 +243,16 @@ list prices):
   - an empty response is backed off as a throttle;
   - grading refuses Azure's settings without Azure chosen;
   - a spend tally and guard for Harbor runs.
+
+  What the review before the run found, also in v1.0.4:
+  - one spend ledger carries the agents' spend and grading's;
+  - the tally and the guard refuse folders that are not Harbor's jobs or
+    grading runs, and patterns that match nothing;
+  - grading refuses a judge the admission did not check, and a second
+    grading run in a folder one holds;
+  - the reference agent waits up to 900 seconds for a response inside
+    Harbor, as outside it;
+  - a trial is official only with Harbor's settings at their defaults.
 - **v1.0.3** (28 September 2026), code only; the dataset stays v1.0.2.
   - Trace rules 6: a grader's cut citation excuses a claim only where the cut
     is (#4).
