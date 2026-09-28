@@ -9708,3 +9708,57 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     failing check. These are the 19 new ones and the 22 of the last review.
     All suites pass on the VM, the guard's real runs included. The corpus
     check and one check that reads the laptop's runs cannot run there.
+- **09-28, 11:3x UTC** — **The smoke (the baseline run's stage 2), passed.** It
+  ran at v1.0.4 on the run VM: six models, one attempt each, on
+  entireio-cli-44 (the longest instruction) and femto-mcp-chrome-58 (the
+  median). Each job was started with `guarded.sh`, under a $40 guard.
+  - *Trials.* 12 of 12 completed. There were no errors, no retries, and no
+    infrastructure failure.
+    - Four ran into the 30-turn limit and gave their forced final report:
+      grok-4.6, DeepSeek-V4-Pro, DeepSeek-V4-Flash and Kimi on the longest
+      task.
+    - Mistral and DeepSeek-V4-Flash on the median task answered in one
+      request, calling no tool, as in D-40.
+    - Every record says its request timeout was 900 s.
+  - *Throttling.* Kimi-K2.7-Code, at 100K tokens a minute, lost 685 s to
+    throttling on the longest task, and all of it was given back. Flash, at
+    250K, lost 178 s.
+  - *Checks.*
+    - All 12 trials are official, with no integrity flag and no redaction.
+    - None of the 144 job files holds a key or the endpoint's host.
+    - Every trajectory reads.
+    - Each deployment served its own model; the judge was
+      gpt-6-astra-2026-09-03 on all 36 readings.
+    - Rate limits per minute:
+
+      | deployment | requests | tokens |
+      |---|---|---|
+      | grok-4.6, DeepSeek-V4-Pro, Mistral-Large-3, gpt-6-astra | 1000 | 1M |
+      | MAI-Thinking-1 | 500 | 500K |
+      | DeepSeek-V4-Flash | 250 | 250K |
+      | Kimi-K2.7-Code | 100 | 100K |
+  - *Spend, by the tally.* $25.10 in all: the agents $5.49 and grading
+    $19.61, within the registered $15–30. The two guards (one for the jobs,
+    one for grading) shared one ledger, and each ended when its processes
+    did.
+  - *What grading costs.* An answer's first reading pays for its whole
+    prompt at the cache-write price: $1.33–2.63 on the longest task and
+    $0.59–1.22 on the median. The second and third readings are $0.10–0.28,
+    read from the cache.
+    - Two answers to one task share only the judge's rules, about 2–3K
+      tokens, so each answer pays its own first reading.
+    - An answer costs about $2.27 on the longest task and $1.00 on the
+      median.
+  - *The full run, re-estimated before it starts.*
+    - Grading, 918 answers: about $950–1,200.
+    - The agents: about $420, of which grok-4.6 is about $280. It was
+      registered at $150–250 for all six, from D-40, whose conversations
+      were cut to 75,000 characters.
+    - In all about $1,400–1,650, within the registered $1,100–1,700. The
+      $2,200 stop line stands.
+    - No long-context meter had been billed by 11:30. Today's usage had not
+      yet posted, and the meters are read again after stage 2.
+  - *Concurrency for stage 2*, from these headers and the smoke's token
+    rates: grok-4.6 `-n 5`, whose trials ran at about 80–240K tokens a
+    minute; DeepSeek-V4-Pro `-n 3`, whose trials are short but reached 720K
+    a minute.
