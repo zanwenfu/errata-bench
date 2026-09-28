@@ -56,7 +56,7 @@ For maintainers, the same folder is built from the SWE-chat corpus:
     python scripts/export_harbor.py release/v1               # writes release/v1/harbor/
     python -m errata_harbor.digests release/v1/harbor       # in Harbor's environment
     python scripts/admit_judge.py release/v1 --out <admission>   # the official judge's check, paid
-    python scripts/build_dataset.py release/v1 --admission <admission> --out <dataset>
+    python scripts/build_dataset.py release/v1 --admission <admission> --out <dataset> --release <number>
 
 ## 2. Run an agent
 
@@ -136,12 +136,16 @@ each per task and then over tasks, with a 95% interval, and each task's own
 values (`per_task`). `official` says whether every trial ran its task as
 published (its content digest, no host added but a model API, web search
 off), graded by the official judge with three readings; if not,
-`why_not_official` says why. `dataset_version` says which version of the
-tasks they were graded against. `manifest` names what made them, with no
-credential or endpoint: the code, the tasks' digests, the admission, the
+`why_not_official` says why. `dataset_release` names the dataset release
+they were graded against (1.0.2, say), and `dataset_version` the version of
+its tasks, which v1.0.2 left at 1.0.1. `manifest` names what made them, with
+no credential or endpoint: the code, the tasks' digests, the admission, the
 dependency lock, the provider and its API. `served` counts the models that
-served the graders' requests, as the provider named them; a run whose judge
-was served by more than one is noted when it is graded.
+served the graders' requests, as the provider named them, and `served_note`
+says so when the judge was served by more than one. `misreported` also counts
+`resting_on_grader_errors`: flagged answers whose only flagged claims rest on
+the grader's own citation error, a cut placed at a call that does not hold it
+or never shown (trace rules 6, #4).
 
 ## Cost and time
 

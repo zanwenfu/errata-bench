@@ -58,7 +58,7 @@ async def fake_judge(task, answer, *, model=None, swap_references=False, tool_ca
 # caller happened to pass it positionally, so nothing broke -- and the first
 # caller to pass it by keyword would have broken every stand-in at once with
 # a TypeError naming the wrong thing.
-async def fake_check(answer, tool_calls, *, model=None, context="", given=""):
+async def fake_check(answer, tool_calls, *, model=None, context="", given="", outputs_whole=False):
     return TraceCheck(claims=[Claim(claim="c", supported=True, evidence="e")], reasoning="ok")
 A.run, J.judge, T.check = fake_run, fake_judge, fake_check
 A.transcript_for = lambda t, turns: "conversation"

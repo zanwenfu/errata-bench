@@ -9390,3 +9390,61 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     reading they agree at 0.78. In v1's own grading, both readings are made
     by one model, gpt-6-astra (`llm.judge_model()`). Corrected everywhere in
     this repository; the website still says it (#11).
+- **09-28, 04:1x UTC** — **#4 fixed as trace rules 6, and the grading gaps
+  the review of 09-28 found (#11, blocking).** Measured on the stored
+  citations before and after, and each piece broken on its own.
+  - *Rules 6* (`trace.cut_citation`, `EXCUSED`).
+    - A `record cut` is excused only by a cut the grader was shown, where
+      the citation's own clause puts it:
+      - a call named by number;
+      - a call named by its tool's count ("run_command 53"), or by its tool
+        and path or command;
+      - a turn;
+      - a quoted command.
+    - Placed only loosely, with a turn for context or a file without its
+      tool, it is `elsewhere` and still excused. Attributed to a call named
+      exactly that does not hold it, it is `misplaced`: the claim borrows
+      another part's cut, and it is not excused.
+    - Counts are read in other wordings ("[2780 more characters]", "[2 780
+      ...]"). A count-less marker counts only at a named place.
+    - A marker the agent printed is `planted`: where outputs are whole, as
+      in v1, cuts are read from a record with the agent's printed markers
+      neutralised at the same length (`citable_record`).
+    - A length fallback marks, with a count, what it leaves out of the
+      conversation (`shown_conversation`), and the grader is told to quote
+      that mark.
+    - `RULES` is 6.
+  - *The stored citations* (`scripts/audit_cut_citations.py`,
+    `results/cut-citations.md`).
+    - D-44's and D-45's 3,176 read 3,170 shown and 6 elsewhere, with none
+      misplaced, invented, planted or none. Under rules 5 they read 3,151,
+      23, 0 invented and 2 none.
+    - 8 stored claims would now be excused and none would lose its excuse.
+      3 gpt-6-sol readings would change from misreported to not.
+    - Stored grades are kept. The admission's 3 `record cut` claims quote
+      no marker under either rule, so the 51 official tasks stand.
+  - *Grader error at the answer's level.* `misreported` counts
+    `resting_on_grader_errors`: flagged answers whose flag would not hold
+    without the readings that flag only for the grader's misplaced,
+    invented or planted citation, settled as `rejudge._majority` settles it.
+  - *Grading.*
+    - `results.json` names `dataset_release`, from the dataset's own
+      `release.json` (`build_dataset.py --release`) or by its tasks' version
+      and grading-data digest (`KNOWN_RELEASES`).
+    - `served_note` is saved in results, and "unknown" is not a model.
+    - A refused run creates no folder.
+    - Grading and re-grading pass `outputs_whole` for Harbor trials.
+  - *The review.* An independent review of the first draft found ten
+    defects. Among them:
+    - a numbered call credited with a conversation cut, and a command
+      credited with another call's cut, were both still excused;
+    - a printed marker the view clipped could cancel a real cut;
+    - the answer-level count did not settle as flags do;
+    - "read_file 2" and "2024-01.log" were read as call numbers;
+    - two guard cases could not fail.
+
+    All were fixed. Reading the three citations the next draft called
+    misplaced showed each quoting a real cut in a clause of its own, with
+    other calls named for other parts of the claim. Hence the clause rule.
+  - *Checked.* Guard sections 144 and 145, and 24 break-tests for rules 6
+    and 5 for grading, each caught. Every suite passes.

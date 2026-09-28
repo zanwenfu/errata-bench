@@ -1053,6 +1053,8 @@ async def regrade_all(
                 model=model,
                 context=a.get("transcript") or context.get(task.task_id, ""),
                 given=a.get("rules") or f"{CANDIDATE_RULES}\n\n{environment_note(a.get('environment', 'host'))}",
+                # As `stage_grade` does: a Harbor trial's outputs are whole (#4, rules 6).
+                outputs_whole=bool(a.get("harbor")),
             )
         except Exception as e:
             append(out.attempts, {

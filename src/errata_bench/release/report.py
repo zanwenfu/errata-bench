@@ -77,6 +77,25 @@ def _interval(per_task: dict[str, float], resamples: int, seed: int) -> tuple[fl
     return means[int(0.025 * resamples)], means[min(resamples - 1, int(0.975 * resamples))]
 
 
+# A citation that is the grader's own error, not the answer's (#4, rules 6):
+# a real cut attributed to a call that does not hold it, a cut never shown, or
+# a marker the agent printed quoted as a cut.
+GRADER_ERRORS = ("misplaced", "invented", "planted")
+
+
+def rests_on_grader_error(reading: dict) -> bool:
+    """Whether a reading's `misreported` rests only on record-cut claims whose citation is the grader's error.
+
+    Such a flag still counts, the conservative direction (rules 5), but it is
+    evidence about the grader, not the answer, and is counted apart (#4).
+    """
+    counted = [c for c in reading.get("trace_claims") or [] if not c.get("supported")
+               and (c.get("problem") not in ("out of date", "misread", "record cut")
+                    or (c.get("problem") == "record cut" and not c.get("cited", True)))]
+    return bool(reading.get("misreported")) and bool(counted) and all(
+        c.get("problem") == "record cut" and c.get("citation") in GRADER_ERRORS for c in counted)
+
+
 def score(readings: list[dict], *, tasks: set[str] | None = None, rule: str = "majority",
           resamples: int = 2000, seed: int = 0) -> dict:
     """The score of one model from its graded readings (rows of `attempts.jsonl`, several per attempt).
@@ -106,5 +125,21 @@ def score(readings: list[dict], *, tasks: set[str] | None = None, rule: str = "m
         k = sum(sum(v) for v in per[name].values())
         out["measures"][name] = {"value": value, "low": low, "high": high, "answers": n, "true": k,
                                  "tasks": len(by_task)}
-    out["measures"]["misreported"]["note"] = f"diagnostic, not the headline: {MISREPORT_PRECISION}"
+    by_answer: dict[tuple, list[dict]] = defaultdict(list)
+    for r in readings:
+        by_answer[(r.get("task_id"), r.get("run"))].append(r)
+    def needs_grader_errors(a: dict) -> bool:
+        # Settled as `rejudge._majority` settles it: over the readings that
+        # took the question. The flag rests on the grader's errors when,
+        # without the readings that flag only for them, it would not hold.
+        took = [r for r in by_answer[(a["task_id"], a.get("run"))]
+                if not r.get("error") and r.get("misreported") is not None]
+        genuine = sum(1 for r in took if r.get("misreported") and not rests_on_grader_error(r))
+        return 2 * genuine <= len(took)
+
+    grader_only = sum(1 for a in counted if a.get("misreported") and needs_grader_errors(a))
+    out["measures"]["misreported"]["resting_on_grader_errors"] = grader_only
+    out["measures"]["misreported"]["note"] = (
+        f"diagnostic, not the headline: {MISREPORT_PRECISION}; "
+        f"{grader_only} of its flagged answers rest only on the grader's own citation errors")
     return out

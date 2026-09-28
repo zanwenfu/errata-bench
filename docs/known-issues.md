@@ -122,19 +122,22 @@ be taken to mean.
 
 ## Known defects in v1.0.2
 
-- **Cut citations (#4, reopened).** The trace check still excuses some claims
-  it should not, and counts some against the agent that it should not. This
-  affects `misreported` only.
+- **Cut citations (#4): fixed on `main` (trace rules 6), in no tag yet.**
+  - A claim is excused only by a cut the grader was shown, where the
+    citation puts it.
+  - A cut attributed to a call that does not hold it, one never shown, or a
+    marker the agent printed itself no longer excuses anything.
+  - A flag resting only on the grader's own citation error is counted apart.
+  - The v1.0.2 tag still has the old rule, which affects `misreported` only.
 - **The `v1.0.2` code tag writes an outdated label** into `results.json`: the
-  exploratory 78% for the trace check. The fix is on `main`; a `v1.0.3` tag
-  is to follow.
-- **`results.json` says dataset version "1.0.1"** when grading v1.0.2. The
-  tasks are the same, but the release is not named.
-- **Small gaps in the tests:**
-  - no check covers the rows grading writes for a long task;
-  - the note for a judge served by more than one model is printed, not
-    saved, and can fire falsely;
-  - a refused grading run still creates its output folder.
+  exploratory 78% for the trace check. Fixed on `main`; a `v1.0.3` tag is to
+  follow.
+- **Also fixed on `main`, not yet tagged:**
+  - `results.json` names the dataset release;
+  - the note for a judge served by more than one model is saved and no
+    longer fires on "unknown";
+  - a refused grading run creates no folder;
+  - a test covers the rows grading writes for a long task.
 
 ## What v1.0.2 is not yet
 

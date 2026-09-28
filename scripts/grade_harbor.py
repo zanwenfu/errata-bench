@@ -117,7 +117,8 @@ def release_problems(tasks: dict[str, tuple[Task, Path]], admission: Path, out: 
                 problems.append(f"{r['task_id']}: --admission was made on another version of this task "
                                 f"({name}: fingerprint {stamp}, the release's {stamps[r['task_id']]})")
                 break
-    stale = sorted({r["task_id"] for r in load(Paths(out).answers)
+    # Read without `Paths`, which makes the folder: a refused run leaves nothing behind (09-28 review).
+    stale = sorted({r["task_id"] for r in (load(out / "answers.jsonl") if (out / "answers.jsonl").is_file() else [])
                     if not r.get("error") and r.get("task_id") in graded
                     and r.get("transcript") is not None and r["transcript"] != graded[r["task_id"]][1]})
     if stale:
@@ -132,6 +133,27 @@ def dataset_version(release: Path) -> str:
         return str(json.loads((release / "harbor" / "export.json").read_text())["benchmark_version"])
     except (OSError, ValueError, KeyError):
         return "unknown"
+
+
+# Each published dataset release, by the version its Harbor tasks were exported
+# as and the digest of its grading rows (`grading_data_of`). v1.0.2 changed only
+# the grading rows, so its tasks still read 1.0.1 and `dataset_version` alone
+# could not tell it from v1.0.1 (#11). A release built since writes its own
+# number (release.json, `scripts/build_dataset.py`).
+KNOWN_RELEASES = {
+    ("1.0", "sha256:8bcdfc6b42eb6b152115751f060f31d3fc7ad94b7697015e88913618291276c9"): "1.0",
+    ("1.0.1", "sha256:8bcdfc6b42eb6b152115751f060f31d3fc7ad94b7697015e88913618291276c9"): "1.0.1",
+    ("1.0.1", "sha256:860ed377e941ef43f0406c900d71f22b2816911f7ab0a5aa46e02f63c07d0ca1"): "1.0.2",
+}
+
+
+def dataset_release(release: Path) -> str:
+    """Which published release of the dataset this is: its own record, or recognised by its tasks and grading rows."""
+    try:
+        return str(json.loads((release / "release.json").read_text())["release"])
+    except (OSError, ValueError, KeyError, TypeError):
+        pass
+    return KNOWN_RELEASES.get((dataset_version(release), grading_data_of(release)), "unrecognised")
 
 
 def sha256_of(*files: Path) -> str | None:
@@ -169,6 +191,7 @@ def manifest_of(release: Path, run: Path) -> dict:
     provider = ("azure" if os.environ.get("ERRATA_PROVIDER", "").lower() == "azure"
                 else "openai-compatible" if os.environ.get("OPENAI_BASE_URL") else "openai")
     return {"code_version": code_version(), "dataset_version": dataset_version(release),
+            "dataset_release": dataset_release(release),
             "task_digests": sha256_of(release / "harbor" / "digests.json"),
             # What grading reads of each task, by task: v1.0.2 changed it (the
             # defect labels, #8) and not the tasks, so the tasks' version alone
@@ -187,6 +210,18 @@ def served_by(rows: list[dict]) -> dict:
         for grader in counts:
             counts[grader].update(r.get(f"{grader}_served") or ["not recorded"])
     return {g: dict(c) for g, c in counts.items()}
+
+
+def served_note(served: dict) -> str | None:
+    """A note when the judge's requests were served by more than one named model; None otherwise.
+
+    Printed only, it was lost with the console, and it counted "unknown" -- a
+    response that named no model -- as a second model (09-28 review, #6).
+    """
+    judges = sorted(m for m in served.get("judge", {}) if m not in ("not recorded", "unknown"))
+    if len(judges) > 1:
+        return f"the judge's requests were served by {len(judges)} models: {', '.join(judges)}"
+    return None
 
 
 def results_of(paths: Paths, judge: str, passes: int, version: str = "unknown", manifest: dict | None = None) -> dict:
@@ -208,8 +243,10 @@ def results_of(paths: Paths, judge: str, passes: int, version: str = "unknown", 
                   "official": not why, "why_not_official": why})
         models[model] = s
     rows = load(paths.answers)
-    return {"benchmark": "errata-bench", "dataset_version": version, "manifest": manifest or {},
-            "served": served_by(readings),
+    served = served_by(readings)
+    return {"benchmark": "errata-bench", "dataset_version": version,
+            "dataset_release": (manifest or {}).get("dataset_release", "unrecognised"), "manifest": manifest or {},
+            "served": served, "served_note": served_note(served),
             "written_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "code_version": code_version(), "judge": judge, "passes": passes, "admitted_tasks": sorted(admitted),
             "trials": {"on_record": len(rows), "graded": len(answers), "not_gradable": len(rows) - len(answers)},
@@ -296,10 +333,8 @@ def main(argv: list[str]) -> int:
     print(progress.line().strip())
     result = results_of(paths, judge_model(), args.passes, dataset_version(args.release),
                         manifest_of(args.release, args.out))
-    judges = [m for m in result["served"]["judge"] if m != "not recorded"]
-    if len(judges) > 1:
-        print(f"note: the judge's requests were served by {len(judges)} models: {', '.join(judges)} "
-              f"(results.json, `served`)")
+    if result["served_note"]:
+        print(f"note: {result['served_note']} (results.json, `served_note`)")
     (args.out / "results.json").write_text(json.dumps(result, indent=1) + "\n")
     for model, s in result["models"].items():
         m = s["measures"]

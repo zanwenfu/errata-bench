@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Assemble the release as the dataset users download (v1 step 7).
 
-    scripts/build_dataset.py <release dir> --admission <run dir> --out <dataset dir>
+    python scripts/build_dataset.py <release dir> --admission <run dir> --out <dataset dir> --release <number>
 
 The dataset keeps the release's own layout, so every tool reads it as it reads
 the release:
@@ -18,6 +18,8 @@ the release:
                           (`scripts/admit_judge.py`), rows for these tasks only:
                           what `scripts/grade_harbor.py --admission` reads;
   manifest.json           what the freeze made of each task;
+  release.json            the release's own number (--release), which grading
+                          records in every results.json;
   README.md               the dataset card (docs/dataset-card.md);
   SHA256SUMS              every file's digest.
 
@@ -43,6 +45,8 @@ def main(argv: list[str]) -> int:
     ap.add_argument("release", type=Path)
     ap.add_argument("--admission", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--release", dest="number", required=True,
+                    help="the dataset release this build is published as, e.g. 1.0.3")
     args = ap.parse_args(argv)
     harbor = args.release / "harbor"
     if not (harbor / "digests.json").is_file():
@@ -69,6 +73,7 @@ def main(argv: list[str]) -> int:
         rows = [r for r in rows if r.get("task_id") in kept and (name == "tasks.jsonl" or r.get("judge_model") == JUDGE)]
         (out / "admission" / JUDGE / name).write_text("".join(json.dumps(r) + "\n" for r in rows))
     shutil.copyfile(args.release / "manifest.json", out / "manifest.json")
+    (out / "release.json").write_text(json.dumps({"release": args.number}) + "\n")
     card = Path(__file__).resolve().parent.parent / "docs" / "dataset-card.md"
     shutil.copyfile(card, out / "README.md")
     files = sorted(p for p in out.rglob("*") if p.is_file())

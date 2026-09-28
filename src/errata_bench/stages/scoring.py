@@ -644,6 +644,9 @@ async def stage_grade(paths: Paths, limit: int, concurrency: int,
                 # instructions it was never given.
                 given=a.get("rules")
                 or f"{CANDIDATE_RULES}\n\n{environment_note(a.get('environment') or 'host')}",
+                # A Harbor trial's verifier stores every output whole, so a cut
+                # marker inside one was printed by the agent (#4, rules 6).
+                outputs_whole=bool(a.get("harbor")),
             )
         except Exception as e:
             # One failed grading used to abort the whole stage: the judge call
