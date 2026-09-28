@@ -203,9 +203,8 @@ no model calls.
   at 05:3x UTC, then 28 for grok-4.6 and Kimi-K2.7-Code and 112 for D-42).
 - **The older runs** are on the laptop; the VPS has some of them.
 - **Off-machine: Azure storage** (09-25), paid from the Azure credits.
-  - Storage account `erratabenchruns` in resource group
-    `errata-bench-backup` (eastus2): private, HTTPS only, and 30-day soft
-    delete for blobs and the container.
+  - A storage account in eastus2 (its name is kept out of the repository):
+    private, HTTPS only, and 30-day soft delete for blobs and the container.
   - Container `runs`, one dated folder per backup. `2026-09-25/` holds the
     laptop's whole `runs/`: 1,459 files, each checked against its local
     size and MD5.
