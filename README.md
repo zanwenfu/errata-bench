@@ -27,13 +27,16 @@ that record.
 > The headline measure is **honest reports**, the judge's reading: in the
 > registered check against the records (D-45), 33 of 36 of its calls were
 > right (92%, where 90% is required), a pass that rests on one adjudication
-> (89% without it). The second grader, the trace check, is reported beside it
-> as a diagnostic: 75% of its flags were real, and the two graders agree at
-> κ 0.59, short of the 90% and 0.6 it needs to join the headline. On the v1
+> (89% without it). The second grading method, the trace check (run by the
+> same model), is reported beside it as a diagnostic: 75% of its flags were
+> real, and two different grading models (gpt-6-astra and gpt-6-sol) agree on
+> its reading at κ 0.59, short of the 90% and 0.6 it needs to join the headline. On the v1
 > subset (10 tasks, one attempt each) grok-4.6 made honest reports in 75% of
 > its answers and DeepSeek-V4-Pro in 22%: too few answers to rank models.
-> Improving the graders is the next milestone. What is known to be wrong or
-> unproven, and what v1.0.2 fixed: [docs/known-issues.md](docs/known-issues.md).
+> Improving the graders is the next milestone. **Read before relying on a
+> score:** v1.0.2's limits, known defects and what comes next, in
+> [docs/known-issues.md](docs/known-issues.md); everything still to do, in
+> [#11](https://github.com/zanwenfu/errata-bench/issues/11).
 
 ## Contents
 
@@ -472,7 +475,7 @@ section lists how each step is checked, and what the checks have found.
 | The repository | the rebuilt tree is not the one the agent worked in | the agent's own edits are replayed; sessions whose git commands changed files are rejected; the tree is compared line by line with each file the conversation read, where it is in the tree | on the first 21 tasks, built before this check, 5 trees differed from their conversation. Such trees are now rejected at build |
 | The task | the task cannot be scored, or its reference is wrong | calibration in both orders (for the harness's runs, repeated seven more times); the accepted answer must pass; tasks whose accepted answer misreports leave | 95 built, 64 passed calibration, 56 passed their controls |
 | The graders | a rule change silently blinds or over-sensitises a grader | the null and overclaim controls on every task; an accurate summary of the agent's own last action (must not be flagged) and the same summary with one invented action (must be flagged); 35 fixed probes, each asked three times | each rule's probe sits beside one that must still be flagged, so no rule can pass by flagging everything or nothing |
-| Grader agreement | one grader's quirks decide the result | a second grader re-reads every answer three times; Cohen's κ between them must reach 0.6 | κ 0.18 on the first instrument; 0.63 on the six-model run (bar met); 0.58 on the next; 0.59 on D-44, and 0.59 again with the whole record (D-45) |
+| Grader agreement | one grader's quirks decide the result | a second grading model (gpt-6-sol, in the research runs) re-reads every answer three times; Cohen's κ between the two models on the trace check's reading must reach 0.6 | κ 0.18 on the first instrument; 0.63 on the six-model run (bar met); 0.58 on the next; 0.59 on D-44, and 0.59 again with the whole record (D-45) |
 | Flag precision | the flags are not real | a fixed sample of flags is read against the full record, twice and blind, and each disagreement settled against the record; at least 90% must be real | 55% real on the six-model run (83 of 151) and on the next (38 of 69); 72% on D-44 (43 of 60); 75% with the whole record (D-45, 44 of 59). The two blind readings agree at κ 0.82–0.86 |
 | The judge's own reading | its "unverified claim" calls are wrong | 72 of its calls read twice against the records, as for the flags | 61 of 72 right (85%) on D-40's answers; 32 of 36 (89%) on D-44's; 33 of 36 (92%, bar met) with the whole record (D-45) |
 | The analysis | results chosen after seeing the data | each experiment's criteria and analysis scripts are committed in git before its results are read, and since the six-model run before its answers exist; a change before a run is a dated amendment that says what had been seen; failures are reported as failures | six experiments registered this way (§6); two were amended before they ran, each amendment saying what had been seen |
@@ -761,7 +764,8 @@ Every number here is produced by a committed script from stored rows:
   calls were right 33 of 36 times in D-45 (92%, against 90%), a pass that
   rests on one adjudication, on conversations cut to 75,000 characters; v1
   shows them whole. The trace check's flags were 75% real (against 90%), and
-  the graders agree at κ 0.59 (against 0.6), so it is a diagnostic.
+  two grading models agree on its reading at κ 0.59 (against 0.6), so it is a
+  diagnostic. (On the judge's reading they agree at κ 0.78.)
 - **The tasks shaped the rules.** The checker's rules were revised after
   reading answers to these same 55 tasks. Each revision is judged on answers
   collected after it, but the tasks are the same.

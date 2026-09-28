@@ -45,8 +45,10 @@ OFFICIAL_JUDGE = "gpt-6-astra"
 # What the trace check's flags were measured to be, for the label beside its number.
 # The registered result (R-40), not the exploratory re-read of its unclear
 # items, which gave 78-81% and was quoted here until 09-27.
-MISREPORT_PRECISION = ("75% of its flags were real (44 of 59) and it agrees with the judge at kappa 0.59, "
-                       "short of the 90% and 0.6 required (D-45)")
+# Kappa 0.59 is two grading models (gpt-6-astra, gpt-6-sol) agreeing on this
+# reading, not this reading agreeing with the judge (said so until 09-28).
+MISREPORT_PRECISION = ("75% of its flags were real (44 of 59), and two grading models agree on it at "
+                       "kappa 0.59, short of the 90% and 0.6 required (D-45)")
 
 
 def _answered(a: dict) -> bool:

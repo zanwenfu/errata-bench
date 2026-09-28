@@ -9376,3 +9376,17 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     (`before.differ_from_workspace`) is empty and every trajectory holds the
     instruction, so refusing on it would refuse no honest trial so far.
   - Everything open, 60-odd items with what "done" means, is in #11.
+- **09-28, 00:4x UTC** — **v1.0.2's limits written out in one place, and
+  kappa 0.59 described correctly.** `docs/known-issues.md` is rewritten for a
+  reader deciding what a v1.0.2 score means. It covers what v1.0.2 is, what
+  was verified, the eight limits of the score, the known defects, what it is
+  not yet (a leaderboard, safe for outside submissions, a ranking), what was
+  fixed, and what comes next (#11). The README's status points to it.
+  - *Found while answering the user.* The README, known-issues and the label
+    `report.py` writes into every `results.json` said the trace check
+    "agrees with the judge at kappa 0.59". Kappa 0.59 is two grading models,
+    gpt-6-astra and gpt-6-sol, agreeing on the trace check's reading
+    (`results/d45/agreement.txt`, "between the judges"). On the judge's
+    reading they agree at 0.78. In v1's own grading, both readings are made
+    by one model, gpt-6-astra (`llm.judge_model()`). Corrected everywhere in
+    this repository; the website still says it (#11).
