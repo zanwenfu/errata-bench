@@ -193,7 +193,9 @@ def manifest_of(release: Path, run: Path) -> dict:
     """What a run's results were made with, named exactly and with no credential in it (#6)."""
     provider = ("azure" if os.environ.get("ERRATA_PROVIDER", "").lower() == "azure"
                 else "openai-compatible" if os.environ.get("OPENAI_BASE_URL") else "openai")
-    return {"code_version": code_version(), "dataset_version": dataset_version(release),
+    return {"grading_client": {"timeout_s": os.environ.get("ERRATA_TIMEOUT"),
+                               "max_retries": os.environ.get("ERRATA_MAX_RETRIES")},
+            "code_version": code_version(), "dataset_version": dataset_version(release),
             "dataset_release": dataset_release(release),
             "task_digests": sha256_of(release / "harbor" / "digests.json"),
             # What grading reads of each task, by task: v1.0.2 changed it (the
@@ -204,6 +206,12 @@ def manifest_of(release: Path, run: Path) -> dict:
             "requirements_lock": sha256_of(Path(__file__).resolve().parent.parent / "requirements-lock.txt"),
             "provider": provider,
             "api": os.environ.get("ERRATA_API") or ("chat_completions" if provider == "azure" else "responses")}
+
+
+def _grading_code() -> str:
+    from errata_bench.release.reference_agent import package_digest
+
+    return package_digest()
 
 
 def served_by(rows: list[dict]) -> dict:
@@ -227,6 +235,9 @@ def served_note(served: dict) -> str | None:
     return None
 
 
+ANSWER_FIELDS = ("reply", "tool_calls", "final_state", "actual_changes", "last_response", "harbor")
+
+
 def redact_stored(answers: Path) -> int:
     """Redact, in place, any credential in rows already on record; how many rows held one.
 
@@ -235,7 +246,13 @@ def redact_stored(answers: Path) -> int:
     """
     from errata_bench.release.grading import redact
 
-    cleaned = [redact(r) for r in load(answers)]
+    cleaned = []
+    for row in load(answers):
+        # The fields that came from the trial's answer, never the task's own
+        # conversation: redacting that changed the transcript, and the next run
+        # refused the folder as graded on another conversation (09-28 review).
+        part, n = redact({k: row[k] for k in ANSWER_FIELDS if k in row})
+        cleaned.append(({**row, **part} if n else row, n))
     found = sum(1 for _, n in cleaned if n)
     if found:
         tmp = answers.with_suffix(".jsonl.tmp")
@@ -277,8 +294,11 @@ def coverage_of(model: str, rows: list[dict], readings: list[dict], admitted: se
                    for t, n in [(r["task_id"], r.get("run"))] if counted[(t, n)] < passes)
     # The reference agent's code, by digest (`reference_agent.package_digest`): one
     # version for all a model's trials. Another agent is named by its version.
-    codes = sorted({str((r.get("harbor") or {}).get("agent_code")) for r in mine
-                    if (r.get("harbor") or {}).get("agent") == "errata-reference"})
+    # From answers only: a trial that failed before writing its record says
+    # nothing about the code the answers ran, and one rerun by `harbor jobs
+    # resume` leaves its error row beside the answer (09-28 review).
+    codes = sorted({str((r.get("harbor") or {}).get("agent_code")) for r in mine if not r.get("error")
+                    and (r.get("harbor") or {}).get("agent") == "errata-reference"})
     return {"expected": len(admitted) * attempts, "gradable": sum(gradable[t] for t in admitted),
             "not_gradable": sum(1 for r in mine if r.get("error")), "missing": missing, "extra": extra,
             "short_of_readings": short, "agent_code": codes}
@@ -293,7 +313,12 @@ def results_of(paths: Paths, judge: str, passes: int, version: str = "unknown", 
 
     admitted = {r["task_id"] for r in load(paths.calibration) if can_be_scored(r)} & controlled(paths)
     readings, answers = load(paths.attempts), [r for r in load(paths.answers) if not r.get("error")]
-    common = ({f"the judge is {judge}, not {OFFICIAL_JUDGE}"} if judge != OFFICIAL_JUDGE else set()) | (
+    # One commit for the whole run (docs/v1-baseline-run.md): every model's
+    # reference-agent trials ran one version of the agent's code.
+    codes = sorted({str((a.get("harbor") or {}).get("agent_code")) for a in answers
+                    if (a.get("harbor") or {}).get("agent") == "errata-reference"})
+    common = ({f"the models' trials ran {len(codes)} versions of the agent's code"} if len(codes) > 1 else set()) | (
+        {f"the judge is {judge}, not {OFFICIAL_JUDGE}"} if judge != OFFICIAL_JUDGE else set()) | (
         {f"{passes} readings per answer, not 3"} if passes != 3 else set()) | (
         {f"{attempts} attempts per task, not 3"} if attempts != 3 else set())
     models = {}
@@ -333,6 +358,9 @@ def results_of(paths: Paths, judge: str, passes: int, version: str = "unknown", 
             "served": served, "served_note": served_note(served),
             "written_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
             "code_version": code_version(), "judge": judge, "passes": passes, "admitted_tasks": sorted(admitted),
+            # The agent's code as its trials ran it, and the code that graded
+            # them, by the same digest; the same for a run made at one commit.
+            "agent_code": codes, "grading_code": _grading_code(),
             "trials": {"on_record": len(rows), "graded": len(answers), "not_gradable": len(rows) - len(answers)},
             "models": models}
 

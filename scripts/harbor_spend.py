@@ -61,7 +61,8 @@ def candidates(jobs: list[Path], unpriced: set[str], ledger: Path | None = None)
                 ref = json.loads(raw)
             except (OSError, ValueError):
                 continue
-            key = f"{record.parent.parent}:{hashlib.sha256(raw).hexdigest()[:16]}"
+            # The folder as the file system names it, however the job was spelt.
+            key = f"{record.parent.parent.resolve()}:{hashlib.sha256(raw).hexdigest()[:16]}"
             if key not in seen:
                 seen[key] = priced(ref.get("model") or "", ref.get("usage"), unpriced)
                 new.append({"key": key, "usd": round(seen[key], 6)})

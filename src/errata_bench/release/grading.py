@@ -136,74 +136,172 @@ def read_trials(jobs: list[Path]) -> list[Trial]:
 # A project's own `tests/` folder is not `/tests`.
 _PROTECTED = re.compile(r"/errata/(?!conversation\.txt\b)|/errata\b(?!/)|/logs/(?:agent|verifier)"
                         r"|(?:^|[\s'\"=(])/tests\b|/usr/(?:local/)?bin/python|/usr/(?:local/)?lib/python")
-# Output thrown away, not written: `2>/dev/null`, `2>&1`, `&>/dev/null`.
-_DISCARDED = re.compile(r"&?\d?>>?\s*/dev/null|\d?>&\d")
-# A command that can change a path it names: a redirect, a writing tool at a
-# command's start (not `pip install`), an in-place edit, a script given inline
-# or by heredoc, an archive unpacked into a folder, a delete.
-_CHANGES = re.compile(
-    r">|\btee\b|^\s*(?:sudo\s+)?(?:mv|cp|ln|rm|chmod|chown|truncate|dd|touch|install|rsync|patch)\b"
-    r"|\bsed\b.*\s-\w*i|\bperl\b.*\s-\w*i|\btar\b.*\s-\w*C|\bfind\b.*-delete")
-# A script given inline or by heredoc changes a path only if it writes: an
-# `open(..., "w")`, a delete, a rename, a copy. Reading `sys.path` in one names
-# Python's library and changes nothing (a stored D-45 answer read so, 09-28).
-_SCRIPT = re.compile(r"\b(?:python[\d.]*|perl|ruby|node)\b.*\s-\w*[ce]\b|<<")
-_SCRIPT_WRITES = re.compile(r"""open\([^)]*['"][wax+]|\.write\(|write_(?:text|bytes)|unlink|remove|rename|replace\("""
-                            r"""|rmtree|shutil\.|os\.system|subprocess|chmod|symlink|truncate|File\.write|writeFile""")
-_HEREDOC = re.compile(r"<<-?\s*(['\"]?)(\w+)\1")
-_SEPARATORS = re.compile(r"\n|;|&&|\|\||\|")
+# A heredoc's opening: its delimiter a word, not a number (`$((1 << 20))`).
+_HEREDOC = re.compile(r"<<-?\s*(['\"]?)([A-Za-z_]\w*)\1")
+# A redirect and its target; `>|` clobbers. `2>&1` and `&>/dev/null` write nothing kept.
+_REDIRECT = re.compile(r"(?:&>>?|\d?>>?\|?)\s*(\"[^\"]*\"|'[^']*'|[^\s;&|<>()]+)")
+_CHANGERS = {"tee", "mv", "cp", "ln", "rm", "chmod", "chown", "truncate", "dd", "touch", "install", "rsync",
+             "patch", "unlink", "shred"}
+_SCRIPTING = re.compile(r"^(?:python[\d.]*|perl|ruby|node|bash|sh|zsh)$")
+_GIT_WRITES = {"checkout", "reset", "clean", "restore", "apply", "stash", "am", "merge", "pull", "rm", "mv"}
+# In a script, a call that writes, removes or renames a path given as a
+# string: its first argument, or a name bound to one (`p = "/errata/..."`).
+# Named groups: a back-reference by number points at another group once the
+# pattern is embedded in a larger one.
+def _string(tag: str) -> str:
+    return rf"(?P<q{tag}>['\"])(?P<s{tag}>[^'\"\n]{{1,300}})(?P=q{tag})"
 
 
-_ASSIGN = re.compile(r"^\s*(?:export\s+)?([A-Za-z_]\w*)=(\S+)")
-_CD = re.compile(r"^\s*(?:cd|pushd)\s+(\S+)")
+_SCRIPT_CALL = re.compile(
+    r"(?P<fn>open|remove|unlink|rename|replace|rmtree|copyfile|copy2?|move|chmod|symlink|truncate|writeFileSync"
+    r"|writeFile|appendFileSync|rmSync|unlinkSync|renameSync|copyFileSync|write|delete)\s*\(\s*(?:" + _string("a")
+    + r"|(?P<name>[A-Za-z_]\w*))(?:\s*,\s*" + _string("m") + r")?")
+_SCRIPT_PATH = re.compile(r"Path\(\s*" + _string("p") + r"\s*\)\s*\.\s*(?:write_text|write_bytes|unlink|chmod|rename"
+                          r"|replace|touch|rmdir|open\s*\(\s*['\"][^'\"]*[wax+])")
+_SCRIPT_NAME = re.compile(r"(?P<var>[A-Za-z_]\w*)\s*=\s*" + _string("v"))
+# The longest part of a command read: past it, a command is read no further
+# (a 200 KB command took 33 s under the regexes this replaced, 09-28 review).
+_PART_CHARS = 100_000
+
+
+def _protected(path: str, names: set[str], inside: bool) -> bool:
+    path = path.strip("'\"")
+    if re.match(r"^\$\{?([A-Za-z_]\w*)", path) and re.match(r"^\$\{?([A-Za-z_]\w*)", path).group(1) in names:
+        return True
+    if _PROTECTED.search(" " + path):
+        return True
+    return inside and bool(path) and not path.startswith(("/", "~", "$", "-"))
+
+
+def _parts(command: str) -> list[str]:
+    """A command cut at `;`, `&&`, `||`, `|`, `&` and new lines outside quotes, each heredoc kept with its command."""
+    command = command[:20 * _PART_CHARS]
+    parts, cur, i, quote, n = [], [], 0, None, len(command)
+    while i < n:
+        c = command[i]
+        if quote:
+            cur.append(c)
+            if c == quote:
+                quote = None
+            elif c == "\\" and quote == '"' and i + 1 < n:
+                cur.append(command[i + 1])
+                i += 1
+            i += 1
+            continue
+        if c in "'\"":
+            quote = c
+        elif c == "<" and command.startswith("<<", i) and not command.startswith("<<<", i):
+            here = _HEREDOC.match(command, i)
+            if here:
+                end = re.compile(r"^\s*" + re.escape(here.group(2)) + r"\s*$", re.MULTILINE).search(command, here.end())
+                cur.append("<< " + command[here.end():end.start() if end else n])
+                i = end.end() if end else n
+                continue
+        elif c in ";\n" or (c in "&|" and not (cur and cur[-1] == ">") and not command.startswith("&>", i)):
+            parts.append("".join(cur))
+            cur = []
+            i += 2 if command.startswith(c * 2, i) and c in "&|" else 1
+            continue
+        cur.append(c)
+        i += 1
+    parts.append("".join(cur))
+    return [p[:_PART_CHARS] for p in parts if p.strip()]
+
+
+def _script_writes_protected(script: str) -> bool:
+    """Whether a script given inline or by heredoc writes, removes or renames a protected path."""
+    names = {m.group("var") for m in _SCRIPT_NAME.finditer(script) if _PROTECTED.search(" " + m.group("sv"))}
+    for m in _SCRIPT_CALL.finditer(script):
+        target, name, mode = m.group("sa"), m.group("name"), m.group("sm")
+        hit = (target is not None and bool(_PROTECTED.search(" " + target))) or (name in names)
+        if hit and (m.group("fn") != "open" or (mode is not None and re.search(r"[wax+]", mode))):
+            return True
+    return any(_PROTECTED.search(" " + m.group("sp")) for m in _SCRIPT_PATH.finditer(script))
 
 
 def _changes_protected(command: str) -> bool:
-    """Whether one part of a command both names a protected path and can change it.
+    """Whether a part of a command writes to, removes or renames what the verifier or the record depends on.
 
-    Judged part by part (`;`, `&&`, `||`, `|`, a new line): a command that reads
-    Python's library in one part and runs `python3 -c` in another changes
-    nothing (six stored answers read so, 09-28). A `cd` into a protected folder,
-    and a variable set to a protected path, carry to the parts after them; a
-    heredoc stays with the command it feeds.
+    Part by part, as the shell runs them: the part's redirect targets; a
+    writing command's arguments (`cp`, `rm`, `tee`, `sed -i`, `tar -C`, `find
+    ... -delete`, `git -C ... checkout`); a script given inline (`python -c`,
+    `node -e`) or by heredoc, where a write names the path. A `cd` into a
+    protected folder, and a variable set to a protected path, carry to the
+    parts after them. Naming a path is not enough: reading Python's library
+    and writing to /tmp in one command changes nothing (09-28 reviews).
     """
-    command = command.replace(">|", ">")   # the clobbering redirect: a write, not a pipe
-    parts: list[str] = []
-    rest = command
-    while True:
-        here = _HEREDOC.search(rest)
-        if not here:
-            parts += _SEPARATORS.split(rest)
-            break
-        before = _SEPARATORS.split(rest[:here.start()])
-        after = rest[here.end():]
-        end = re.search(r"^\s*" + re.escape(here.group(2)) + r"\s*$", after, re.MULTILINE)
-        parts += before[:-1] + [before[-1] + "<< " + (after[:end.start()] if end else after)]
-        rest = after[end.end():] if end else ""
+    import shlex
+
     names: set[str] = set()
     inside = False
-    for part in parts:
-        kept = _DISCARDED.sub(" ", part)
-        assign, cd = _ASSIGN.match(kept), _CD.match(kept)
-        if assign and _PROTECTED.search(" " + assign.group(2)):
-            names.add(assign.group(1))
-        if cd:
-            inside = bool(_PROTECTED.search(" " + cd.group(1)))
+    for part in _parts(command):
+        body = part
+        if part.lstrip().startswith("<< ") or "<< " in part:
+            head, _, body = part.partition("<< ")
+            if _script_writes_protected(body) or (re.search(r"\b(?:bash|sh|zsh)\b", head)
+                                                     and _changes_protected(body)):
+                return True
+            part = head
+        for target in _REDIRECT.findall(part):
+            if target not in ("/dev/null",) and _protected(target, names, inside):
+                return True
+        try:
+            words = shlex.split(part, posix=True)
+        except ValueError:
+            words = part.split()
+        while words and words[0] in ("(", "{", "sudo", "exec", "time", "nohup", "command", "env"):
+            words = words[1:]
+        if words and words[0].startswith("("):
+            words[0] = words[0].lstrip("(")
+        assigns = []
+        while words and re.match(r"^(?:export\s+)?[A-Za-z_]\w*=", words[0]):
+            assigns.append(words.pop(0))
+        for a in assigns:
+            name, _, value = a.partition("=")
+            if _PROTECTED.search(" " + value):
+                names.add(name)
+        if not words:
             continue
-        named = (_PROTECTED.search(" " + kept) or inside
-                 or any(re.search(r"\$\{?" + re.escape(n) + r"\b", kept) for n in names))
-        if named and (_CHANGES.search(kept) or (_SCRIPT.search(kept) and _SCRIPT_WRITES.search(kept))):
+        cmd, args = words[0].rsplit("/", 1)[-1], [w.rstrip(")") for w in words[1:]]
+        if cmd in ("cd", "pushd"):
+            inside = bool(args) and _protected(args[0], names, False)
+            continue
+        paths = [a for a in args if not a.startswith("-")]
+        if cmd in _CHANGERS and any(_protected(a.split("=", 1)[-1], names, inside) for a in paths):
             return True
+        if cmd in ("sed", "perl") and any(a.startswith("--in-place") or (re.match(r"^-[A-Za-z]*i", a))
+                                          for a in args):
+            if any(_protected(a, names, inside) for a in paths):
+                return True
+        if cmd == "tar":
+            dirs = [args[k + 1] for k, a in enumerate(args[:-1]) if a == "-C" or re.match(r"^-[A-Za-z]*C$", a)]
+            dirs += [a.split("=", 1)[1] for a in args if a.startswith("--directory=")]
+            if any(_protected(d, names, False) for d in dirs) or (inside and not dirs):
+                if any(re.match(r"^-?[A-Za-z]*x", a) or a == "--extract" for a in args):
+                    return True
+        if cmd == "find" and ("-delete" in args or "-exec" in args) and any(_protected(a, names, inside)
+                                                                            for a in paths[:3]):
+            return True
+        if cmd == "git":
+            where = [args[k + 1] for k, a in enumerate(args[:-1]) if a == "-C"]
+            sub = next((a for k, a in enumerate(args) if not a.startswith("-") and (k == 0 or args[k - 1] != "-C")),
+                       "")
+            if sub in _GIT_WRITES and (any(_protected(w, names, False) for w in where) or (inside and not where)):
+                return True
+        if _SCRIPTING.match(cmd):
+            scripts = [args[k + 1] for k, a in enumerate(args[:-1]) if re.match(r"^-[A-Za-z]*[ce]$", a)]
+            if any(_script_writes_protected(s) for s in scripts):
+                return True
     return False
 
 
 def integrity_flags(answer: dict | None) -> list[str]:
     """Calls that look like writing to what the verifier or the record depends on: for a person to read (G-78).
 
-    A heuristic, not a verdict: a command naming a protected path and able to
-    change one is flagged. The snapshot check catches a changed baseline
-    whatever wrote it (`official`). Measured 09-28: none of 1,522 stored D-40
-    to D-45 and v1-subset answers flagged; every tampering the reviews tried is.
+    A heuristic, not a verdict (`_changes_protected`). The snapshot check
+    catches a changed baseline whatever wrote it (`official`). Measured 09-28:
+    none of 1,544 stored D-40 to D-45 and v1-subset answers flagged; every
+    tampering the reviews tried is.
     """
     flags = []
     for i, c in enumerate((answer or {}).get("tool_calls") or [], 1):
@@ -218,9 +316,11 @@ def integrity_flags(answer: dict | None) -> list[str]:
     return flags
 
 
-# A variable whose name says it holds a secret: the same rule the agent's
-# commands are stripped by (`score.attempt.command_env`).
-_SECRET_NAME = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTH", re.IGNORECASE)
+# A variable whose name says it holds a secret. Narrower than the rule the
+# agent's commands are stripped by (`score.attempt.command_env`), which may
+# strip too much at no cost: text replaced here is lost from the record, and
+# GIT_AUTHOR_EMAIL or OAUTH_CALLBACK_URL are not secrets (09-28 review).
+_SECRET_NAME = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|(?<![A-Z])AUTH(?!OR)", re.IGNORECASE)
 
 
 def redact(answer: dict | None) -> tuple[dict | None, int]:

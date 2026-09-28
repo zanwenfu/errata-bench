@@ -10816,6 +10816,177 @@ check([s["tool_calls"][0]["function_name"] for s in _traj150["steps"] if s.get("
       == [c["name"] for c in _rec150["tool_calls"]],
       "and an agent stopped at the wall writes the same calls into its record and its trajectory")
 
+print("\n151. what the last review before v1.0.4 found, each held (09-28)")
+# Tamper flags: the cases the reviews have tried since, by the parts a shell runs.
+_more151 = ["python3 -c \"import json; json.dump({}, open('/errata/before.json','w'))\"",
+            "python3 -c \"import os; os.remove('/errata/before.json')\"",
+            "node -e \"const fs=require('fs'); fs.writeFileSync('/errata/before.json','{}')\"",
+            "sed --in-place s/a/b/ /errata/lib/x.py", "tar --directory=/errata/lib -xf x",
+            "(cd /errata/lib/errata_bench && sed -i s/a/b/ verify.py)", "git -C /errata/lib checkout -- .",
+            "python3 -c \"p='/errata/before.json'; f=open(p,'r+'); f.write('x')\"",
+            "python3 -c \"from pathlib import Path; Path('/errata/before.json').write_text('{}')\""]
+_fine151 = ["/usr/local/bin/python -m pytest -q > /tmp/test.log 2>&1",
+            "ls /usr/local/lib/python3.12/site-packages > /tmp/pkgs.txt", "echo \"/tests\" >> .gitignore",
+            "grep -rn \"/tests\" src > /tmp/g.txt", "python3 <<'PY'\n#!/usr/bin/python3\nopen('out.txt','w').write('x')\nPY",
+            "echo $((1 << 20)); cat /usr/lib/python3/x.py | head > /tmp/y",
+            "python3 -c \"open('/errata/before.json').read()\""]
+_t151 = __import__("time").monotonic()
+_slow151 = _gr135._changes_protected("cat /errata/before.json " + "sed " * 50000)
+_took151 = __import__("time").monotonic() - _t151
+check(not [c for c in _more151 if not _call148(c)] and not [c for c in _fine151 if _call148(c)]
+      and not _slow151 and _took151 < 5,
+      f"tamper flags read a command as its shell runs it, quotes and heredocs included, and a 200 KB command in "
+      f"{_took151:.2f}s: missed {[c for c in _more151 if not _call148(c)]}, flagged {[c for c in _fine151 if _call148(c)]}")
+# Redaction: names that are not secrets, and the task's conversation, are left alone.
+os.environ["GIT_AUTHOR_EMAIL"] = "someone.long.enough@example.com"
+os.environ["OAUTH_CALLBACK_URL"] = "http://localhost:8080/callback/route"
+try:
+    _nr151, _nn151 = _gr135.redact({"reply": "author someone.long.enough@example.com, url http://localhost:8080/callback/route"})
+    _sr151 = Path(tempfile.mkdtemp()) / "answers.jsonl"
+    os.environ["AZURE_OPENAI_API_KEY"] = _key149
+    _sr151.write_text(json.dumps({"task_id": "t", "reply": f"k {_key149}", "transcript": f"the developer pasted {_key149}"}) + "\n")
+    _gh135.redact_stored(_sr151)
+    _srow151 = json.loads(_sr151.read_text())
+finally:
+    for k in ("GIT_AUTHOR_EMAIL", "OAUTH_CALLBACK_URL", "AZURE_OPENAI_API_KEY"):
+        os.environ.pop(k, None)
+check(_nn151 == 0 and _key149 not in _srow151["reply"] and _key149 in _srow151["transcript"],
+      "a variable that only names an author or an OAuth address is no secret, and a stored row's conversation, "
+      "the task's own, is never rewritten")
+# Length refusals by their status; a filter's refusal is no answer through the real run.
+check(_ra134._too_long("Error code: 413 - Request Entity Too Large")
+      and not _ra134._too_long("Error code: 403 - you have exceeded the monthly token limit")
+      and _ra134._too_long("Error code: 400 - This model's maximum context length is 131072 tokens"),
+      "a 413 is a length refusal, and a quota's 403 is not")
+
+
+async def _filtered151(model, prompt, context, provider, turns, instructions=""):
+    return _Conv149(error="BadRequestError: Error code: 400 - {'error': {'code': 'content_filter'}}")
+
+
+attempt_mod.converse = _filtered151
+try:
+    _cf151 = asyncio.run(_ra134.run("Is x set?", Path(tempfile.mkdtemp()) / "cf", _ra134.STAND_IN, 60, 10, _tree134))
+finally:
+    attempt_mod.converse = _conv149
+check(_cf151["ended_by"] == "content filter" and not _cf151["error"],
+      f"and a provider's filter refusing the request ends the run as no answer, not an error: {_cf151['ended_by']}")
+# Agent code: a stale error row from a trial rerun beside its answer does not count; two models on two codes do.
+_rows151 = [json.loads(l) for l in _pc150.answers.read_text().splitlines() if l.strip()][:3]
+for _r in _rows151:
+    _r["harbor"]["agent_code"] = "c" * 64
+_pc150.answers.write_text("".join(json.dumps(r) + "\n" for r in _rows151) + json.dumps(
+    {"task_id": "h1", "run": 7, "error": "the trial failed", "model": "model-x",
+     "harbor": {"model": "maker/model-x", "trial": "stale", "agent": "errata-reference", "agent_code": None}}) + "\n")
+_stale151 = _gh135.results_of(_pc150, "gpt-6-astra", 3, "1.0.1", {})
+_x151 = _stale151["models"]["model-x"]
+check(_x151["official"] and _x151["coverage"]["agent_code"] == ["c" * 64] and _stale151["agent_code"] == ["c" * 64]
+      and len(_stale151.get("grading_code") or "") == 64,
+      f"a failed trial's missing record is not a second version of the agent's code: {_x151['why_not_official']}")
+_two151 = [dict(r) for r in _rows151] + [{**_rows151[0], "model": "model-z", "run": 5,
+                                            "harbor": {**_rows151[0]["harbor"], "agent_code": "e" * 64, "trial": "z1"}}]
+_pc150.answers.write_text("".join(json.dumps(r) + "\n" for r in _two151))
+_mix151 = _gh135.results_of(_pc150, "gpt-6-astra", 3, "1.0.1", {})
+check(not _mix151["models"]["model-x"]["official"]
+      and any("versions of the agent" in w for w in _mix151["models"]["model-x"]["why_not_official"]),
+      "and two models whose trials ran different code are not official, however complete each is")
+# Extra answers beyond the attempts make results not official, the attempts being right.
+_pc150.answers.write_text("".join(json.dumps(r) + "\n" for r in _rows151) + json.dumps(
+    {**_rows151[0], "run": 3, "harbor": {**_rows151[0]["harbor"], "trial": "h1__4"}}) + "\n")
+_pc150.attempts.write_text("".join(json.dumps({**_rd125(n, mis=False, unv=False), "task_id": "h1", "run": r,
+                                               "model": "model-x", "judge_model": "gpt-6-astra"}) + "\n"
+                                   for r in range(4) for n in range(3)))
+_ex151 = _gh135.results_of(_pc150, "gpt-6-astra", 3, "1.0.1", {})["models"]["model-x"]
+check(not _ex151["official"] and _ex151["coverage"]["extra"] == {"h1": 1}
+      and any("beyond 3" in w for w in _ex151["why_not_official"]),
+      f"and a fourth answer to a task run three times is not official: {_ex151['why_not_official']}")
+# The ledger prices a trial once, however its job's path was spelt.
+_jl151 = Path(tempfile.mkdtemp()) / "job"
+(_jl151 / "a__1" / "agent").mkdir(parents=True)
+(_jl151 / "a__1" / "agent" / "reference-agent.json").write_text(json.dumps({"model": "openai/grok-4.6", "usage": _u150}))
+_lg151 = Path(tempfile.mkdtemp()) / "ledger.jsonl"
+_hs150.candidates([_jl151], set(), _lg151)
+_twice151, _ = _hs150.candidates([Path(str(_jl151) + "/../job")], set(), _lg151)
+check(abs(_twice151 - 8.0) < 1e-6, f"a trial is priced once however its job's path is spelt: ${_twice151:.2f}")
+# main grades task by task, and redacts rows stored earlier before any reading.
+_rel151 = Path(tempfile.mkdtemp()) / "release"
+__import__("shutil").copytree(_rel135 / "tasks", _rel151 / "tasks")
+__import__("shutil").copytree(_rel138 / "tasks" / "h2", _rel151 / "tasks" / "h2")
+(_rel151 / "harbor").mkdir()
+(_rel151 / "harbor" / "digests.json").write_text(json.dumps({"h1": _digest135, "h2": _digest135}))
+(_rel151 / "tasks" / "h2" / "grading" / "controls.json").write_text(json.dumps({"cut": _whole138, "resolution": "",
+                                                                                "last_action": None}))
+_jo151 = Path(tempfile.mkdtemp()) / "job"
+for _nm, _task, _start in (("h2__1", "h2", "1"), ("h1__1", "h1", "2"), ("h2__2", "h2", "3"), ("h1__2", "h1", "4")):
+    _td = _trial135(_jo151, _nm, instruction=(_ins138 if _task == "h2" else _ins135))
+    _res = json.loads((_td / "result.json").read_text())
+    _res.update({"task_name": f"errata-bench/{_task}", "started_at": f"2026-09-27T00:00:0{_start}Z"})
+    (_td / "result.json").write_text(json.dumps(_res))
+    _ans = json.loads((_td / "verifier" / "answer.json").read_text())
+    (_td / "verifier" / "answer.json").write_text(json.dumps({**_ans, "task_id": _task}))
+_ad151 = fresh(["h1", "h2"])
+_go151 = Path(tempfile.mkdtemp()) / "graded"
+with _ctx60.redirect_stdout(_io60.StringIO()), _ctx60.redirect_stderr(_io60.StringIO()):
+    _gh135.main([str(_rel151), str(_jo151), "--out", str(_go151), "--admission", str(_ad151.calibration.parent),
+                 "--rows-only"])
+_order151 = [r["task_id"] for r in _rows135_of(_go151 / "answers.jsonl")]
+check(_order151 == ["h1", "h1", "h2", "h2"], f"grading records a task's trials together: {_order151}")
+_first151 = _rows135_of(_go151 / "answers.jsonl")
+_first151[0]["reply"] = f"the key is {_key149}"
+(_go151 / "answers.jsonl").write_text("".join(json.dumps(r) + "\n" for r in _first151))
+_saved151 = {k: os.environ.get(k) for k in ("AZURE_OPENAI_API_KEY", "ERRATA_JUDGE_MODEL", "AZURE_OPENAI_BASE_URL")}
+try:
+    os.environ["AZURE_OPENAI_API_KEY"] = _key149
+    os.environ["ERRATA_JUDGE_MODEL"] = "the-grader"
+    os.environ.pop("AZURE_OPENAI_BASE_URL", None)
+    with _ctx60.redirect_stdout(_io60.StringIO()), _ctx60.redirect_stderr(_io60.StringIO()):
+        _gh135.main([str(_rel151), str(_jo151), "--out", str(_go151), "--admission", str(_ad151.calibration.parent)])
+finally:
+    for k, v in _saved151.items():
+        if v is None:
+            os.environ.pop(k, None)
+        else:
+            os.environ[k] = v
+_graded151 = (_go151 / "attempts.jsonl").read_text() if (_go151 / "attempts.jsonl").exists() else ""
+check(_key149 not in (_go151 / "answers.jsonl").read_text() and _key149 not in _graded151 and _graded151,
+      "and grading redacts a credential in a row stored earlier before any reading is made")
+# The spend guard and the launcher, run for real where util-linux's setsid is (Linux; CI).
+if __import__("shutil").which("setsid") is None:
+    print("  skipped: the spend guard's run needs util-linux setsid (Linux); CI runs it")
+else:
+    import subprocess as _sp151
+    _gd151 = Path(tempfile.mkdtemp())
+    _pid151 = _gd151 / "sleeper.pid"
+    _sp151.run(["bash", "-c", f"nohup scripts/guarded.sh {_pid151} sleep 300 > /dev/null 2>&1 < /dev/null &"], check=True)
+    for _ in range(50):
+        if _pid151.exists() and _pid151.read_text().strip():
+            break
+        __import__("time").sleep(0.1)
+    _grp151 = int(_pid151.read_text())
+    _gj151 = _gd151 / "job"
+    (_gj151 / "a__1" / "agent").mkdir(parents=True)
+    (_gj151 / "a__1" / "agent" / "reference-agent.json").write_text(json.dumps({"model": "openai/grok-4.6", "usage": _u150}))
+    _genv151 = {**os.environ, "STOP": "1", "JOBS": str(_gj151), "PIDS": str(_pid151), "LEDGER": str(_gd151 / "l"),
+                "LOG": str(_gd151 / "log"), "PY": sys.executable, "WAIT_S": "10", "KILL_AFTER_S": "1", "EVERY_S": "1"}
+    _stop151 = _sp151.run(["bash", "scripts/harbor-guard.sh"], env=_genv151, capture_output=True, text=True, timeout=120)
+    __import__("time").sleep(0.5)
+    _alive151 = _sp151.run(["bash", "-c", f"kill -0 -- -{_grp151}"], capture_output=True).returncode == 0
+    _refusals151 = {}
+    for _label, _over in (("a job name not there", {"JOBS": f"{_gj151} {_gd151}/typo"}), ("a malformed line", {"STOP": "2,200"}),
+                          ("a group id of 1", {"PIDS": str(_gd151 / "one.pid")}), ("no Python", {"PY": "/nonexistent/python"})):
+        (_gd151 / "one.pid").write_text("1\n")
+        _r = _sp151.run(["bash", "scripts/harbor-guard.sh"], env={**_genv151, **_over}, capture_output=True, text=True,
+                        timeout=60)
+        _refusals151[_label] = _r.returncode
+    _nopid151 = _gd151 / "nodir" / "x.pid"
+    _ran151 = _sp151.run(["bash", "-c", f"scripts/guarded.sh {_nopid151} touch {_gd151}/ran"], capture_output=True)
+    check(_stop151.returncode == 0 and "STOP LINE" in (_gd151 / "log").read_text() and not _alive151,
+          f"the guard stops a run past its line with SIGTERM, which a background launch does not ignore: "
+          f"exit {_stop151.returncode}, still alive {_alive151}")
+    check(all(v == 2 for v in _refusals151.values()) and not (_gd151 / "ran").exists(),
+          f"and refuses to start on a missing job, a malformed line, a group id of 1 or no Python, while the "
+          f"launcher runs nothing it could not record: {_refusals151}")
+
 print("\nlast. what the suite hands back")
 
 # Last, what the suite hands back -- at the very end, where it can see every

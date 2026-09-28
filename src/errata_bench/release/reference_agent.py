@@ -215,8 +215,17 @@ _FILTERED = re.compile(r"content_filter|ResponsibleAIPolicyViolation|content man
 
 
 def _too_long(error: str) -> bool:
-    """Whether an error is a model refusing a request for its length: no answer, not a failure to retry."""
-    return bool(_TOO_LONG.search(error)) and not re.search(r"\b429\b|rate limit", error, re.IGNORECASE)
+    """Whether an error is a model refusing a request for its length: no answer, not a failure to retry.
+
+    Only a refusal of the request itself (400, or 413 "too large"), never a
+    throttle, a quota or an authorisation failure: a 403 "exceeded the monthly
+    token limit" is the account, not the conversation (09-28 review).
+    """
+    if re.search(r"\b(?:401|402|403|404|429)\b|rate limit|quota|monthly|billing", error, re.IGNORECASE):
+        return False
+    if re.search(r"\b413\b|request entity too large|payload too large", error, re.IGNORECASE):
+        return True
+    return bool(_TOO_LONG.search(error))
 
 
 def main(argv: list[str]) -> int:
