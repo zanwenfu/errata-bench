@@ -10900,6 +10900,8 @@ _ex151 = _gh135.results_of(_pc150, "gpt-6-astra", 3, "1.0.1", {})["models"]["mod
 check(not _ex151["official"] and _ex151["coverage"]["extra"] == {"h1": 1}
       and any("beyond 3" in w for w in _ex151["why_not_official"]),
       f"and a fourth answer to a task run three times is not official: {_ex151['why_not_official']}")
+check(set(_gh135.manifest_of(_rel135, Path(tempfile.mkdtemp())).get("grading_client") or {}) == {"timeout_s", "max_retries"},
+      "the manifest records the grading client's timeout and retries")
 # The ledger prices a trial once, however its job's path was spelt.
 _jl151 = Path(tempfile.mkdtemp()) / "job"
 (_jl151 / "a__1" / "agent").mkdir(parents=True)
@@ -10972,17 +10974,35 @@ else:
     __import__("time").sleep(0.5)
     _alive151 = _sp151.run(["bash", "-c", f"kill -0 -- -{_grp151}"], capture_output=True).returncode == 0
     _refusals151 = {}
+    _sp151.run(["bash", "-c", f"nohup scripts/guarded.sh {_pid151} sleep 300 > /dev/null 2>&1 < /dev/null &"], check=True)
+    __import__("time").sleep(0.5)
     for _label, _over in (("a job name not there", {"JOBS": f"{_gj151} {_gd151}/typo"}), ("a malformed line", {"STOP": "2,200"}),
-                          ("a group id of 1", {"PIDS": str(_gd151 / "one.pid")}), ("no Python", {"PY": "/nonexistent/python"})):
+                          ("a group id of 1", {"PIDS": str(_gd151 / "one.pid")}), ("no Python", {"PY": "/nonexistent/python"}),
+                          ("a ledger it cannot write", {"LEDGER": "/nonexistent/dir/ledger", "STOP": "1000"})):
         (_gd151 / "one.pid").write_text("1\n")
         _r = _sp151.run(["bash", "scripts/harbor-guard.sh"], env={**_genv151, **_over}, capture_output=True, text=True,
                         timeout=60)
         _refusals151[_label] = _r.returncode
+    # A tally that fails twice while the run goes on stops it, as the line would.
+    _gj151b = _gd151 / "job2"
+    (_gj151b / "a__1" / "agent").mkdir(parents=True)
+    (_gj151b / "a__1" / "agent" / "reference-agent.json").write_text(json.dumps({"model": "openai/grok-4.6", "usage": {}}))
+    _fail151 = _sp151.Popen(["bash", "scripts/harbor-guard.sh"], env={**_genv151, "STOP": "1000", "JOBS": str(_gj151b),
+                                                                     "LOG": str(_gd151 / "log2"), "LEDGER": str(_gd151 / "l2")},
+                            stdout=_sp151.DEVNULL, stderr=_sp151.DEVNULL)
+    __import__("time").sleep(2)
+    __import__("shutil").rmtree(_gj151b)
+    _fail151.wait(timeout=120)
+    __import__("time").sleep(0.5)
+    _alive151b = _sp151.run(["bash", "-c", f"kill -0 -- -{int(_pid151.read_text())}"], capture_output=True).returncode == 0
     _nopid151 = _gd151 / "nodir" / "x.pid"
     _ran151 = _sp151.run(["bash", "-c", f"scripts/guarded.sh {_nopid151} touch {_gd151}/ran"], capture_output=True)
-    check(_stop151.returncode == 0 and "STOP LINE" in (_gd151 / "log").read_text() and not _alive151,
+    check(_stop151.returncode == 0 and "STOP LINE" in (_gd151 / "log").read_text() and not _alive151
+          and "still running after" not in (_gd151 / "log").read_text(),
           f"the guard stops a run past its line with SIGTERM, which a background launch does not ignore: "
           f"exit {_stop151.returncode}, still alive {_alive151}")
+    check("COULD NOT BE READ" in (_gd151 / "log2").read_text() and not _alive151b,
+          "and stops the run when the spend cannot be read twice in a row")
     check(all(v == 2 for v in _refusals151.values()) and not (_gd151 / "ran").exists(),
           f"and refuses to start on a missing job, a malformed line, a group id of 1 or no Python, while the "
           f"launcher runs nothing it could not record: {_refusals151}")
