@@ -43,6 +43,20 @@ ROOT = _find_root()
 _VERSION: str | None = None
 
 
+def release_version() -> str:
+    """The code release, as pyproject.toml names it ("1.0.3"); "unknown" when there is none to read.
+
+    From the file, not the installed metadata: an editable install keeps the
+    version it was installed at (0.1.0 on the maintainer's machine at 1.0.3).
+    """
+    import tomllib
+
+    try:
+        return str(tomllib.loads((ROOT / "pyproject.toml").read_text())["project"]["version"])
+    except (OSError, ValueError, KeyError):
+        return "unknown"
+
+
 def code_version() -> str:
     """The commit this code is at, for stamping on every row it writes (G-05).
 

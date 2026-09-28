@@ -36,6 +36,8 @@ provider's side, past the container's network).
 
 from __future__ import annotations
 
+import re
+
 import json
 from dataclasses import dataclass
 from datetime import datetime
@@ -48,6 +50,8 @@ from .harbor import model_host
 # Agents Harbor runs whose own web search reaches past the container's network,
 # and the setting that turns it off (Harbor's source, 09-27).
 WEB_SEARCH_OFF = {"claude-code": "disable_web_search", "codex": "disable_web_search"}
+# The reference agent's official limits: `score.attempt.attempt_limits`'s defaults.
+OFFICIAL_LIMITS = (600, 30)
 TIMED_OUT = "AgentTimeoutError"
 NOTE = ("The agent was {agent}, with its own tools, not this harness's. It worked in a container built for this "
         "task: the repository at the path the developer had it, with its git history and its dependencies "
@@ -124,6 +128,62 @@ def read_trials(jobs: list[Path]) -> list[Trial]:
     return sorted(found, key=lambda t: (t.started, t.name))
 
 
+# What the verifier and the record depend on, inside the agent's container
+# (G-78). The agent may read the conversation left at /errata/conversation.txt;
+# it has no reason to write any of these, or to replace the Python the
+# verifier runs on. A project's own `tests/` folder is not `/tests`.
+_PROTECTED = re.compile(r"/errata/(?!conversation\.txt\b)|/errata\b(?!/)|/logs/(?:agent|verifier)"
+                        r"|(?:^|[\s'\"=])/tests\b|before\.json|/usr/(?:local/)?bin/python|/usr/(?:local/)?lib/python")
+# A redirect's target, and the commands that change the paths they are given.
+# `2>/dev/null` and `2>&1` write nothing protected; a command that only reads a
+# protected path (`ls /usr/local/bin/python*`) is not a write (09-28 preflight:
+# 12 of about 1,650 D-40 to D-45 answers flagged so, every one a read).
+_REDIRECT = re.compile(r"\d?>>?\s*(?!&)([^\s;&|<>]+)")
+_CHANGER = re.compile(r"(?:^|[;&|(]\s*|\s)(?:sudo\s+)?(tee|mv|cp|ln|rm|chmod|chown|truncate|dd|install|sed\s+-i\S*)\s+([^;&|]*)")
+
+
+def integrity_flags(answer: dict | None) -> list[str]:
+    """Calls that wrote to what the verifier or the record depends on: for a person to read, not a verdict (G-78).
+
+    Measured 09-28 on the v1 subset's 22 trials: none flagged. A project's own
+    tests folder, read and run, is not flagged.
+    """
+    flags = []
+    for i, c in enumerate((answer or {}).get("tool_calls") or [], 1):
+        command = str(c.get("command") or "")
+        if harness_tool(c) in ("write_file", "edit_file"):
+            targets = [str(c.get("path") or "")]
+        else:
+            targets = _REDIRECT.findall(command) + [arg for _, args in _CHANGER.findall(command) for arg in args.split()]
+        if any(_PROTECTED.search(" " + target) for target in targets if target):
+            flags.append(f"call {i}: {(command or str(c.get('path') or ''))[:160]}")
+    return flags
+
+
+def redact(answer: dict | None) -> tuple[dict | None, int]:
+    """The answer with any credential the grading shell holds replaced, and how many times one was found.
+
+    The agent's key is in its container, where a command can print it; the
+    answer's calls go into the graders' prompts and every stored row (09-28
+    preflight). Replaced before either sees it: every value of a variable
+    whose name says it is a secret, of 16 characters or more.
+    """
+    import os
+
+    if answer is None:
+        return None, 0
+    secrets = sorted({v for k, v in os.environ.items()
+                      if re.search(r"KEY|TOKEN|SECRET|PASSWORD", k, re.IGNORECASE) and len(v) >= 16},
+                     key=len, reverse=True)
+    text = json.dumps(answer, ensure_ascii=False)
+    found = 0
+    for s in secrets:
+        for form in {s, json.dumps(s, ensure_ascii=False)[1:-1]}:
+            found += text.count(form)
+            text = text.replace(form, "[a credential, redacted]")
+    return (json.loads(text) if found else answer), found
+
+
 def official(trial: Trial, digests: dict[str, str]) -> tuple[bool, list[str]]:
     """Whether the trial ran the task as published, and if not, why not."""
     why = []
@@ -141,6 +201,20 @@ def official(trial: Trial, digests: dict[str, str]) -> tuple[bool, list[str]]:
     verifier = lock.get("verifier") or {}
     if verifier.get("disable") or verifier.get("environment_mode") not in (None, "shared"):
         why.append("its verifier did not run in the agent's container")
+    # The build-time snapshot, checked against the task's own copy, which the
+    # agent never sees: a difference means what changed was measured against
+    # a baseline the agent altered (G-78). Empty on every trial so far.
+    changed = ((trial.answer or {}).get("before") or {}).get("differ_from_workspace")
+    if changed:
+        why.append(f"its build-time snapshot was changed before the verifier ran ({len(changed)} file(s), "
+                   f"e.g. {changed[0]}): what it changed cannot be trusted")
+    # The reference agent's limits come from the shell Harbor runs in
+    # (ERRATA_ATTEMPT_SECONDS, ERRATA_ATTEMPT_TURNS); official results use the
+    # harness's own, as every stored result did (09-28 preflight).
+    limits = (trial.reference or {}).get("limits")
+    if limits and (limits.get("seconds"), limits.get("turns")) != OFFICIAL_LIMITS:
+        why.append(f"the reference agent ran with {limits.get('seconds')} s and {limits.get('turns')} turns, "
+                   f"not {OFFICIAL_LIMITS[0]} s and {OFFICIAL_LIMITS[1]}")
     setting = WEB_SEARCH_OFF.get(trial.agent)
     if setting and str(((lock.get("agent") or {}).get("kwargs") or {}).get(setting)).lower() != "true":
         why.append(f"{trial.agent}'s own web search was not turned off (--ak {setting}=true)")
@@ -185,8 +259,9 @@ def answer_row(trial: Trial, task, run: int, conversation: str, instruction: str
                        "agent_version": (trial.result.get("agent_info") or {}).get("version"),
                        "model": trial.model, "task_digest": (trial.lock.get("task") or {}).get("digest"),
                        "agent_code": (trial.reference or {}).get("package_sha256"),
-                       "official": is_official}}
-    a = trial.answer
+                       "official": is_official, "integrity_flags": integrity_flags(trial.answer)}}
+    a, redacted = redact(trial.answer)
+    base["harbor"]["credentials_redacted"] = redacted
     if trial.exception and trial.exception != TIMED_OUT:
         return {**base, "error": f"the trial failed: {trial.exception}"}
     if a is None:

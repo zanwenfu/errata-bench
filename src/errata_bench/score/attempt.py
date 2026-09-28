@@ -282,6 +282,12 @@ NULL_SENDS = 5
 THROTTLED_SENDS = 30
 DROPPED_SENDS = 6
 WAIT_CAP_S = 60
+# A response with no choices at all. Azure answers so when a deployment is
+# overloaded -- the grading client already waits it out as throttling
+# (`llm`) -- and grok-4.6 did it to 3 of its 10 v1-subset trials, two within a
+# second of each other: sent again after one second five times, each ended
+# as an error (09-28 preflight). Now backed off as a throttle is.
+NO_CHOICE_SENDS = 10
 
 
 def _transient(e: BaseException) -> str | None:
@@ -368,10 +374,22 @@ class _Resend(Model):
         self.nulls = 0
 
     async def _wait(self, seconds: float) -> None:
-        """Wait on the provider, and give the attempt the time back (B-262)."""
+        """Wait on the provider, and give the attempt the time back (B-262), up to its ``ceiling``.
+
+        Given back without bound, a throttled attempt's deadline outran the
+        time its runner allows: Harbor stops an agent at 30 minutes, and one
+        stopped there leaves no record at all (09-28 preflight). Past the
+        ceiling the time is not given back, and the attempt says how much.
+        """
         await asyncio.sleep(seconds)
         if self.clock is not None:
-            self.clock["deadline"] = self.clock.get("deadline", time.monotonic()) + seconds
+            due = self.clock.get("deadline", time.monotonic()) + seconds
+            ceiling = self.clock.get("ceiling")
+            if ceiling is not None and due > ceiling:
+                kept = max(ceiling, self.clock.get("deadline", ceiling))
+                self.clock["not_given_back_s"] = self.clock.get("not_given_back_s", 0.0) + (due - kept)
+                due = kept
+            self.clock["deadline"] = due
             self.clock["throttled_s"] = self.clock.get("throttled_s", 0.0) + seconds
 
     async def get_response(self, *args, **kwargs):
@@ -401,10 +419,10 @@ class _Resend(Model):
                 if _no_choices(e):
                     self.nulls += 1
                     nulls += 1
-                    if nulls >= NULL_SENDS:
+                    if nulls >= NO_CHOICE_SENDS:
                         raise ProviderAnsweredNothing(
-                            f"the provider answered one request with nothing, {NULL_SENDS} times") from e
-                    await self._wait(1)
+                            f"the provider answered one request with no choices, {NO_CHOICE_SENDS} times") from e
+                    await self._wait(min(2.0 ** nulls, WAIT_CAP_S))
                     continue
                 raise
             if not _null(response):
@@ -1235,6 +1253,7 @@ def _run_command(ctx: RunContextWrapper, command: str, timeout_s: int) -> str:
             capture_output=True,
             text=True,
             timeout=timeout_s,
+            env=command_env(),
         )
         out = (proc.stdout or "") + (proc.stderr or "")
         return f"exit {proc.returncode}\n{out[-8000:]}"
@@ -1242,6 +1261,21 @@ def _run_command(ctx: RunContextWrapper, command: str, timeout_s: int) -> str:
         return f"timed out after {timeout_s}s"
     except OSError as e:
         return f"error: {e}"
+
+
+# What a candidate's commands run with: this process's environment less every
+# credential and model setting. The agent needs its key to call its model; the
+# model's own commands do not, and one `env` printed the key into the trace,
+# the grading prompts and every stored row (09-28 preflight: 21 commands that
+# read the environment in D-40 to D-45's grok traces alone).
+_SECRET_NAME = re.compile(r"KEY|TOKEN|SECRET|PASSWORD|CREDENTIAL|AUTH", re.IGNORECASE)
+_PROVIDER_NAME = ("OPENAI_", "AZURE_", "ANTHROPIC_", "ERRATA_", "HF_", "HUGGING")
+
+
+def command_env() -> dict[str, str]:
+    """The environment a candidate's command runs in: this one, without credentials or model settings."""
+    return {k: v for k, v in os.environ.items()
+            if not _SECRET_NAME.search(k) and not k.upper().startswith(_PROVIDER_NAME)}
 
 
 INSTRUCTIONS = """\

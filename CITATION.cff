@@ -5,7 +5,7 @@ type: software
 authors:
   - family-names: Fu
     given-names: Zanwen
-version: "1.0.3"
+version: "1.0.4"
 date-released: "2026-09-28"
 license: Apache-2.0
 repository-code: "https://github.com/zanwenfu/errata-bench"

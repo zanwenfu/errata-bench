@@ -17,7 +17,9 @@ Three things decide the rows, all of them the harness's own functions:
              container in a second judge's rows by itself; without the list,
              an attempt withdrawn under the first judge was counted under the
              second, and the two were compared on different answers.
-  scoring    `scoreable` as settled, unanimous over the readings.
+  scoring    `scoreable` as settled: under the default rule, unanimous over
+             the readings; under the majority, by the readings that can be
+             checked (v1, 09-28).
 """
 
 from __future__ import annotations

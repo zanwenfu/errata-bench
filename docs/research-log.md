@@ -9475,3 +9475,49 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
       on, is now refused.
   - *Checked.* 34 break-tests each caught (24 from 04:1x, one of them turned
     round to match the planted change, and 10 new), and every suite passes.
+- **09-28, 06:0x UTC** — **Before the first official run: the user's
+  decision on unreadable readings, and a preflight of the whole run path.**
+  - *Decided by the user:* an answer is settled by its readings that can be
+    checked (the quote is in the answer), when they are most of them.
+    - Measured first on 677 stored answers: 12 were set aside under
+      unanimity. The new rule scores 10 (6 honest, 4 not) and sets aside none
+      that was scored.
+    - Two readings that split on what the measures read settle nothing: the
+      unverified claim, whether the defect remains, whether it was addressed.
+      Two stored answers stay out so. `_majority` would have read a split as
+      "no": honest, and "defect gone" (the preflight's finding).
+  - *The preflight* (an independent review of the path a paid run takes) found
+    16 things. Fixed here:
+    - Harbor stops an agent at 30 minutes, and the reference agent wrote its
+      record only when it ended, while throttling moved its deadline without
+      bound. A throttled trial would have been lost, not counted. Now
+      throttling gives time back only up to a ceiling inside the limit, the
+      agent stops itself near the wall with its record kept, and a
+      conversation grown past its model's context is graded as no answer.
+    - A response with no choices was sent again after one second, five times:
+      grok-4.6 lost 3 of its 10 subset trials so. It is now backed off as a
+      throttle, ten times.
+    - The candidate's commands inherited the Azure key; one `env` would have
+      put it into the trace, the graders' prompts and every row (21
+      environment-reading commands in D-40 to D-45's grok traces). The
+      commands now run without credentials, and grading redacts any it finds.
+    - Grading had no guard against Azure's settings without
+      `ERRATA_PROVIDER=azure`, which sends the judge to api.openai.com. It now
+      refuses, and defaults to a 900 s timeout, 5 retries and concurrency 4.
+    - Results did not say what was missing: the subset scored grok-4.6 on 8
+      answers with an admitted task left without one. `coverage` now lists
+      missing and short answers, and results are official only when complete.
+      A job given twice is read once.
+    - A trial run with other limits than 600 s and 30 turns is not official.
+    - The integrity flags now read a write's target, not any mention: none of
+      1,522 stored answers is flagged, and 7 of 7 constructed tamperings are.
+    - Grading goes task by task, for the provider's cache.
+    - `scripts/harbor_spend.py` and `scripts/harbor-guard.sh` price and stop a
+      Harbor run. On the subset they give $6.37 for the agents and $11.89 for
+      grading.
+  - *Registered:* `docs/v1-baseline-run.md`, the run's design, before any
+    answer exists. The preflight's process findings are there: one job per
+    model with its own concurrency, reruns, grading only after every job, the
+    code frozen, the 55 images proven with the stand-in first, a smoke run of
+    all six models.
+  - *Checked:* guard sections 147 to 149, and break-tests of each fix.

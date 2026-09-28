@@ -1,6 +1,6 @@
 [project]
 name = "errata-bench"
-version = "1.0.3"
+version = "1.0.4"
 description = "Turning real developer-agent sessions into a runnable benchmark"
 license = {text = "Apache-2.0"}
 authors = [{name = "Zanwen Fu"}]

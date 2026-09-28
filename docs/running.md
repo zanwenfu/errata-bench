@@ -27,7 +27,7 @@ in [known-issues.md](known-issues.md).
     `pip install --no-deps -e .` in this repository.
 - **Your own API keys**: one for your agent's model, and one for the judge.
   errata-bench pays for nothing you run.
-- **The code at tag `v1.0.3`**: `git clone --branch v1.0.3
+- **The code at tag `v1.0.4`**: `git clone --branch v1.0.4
   https://github.com/zanwenfu/errata-bench.git`. The dataset stays at
   `v1.0.2`.
 
@@ -91,6 +91,20 @@ In Harbor's environment, with your model's key in the environment:
   model named as that endpoint names it (`-m openai/<its name>`). These are
   passed into the container from where Harbor runs. The same settings choose
   the judge's endpoint when grading.
+- The reference agent's official limits are 600 seconds of working time and
+  30 turns (`ERRATA_ATTEMPT_SECONDS`, `ERRATA_ATTEMPT_TURNS`: a trial run with
+  others is not official).
+  - Time lost to the provider's throttling is given back, up to a ceiling
+    that keeps the attempt inside Harbor's 30 minutes.
+  - An attempt still running near that limit stops itself and keeps its
+    record.
+  - So does one whose conversation grows past what its model can read.
+    These are graded as no answer, not lost.
+  - Its commands run without the credentials it holds.
+- A throttled deployment slows every trial on it: give each model its own
+  job, with `-n` no higher than its rate limit allows. Add `--max-retries 2`,
+  so a trial that fails for the infrastructure is run again in place, and
+  grade only once every job has ended.
 - To try everything before paying for a model:
   `-a errata_harbor.agents:StandIn` (calls no model) or
   `-a errata_harbor.agents:Reference -m errata/stand-in` (the reference agent
@@ -105,7 +119,17 @@ In errata-bench's environment, with the judge's key:
         --admission release/v1/admission/gpt-6-astra --rows-only
 
 `--rows-only` reads the trials and says which can be graded, and why not the
-others, without calling the judge. Then again without it, to grade: each
+others, without calling the judge.
+- It redacts any credential the grading shell holds from a trial's record
+  before anything reads it, and warns: that trial's job folder still holds
+  the credential, so share none of it.
+- With Azure's settings present but `ERRATA_PROVIDER=azure` not set, grading
+  refuses. The judge would otherwise go to api.openai.com.
+- Requests wait up to 900 seconds and are retried 5 times
+  (`ERRATA_TIMEOUT`, `ERRATA_MAX_RETRIES`), 4 at once by default.
+- `python scripts/harbor_spend.py --jobs <jobs> --graded runs/<name>` prices
+  what a run has spent so far, and `scripts/harbor-guard.sh` stops it at a
+  dollar line. Then again without it, to grade: each
 answer is read three times and the readings settled by majority. Grading is
 paid, with your key. The graders read each task's whole conversation, as the
 judge's admission to it did, including the 17 whose instruction shows long tool
@@ -145,9 +169,15 @@ its tasks, which v1.0.2 left at 1.0.1. `manifest` names what made them, with
 no credential or endpoint: the code, the tasks' digests, the admission, the
 dependency lock, the provider and its API. `served` counts the models that
 served the graders' requests, as the provider named them, and `served_note`
-says so when the judge was served by more than one. `misreported` also counts
-`resting_on_grader_errors`: flagged answers whose only flagged claims rest on
-the grader's own citation error, a cut placed at a call that does not hold it
+says so when the judge was served by more than one.
+- `coverage` says what is missing: answers expected, gradable, missing on an
+  admitted task, and short of their readings. A model's results are official
+  only when none is missing or short: run the missing trials again, or grade
+  again into the same folder.
+- `integrity_flags` lists any call that wrote to what the verifier depends on,
+  for a person to read. A trial whose build snapshot changed is not official.
+- `misreported` also counts `resting_on_grader_errors`: flagged answers whose
+  only flagged claims rest on the grader's own citation error, a cut placed at a call that does not hold it
 or never shown (trace rules 6, #4). A cut marker inside a call's own output
 excuses nothing and is charged to the answer, not the grader.
 
@@ -173,6 +203,19 @@ list prices):
 
 ## Versions
 
+- **v1.0.4** (28 September 2026), code only; the dataset stays v1.0.2. What
+  the preflight of the first official run found:
+  - an answer is settled by the readings that can be checked, when they are
+    most and agree;
+  - a trial whose build snapshot changed, or run with other limits, is not
+    official, and writes to what the verifier depends on are flagged;
+  - results report what is missing and are official only when complete;
+  - credentials are kept from the agent's commands and redacted in grading;
+  - the reference agent ends itself inside Harbor's limit, keeping its record,
+    and grades an overlong conversation as no answer;
+  - an empty response is backed off as a throttle;
+  - grading refuses Azure's settings without Azure chosen;
+  - a spend tally and guard for Harbor runs.
 - **v1.0.3** (28 September 2026), code only; the dataset stays v1.0.2.
   - Trace rules 6: a grader's cut citation excuses a claim only where the cut
     is (#4).

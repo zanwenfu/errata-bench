@@ -224,7 +224,30 @@ def served_note(served: dict) -> str | None:
     return None
 
 
-def results_of(paths: Paths, judge: str, passes: int, version: str = "unknown", manifest: dict | None = None) -> dict:
+def coverage_of(model: str, rows: list[dict], readings: list[dict], admitted: set[str], attempts: int,
+                passes: int) -> dict:
+    """What a model's results are missing: answers not gradable or never run, and answers short of readings (09-28).
+
+    A trial that failed and was not run again left its task with fewer answers,
+    and nothing said so: the v1 subset scored grok-4.6 on 8 answers where an
+    admitted task had none gradable. An answer whose readings errored settles
+    on fewer than asked for.
+    """
+    mine = [r for r in rows if r.get("model") == model
+            or (r.get("error") and str((r.get("harbor") or {}).get("model") or "").split("/")[-1] == model)]
+    gradable = Counter(r["task_id"] for r in mine if not r.get("error"))
+    missing = {t: attempts - gradable[t] for t in sorted(admitted) if gradable[t] < attempts}
+    counted = Counter((r.get("task_id"), r.get("run")) for r in readings
+                      if r.get("model") == model and not r.get("error"))
+    short = sorted(f"{t} #{n}" for r in mine if not r.get("error") and r["task_id"] in admitted
+                   for t, n in [(r["task_id"], r.get("run"))] if counted[(t, n)] < passes)
+    return {"expected": len(admitted) * attempts, "gradable": sum(gradable[t] for t in admitted),
+            "not_gradable": sum(1 for r in mine if r.get("error")), "missing": missing,
+            "short_of_readings": short}
+
+
+def results_of(paths: Paths, judge: str, passes: int, version: str = "unknown", manifest: dict | None = None,
+               attempts: int = 3) -> dict:
     """The run's results: each model's own score (never two models' answers in one), and whether it is official."""
     from errata_bench.release.report import OFFICIAL_JUDGE, score
     from errata_bench.score.judge import can_be_scored
@@ -238,9 +261,21 @@ def results_of(paths: Paths, judge: str, passes: int, version: str = "unknown", 
     for model in sorted({a.get("model") for a in answers}):
         mine = [a for a in answers if a.get("model") == model]
         s = score([r for r in readings if r.get("model") == model], tasks=admitted)
-        why = sorted({w for a in mine for w in (a.get("harbor") or {}).get("why_not_official", [])} | common)
+        cover = coverage_of(model, load(paths.answers), readings, admitted, attempts, passes)
+        incomplete = set()
+        if cover["missing"]:
+            incomplete.add(f"{sum(cover['missing'].values())} of its {cover['expected']} answers on the admitted "
+                           f"tasks are missing: run those trials again")
+        if cover["short_of_readings"]:
+            incomplete.add(f"{len(cover['short_of_readings'])} answers have fewer than {passes} readings: "
+                           f"grade again into the same folder")
+        why = sorted({w for a in mine for w in (a.get("harbor") or {}).get("why_not_official", [])} | common
+                     | incomplete)
         s.update({"agents": sorted({(a.get("harbor") or {}).get("agent") for a in mine}),
-                  "official": not why, "why_not_official": why})
+                  "official": not why, "why_not_official": why, "coverage": cover,
+                  # Calls that wrote to what the verifier depends on (G-78): for a person to read.
+                  "integrity_flags": {(a.get("harbor") or {}).get("trial"): (a.get("harbor") or {})["integrity_flags"]
+                                      for a in mine if (a.get("harbor") or {}).get("integrity_flags")}})
         models[model] = s
     rows = load(paths.answers)
     served = served_by(readings)
@@ -260,7 +295,8 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--out", type=Path, required=True)
     ap.add_argument("--admission", type=Path, required=True)
     ap.add_argument("--passes", type=int, default=3)
-    ap.add_argument("--concurrency", type=int, default=8)
+    ap.add_argument("--concurrency", type=int, default=4)
+    ap.add_argument("--attempts", type=int, default=3, help="attempts per task each model was run for")
     ap.add_argument("--limit", type=int, default=10**9)
     ap.add_argument("--rows-only", action="store_true")
     args = ap.parse_args(argv)
@@ -299,9 +335,14 @@ def main(argv: list[str]) -> int:
     for r in load(paths.answers):
         runs[r["task_id"]] = max(runs[r["task_id"]], int(r.get("run", -1)) + 1)
     written = Counter()
-    for trial in read_trials(args.jobs):
+    # By task, then as they started: every answer of a task graded together, so
+    # the judge's prompt, which opens with the task's conversation, is read from
+    # the provider's cache after the first (the v1 subset's first readings were
+    # 8-14% cached, in trial order). Run numbers are unchanged: per task, by start.
+    for trial in sorted(read_trials(args.jobs), key=lambda t: (t.task_id, t.started)):
         if trial.name in on_record:
             continue
+        on_record.add(trial.name)
         if trial.task_id not in tasks:
             written["not a task of this release"] += 1
             continue
@@ -324,8 +365,25 @@ def main(argv: list[str]) -> int:
     for r in rows:
         if r.get("error"):
             print(f"  not gradable: {r['task_id']} #{r['run']} ({r['harbor']['trial']}): {r['error']}")
+    leaked = [r for r in rows if (r.get("harbor") or {}).get("credentials_redacted")]
+    for r in leaked:
+        print(f"  WARNING: a credential was in {r['harbor']['trial']}'s record ({r['harbor']['credentials_redacted']} "
+              f"times): redacted here, but its job folder still holds it; share none of that folder",
+              file=sys.stderr)
     if args.rows_only:
         return 0
+    if os.environ.get("AZURE_OPENAI_BASE_URL") and os.environ.get("ERRATA_PROVIDER", "").lower() != "azure":
+        # Azure is opt-in (`llm.configure_client`): without ERRATA_PROVIDER=azure
+        # the judge would go to api.openai.com with OPENAI_API_KEY, billed there.
+        print("refused: AZURE_OPENAI_BASE_URL is set but ERRATA_PROVIDER is not azure; export "
+              "ERRATA_PROVIDER=azure to grade on Azure, or unset AZURE_OPENAI_BASE_URL; nothing was graded",
+              file=sys.stderr)
+        return 2
+    # Long prompts, read whole: the subset's slowest reading took 228 s, and the
+    # official tasks' prompts are about 3.6 times as long. A request cut off at
+    # the client's 120 s is sent again and paid again (09-28 preflight).
+    os.environ.setdefault("ERRATA_TIMEOUT", "900")
+    os.environ.setdefault("ERRATA_MAX_RETRIES", "5")
     if not os.environ.get("ERRATA_JUDGE_MODEL"):
         # Never a default: grading is paid, with the user's key, by a model they chose.
         print("refused: set ERRATA_JUDGE_MODEL to the judge that grades these answers "
@@ -338,7 +396,7 @@ def main(argv: list[str]) -> int:
     progress = asyncio.run(stage_grade(paths, args.limit, args.concurrency, passes=args.passes))
     print(progress.line().strip())
     result = results_of(paths, judge_model(), args.passes, dataset_version(args.release),
-                        manifest_of(args.release, args.out))
+                        manifest_of(args.release, args.out), attempts=args.attempts)
     if result["served_note"]:
         print(f"note: {result['served_note']} (results.json, `served_note`)")
     (args.out / "results.json").write_text(json.dumps(result, indent=1) + "\n")

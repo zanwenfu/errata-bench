@@ -39,8 +39,19 @@ import time
 import uuid
 from pathlib import Path
 
-VERSION = "1.0"
+VERSION = "1.1"
 STAND_IN = "errata/stand-in"
+# The time Harbor gives an agent (`release.harbor.AGENT_TIMEOUT_S`, each task's
+# task.toml). Stopped there, the agent leaves nothing: it writes its trajectory
+# when it ends. So it ends itself first (09-28 preflight). Kept equal to the
+# task's value by a guard; ERRATA_WALL_SECONDS overrides it for a run given
+# more time.
+WALL_S = 1800
+# How long before the wall it stops, whatever is running, to write its record.
+STOP_BEFORE_WALL_S = 45
+# And how far throttling may push its working deadline: far enough back from
+# the wall that the grace and the forced report still fit before it.
+MARGIN_S = 60
 # The harness's instructions (`score.attempt.INSTRUCTIONS`), less what only
 # held in its sandbox; the task's instruction says the rest.
 SYSTEM = ("You have a working copy of the repository. You can read files, list directories, run commands, "
@@ -128,8 +139,16 @@ async def run(instruction: str, out: Path, model: str, seconds: int, turns: int,
     from ..score.attempt import _Resending, converse
 
     set_tracing_disabled(True)
+    import os
+
+    from ..score.attempt import ATTEMPT_GRACE_S, FINAL_REPORT_S, Conversation
+
     calls: list = []
-    context = {"tree": tree, "calls": calls, "deadline": time.monotonic() + seconds, "container": None}
+    started = time.monotonic()
+    wall = float(os.environ.get("ERRATA_WALL_SECONDS") or WALL_S)
+    context = {"tree": tree, "calls": calls, "deadline": started + seconds, "container": None,
+               # Throttling gives time back only up to here (`_Resend._wait`).
+               "ceiling": max(started + seconds, started + wall - ATTEMPT_GRACE_S - FINAL_REPORT_S - MARGIN_S)}
     if model == STAND_IN:
         provider = _stand_in_provider()
     else:
@@ -137,8 +156,19 @@ async def run(instruction: str, out: Path, model: str, seconds: int, turns: int,
 
         configure_client()
         provider = _Resending(context)
-    started = time.monotonic()
-    talk = await converse(model, instruction, context, provider, turns, instructions=SYSTEM)
+    try:
+        talk = await asyncio.wait_for(converse(model, instruction, context, provider, turns, instructions=SYSTEM),
+                                      timeout=max(1.0, wall - STOP_BEFORE_WALL_S))
+    except asyncio.TimeoutError:
+        # Its calls are kept and its reply is empty: an attempt that ran out
+        # of time and reported nothing, graded as no answer, not lost.
+        talk = Conversation(reply="", ran_out=True, ended_by="wall time", usage=context.get("usage"))
+    if talk.error and _too_long(talk.error):
+        # The conversation grew past what the model can read. That is this
+        # agent on this model -- it keeps the whole history -- not a failure to
+        # retry: retried, it fails the same way. Graded as no answer.
+        talk = Conversation(reply="", ran_out=True, ended_by="context length", usage=talk.usage,
+                            report_error=talk.error)
     record = {
         "agent": "errata-reference", "version": VERSION, "package_sha256": package_digest(), "model": model,
         "limits": {"seconds": seconds, "turns": turns},
@@ -147,6 +177,7 @@ async def run(instruction: str, out: Path, model: str, seconds: int, turns: int,
         "past_deadline": time.monotonic() > context["deadline"], "seconds": round(time.monotonic() - started, 1),
         "usage": talk.usage, "last_response": context.get("last_response", ""),
         "null_responses": getattr(provider, "nulls", 0), "throttled_s": round(context.get("throttled_s", 0.0), 1),
+        "throttle_not_given_back_s": round(context.get("not_given_back_s", 0.0), 1), "wall_s": wall,
         "tool_calls": [c.to_json() for c in calls],
     }
     out.mkdir(parents=True, exist_ok=True)
@@ -155,6 +186,13 @@ async def run(instruction: str, out: Path, model: str, seconds: int, turns: int,
         ensure_ascii=False, indent=1))
     (out / "reference-agent.json").write_text(json.dumps(record, ensure_ascii=False, indent=1))
     return record
+
+
+def _too_long(error: str) -> bool:
+    """Whether an error is a model refusing a request for its length (as `score.trace.too_long` reads one)."""
+    text = error.lower()
+    return ("context_length_exceeded" in text or "maximum context length" in text
+            or "prompt is too long" in text or "too many tokens" in text)
 
 
 def main(argv: list[str]) -> int:

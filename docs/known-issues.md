@@ -1,7 +1,7 @@
 # errata-bench v1: what it is, its limits, and what comes next
 
 Written on 28 September 2026, after five independent reviews of v1.0.2, and
-brought up to v1.0.3 the same day. The current release is **code v1.0.3**
+brought up to date the same day. The current release is **code v1.0.4**
 with **dataset v1.0.2** (the tasks did not change). Each item links to its
 issue, and everything still to do is tracked in one place:
 [#11](https://github.com/zanwenfu/errata-bench/issues/11).
@@ -122,10 +122,23 @@ be taken to mean.
 8. **Contamination.** SWE-chat has been public since April 2026, and there is
    not yet a canary string to detect training on the tasks.
 
-## Known defects, and what v1.0.3 fixed
+## Known defects, and what v1.0.3 and v1.0.4 fixed
 
-Use the code at tag `v1.0.3`. The `v1.0.2` code tag has the defects below,
+Use the code at tag `v1.0.4`. The `v1.0.2` code tag has the defects below,
 and writes an outdated label (the exploratory 78%) into `results.json`.
+
+- **Fixed in v1.0.4** (the preflight of the first official run):
+  - an answer is settled by the readings that can be checked, when they are
+    most of them and agree. Before, one unreadable reading of three set it
+    aside; measured on 677 stored answers, 10 of the 12 set aside are now
+    scored, and none that was scored is set aside;
+  - a trial whose build snapshot changed is not official, and writes to what
+    the verifier depends on are flagged (G-78);
+  - results report missing answers and are official only when complete;
+  - the reference agent keeps credentials from its commands, ends itself
+    inside Harbor's time limit with its record kept, and grades a
+    conversation too long for its model as no answer; grading redacts any
+    credential it finds.
 
 - **Cut citations (#4): fixed in v1.0.3, as trace rules 6.**
   - A claim is excused only by a cut the grader was shown, placed where the
