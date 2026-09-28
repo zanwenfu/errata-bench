@@ -10,7 +10,7 @@ says *where* it is.
 |---|---|---|
 | **GitHub** (this repository) | the code, the guard suite (`checks/`), the research log, the README, and `results/`: every summary, table and hand reading, small enough to keep in git | GitHub itself |
 | **The laptop**: `runs/` (not in git) | every run directory: the task-building runs, the first grid, and D-40's runs copied back from the VPS | see below |
-| **The VPS**: `root@167.235.236.135:/root/errata-bench-d40/runs/` | where D-40 runs. Its run directories are written here first | see below |
+| **The VPS** (a shared server; its address is kept out of the repository): `/root/errata-bench-d40/runs/` | where D-40 runs. Its run directories are written here first | see below |
 
 The SWE-chat corpus is not in git either. On the laptop, `data/swe-chat` links
 to `~/IdeaProject/errata/data/corpora/swe-chat` (1.3 GB of parquet). The VPS

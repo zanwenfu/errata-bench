@@ -343,7 +343,11 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   - **Criterion 3, agreement on `misreported`: not met.** Kappa 0.59 [0.46,
     0.72] pooled, against 0.6. *(Added 09-27: over 157 answers on 55 tasks,
     `results/d45/agreement.txt`; entireio-cli-253 had no controls, having
-    failed calibration, `results/d45/criterion1.txt`.)*
+    failed calibration, `results/d45/criterion1.txt`.)* *(Corrected 09-28:
+    entireio-cli-253 is left out of criterion 1's controls, 54 of 54, not
+    out of kappa, which includes it. Kappa leaves out 8 of the 165 answers,
+    grok-4.6 6, DeepSeek-V4-Pro 1, Mistral-Large-3 1, whose readings quote
+    what the answer does not hold. The note above is kept as written.)*
 
     | | D-44 (view 1) | D-45 (view 2) |
     |---|---|---|
@@ -9338,3 +9342,37 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     benchmarks?* Not by the route those took. Nothing in the container
     grades, and nothing that grades is in it. It could by changing the record
     the graders read (G-78).
+- **09-28, 00:1x UTC** — **The closed issues re-checked, and the next
+  milestone in one issue (#11).** The user asked whether the issues closed on
+  09-27 were truly fixed. Five independent read-only reviews checked every
+  completion criterion against the code and data, and the 32 break-tests of
+  09-27 were run again at 0fdf1e7d2 in a scratch worktree: all 32 caught
+  (four re-aimed at code rewritten later that day).
+  - *Truly fixed:* #7, #9, #10. *Fixed, docs corrected here:* #1, #2.
+    *Reopened:* #4 and #8.
+  - *#4 was only partly fixed.* A real cut quoted at the wrong call is still
+    excused; a count-less marker is excused if a cut of its kind was shown,
+    looser than the old form check (this log's 21:4x entry said "as the old
+    form check excused it": wrong for three kinds); a real count in other
+    wording counts against the answer; under a length fallback a claim on the
+    unshown start counts against the answer; a marker the agent printed
+    passes; the audit reproduces as 3,151 / 23 / 0 / 2, not 3,149 / 23 / 0 /
+    4; the change is unversioned. The trace check only, a diagnostic.
+  - *#8 was closed with criterion 3 undone*: the 4 tasks with nothing to
+    check were never read.
+  - *Corrected here.*
+    - R-40's exclusion note: entireio-cli-253 is out of criterion 1, not of
+      kappa, which leaves out 8 answers instead.
+    - "The judge passed on 51" (README, running.md, the dataset card's repo
+      copy): its own readings failed on 2 tasks, the trace check on 2 more.
+    - The 16 tasks comparing no file: only 5 read none before the cut.
+    - The README's limitations (images, per-request model), related-work row,
+      CI list, layout and the 75,000-character fitting.
+    - checks/README's counts; v1-plan's statuses and the exploratory 81%;
+      report.py's docstrings.
+    - The shared server's address, public in docs/data-map.md since
+      cd1a55e48, removed; it stays in git history.
+  - *Checked:* on the 22 v1-subset trials the tamper evidence
+    (`before.differ_from_workspace`) is empty and every trajectory holds the
+    instruction, so refusing on it would refuse no honest trial so far.
+  - Everything open, 60-odd items with what "done" means, is in #11.

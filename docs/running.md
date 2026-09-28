@@ -113,8 +113,9 @@ A task is graded only by a judge that passed a check on it: that it reads the
 task's known-wrong and known-right answers correctly, and that its readings of
 three fixed control answers behave. `admission/gpt-6-astra/` is that check for
 the official judge, done once and shipped: it is admitted to 51 of the 55 tasks
-(it misread one task's known answers, and on three others one of its readings
-of a control went wrong), so v1's official scores are over those 51. To grade with another judge, put it
+(its own readings failed on 2, entireio-cli-253 and entireio-cli-38; on 2 more,
+Whiteknight07-AiTutor-34 and Pavel401-BugViper-85, the second grader misread a
+control, which admission also requires), so v1's official scores are over those 51. To grade with another judge, put it
 through the same check first, with your key (about $4 a task):
 `python scripts/admit_judge.py release/v1 --out <dir>`, then `--admission <dir>`.
 Results graded by any judge but the official one are that judge's, not

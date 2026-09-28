@@ -1,6 +1,6 @@
 # Checks
 
-Eight scripts, no network, no Docker, no model calls. Run them from the
+Ten scripts, no network and no model calls; `verifier_in_container.py` needs Docker and `harbor_agents.py` Harbor's environment. Run them from the
 repository root with the project's own interpreter:
 
     .venv/bin/python checks/imports_resolve.py
@@ -39,7 +39,7 @@ directories made before the split, and what happens when a candidate or a
 grading fails. Its ninth section requires that every served-model probe the
 stages made went to its stand-in, so none of it reaches the network.
 
-**`guards_hold.py`** is one hundred and thirty-six numbered sections, one per guard, after a section 0: what the
+**`guards_hold.py`** is one hundred and forty-three numbered sections, one per guard, after a section 0: what the
 attempt and grade stages refuse to do; the gate asked repeatedly; the
 reference-answer control and when it is not applicable; the clean-pass
 standard and the hedged one priced side by side; permanent git loss; the

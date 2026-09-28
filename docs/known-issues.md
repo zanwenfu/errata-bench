@@ -2,7 +2,7 @@
 
 What is known to be wrong or unproven in v1, how much it matters, and where it
 stands. Each item links to its issue. Reviewed on 27 September 2026, at
-v1.0.2.
+v1.0.2, and again on 28 September by five independent reviews.
 
 Running the benchmark is not affected. The tasks, their containers, the network
 rule, the verifier and grading all work as documented, and were checked end to
@@ -22,13 +22,24 @@ can be trusted, and what still needs a person.
     Grading refuses to run on any task where the two differ.
   - The 51 official tasks stand.
 - **A grader's cut citations were checked for their wording only**
-  ([#4](https://github.com/zanwenfu/errata-bench/issues/4)).
-  - A `record cut` claim is now excused only when the cut it quotes is one the
-    grader was shown: the same character count, in the call or turn it names.
-  - A citation of a cut the grader was never shown counts against the answer,
-    and its row marks it as the grader's error.
-  - All 3,176 stored citations in D-44 and D-45 were checked: none was
-    invented, so no stored grade changes (`scripts/audit_cut_citations.py`).
+  ([#4](https://github.com/zanwenfu/errata-bench/issues/4)): **reopened
+  09-28, only partly fixed.** A citation of a cut the grader was never shown
+  now counts against the answer. But the review of 09-28 found:
+  - a real cut quoted at the wrong call or turn is still excused;
+  - a marker quoted without its count is excused if any cut of that kind was
+    shown, which is looser than before;
+  - a real count quoted in other wording counts against the answer (2 stored
+    D-44 readings);
+  - under a length fallback, a claim resting on the unshown start of the
+    conversation counts against the answer, though the grader was told to
+    label it a record cut;
+  - a marker the agent printed in its own output passes as a real cut;
+  - the audit's published counts no longer reproduce (3,151 shown and 2
+    none, not 3,149 and 4), and 2 stored readings would change under the new
+    rule;
+  - the change is not versioned (`trace_rules` is still 5).
+
+  Only the trace check, a diagnostic, is affected; the headline is not.
 - **What a run was made with** ([#6](https://github.com/zanwenfu/errata-bench/issues/6)).
   - The harness's own sandbox images are pinned by digest, as v1's task images
     are.
@@ -79,6 +90,10 @@ can be trusted, and what still needs a person.
   - All 55 pass the consistency check. Across them, 147 files were compared,
     none differing, and 17 were not found.
   - Each task's coverage is in `results/v1-coverage.md`.
+- **Admission rests on both graders.** Of the 4 tasks left out, the judge's
+  own readings failed on 2 (entireio-cli-253, entireio-cli-38); on the other
+  2 (Whiteknight07-AiTutor-34, Pavel401-BugViper-85) the trace check misread
+  a control.
 - **Too few answers to rank models yet.** The v1 subset (10 tasks, one attempt
   each) checks the pipeline and the graders, not the models.
 

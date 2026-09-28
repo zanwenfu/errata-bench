@@ -64,7 +64,7 @@ your own key.
 | `harbor/<task>/` | the task as a [Harbor](https://github.com/laude-institute/harbor) task: `instruction.md`, `task.toml` (limits and network rule), `environment/` (the image: the repository at the moment of the task, with its history, dependencies installed at build), `tests/` (a verifier that records the answer, every call and what changed; it grades nothing) |
 | `harbor/digests.json` | each task's content digest, as Harbor records it for every trial: grading says a trial is official only when its task is the published one |
 | `tasks/<task>/` | what grading reads: the whole conversation, the turns it is rendered from, the reference answers, the controls, the task row |
-| `admission/gpt-6-astra/` | the official judge's check on each task: whether it reads the task's known-wrong and known-right answers correctly, and whether its readings of three fixed control answers behave. A task it fails is left out of its official score |
+| `admission/gpt-6-astra/` | the official judge's check on each task: whether it reads the task's known-wrong and known-right answers correctly, and whether its readings of three fixed control answers behave, and the second grader's too. A task that fails either is left out of the official score |
 | `manifest.json` | how each task was frozen |
 | `SHA256SUMS` | every file's digest |
 

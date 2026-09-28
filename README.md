@@ -19,8 +19,9 @@ that record.
 > **Status: v1 (27 September 2026).** Anyone can now run their own coding
 > agent on errata-bench: 55 tasks as [Harbor](https://github.com/laude-institute/harbor)
 > tasks, each in its own container with the repository, its history and its
-> dependencies, graded with your own key; the official judge passed its check
-> on 51 of them, and official scores are over those. The tasks:
+> dependencies, graded with your own key; the official judge is admitted to 51
+> of them (it failed its check on 2, and the second grader on 2 more), and
+> official scores are over those. The tasks:
 > [zanwenfu/errata-bench-v1](https://huggingface.co/datasets/zanwenfu/errata-bench-v1)
 > (gated, as SWE-chat is). [Run your agent](docs/running.md).
 > The headline measure is **honest reports**, the judge's reading: in the
@@ -287,9 +288,11 @@ that alone. An even number of readings is refused, since a tie has no majority.
   as its last read showed it (a file edited after that read is left to the
   replay), and with any commit the conversation printed as its current one. A
   tree that differs is rejected. A file the conversation read that is not in the
-  tree is counted, not rejected, and a conversation that read no file compares
-  nothing: over v1's 55 tasks, 147 files were compared (none differing), 17
-  were not found, and 16 tasks compared no file (`results/v1-coverage.md`).
+  tree is counted, not rejected, and only the `Read` tool's output is compared
+  (a file printed by `cat` or `sed` is not). Over v1's 55 tasks, 147 files were compared (none differing), 17
+  were not found, and 16 tasks compared no file: 5 read none before the cut, 8
+  read only files they then edited, 3 read files the tree lacks, and 2 read
+  output with no numbered lines (`results/v1-coverage.md`).
 - **The defect check.** The defect is looked for in the rebuilt tree when the
   task's kind says it should be there, and each task records what that
   established: its exact string found, only its file found, nothing to look
@@ -347,8 +350,11 @@ The candidate is told:
 
 - **What it sees.** The conversation up to the cut, rendered from the repaired
   record: every developer and agent message, every tool call with what it was
-  given, and the tool results. Long conversations are fitted into 75,000
-  characters by shortening tool results first; every shortening is marked.
+  given, and the tool results. Before v1, long conversations were fitted into
+  75,000 characters by shortening tool results first, every shortening marked;
+  v1 shows them whole, and on the 17 tasks whose conversation is too long for
+  one instruction, cuts long tool traffic there, marked, with the whole
+  conversation in the container.
 - **What it can do.** Five tools: `read_file`, `list_dir`, `run_command`,
   `write_file` and `edit_file`, inside a container with the repository at
   `/work`, no network, 2 CPUs and 2 GB of memory, on `python:3.12`, `node:22`
@@ -570,7 +576,7 @@ we read it, does not say.
 
 | | real developer–agent sessions | starts at a real failure the developer pushed back on | runs new models with real tools in a rebuilt repository | scores the honesty of the agent's report on its own work | checks each claim against the agent's own recorded actions | grader tested on known-answer cases | grader's verdicts checked by independent readers | two or more graders, agreement reported | analysis fixed before the data | public |
 |---|---|---|---|---|---|---|---|---|---|---|
-| **errata-bench** (this work) | ✅ SWE-chat | ✅ | ✅ | ✅ | ✅ | ✅ 3 controls and 2 checks per task, 35 probes | ✅ blind double reading; 75% real so far, 90% required | ✅ κ 0.59, 0.6 required | ✅ | ◐ code, task list and results; task files not yet |
+| **errata-bench** (this work) | ✅ SWE-chat | ✅ | ✅ | ✅ | ✅ | ✅ 3 controls and 2 checks per task, 37 trace-check and 8 judge probes | ✅ blind double reading; 75% real so far, 90% required | ✅ κ 0.59, 0.6 required | ✅ | ✅ code and results; tasks on Hugging Face, gated |
 | **OverclaimBench** (Smyth et al., Sep 2026) [^oc] | — 5 constructed file-review scenarios | — | ✅ each vendor's own CLI | ✅ claims of a complete review | ✅ file coverage from the transcript | ◐ planted defects validated; judge only re-sampled | — | — one judge | ◐ defect registry fixed before runs | — vetted researchers on request |
 | **How Coding Agents Fail Their Users** (Tang et al., May 2026) [^tang] | ✅ 20,574 sessions | ✅ pushback defines each episode | — observational | ◐ labels "inaccurate self-reporting": 22.58% of episodes | — | — | ✅ precision 0.93 on expert review | ◐ judge vs experts | — | ✅ labels |
 | **Plans They Abandon, Reports They Author** (Kraishan & Jitkajornwanich, Sep 2026) [^plans] | ✅ SWE-chat | — | — observational | ◐ what reports leave out | ◐ tried; the judge failed (κ 0.185 against hand coding) | — | ✅ hand coding | — | — | — on request |
@@ -626,10 +632,12 @@ Taken together, errata-bench is the only work we found that:
 - **Checking by people.** Tang et al., Leith, RealClawBench and Advani
   validated their labels against people. errata-bench's flags are read by
   Claude models under a written rubric; a reading by people is planned.
-- **A validated main measure.** errata-bench's main measure has not yet met
-  its own precision bar (§6).
+- **A validated main measure.** errata-bench's headline passed its bar only
+  narrowly (92% against 90%, resting on one adjudication), and its second
+  grader has not passed its own (§6).
 - **Real production harnesses.** OverclaimBench runs each vendor's own coding
-  CLI. errata-bench runs every candidate in one harness with five tools.
+  CLI. v1 can run any agent Harbor runs, each vendor's CLI included, but every
+  result so far came from one harness with five tools.
 - **Resistance to contamination.** OverclaimBench keeps its corpus private
   for this reason. errata-bench's source data is public.
 
@@ -762,8 +770,8 @@ Every number here is produced by a committed script from stored rows:
   rebuilt. The sandbox has no network, so a deploy, a push or an API call
   cannot be repeated. The consistency check rejects a tree that contradicts a
   file the conversation read, but it cannot see files the conversation never
-  read, and on 16 of the 55 tasks it compared no file at all, since their
-  conversations read none before the cut (`results/v1-coverage.md`).
+  read, and on 16 of the 55 tasks it compared no file at all
+  (`results/v1-coverage.md`).
 - **In the harness's own sandboxes, checks mostly cannot run** (the results
   before v1; v1's task containers install each project's dependencies and
   keep its git history). The sandboxes hold the language's toolchain but
@@ -777,12 +785,11 @@ Every number here is produced by a committed script from stored rows:
   one message, not as its own history.
 - **Contamination.** SWE-chat has been public since April 2026. One task's
   session also appears among SWE-Together's public tasks.
-- **Reproducibility.** The harness's own sandboxes name their images by tag
-  (`python:3.12`, `node:22`, `golang:1.26`), not by digest, so they can drift;
-  v1's task images pin their bases by digest.
-  Providers change the model version they serve behind a name; the version
-  served is probed at the start and end of each stage, not recorded for each
-  request (issue #6).
+- **Reproducibility.** Every image, the harness's sandboxes and v1's task
+  images alike, is pinned by digest. Providers change the model version they
+  serve behind a name: since v1.0.2 each grading request records the model
+  that served it, but check rows and candidates' requests record it only at
+  the start and end of each stage (issue #6).
 - **Licence.** Copyright 2026 Zanwen Fu. The code, and everything
   errata-bench wrote, is under Apache-2.0 ([LICENSE](LICENSE),
   [NOTICE](NOTICE)). SWE-chat is released under ODC-BY, and
@@ -836,6 +843,8 @@ Checks, as CI runs them:
     python checks/split_changes_nothing.py
     python checks/front_stages_run.py
     python checks/imports_resolve.py
+    harbor-env/bin/python checks/harbor_agents.py      in Harbor's environment
+    .venv/bin/python checks/verifier_in_container.py   needs Docker
 
 **Cost.** Grading dominates. The six-model run (990 answers, two graders,
 three readings each, plus each grader's checks) cost about $1,320 at list
@@ -854,10 +863,13 @@ prices. A three-model run of one attempt per task costs about $330–350.
                     structure; re-grading
       stages/       the stages and the driver
       store/        run directories: rows in, rows out; errored and stale rows pruned by atomic rewrite
+      release/      v1: freezing tasks, the Harbor export and verifier, admission,
+                    grading Harbor trials, the report, the reference agent
       llm.py        model access, and which model version was served
       spec.py       the task, and its fingerprint
     scripts/        analysis, sampling, tallies, and the run and spend-guard scripts
-    checks/         the seven suites CI runs
+    src/errata_harbor/  the Harbor side: the reference agent and task digests
+    checks/         the suites CI runs (seven), and three run by hand
     results/        every published number, as produced
 
 Documents:
