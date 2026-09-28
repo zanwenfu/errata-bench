@@ -9448,3 +9448,30 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     other calls named for other parts of the claim. Hence the clause rule.
   - *Checked.* Guard sections 144 and 145, and 24 break-tests for rules 6
     and 5 for grading, each caught. Every suite passes.
+- **09-28, 04:4x UTC** — **The final review before v1.0.3, and what it
+  changed.** A fresh review of v1.0.2..2c123daf3 judged it release-ready: no
+  score changes. It found eight things; all were fixed before the tag.
+  - *Placement.*
+    - A sentence ending in a call's number ("is in call 3. Call 1 ...") now
+      splits there.
+    - "i.e." and "e.g." no longer split a clause.
+    - A clause that names no place still leaves its cut to be matched
+      anywhere, as rules 5 did. That limit is stated in `docs/known-issues.md`;
+      none of the stored citations is affected.
+    - Spaced counts are read in "[cut:" and "output not shown:" forms too.
+  - *Lines as `render` writes them.* The call and turn blocks split on
+    newlines only; a carriage return inside an output started a call.
+  - *"planted" is the answer's, not the grader's.* In v1's record, every cut
+    marker inside a call's output is the reference agent's own file reader
+    ("[cut: N more characters of this file]"). The agent never saw past it,
+    so a claim resting on it is unsupported and is charged to the answer. The
+    prompt tells graders to cite such a marker, so citing it is no grader
+    error: `GRADER_ERRORS` is misplaced and invented.
+  - *The answer-level count* settles under rule "any" as the flag does.
+  - *Untested until now* (guard 146):
+    - re-grading passes `outputs_whole`;
+    - `build_dataset` writes `release.json`;
+    - a folder of jobs, which grading used to read as no trials and exit 0
+      on, is now refused.
+  - *Checked.* 34 break-tests each caught (24 from 04:1x, one of them turned
+    round to match the planted change, and 10 new), and every suite passes.

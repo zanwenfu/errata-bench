@@ -92,7 +92,8 @@ _MARKS = (
 # A count a grader wrote with its thousands spaced ("2 780"), joined before matching.
 # Only inside a marker's bracket or after its "...": "turn 7 400 more characters
 # not shown" is turn 7 and a cut of 400, not 7,400 (09-28 review).
-_SPACED = re.compile(r"((?:\[|\.\.\.,? ?)\s*)(\d{1,3}(?:[ \u2009\u202f]\d{3})+)(?=\s+(?:more |earlier )?characters)")
+_SPACED = re.compile(r"((?:\[cut: |output not shown: |\[|\.\.\.,? ?)\s*)(\d{1,3}(?:[ \u2009\u202f]\d{3})+)"
+                     r"(?=\s+(?:more |earlier )?characters)")
 # Where a citation says its cut is. Graders name calls and turns every way:
 # "call 12", "Calls 13 and 15", "turns 96-97", "[turn 30]", and the record's
 # own "6. read_file: ..." (D-45's stored citations, 09-27).
@@ -147,7 +148,10 @@ def _blocks(text: str, head: re.Pattern, results: bool = False) -> dict[int, str
     """
     out: dict[int, list[str]] = {}
     keys: list[int] = []
-    for line in (text or "").splitlines():
+    # Split on newlines only, as `render` indents after each: `splitlines` also
+    # breaks at a carriage return inside an output, and a "2. " after one
+    # would start a call that is not there (09-28 review).
+    for line in (text or "").split("\n"):
         m = head.match(line)
         if m:
             n = int(m.group(1))
@@ -172,8 +176,16 @@ _LISTED_TOOL = re.compile(r"(?:^|(?<=[(`'\"，。；、])|(?<=[^\x00-\x7f])\s)(\
 _QUOTED = re.compile(r"`([^`\n]{6,})`")
 # Where one clause of a citation ends: a sentence's stop or a semicolon, in
 # either script, before the next begins.
-# Not after "..." or a listed call's number ("2. run_command").
-_CLAUSE = re.compile(r"(?<=[^.\d]\.)\s+|(?<=;)\s+|(?<=[。；])")
+# Not after "..." or "e.g.", nor after a listed call's number ("2. run_command");
+# after a number that ends a sentence ("in call 3. Its output"), yes.
+_CLAUSE = re.compile(r"(?<=[^.\d]\.)\s+|(?<=\d\.)\s+(?=[A-Z\[(\"“`])|(?<=;)\s+|(?<=[。；])")
+_ABBREVIATION = re.compile(r"\b(?:e\.g|i\.e|etc|vs|cf)\.", re.IGNORECASE)
+
+
+def _clauses(evidence: str) -> list[str]:
+    """A citation's sentences and clauses, an abbreviation's stops not taken for a sentence's."""
+    kept = _ABBREVIATION.sub(lambda m: m.group(0).replace(".", "\0"), evidence)
+    return [s.replace("\0", ".") for s in _CLAUSE.split(kept)]
 _HEAD_LINE = re.compile(r"(\d+)\. ([a-z_]+): ?(.*)")
 
 
@@ -189,7 +201,7 @@ def _plain(s: str) -> str:
 def _heads(record: str) -> dict[int, tuple[str, str]]:
     """Each call the record lists: its tool, and the path or command its line gives."""
     out = {}
-    for line in (record or "").splitlines():
+    for line in (record or "").split("\n"):
         m = _HEAD_LINE.match(line)
         if m:
             out[int(m.group(1))] = (m.group(2), _plain(m.group(3)))
@@ -260,7 +272,11 @@ def cut_citation(evidence: str, conversation: str, record: str, planted: set[int
                  names exactly does not hold it: the claim borrows another
                  part's cut; not excused;
       invented   no marker cutting that many characters was shown at all;
-      planted    the only such marker is one the agent's own output printed;
+      planted    the only such marker is in a call's own output, as the agent
+                 received it: its tool cut it there (the reference agent's
+                 "[cut: N more characters of this file]"), or it printed it.
+                 The agent never saw past it, so it excuses nothing; charged to
+                 the answer, not the grader, which the prompt told to cite it;
       none       the evidence quotes no marker, or one without its count and
                  placed nowhere.
 
@@ -285,8 +301,10 @@ def cut_citation(evidence: str, conversation: str, record: str, planted: set[int
     # names other calls for other parts of a claim -- "event.go shows the
     # helper; the Claude lifecycle.go output ends with [cut: 5,514
     # characters]" -- and those are not where it puts the cut (three stored
-    # D-45 citations, read 09-28).
-    here = " ".join(s for s in _CLAUSE.split(evidence)
+    # D-45 citations, read 09-28). A clause that names no place leaves the cut
+    # to be matched anywhere, as rules 5 did: "Call 3 reads c.ts. Its output
+    # ends with [...]" is read so, whichever call "its" means.
+    here = " ".join(s for s in _clauses(evidence)
                     if ({n for _, n in _marks(s)} & cited) or (bare and _kinds(s) & bare)) or evidence
     located, loose = _located_calls(here, record), _loose_calls(here, record)
     turns = set().union(*(_numbers(m) for m in _NAMED_TURNS.findall(here)))

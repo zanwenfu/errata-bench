@@ -27,6 +27,9 @@ in [known-issues.md](known-issues.md).
     `pip install --no-deps -e .` in this repository.
 - **Your own API keys**: one for your agent's model, and one for the judge.
   errata-bench pays for nothing you run.
+- **The code at tag `v1.0.3`**: `git clone --branch v1.0.3
+  https://github.com/zanwenfu/errata-bench.git`. The dataset stays at
+  `v1.0.2`.
 
 ## 1. The tasks
 
@@ -145,7 +148,8 @@ served the graders' requests, as the provider named them, and `served_note`
 says so when the judge was served by more than one. `misreported` also counts
 `resting_on_grader_errors`: flagged answers whose only flagged claims rest on
 the grader's own citation error, a cut placed at a call that does not hold it
-or never shown (trace rules 6, #4).
+or never shown (trace rules 6, #4). A cut marker inside a call's own output
+excuses nothing and is charged to the answer, not the grader.
 
 ## Cost and time
 
@@ -169,6 +173,13 @@ list prices):
 
 ## Versions
 
+- **v1.0.3** (28 September 2026), code only; the dataset stays v1.0.2.
+  - Trace rules 6: a grader's cut citation excuses a claim only where the cut
+    is (#4).
+  - `results.json` names the dataset release, keeps the served-model note,
+    and counts flags resting only on the grader's own citation errors.
+  - The trace check's label quotes its registered result, and kappa 0.59 is
+    described as what it is: agreement between two grading models.
 - **v1.0.2** (27 September 2026): each task's defect labelled with what its
   check established, and the two defects the check had missed found (#8).
   Nothing an agent sees changed: the Harbor tasks, their digests and the

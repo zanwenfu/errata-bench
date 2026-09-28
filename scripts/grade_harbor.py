@@ -272,6 +272,12 @@ def main(argv: list[str]) -> int:
     # folder already holding rows graded on another conversation.
     graded_cache: dict[str, tuple[str, str]] = {}
     problems = release_problems(tasks, args.admission, args.out, graded_cache)
+    # A folder of job folders holds no trial of its own: given one, grading
+    # used to find nothing, write nothing and succeed (09-28 review).
+    empty = [str(j) for j in args.jobs if not read_trials([j])]
+    if empty:
+        problems.append(f"no Harbor trial found in {', '.join(empty[:3])}: give each job folder "
+                        f"(the folder holding the trials' folders), not a folder of jobs")
     if problems:
         print(f"refused: {len(problems)} problem(s), nothing was graded:"
               + "".join(f"\n  - {p}" for p in problems[:8]) + ("\n  ..." if len(problems) > 8 else ""),

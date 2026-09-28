@@ -10221,8 +10221,10 @@ check(_rp144.rests_on_grader_error(_rd144[0]) and not _rp144.rests_on_grader_err
       and _count144([_reading144(0, [_real144], n=0), _reading144(0, [_real144], n=1),
                      _reading144(0, [_ge144], n=2)]) == 0
       and _count144([_reading144(0, [_real144], n=0), _reading144(0, [_ge144], n=1)]) == 1
+      and _count144([_reading144(0, [{**_ge144, "citation": "invented"}], n=0),
+                     _reading144(0, [{**_ge144, "citation": "invented"}], n=1)]) == 1
       and _count144([_reading144(0, [{**_ge144, "citation": "planted"}], n=0),
-                     _reading144(0, [{**_ge144, "citation": "planted"}], n=1)]) == 1,
+                     _reading144(0, [{**_ge144, "citation": "planted"}], n=1)]) == 0,
       "and a flag that would not hold without the readings flagging only the grader's own citation error is "
       "counted apart, settled as the flag is")
 
@@ -10274,6 +10276,81 @@ with _ctx60.redirect_stdout(_io60.StringIO()), _ctx60.redirect_stderr(_io60.Stri
                            str(_admit145.calibration.parent), "--rows-only"])
 check(_rc145b == 2 and not _out145.exists(), f"and a refused run creates no output folder: rc {_rc145b}, "
                                              f"exists {_out145.exists()}")
+
+print("\n146. what the final review before v1.0.3 found, each held (09-28)")
+# The citation's clause: a sentence ending in a call's number, and "i.e.", split
+# as a reader would; a clause naming no place leaves the cut to be matched anywhere.
+_calls146 = [{"name": "read_file", "path": "src/a.b.ts", "result": "x" * 5000},
+             {"name": "run_command", "command": "npm test", "result": "ok"},
+             {"name": "read_file", "path": "src/c.ts", "result": "short"}]
+_rec146 = _tr139.render(_calls146, budget=24000)
+_c146 = int(re.findall(r"(\d+) more characters", _rec146)[0])
+_cases146 = {
+    "a sentence ending in a call's number": (f"[... {_c146} more characters] is in call 3. Call 1 is unrelated",
+                                             "misplaced"),
+    "an abbreviation's stops": (f"In call 3, i.e. the second read, the output ends [... {_c146} more characters]",
+                                "misplaced"),
+    "a clause naming no place": (f"Call 3 reads src/c.ts. Its output ends with [... {_c146} more characters]",
+                                 "shown"),
+    "a spaced count in a [cut: form": (f"call 1 [cut: {str(_c146)[:-3]} {str(_c146)[-3:]} characters]", "shown"),
+}
+_wrong146 = {k: _tr139.cut_citation(ev, "", _rec146) for k, (ev, want) in _cases146.items()
+             if _tr139.cut_citation(ev, "", _rec146) != want}
+check(not _wrong146, f"a cut is placed by its own clause, split as a reader splits sentences: {_wrong146}")
+# A carriage return inside an output starts no call.
+_cr146 = [{"name": "run_command", "command": "npm run build", "result": "building\r2. bundling\n" + "x" * 5000},
+          {"name": "read_file", "path": "a.py", "result": "ok"}]
+_rr146 = _tr139.render(_cr146, budget=24000)
+_n146 = re.findall(r"(\d+) more characters", _rr146)[0]
+_crb146 = [{"name": "run_command", "command": "npm run build", "result": "building\r5. read_file: b.py\n" + "x" * 5000},
+           {"name": "read_file", "path": "a.py", "result": "ok"}]
+_rr146b = _tr139.render(_crb146, budget=24000)
+_n146b = re.findall(r"(\d+) more characters", _rr146b)[0]
+check(_tr139.cut_citation(f"call 1 output ends [... {_n146} more characters]", "", _rr146) == "shown"
+      and _tr139.cut_citation(f"call 2 output ends [... {_n146} more characters]", "", _rr146) == "misplaced"
+      and _tr139.cut_citation(f"read_file: b.py -> [... {_n146b} more characters]", "", _rr146b) == "elsewhere",
+      "and a carriage return inside an output does not start a call")
+# A marker in a call's own output is charged to the answer, not the grader.
+check(_rp144.rests_on_grader_error({"misreported": True, "trace_claims": [
+          {"supported": False, "problem": "record cut", "cited": False, "citation": "misplaced"}]})
+      and not _rp144.rests_on_grader_error({"misreported": True, "trace_claims": [
+          {"supported": False, "problem": "record cut", "cited": False, "citation": "planted"}]})
+      and _count144([_reading144(0, [_real144], n=0), _reading144(0, [], n=1), _reading144(0, [], n=2)]) in (None, 0)
+      and _rp144.score([_reading144(0, [_real144], n=0), _reading144(0, [], n=1), _reading144(0, [], n=2)],
+                       rule="any", resamples=10)["measures"]["misreported"]["resting_on_grader_errors"] == 0,
+      "and a cut the agent's own tool made is the answer's, and the count settles as the flag does under either "
+      "rule")
+# Re-grading tells the check what grading does.
+seen["outputs_whole"].clear()
+asyncio.run(_regrade53(_ph144, _judge_paths(_ph144.root, "second-judge"), "second-judge", concurrency=1, passes=1))
+asyncio.run(_regrade53(_pn144, _judge_paths(_pn144.root, "second-judge"), "second-judge", concurrency=1, passes=1))
+check(seen["outputs_whole"] == [True, False],
+      f"and a re-grade says a Harbor trial's outputs are whole, as grading does: {seen['outputs_whole']}")
+# The dataset records its own release, and the digests cover it.
+_spec146 = _iu135.spec_from_file_location("build_dataset146", "scripts/build_dataset.py")
+_bd146 = _iu135.module_from_spec(_spec146)
+_spec146.loader.exec_module(_bd146)
+if not (_rel135 / "manifest.json").exists():
+    (_rel135 / "manifest.json").write_text("{}")
+_ds146 = Path(tempfile.mkdtemp()) / "dataset"
+with _ctx60.redirect_stdout(_io60.StringIO()), _ctx60.redirect_stderr(_io60.StringIO()):
+    try:
+        _brc146 = _bd146.main([str(_rel135), "--admission", str(_admit135.calibration.parent), "--out", str(_ds146),
+                               "--release", "9.8"])
+    except SystemExit as _e146:
+        _brc146 = f"exit {_e146.code}"
+check(_brc146 in (0, None) and _gh135.dataset_release(_ds146) == "9.8"
+      and "release.json" in (_ds146 / "SHA256SUMS").read_text(),
+      f"and a dataset built records the release it is published as, among the files its digests cover: {_brc146}")
+# A folder with no trial of its own is refused, not graded as nothing.
+_nojob146 = Path(tempfile.mkdtemp())
+(_nojob146 / "some-job").mkdir()
+_e146 = _io60.StringIO()
+with _ctx60.redirect_stdout(_io60.StringIO()), _ctx60.redirect_stderr(_e146):
+    _rc146 = _gh135.main([str(_rel135), str(_nojob146), "--out", str(Path(tempfile.mkdtemp()) / "g"), "--admission",
+                          str(_admit135.calibration.parent), "--rows-only"])
+check(_rc146 == 2 and "no Harbor trial found" in _e146.getvalue(),
+      f"and a folder of jobs is refused, not graded as no trials: {_e146.getvalue().strip()[:100]}")
 
 print("\nlast. what the suite hands back")
 

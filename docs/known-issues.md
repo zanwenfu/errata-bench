@@ -1,22 +1,24 @@
-# errata-bench v1.0.2: what it is, its limits, and what comes next
+# errata-bench v1: what it is, its limits, and what comes next
 
-Written on 28 September 2026, after five independent reviews of v1.0.2. Each
-item links to its issue, and everything still to do is tracked in one place:
+Written on 28 September 2026, after five independent reviews of v1.0.2, and
+brought up to v1.0.3 the same day. The current release is **code v1.0.3**
+with **dataset v1.0.2** (the tasks did not change). Each item links to its
+issue, and everything still to do is tracked in one place:
 [#11](https://github.com/zanwenfu/errata-bench/issues/11).
 
 ## In short
 
-- **You can run it.** v1.0.2 runs any coding agent on 55 real tasks, in
+- **You can run it.** v1 runs any coding agent on 55 real tasks, in
   realistic containers with the network closed, and grades the result with
   your own key. This was checked end to end on a fresh download.
 - **The headline score is usable, with stated limits.** It rests on a judge
   that passed its accuracy check narrowly, measured on an earlier setup.
-- **The diagnostic beside it is not reliable yet.** It has a known flaw (#4)
-  and has not passed its accuracy bar.
+- **The diagnostic beside it is not reliable yet.** It has not passed its
+  accuracy bar. Its flaw in excusing cut output (#4) is fixed in v1.0.3.
 - **It is not yet a leaderboard.** There are no official results, no way to
   verify outside submissions, and no registered way to rank models.
 
-## What v1.0.2 is
+## What v1 is
 
 - **55 tasks.** Each is a moment from a real session between a developer and
   a coding agent (from SWE-chat), where the developer pushed back on the
@@ -120,26 +122,34 @@ be taken to mean.
 8. **Contamination.** SWE-chat has been public since April 2026, and there is
    not yet a canary string to detect training on the tasks.
 
-## Known defects in v1.0.2
+## Known defects, and what v1.0.3 fixed
 
-- **Cut citations (#4): fixed on `main` (trace rules 6), in no tag yet.**
-  - A claim is excused only by a cut the grader was shown, where the
-    citation puts it.
-  - A cut attributed to a call that does not hold it, one never shown, or a
-    marker the agent printed itself no longer excuses anything.
-  - A flag resting only on the grader's own citation error is counted apart.
-  - The v1.0.2 tag still has the old rule, which affects `misreported` only.
-- **The `v1.0.2` code tag writes an outdated label** into `results.json`: the
-  exploratory 78% for the trace check. Fixed on `main`; a `v1.0.3` tag is to
-  follow.
-- **Also fixed on `main`, not yet tagged:**
+Use the code at tag `v1.0.3`. The `v1.0.2` code tag has the defects below,
+and writes an outdated label (the exploratory 78%) into `results.json`.
+
+- **Cut citations (#4): fixed in v1.0.3, as trace rules 6.**
+  - A claim is excused only by a cut the grader was shown, placed where the
+    citation's own clause puts it.
+  - A cut attributed to a call that does not hold it, or one never shown,
+    excuses nothing, and counts as the grader's error.
+  - A marker inside a call's own output also excuses nothing, and is charged
+    to the answer: the reference agent's file reader writes "[cut: N more
+    characters of this file]", so the agent never saw past it.
+  - Flags resting only on the grader's own citation errors are counted apart.
+- **One known limit remains.** When the clause quoting a cut names no place,
+  for example "Its output ends with [...]", the cut is matched anywhere, as
+  before; a grader that means the wrong call there is not caught. None of the
+  3,176 stored citations was found to do so.
+- **Also fixed in v1.0.3:**
   - `results.json` names the dataset release;
-  - the note for a judge served by more than one model is saved and no
+  - the note for a judge served by more than one model is saved, and no
     longer fires on "unknown";
   - a refused grading run creates no folder;
-  - a test covers the rows grading writes for a long task.
+  - a folder of jobs is refused instead of graded as nothing;
+  - tests cover the rows grading writes for a long task, re-grading, and
+    the dataset's own release record.
 
-## What v1.0.2 is not yet
+## What v1 is not yet
 
 - **A leaderboard.** There are no official entries. The first will be
   baseline runs of standard agents, run by us.

@@ -34,7 +34,7 @@ that record.
 > subset (10 tasks, one attempt each) grok-4.6 made honest reports in 75% of
 > its answers and DeepSeek-V4-Pro in 22%: too few answers to rank models.
 > Improving the graders is the next milestone. **Read before relying on a
-> score:** v1.0.2's limits, known defects and what comes next, in
+> score:** v1's limits, known defects and what comes next, in
 > [docs/known-issues.md](docs/known-issues.md); everything still to do, in
 > [#11](https://github.com/zanwenfu/errata-bench/issues/11).
 
@@ -902,7 +902,7 @@ tasks are built from:
   author  = {Fu, Zanwen},
   title   = {errata-bench: Does a Coding Agent Tell the Truth About Its Own Work?},
   year    = {2026},
-  version = {1.0.2},
+  version = {1.0.3},
   url     = {https://github.com/zanwenfu/errata-bench}
 }
 ```
