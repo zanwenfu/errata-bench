@@ -4419,6 +4419,29 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   inlined in the kit). Guard section 60 drives all four scripts' `main`.
   Reverting the shared check alone turns it red on three of them; reverting
   the kit's copy alone, on the fourth.
+- **G-79 · The table keeps only the last block of each assistant message, so
+  the agent's text before a call is lost.** *(opened 09-29;
+  `scripts/lost_text_blocks.py`; #17.)* This is G-76's cause, measured for
+  text rather than calls.
+  - *The mechanism.* Claude Code writes each block of a message as its own
+    entry, and the table keeps the last. What the agent wrote before a call in
+    the same message is dropped, and `recover.py` puts back only calls.
+  - *A sample of 150 Claude Code sessions (seed 0):*
+    - text followed by another block of its message: 3,716 of 3,863 absent
+      from the table;
+    - text that ends its message: 940 of 948 kept.
+
+    A block repeated elsewhere in its session counts as present, so the
+    absent counts are a floor.
+  - *The 55 v1 tasks.* Inside each task's shown span, the raw transcripts hold
+    587 agent text messages, and 536 of them (91%) are absent from
+    `conversation.txt`, in 50 of 55 tasks. The conversations show 1,506 calls
+    and 53 agent messages.
+  - *What it touches.* Candidates and graders see the earlier agent's actions
+    without its narration. The candidate's own record is whole, since Harbor
+    writes it. Whether the loss changes answers or readings is not measured.
+  - *How it was found.* While checking what a second source must match (#16).
+    That source writes every block.
 - **G-78 · An agent could change the record it is graded on.** *(opened
   09-27, checked at 30b716666.)* Nothing in a v1 task's container grades.
   The verifier records the reply, the calls and the file changes, and the
@@ -10024,3 +10047,40 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     reply is recorded without a request to the judge (`stages/scoring.py`), so
     no model served them. Every request the judge was sent was served by
     gpt-6-astra-2026-09-03, and the README now says so.
+- **09-29, 23:2x UTC** — **A second source of tasks surveyed (#16), and G-79
+  found on the way.**
+  - *Where Entire keeps a session.* Read from the CLI's source (HEAD
+    bc287bb) and checked on real repositories. There are three layouts:
+    - the `entire/checkpoints/v1` branch, SWE-chat's only source;
+    - one ref per checkpoint, `refs/entire/checkpoints/<xx>/<id>`, the default
+      for new setups since v0.9.0 (27 July). It is invisible to branch lists,
+      code search and ordinary clones;
+    - a reverted `v2` layout.
+
+    Some teams push checkpoints to a separate repository, mostly private.
+    Working-tree snapshots are never pushed.
+  - *SWE-chat's collection.* Code search, then every checkpoint on the v1
+    branch. Its code is unreleased, and its dataset has been unchanged since
+    29 April.
+  - *How much there is now.* A one-off enumeration of commit search for the
+    `Entire-Checkpoint` trailer (981 requests, kept outside the repository)
+    gives these after 19 April:
+    - 1,082 repositories, counting each commit once;
+    - 390 with a permissive licence, 436 with copyleft added;
+    - an estimated 5,900 to 6,700 sessions in licensed repositories;
+    - 49 of 60 sampled repositories publishing their checkpoints.
+
+    The crawler's discovery stage is to reproduce these with committed code
+    before any of them is relied on.
+  - *A pilot fetch.* 135yshr/savanna-vet-go was fetched anonymously, blobless
+    and ref by ref.
+    - Its 6 SWE-chat sessions were all found.
+    - Every transcript line is the same JSON as SWE-chat's copy: SWE-chat
+      re-spaced the JSON but did not change it.
+    - One session holds 5 more lines, written after SWE-chat's snapshot.
+    - For each session, the copy with the most lines is the latest checkpoint
+      holding it. SWE-chat's "highest output_tokens" rule reads per-checkpoint
+      token counts, which is not the same thing.
+  - *G-79.* Found while matching SWE-chat's row shape: the table drops the
+    agent's text written before a call in the same message. The loss reaches
+    91% of the agent messages inside the 55 tasks' shown spans (#17).
