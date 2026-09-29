@@ -212,6 +212,12 @@ no model calls.
   - `2026-09-28-laptop-runs/` holds the laptop's whole `runs/` on 09-28, the
     v1 admission and subset runs among it: 1,973 files, each checked against
     its local size and MD5.
+  - `2026-09-29-v1-baseline/` holds the v1 baseline run: every trial of the
+    six models and of the smoke, stage 1's StandIn jobs, the grading folder,
+    the logs and the spend ledgers. That is 9,943 files and 614 MB, the same
+    as the laptop's `runs/v1-baseline/`, which is checked against its SHA-256
+    manifests; in storage each file is checked against its size and MD5. The
+    results are in `results/v1-baseline/`.
   - `2026-09-28-vps-final/` holds everything of errata-bench's on the VPS
     when it was retired: every worktree (`errata-bench*`, with its `runs/`
     and git history), the Harbor test folder, and the D-40 analysis and flag

@@ -9813,3 +9813,59 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     - Otherwise, grading would sit idle for about 15 hours.
     - All six models are graded into `runs/b1-grade`, so one
       `results.json` holds them all.
+- **09-29, 03:5x UTC** — **The v1 baseline run, complete: all six models
+  official.** Stage 3 ran from 09-28 18:58 to 09-29 02:38 UTC, and the last
+  grading ended at 03:39. The results and how to read them are in
+  `results/v1-baseline/` (its README and `results.json`).
+  - *Stage 3's jobs.* 612 of 612 trials completed, and none errored.
+    - MAI had 1 retry, which succeeded. The failed attempt's evidence was
+      lost: Harbor's in-place retry reuses the trial's folder.
+    - Mistral answered every task (median 8 s). MAI answered 145 and hit
+      the turn limit on 8. DeepSeek-V4-Flash answered 145, hit the turn
+      limit on 6 and the time limit on 2.
+    - Kimi answered 140 and hit the turn limit on 11. Two attempts, both on
+      osabiohq-osabio-74, ended at the wall: each was throttled about
+      1,650 s, of which about 685 s could not be given back. At its quota,
+      100K tokens a minute, Kimi's throttling came to 11,916 s in all.
+  - *Checks.*
+    - None of the 6,136 job files of stage 3 holds a key or the endpoint's
+      host.
+    - All 918 answers of the run are gradable and official, with no
+      integrity flag.
+    - Readings were settled by majority, and gpt-6-astra-2026-09-03 served
+      every one.
+  - *Results, all official:*
+
+    | model | honest reports | fixed | fixed and honest | no answer |
+    |---|---|---|---|---|
+    | grok-4.6 | 55.6% [45.1–66.0] | 38.6% | 23.5% | 0% |
+    | Kimi-K2.7-Code | 44.4% [32.7–56.2] | 15.0% | 7.2% | 2.0% |
+    | DeepSeek-V4-Pro | 43.1% [32.0–54.9] | 13.1% | 6.5% | 0% |
+    | DeepSeek-V4-Flash | 34.6% [25.5–45.1] | 19.0% | 5.9% | 0% |
+    | Mistral-Large-3 | 33.3% [22.9–45.1] | 2.6% | 2.0% | 0% |
+    | MAI-Thinking-1 | 27.1% [18.0–37.9] | 5.9% | 3.3% | 1.3% |
+
+    No comparison is claimed, as registered. Kimi's two wall-time attempts
+    are 1.3 points of its no-answer rate, a cost of its quota rather than
+    of the model.
+  - *Spend, by the tally,* at list prices: $1,271.66, plus the smoke's
+    $25.10.
+    - The agents: $187.43.
+    - Grading: $1,084.23, about $1.18 an answer.
+    - The whole run was under the re-estimate of $1,400–1,650 and far under
+      the $2,200 line, which was never approached.
+    - Azure's usage meters show no long-context tier billed.
+  - *Operations.*
+    - The stage-3 models were graded one after another by a chain on the
+      VM, as each job ended (the deviation of 09-28 19:0x).
+    - The operator's link to the VM dropped several times; the run did not
+      depend on it.
+    - A helper's naming bug wrote one grading guard's tallies to a second
+      log. The guard itself read the right ledger and line.
+  - *Kept.*
+    - The trials, the grading folder, the logs and the ledgers, with
+      stage 1's StandIn jobs: 9,943 files, 614 MB.
+    - They are on the laptop, in `runs/v1-baseline/`, checked by SHA-256,
+      and in the backup storage's `2026-09-29-v1-baseline/`, checked by
+      size and MD5.
+    - The run VM is deallocated, its disk kept.
