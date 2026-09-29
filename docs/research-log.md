@@ -9869,3 +9869,34 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
       and in the backup storage's `2026-09-29-v1-baseline/`, checked by
       size and MD5.
     - The run VM is deallocated, its disk kept.
+- **09-29, 04:4x UTC** — **The comparison rule, registered before any comparison
+  was computed.** The rule is in `docs/v1-baseline-run.md`, "The comparison
+  rule", and is set down there in full. In brief:
+  - each pair of the six models is compared task by task, on each measure;
+  - the test is an exact sign-flip test, flipping whole repositories;
+  - Holm's correction runs over the 15 pairs of each measure;
+  - a difference is claimed only below an adjusted 0.05;
+  - models are shown with letter groups and rank ranges.
+
+  The user agreed each choice after the options were set out. The model
+  results existed by then, so the choices rest on the design, not on what
+  they would claim.
+  - *Why by repository.* The 51 tasks come from 23 repositories, and
+    entireio/cli alone holds 14. Flipping task by task, as D-35 did, would
+    treat those 14 as independent.
+  - *One grader,* where D-35 required two. v1's official grading has one
+    admitted judge. A second AI judge on credits would come from the same
+    maker. The blind human reading (#3) is the check planned.
+  - *The script,* `scripts/v1_comparisons.py`, reuses D-35's exact sign-flip
+    test, bootstrap and Holm. Guard section 153 holds each part, tested on
+    made-up results only:
+    - the repository flip agrees with enumeration on 200 random cases;
+    - the letters match the claims on 300 random patterns, and a redundant
+      letter is absorbed;
+    - the rank ranges, the shared ranks of ties, and exact rates;
+    - a gap claimed alone but not after Holm.
+  - *Broken one at a time:* 9 of 10 caught. The one missed puts the letter
+    groups in order, and it changes nothing: on 20,000 random patterns the
+    groups already came out best first.
+  - The rule and the script are tagged `v1-comparisons`, then run once on the
+    results.

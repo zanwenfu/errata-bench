@@ -11201,6 +11201,117 @@ if _netok151:
           + (f"; tried to signal every process: {(_gd151 / 'net.log').read_text()[:200]}"
              if (_gd151 / "net.log").exists() else ""))
 
+print("\n153. the v1 comparison rule, as registered: by repository, exact, Holm, letters that match the claims (09-29)")
+_iu153 = __import__("importlib.util").util
+_s153 = _iu153.spec_from_file_location("v1_comparisons153", "scripts/v1_comparisons.py")
+_vc153 = _iu153.module_from_spec(_s153)
+_s153.loader.exec_module(_vc153)
+from fractions import Fraction as _F153
+import itertools as _it153
+import random as _rnd153
+# The test flips repositories, not tasks: two tasks of one repository move together.
+_a153 = {"t1": _F153(1), "t2": _F153(1), "t3": _F153(1), "t4": _F153(0)}
+_b153 = {"t1": _F153(0), "t2": _F153(0), "t3": _F153(0), "t4": _F153(1, 3)}
+_repo153 = {"t1": "r1", "t2": "r1", "t3": "r2", "t4": "r3"}
+_c153 = _vc153.compare_pair(_a153, _b153, _repo153)
+
+
+def _brute153(sums):
+    nz = [s for s in sums if s != 0]
+    obs = abs(sum(sums))
+    hits = sum(1 for signs in _it153.product((1, -1), repeat=len(nz)) if abs(sum(g * s for g, s in zip(signs, nz))) >= obs)
+    return hits / 2 ** len(nz)
+
+
+_rng153 = _rnd153.Random(153)
+_bad153 = []
+for _ in range(200):
+    _n = _rng153.randint(2, 9)
+    _diffs = {f"t{i}": _F153(_rng153.randint(-3, 3), _rng153.choice((1, 2, 3))) for i in range(_n)}
+    _rep = {tk: f"r{_rng153.randint(0, 3)}" for tk in _diffs}
+    _sums = {}
+    for tk, d in _diffs.items():
+        _sums[_rep[tk]] = _sums.get(_rep[tk], _F153(0)) + d
+    _got = _vc153.compare_pair({tk: d for tk, d in _diffs.items()}, {tk: _F153(0) for tk in _diffs}, _rep)["p"]
+    if abs(_got - _brute153(list(_sums.values()))) > 1e-12:
+        _bad153.append((_diffs, _rep, _got))
+_ci153 = list(_vc153.cluster_bootstrap_ci({tk: float(_a153[tk] - _b153[tk]) for tk in _a153}, _repo153, 10_000, 0))
+check(_c153["interval"] == _ci153 and _c153["interval"] != _c153["task_interval"],
+      f"its interval resamples whole repositories, not tasks: {_c153['interval']} against {_c153['task_interval']}")
+check(_c153["p"] == 0.5 and _c153["task_p"] == 0.25 and _c153["repositories"] == 3 and not _bad153
+      and abs(_c153["difference"] - (_F153(8, 3) / 4)) < 1e-12,
+      f"the test flips whole repositories, exactly (p {_c153['p']}; task by task it would be {_c153['task_p']}), "
+      f"and agrees with enumeration on 200 random cases: {len(_bad153)} disagree")
+# Letters: models sharing one are exactly those not claimed to differ.
+_lg153 = [_vc153.letter_groups(["A", "B", "C"], set()),
+          _vc153.letter_groups(["A", "B", "C"], {frozenset(("A", "C"))}),
+          _vc153.letter_groups(["A", "B", "C"], {frozenset(("A", "B")), frozenset(("B", "C")), frozenset(("A", "C"))}),
+          # Absorbed: a group inside another adds a letter and says nothing.
+          _vc153.letter_groups(["A", "B", "C"], {frozenset(("A", "B")), frozenset(("A", "C"))})]
+_six153 = ["m1", "m2", "m3", "m4", "m5", "m6"]
+_wrong153 = []
+for _ in range(300):
+    _differ = {frozenset(pr) for pr in _it153.combinations(_six153, 2) if _rng153.random() < 0.4}
+    try:
+        _let = _vc153.letter_groups(_six153, _differ)
+    except AssertionError as e:
+        _wrong153.append(str(e)); continue
+    for x, y in _it153.combinations(_six153, 2):
+        if bool(set(_let[x]) & set(_let[y])) == (frozenset((x, y)) in _differ):
+            _wrong153.append((x, y, _let[x], _let[y]))
+check(_lg153[0] == {"A": "a", "B": "a", "C": "a"} and _lg153[1] == {"A": "a", "B": "ab", "C": "b"}
+      and _lg153[2] == {"A": "a", "B": "b", "C": "c"} and _lg153[3] == {"A": "a", "B": "b", "C": "b"}
+      and not _wrong153,
+      f"letter groups: none claimed, one claimed, all claimed, and 300 random claims, each shared letter a tie: "
+      f"{_lg153}, {len(_wrong153)} wrong")
+# Rank ranges, and the mean rank within a task with ties shared.
+_rr153 = _vc153.rank_ranges(["A", "B", "C"], {("A", "B"), ("A", "C")})
+_mr153 = _vc153.mean_ranks({"A": {"t1": _F153(1), "t2": _F153(0)}, "B": {"t1": _F153(1), "t2": _F153(1)},
+                            "C": {"t1": _F153(0), "t2": _F153(0)}})
+check(_rr153 == {"A": (1, 1), "B": (2, 3), "C": (2, 3)} and _mr153 == {"A": 2.0, "B": 1.25, "C": 2.75},
+      f"a rank range runs from 1 plus the models better to K minus the models worse, and ties share their mean rank: "
+      f"{_rr153}, {_mr153}")
+# Rates read exactly from the report's per-task figures, and the whole script on made-up results.
+_rs153 = _vc153.rates_of({"models": {"X": {"per_task": {"t": {"honest_reports": {"value": 1 / 3, "answers": 3},
+                                                              "fixed": {"value": 0.5, "answers": 2},
+                                                              "fixed_and_honest": {"value": 0.0, "answers": 3}}}}}})
+_d153 = Path(tempfile.mkdtemp())
+_tasks153 = [f"task-{i}" for i in range(8)]
+for _i, _tk in enumerate(_tasks153):
+    (_d153 / "dataset" / "tasks" / _tk).mkdir(parents=True)
+    (_d153 / "dataset" / "tasks" / _tk / "task.json").write_text(json.dumps({"repo_id": f"owner/repo{_i}"}))
+
+
+def _model153(value):
+    per = {tk: {m: {"value": value, "answers": 3} for m in _vc153.MEASURES} for tk in _tasks153}
+    return {"per_task": per, "measures": {m: {"value": value} for m in _vc153.MEASURES}}
+
+
+_dm153 = _model153(1.0)
+for _tk in _tasks153[6:]:
+    for _m in _vc153.MEASURES:
+        _dm153["per_task"][_tk][_m]["value"] = 0.0
+for _m in _vc153.MEASURES:
+    _dm153["measures"][_m]["value"] = 0.75
+# D beats C on 6 of 8 repositories: p 2/64 alone, but 0.125 after Holm over the 6 pairs, so not claimed.
+(_d153 / "results.json").write_text(json.dumps({"models": {"A": _model153(1.0), "B": _model153(1.0),
+                                                            "C": _model153(0.0), "D": _dm153}, "code_version": "x"}))
+with _ctx60.redirect_stdout(_io60.StringIO()):
+    _vc153.main([str(_d153 / "results.json"), str(_d153 / "dataset"), "--out", str(_d153 / "cmp")])
+_out153 = json.loads((_d153 / "cmp.json").read_text())
+_h153 = _out153["measures"]["honest_reports"]
+_claims153 = sorted((p["a"], p["b"]) for p in _h153["pairs"] if p["claimed"])
+_dc153 = next(p for p in _h153["pairs"] if {p["a"], p["b"]} == {"C", "D"})
+check(_rs153["honest_reports"]["X"]["t"] == _F153(1, 3) and _rs153["fixed"]["X"]["t"] == _F153(1, 2)
+      and _claims153 == [("A", "C"), ("B", "C")] and _h153["models"]["A"]["letters"] == "a"
+      and _h153["models"]["B"]["letters"] == "a" and _h153["models"]["C"]["letters"] == "b"
+      and _h153["models"]["D"]["letters"] == "ab" and abs(_dc153["p"] - 1 / 32) < 1e-12
+      and not _dc153["claimed"] and _h153["models"]["C"]["rank_range"] == [3, 4]
+      and (_d153 / "cmp.md").read_text().count("| C |") == 3,
+      f"rates are exact fractions, and on made-up results the script claims only the real gaps: 8 repositories, "
+      f"Holm over 6 pairs, D over C (p 1/32 alone) not claimed: {_claims153}, letters "
+      f"{[_h153['models'][m]['letters'] for m in ('A', 'B', 'C', 'D')]}")
+
 print("\nlast. what the suite hands back")
 
 # Last, what the suite hands back -- at the very end, where it can see every

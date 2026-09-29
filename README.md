@@ -464,8 +464,12 @@ Every comparison is paired by task: an exact sign-flip test on the per-task
 differences, with Holm's correction over all pairs of models. A difference is
 claimed only if it is significant under **both** graders and points the same
 way. The analysis plan and its scripts are committed, and tagged in git,
-before the answers they analyse are collected. v1 has no registered model
-comparison yet: it is the next milestone's.
+before the answers they analyse are collected. For v1's baseline run, the rule
+is registered in `docs/v1-baseline-run.md` ("The comparison rule"). It is
+registered before any comparison was computed, and differs in two ways:
+- it has one grader, the official judge;
+- it flips signs by repository, not task, since tasks from one repository are
+  not independent.
 
 ## 4. How each step is made trustworthy
 
