@@ -6,9 +6,15 @@ wrote.
 
 Six models, each through errata-bench's reference agent, on the 51 tasks the
 official judge is admitted to, 3 attempts each. The run used code v1.0.4
-(857ddeceb) and dataset v1.0.2. The judge was gpt-6-astra
-(gpt-6-astra-2026-09-03 served every reading), reading each answer 3 times
-and settled by majority. Every model's results are official:
+(857ddeceb) and dataset v1.0.2. The judge was gpt-6-astra, reading each
+answer 3 times and settled by majority. Every request it was sent was served
+by gpt-6-astra-2026-09-03 (`results.json`, `served`):
+- 2,739 of the 2,754 readings record it;
+- the other 15 record no model because no request was made. They are the 5
+  answers with no reply, 3 readings each, and an empty reply is never sent to
+  the judge.
+
+Every model's results are official:
 - all 153 answers are gradable, with none missing, extra or short of
   readings;
 - every trial ran one agent code;

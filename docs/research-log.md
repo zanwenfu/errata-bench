@@ -10004,3 +10004,23 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     across ecosystems: a larger step, recorded in #13.
   - Nothing here touched the v1 answers, so any v1 use still needs its own
     registration first.
+- **09-29, 07:5x UTC** — **The docs brought up to date with the first official
+  results, and the served-model line corrected.** Flagged while the website was
+  being updated.
+  - *What predated the official run:*
+    - `docs/known-issues.md` still said there were no official results and no
+      registered way to rank models: in its summary, limit 7, "What v1 is not
+      yet" and "What comes next";
+    - `docs/v1-baseline-run.md` said the run "does not rank the models". That
+      was the registration of 28 September. The comparison rule of 29 September
+      changed its "Comparisons" section but not this line, which now says both;
+    - `docs/v1-plan.md` rows 6 and 7 still called the run the next milestone
+      and the leaderboard empty;
+    - the README's status note had been fixed already, in 3005b9b95.
+  - *The served model.* `results/v1-baseline/README.md` said
+    gpt-6-astra-2026-09-03 "served every reading". `results.json` (`served`)
+    records it on 2,739 of the 2,754 readings. The other 15 are the 5 answers
+    with no reply (Kimi-K2.7-Code 3, MAI-Thinking-1 2), 3 readings each. An empty
+    reply is recorded without a request to the judge (`stages/scoring.py`), so
+    no model served them. Every request the judge was sent was served by
+    gpt-6-astra-2026-09-03, and the README now says so.

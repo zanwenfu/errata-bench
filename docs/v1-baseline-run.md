@@ -9,8 +9,10 @@ had been seen by then. Tracked in
 
 It gives the first official v1 results: six models, each run through
 errata-bench's reference agent on the v1 tasks and graded by the official
-judge. It is descriptive. It says how each model did on this benchmark, with
-this agent. It does not rank the models (see "Comparisons").
+judge. It says how each model did on this benchmark, with this agent. As
+first registered, it did not rank the models. The comparison rule added on
+29 September, before any comparison was computed, groups them and gives each
+a rank range (see "The comparison rule").
 
 ## What runs
 

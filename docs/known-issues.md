@@ -1,7 +1,8 @@
 # errata-bench v1: what it is, its limits, and what comes next
 
 Written on 28 September 2026, after five independent reviews of v1.0.2, and
-brought up to date the same day. The current release is **code v1.0.4**
+brought up to date the same day and on 29 September, with the first official
+results. The current release is **code v1.0.4**
 with **dataset v1.0.2** (the tasks did not change). Each item links to its
 issue, and everything still to do is tracked in one place:
 [#11](https://github.com/zanwenfu/errata-bench/issues/11).
@@ -15,8 +16,13 @@ issue, and everything still to do is tracked in one place:
   that passed its accuracy check narrowly, measured on an earlier setup.
 - **The diagnostic beside it is not reliable yet.** It has not passed its
   accuracy bar. Its flaw in excusing cut output (#4) is fixed in v1.0.3.
-- **It is not yet a leaderboard.** There are no official results, no way to
-  verify outside submissions, and no registered way to rank models.
+- **The first official results are in** (29 September,
+  [`results/v1-baseline/`](../results/v1-baseline/)): six models through the
+  reference agent, compared by a rule registered before any comparison was
+  computed. The rule gives letter groups and rank ranges, not a strict order,
+  and most pairs of models cannot be told apart.
+- **It does not take outside submissions yet.** They cannot be verified, so
+  only runs we execute are official.
 
 ## What v1 is
 
@@ -114,11 +120,12 @@ be taken to mean.
      rebuilt tree. Of the 147 files that were compared, none differs.
    - 17 files the conversation read are missing. Per task:
      `results/v1-coverage.md`.
-7. **Too few answers to rank models yet.**
-   - The only v1 results are a pipeline check: 2 models on 10 tasks, one
-     attempt each.
-   - With 51 tasks, only large differences between models can be told apart,
-     and one repository (entireio/cli) supplies 16 of the 55 tasks.
+7. **Only large differences between models can be told apart.**
+   - The first official run (6 models, 51 tasks × 3 attempts) claims 4 of the
+     15 differences on honest reports; the other 11 pairs cannot be told
+     apart.
+   - The 51 tasks come from 23 repositories, and one (entireio/cli) supplies
+     14 of them (16 of the 55).
 8. **Contamination.** SWE-chat has been public since April 2026, and there is
    not yet a canary string to detect training on the tasks.
 
@@ -172,15 +179,14 @@ and writes an outdated label (the exploratory 78%) into `results.json`.
 
 ## What v1 is not yet
 
-- **A leaderboard.** There are no official entries. The first will be
-  baseline runs of standard agents, run by us.
+- **A leaderboard of standard agents.** The only official entries are the six
+  models through the reference agent. Runs through Claude Code and Codex come
+  next ([#12](https://github.com/zanwenfu/errata-bench/issues/12)).
 - **Safe for outside submissions.** An agent's own software writes the
   command log the judge trusts, and the verifier runs inside the agent's
   container. A submitter could therefore forge the record (G-78 in the
   research log). Until that is closed, only runs we execute ourselves can be
   called verified.
-- **A way to rank models.** No comparison method, tie rule or completeness
-  rule is registered yet.
 
 ## Fixed in v1.0.2
 
@@ -208,13 +214,15 @@ and writes an outdated label (the exploratory 78%) into `results.json`.
 The next milestone extends the task set and improves the graders. In order,
 from [#11](https://github.com/zanwenfu/errata-bench/issues/11):
 
-1. **The first official results** (done before them: #4 fixed, the dataset
-   release named in results, unscoreable readings decided, the run registered
-   in `docs/v1-baseline-run.md`, and the preflight's findings fixed in v1.0.4):
+1. **The first official results: done on 29 September**
+   ([`results/v1-baseline/`](../results/v1-baseline/)):
    - the baseline run of six models through the reference agent, as
-     registered;
-   - a comparison rule, before any ranking is published;
-   - later, Claude Code and Codex, each with its provider's key.
+     registered in `docs/v1-baseline-run.md`;
+   - the comparison rule, registered before any comparison was computed
+     (tag `v1-comparisons`).
+
+   Next: the same tasks through Claude Code and Codex
+   ([#12](https://github.com/zanwenfu/errata-bench/issues/12)).
 2. **Before outside submissions:**
    - verified entries are only runs we execute;
    - grading refuses tampered trials;
