@@ -9927,8 +9927,13 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     claimed (adjusted p 0.048). Kimi-K2.7-Code above MAI-Thinking-1 is not
     (0.053).
   - *The task-level test,* given beside the repository one and not used for
-    claims, has smaller p-values in most pairs. Flipping by repository was
-    the more cautious choice here, as expected when 14 of 51 tasks share one
-    repository.
+    claims.
+    - Its p-values are not uniformly smaller: of the 45 pairs, 23 smaller,
+      18 larger, 4 equal. On honest reports it is the larger in 10 of 15.
+    - After Holm it would claim the same differences and one more:
+      grok-4.6 above Kimi-K2.7-Code on fixed and honest (+16.3). The
+      repository test does not claim it (adjusted p 0.073).
+    - A first draft of this entry said the task-level p-values were smaller
+      in most pairs. They were counted before this was kept.
   - *As stated with the rule:* one grader, the resolution of 51 tasks, and
     Kimi's two quota-cut attempts.
