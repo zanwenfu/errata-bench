@@ -9869,7 +9869,7 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
       and in the backup storage's `2026-09-29-v1-baseline/`, checked by
       size and MD5.
     - The run VM is deallocated, its disk kept.
-- **09-29, 04:4x UTC** — **The comparison rule, registered before any comparison
+- **09-29, 05:3x UTC** — **The comparison rule, registered before any comparison
   was computed.** The rule is in `docs/v1-baseline-run.md`, "The comparison
   rule", and is set down there in full. In brief:
   - each pair of the six models is compared task by task, on each measure;
