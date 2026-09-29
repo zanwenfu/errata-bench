@@ -1,6 +1,6 @@
 # Checks
 
-Ten scripts, no network and no model calls; `verifier_in_container.py` needs Docker and `harbor_agents.py` Harbor's environment. Run them from the
+Eleven scripts, no network and no model calls; `verifier_in_container.py` needs Docker and `harbor_agents.py` Harbor's environment. Run them from the
 repository root with the project's own interpreter:
 
     .venv/bin/python checks/imports_resolve.py
@@ -8,6 +8,7 @@ repository root with the project's own interpreter:
     .venv/bin/python checks/fixes_are_still_in.py
     .venv/bin/python checks/guards_hold.py
     .venv/bin/python checks/split_changes_nothing.py
+    .venv/bin/python checks/crawl_holds.py
     .venv/bin/python checks/oracle_over_real_runs.py     # needs runs/
     .venv/bin/python checks/renderer_effect.py           # needs runs/, a one-off measurement
     .venv/bin/python checks/checkout_election_over_corpus.py   # needs data/, ~6 min, a measurement
@@ -29,6 +30,8 @@ uncovered while the suite passed. An independent reviewer ran 48 single-fix
 reverts against the sections written that day; 4 left the suite fully green.
 
 Each exits non-zero on failure and prints one line per assertion.
+
+**`crawl_holds.py`** holds the collector of Entire sessions (#16) to its rules on fixture repositories served over file://, laid out as Entire lays out a real one: the v1 branch, per-checkpoint refs, a reverted v2 ref, a separate checkpoint repository named in settings. Each session is taken whole from its latest checkpoint. Imported history and ids unsafe as file names are left out and counted. No git data is left behind. Commit search is a fake holding more results than one query may return: every trailer commit is read once, and a resumed run asks nothing it already knows. Each of its 16 rules was broken one at a time on 09-29, and each time a check failed.
 
 **`split_changes_nothing.py`** takes the last revision of `pipeline.py` from
 before grading became its own stage, runs it and the current pair over the same

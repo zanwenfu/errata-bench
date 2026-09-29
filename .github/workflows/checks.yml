@@ -49,6 +49,8 @@ jobs:
         run: python checks/split_changes_nothing.py
       - name: fixes_are_still_in
         run: python checks/fixes_are_still_in.py
+      - name: crawl_holds
+        run: python checks/crawl_holds.py
 
       - name: The driver scripts parse
         run: bash -n scripts/*.sh

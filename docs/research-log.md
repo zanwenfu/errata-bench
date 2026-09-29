@@ -10084,3 +10084,37 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - *G-79.* Found while matching SWE-chat's row shape: the table drops the
     agent's text written before a call in the same message. The loss reaches
     91% of the agent messages inside the 55 tasks' shown spans (#17).
+- **09-29, 23:5x UTC** — **The collector's first three stages: discover,
+  select, fetch (#16).** In `src/errata_bench/crawl/`, run by
+  `scripts/crawl_entire.py`. Everything is written under the git-ignored
+  `data/entire/`, and every stage resumes.
+  - *Discover.* Commit search for the trailer, month by month; a slice over
+    the 1,000-result cap is halved. Each repository's metadata follows, and
+    each commit gets one owner (its holder that is not a fork, earliest
+    created). Authors' names and addresses are not kept.
+  - *Select.* By licence (the v1 policy by default: permissive and copyleft;
+    no licence is left out) and by a trailer commit on or after a date.
+    Every repository left out has its reason.
+  - *Fetch.* Anonymous git per repository:
+    - only Entire's refs, in both layouts, blobless;
+    - a separate checkpoint repository followed when settings name a public
+      one;
+    - the metadata files fetched in batches, each session's latest copy
+      chosen, and only that transcript streamed to disk;
+    - the git data deleted afterwards.
+
+    On real repositories: the v1-layout pilot's 6 sessions came out
+    identical to their longest copies, a refs-layout repository gave 5
+    sessions in 3 s, and one that deleted its data was reported as having
+    none.
+  - *Checks* (`checks/crawl_holds.py`, in CI). They use fixture repositories
+    over file:// in Entire's layouts, and a fake search holding 2,500 results.
+    Each of the 16 rules was broken one at a time, and each time a check
+    failed.
+    - The first run found two things. One was a real gap: a resumed discovery
+      re-queried every range it had halved, since only the slices it read
+      were recorded. Halved ranges are now recorded too.
+    - The other was the fixture's own error, a v1 path two characters too
+      long, which the reader refused as it should.
+    - The one rule that broke without a failure (ids of the wrong form) was
+      also guarded by the shard rule. It has a check of its own now.
