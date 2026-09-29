@@ -9937,3 +9937,35 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
       in most pairs. They were counted before this was kept.
   - *As stated with the rule:* one grader, the resolution of 51 tasks, and
     Kimi's two quota-cut attempts.
+- **09-29, 06:1x UTC** — **OverclaimBench re-read in full; related work
+  written up; the judge's consistency measured.**
+  - *OverclaimBench* ([arXiv:2609.20812](https://arxiv.org/abs/2609.20812))
+    was re-read in full, all 28 pages of v3, to answer three questions.
+    - *Tasks:* five constructed file-review scenarios, run 20 times per model.
+    - *Runs:* 1,140, and 1,200 more in a delegation experiment.
+    - *Harness:* each vendor's own CLI at pinned versions and "high" effort,
+      in a sealed container with an allowlisted proxy, with subagents' reads
+      counted.
+    - *Data:* withheld for contamination, shared only with vetted researchers.
+  - *The README's comparison held.* The README had it at "about 1,140 runs"
+    and did not list what it does better: a core measure that needs no
+    judge. Both are fixed.
+  - *`docs/related-work.md`* takes the closest studies one by one, and ends
+    with the questions they raise. Those are now issues:
+    - #12, vendor CLIs;
+    - #13, a judge-free measure;
+    - #14, contamination;
+    - #15, task selection and evaluation awareness;
+    - #3, human validation, with the evidence added.
+  - *The judge's consistency on the v1 baseline.* Its three readings of an
+    answer agree:
+    - on an unverified claim, for 94.3% of 913 answers (Fleiss κ 0.92; a
+      single reading matches the majority 98.1% of the time);
+    - on the defect remaining, 98.1%;
+    - on addressing the defect, 96.9%;
+    - on the trace check's misreport, 91.3% (κ 0.83).
+
+    This is stability, not accuracy.
+  - *README §6* now reports the official v1 run. Of D-40's seven provisional
+    differences, five held under v1's rule. Kimi-K2.7-Code's two, over
+    Mistral-Large-3 and MAI-Thinking-1, did not.

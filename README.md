@@ -30,10 +30,14 @@ that record.
 > (89% without it). The second grading method, the trace check (run by the
 > same model), is reported beside it as a diagnostic: 75% of its flags were
 > real, and two different grading models (gpt-6-astra and gpt-6-sol) agree on
-> its reading at κ 0.59, short of the 90% and 0.6 it needs to join the headline. On the v1
-> subset (10 tasks, one attempt each) grok-4.6 made honest reports in 75% of
-> its answers and DeepSeek-V4-Pro in 22%: too few answers to rank models.
-> Improving the graders is the next milestone. **Read before relying on a
+> its reading at κ 0.59, short of the 90% and 0.6 it needs to join the headline.
+> **The first official results** (29 September): six models through the
+> reference agent, 51 tasks × 3 attempts, every model official. Honest reports
+> range from 55.6% (grok-4.6) to 27.1% (MAI-Thinking-1). Under the comparison
+> rule registered before any comparison was computed, four differences hold on
+> honest reports, and most pairs cannot be told apart (§6.2,
+> [`results/v1-baseline/`](results/v1-baseline/)). Improving the graders is
+> the next milestone. **Read before relying on a
 > score:** v1's limits, known defects and what comes next, in
 > [docs/known-issues.md](docs/known-issues.md); everything still to do, in
 > [#11](https://github.com/zanwenfu/errata-bench/issues/11).
@@ -490,7 +494,7 @@ section lists how each step is checked, and what the checks have found.
 | Grader agreement | one grader's quirks decide the result | a second grading model (gpt-6-sol, in the research runs) re-reads every answer three times; Cohen's κ between the two models on the trace check's reading must reach 0.6 | κ 0.18 on the first instrument; 0.63 on the six-model run (bar met); 0.58 on the next; 0.59 on D-44, and 0.59 again with the whole record (D-45) |
 | Flag precision | the flags are not real | a fixed sample of flags is read against the full record, twice and blind, and each disagreement settled against the record; at least 90% must be real | 55% real on the six-model run (83 of 151) and on the next (38 of 69); 72% on D-44 (43 of 60); 75% with the whole record (D-45, 44 of 59). The two blind readings agree at κ 0.82–0.86 |
 | The judge's own reading | its "unverified claim" calls are wrong | 72 of its calls read twice against the records, as for the flags | 61 of 72 right (85%) on D-40's answers; 32 of 36 (89%) on D-44's; 33 of 36 (92%, bar met) with the whole record (D-45) |
-| The analysis | results chosen after seeing the data | each experiment's criteria and analysis scripts are committed in git before its results are read, and since the six-model run before its answers exist; a change before a run is a dated amendment that says what had been seen; failures are reported as failures | six experiments registered this way (§6); two were amended before they ran, each amendment saying what had been seen |
+| The analysis | results chosen after seeing the data | each experiment's criteria and analysis scripts are committed in git before its results are read, and since the six-model run before its answers exist; a change before a run is a dated amendment that says what had been seen; failures are reported as failures | seven experiments registered this way (§6), the v1 baseline run and its comparison rule among them; two were amended before they ran, each amendment saying what had been seen |
 | The code | a fix quietly stops working | a regression suite of 145 sections; each fix is shown to fail its check when reverted on its own; seven suites run in CI on every push (five with no corpus, no credentials and no network; two with Harbor and Docker) | 12 of 28 assertions once written still passed with their fix removed. That is why every check is now broken on purpose before it is trusted |
 | Provenance | a number cannot be traced to what produced it | answer, grading and check rows record the commit that wrote them; grading rows their token use and, since v1.0.2, the model that served each request, and a Harbor run's results a manifest of what made them; every published number is produced by a committed script | the check rows (calibration, controls, probes) record no token use, and the model served is only probed at a stage's start and end for them |
 | Spending | a run overspends, or bills the wrong account | each paid run since the six-model run has a spend guard that stops it at a stop line agreed in advance | the six-model run cost about $1,320 at list prices, under its $2,500 line |
@@ -641,9 +645,14 @@ Taken together, errata-bench is the only work we found that:
 ### 5.3 Where others are ahead
 
 - **Scale.** Observational studies cover thousands of sessions (Tang et al.:
-  20,574; Transluce: 8,600), OverclaimBench ran about 1,140 agent runs across
-  12 models, and the labs test on their own traffic. errata-bench has 55
-  tasks.
+  20,574; Transluce: 8,600). OverclaimBench ran 1,140 agent runs across 12
+  models (20 runs of each of its 5 scenarios per model) and 1,200 more in a
+  delegation experiment. The labs test on their own traffic. errata-bench has
+  55 tasks, and its v1 baseline 918 answers.
+- **A core measure that needs no judge.** OverclaimBench's main quantity,
+  which files an agent opened, is read mechanically from the transcript; a
+  judge only classifies how the report describes it. errata-bench's headline
+  rests on a model's reading of each answer.
 - **Checking by people.** Tang et al., Leith, RealClawBench and Advani
   validated their labels against people. errata-bench's flags are read by
   Claude models under a written rubric; a reading by people is planned.
@@ -684,7 +693,16 @@ Taken together, errata-bench is the only work we found that:
   UTBoost and PatchDiff (2024–2025), Berkeley's broken benchmarks and BenchJack
   (2026), and Terminal-Bench's maintenance reports (2026).
 
-[^oc]: Smyth et al., "Quantifying Overclaiming Propensity in Frontier LLM Agents", [arXiv:2609.20812](https://arxiv.org/abs/2609.20812). 12 models, five file-review scenarios with planted defects. Agents skipped assigned files in 67.9% of runs, and 80.4% of those runs were misleading. The judge (Claude Opus 4.8) was checked by re-judging 774 runs eight times (91.1% unanimous); we found no check against people. The corpus is withheld from public release to protect the measurement.
+[^oc]: Smyth et al. (Tara Research, Mila, Cohere), "Quantifying Overclaiming Propensity in Frontier LLM Agents", [arXiv:2609.20812](https://arxiv.org/abs/2609.20812).
+    - *Scenarios:* five constructed file-review scenarios (100 to 519 files each, with 1 to 4 planted defects). Twelve models, 20 runs of each scenario per model: 1,140 runs, since Gemini 3.1 Pro refused three scenarios. A controlled experiment requiring or forbidding subagents added 1,200 more.
+    - *Harnesses:*
+      - each vendor's own CLI at its default "high" reasoning effort, with pinned versions: Claude Code 2.1.219, Codex 0.144.1, Grok Build 0.2.93, Antigravity 1.1.15;
+      - a sealed Docker container, its egress limited to an allowlist of provider endpoints through a proxy;
+      - subagents' reads collected from their own session records;
+      - four open-weight models through Claude Code, on pinned providers.
+    - *Results:* agents skipped assigned files in 67.9% of runs, and 80.4% of those runs were misleading.
+    - *The judge* (Claude Opus 4.8) was checked by re-judging 774 runs eight times (91.1% unanimous). We found no check against people.
+    - *Data:* the corpora, the defect registry, the harness and the analysis code are withheld, so that future models cannot train on them. Vetted researchers can get them under an agreement.
 [^tang]: Tang et al., "How Coding Agents Fail Their Users: A Large-Scale Analysis of Developer-Agent Misalignment in 20,574 Real-World Sessions", [arXiv:2605.29442](https://arxiv.org/abs/2605.29442). SpecStory sessions and SWE-chat; 16,118 episodes, 22.58% of them inaccurate self-reporting.
 [^plans]: Kraishan and Jitkajornwanich, "Plans They Abandon, Reports They Author", [arXiv:2609.12205](https://arxiv.org/abs/2609.12205). A final summary refers to about one action in eleven. Its adjudicator judged 67% of sampled claims supported where hand coding found 36%, so the authors draw no conclusion from its unsupported-claim rate.
 [^swet]: Wu et al., "SWE-Together: Evaluating Coding Agents in Interactive User Sessions", [arXiv:2606.29957](https://arxiv.org/abs/2606.29957). 109 tasks, 48 of them from SWE-chat. One of their sessions is behind one of our 55 tasks (`results/related-work/swe-together-sessions.json`).
@@ -715,8 +733,60 @@ not it met its criteria.
 | **The judge's own reading** (D-43, 25 Sep) | Are the judge's "unverified claim" calls right? | 72 answers from D-40, each read twice against its record | 61 of 72 right (85%), short of 90% |
 | **Both graders revised** (D-44, 25–26 Sep) | Checker rules 5 and judge rules 3, on new answers | 55 × 3 models × 1 = 165 answers | Controls and probes met. **Not yet repaired**: 43 of 60 flags real (72%, was 55%), the judge's calls 89% right (32 of 36, was 85%; one answer short of 90%), κ 0.59 |
 | **The whole record** (D-45, 26–27 Sep) | Do the results hold when the graders see the whole record? | D-44's 77 answers that the old 24,000-character view cut, re-graded, and the checks it cut | Controls and 35 probes met. The judge's calls **92% right (33 of 36): bar met**. Flags 75% real (44 of 59) and κ 0.59: not met |
+| **The v1 baseline run** (28–29 Sep, [registered](docs/v1-baseline-run.md)) | The first official results: six models on the v1 tasks under Harbor | 51 admitted tasks × 6 models × 3 attempts = 918 answers, each read 3 times by the official judge | **All six official.** 4 differences hold on honest reports, 8 on fixed, 4 on fixed and honest, under the comparison rule registered before it was run (§6.2) |
 
-### 6.2 The six-model run
+### 6.2 The v1 baseline run (official)
+
+Six models through the reference agent under Harbor, on the 51 tasks the
+official judge is admitted to, 3 attempts each, graded by gpt-6-astra. The
+run used code v1.0.4 and dataset v1.0.2. Every model's results are official:
+complete coverage, one agent code, no integrity flag. Models sharing a letter
+are not shown to differ on honest reports.
+
+| model | honest reports | group | fixed | fixed and honest | no answer |
+|---|---|---|---|---|---|
+| grok-4.6 | 55.6% [45.1–66.0] | a | 38.6% [26.1–51.0] | 23.5% [13.7–34.6] | 0.0% |
+| Kimi-K2.7-Code | 44.4% [32.7–56.2] | abc | 15.0% [7.2–24.2] | 7.2% [2.0–13.7] | 2.0% |
+| DeepSeek-V4-Pro | 43.1% [32.0–54.9] | ab | 13.1% [5.2–22.2] | 6.5% [2.0–13.1] | 0.0% |
+| DeepSeek-V4-Flash | 34.6% [25.5–45.1] | bc | 19.0% [9.8–29.4] | 5.9% [2.0–10.5] | 0.0% |
+| Mistral-Large-3 | 33.3% [22.9–45.1] | bc | 2.6% [0.0–7.2] | 2.0% [0.0–5.2] | 0.0% |
+| MAI-Thinking-1 | 27.1% [18.0–37.9] | c | 5.9% [1.3–11.8] | 3.3% [0.7–7.2] | 1.3% |
+
+**The comparison rule** was registered before any comparison was computed
+([`docs/v1-baseline-run.md`](docs/v1-baseline-run.md), tagged
+`v1-comparisons`):
+- each pair of models is compared task by task;
+- the test is exact, flipping whole repositories;
+- Holm's correction runs over the 15 pairs of each measure.
+
+The differences claimed:
+- *Honest reports:*
+  - grok-4.6 above DeepSeek-V4-Flash, Mistral-Large-3 and MAI-Thinking-1;
+  - DeepSeek-V4-Pro above MAI-Thinking-1.
+- *Fixed:*
+  - grok-4.6 above all five others;
+  - DeepSeek-V4-Flash above MAI-Thinking-1 and Mistral-Large-3;
+  - Kimi-K2.7-Code above Mistral-Large-3.
+- *Fixed and honest:* grok-4.6 above DeepSeek-V4-Pro, DeepSeek-V4-Flash,
+  MAI-Thinking-1 and Mistral-Large-3.
+
+Nothing else is claimed. Every pair is in
+[`results/v1-baseline/comparisons.md`](results/v1-baseline/comparisons.md).
+
+- **Limits.**
+  - Every model ran the same agent.
+  - One grader.
+  - 51 tasks resolve only large gaps.
+  - Two of Kimi-K2.7-Code's attempts were cut short by its quota.
+- **The judge's consistency.** Its three readings of an answer agree:
+  - all three on whether the answer makes an unverified claim, for 94.3% of
+    answers (Fleiss κ 0.92);
+  - a single reading with the majority, for 98.1%.
+
+  This is stability, not accuracy. Accuracy is what the known-answer checks
+  and the planned human reading test.
+
+### 6.3 The D-40 research run (earlier graders)
 
 Rates on the headline set of 47 tasks, as read by `gpt-6-astra`, with the
 second grader, `gpt-6-sol`, in brackets:
@@ -734,14 +804,23 @@ same direction):
   and MAI-Thinking-1; Kimi-K2.7-Code than Mistral-Large-3 and MAI-Thinking-1;
 - **more clean passes:** grok-4.6 than Mistral-Large-3 and MAI-Thinking-1.
 
-### 6.3 What can be claimed now
+### 6.4 What can be claimed now
 
-- **Provisionally:** the seven differences above. They rest on the judge's
-  reading as it stood in D-40, which was right on 85% of its calls, against
-  the 90% required. Its current form (third rules, whole record) has since
-  passed that bar (D-45: 92%), but D-40 was graded with the earlier form, so
-  these differences stay provisional until a new run. The two graders also
-  come from one maker.
+- **Officially:** the v1 baseline run's differences (§6.2), under its
+  registered rule and with its stated limits. They rest on the official
+  judge's reading of honest reports and fixing, which passed its bar (92%).
+  They do not rest on the trace check, which has not.
+- **D-40's seven, as the v1 run left them.** D-40's differences in §6.3
+  rested on the judge's earlier form, which was right on 85% of its calls.
+  The v1 run put them to the test: honest reports is D-40's unverified-claim
+  measure read the other way, and fixed-and-honest is its clean pass.
+  - Five held: grok-4.6 ahead of DeepSeek-V4-Flash, Mistral-Large-3 and
+    MAI-Thinking-1 on unverified claims, and ahead of Mistral-Large-3 and
+    MAI-Thinking-1 on clean passes.
+  - Kimi-K2.7-Code's two, ahead of Mistral-Large-3 and MAI-Thinking-1, did
+    not. Over MAI-Thinking-1 its adjusted p was 0.053.
+  - D-40 required both graders. v1 has one, flips by repository and reads
+    whole conversations.
 - **Descriptively:** the models that check their work make fewer unverified
   claims. Mistral-Large-3 used a tool in 4% of its answers, and grok-4.6 in
   98%.
