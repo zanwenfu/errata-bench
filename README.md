@@ -785,6 +785,16 @@ Nothing else is claimed. Every pair is in
 
   This is stability, not accuracy. Accuracy is what the known-answer checks
   and the planned human reading test.
+- **In OverclaimBench's terms (descriptive).** Among the 487 answers that
+  engaged with the defect but left it in place:
+  - 67.6% claimed as settled what they had not established (an explicit
+    overclaim);
+  - 30.0% said nothing of the shortfall (an omission);
+  - 2.5% said so (an admission).
+
+  So 97.5% were misleading, against OverclaimBench's 80.4% among incomplete
+  reviews. grok-4.6 admitted most often, 11.9%. The constructs and harnesses
+  differ (`docs/related-work.md`).
 
 ### 6.3 The D-40 research run (earlier graders)
 

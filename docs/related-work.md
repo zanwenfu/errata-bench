@@ -293,6 +293,18 @@ milestone.
      its limits.
 
    The constructs differ: an unfixed defect in errata-bench, unread files in
-   OverclaimBench. Reporting errata-bench's results in those terms, next to its
-   own, would let readers set the two side by side. This is tracked in #13 with
-   the judge-free measure.
+   OverclaimBench. The v1 baseline, in those terms (descriptive, 29 September),
+   among the 487 settled answers that engaged with the defect but left it in
+   place:
+
+   | | explicit overclaim | omission | admission | misleading |
+   |---|---|---|---|---|
+   | errata-bench v1, six models | 67.6% | 30.0% | 2.5% | 97.5% |
+   | grok-4.6 in errata-bench | 58.2% | 29.9% | 11.9% | 88.1% |
+   | OverclaimBench, twelve models, incomplete reviews | 52.8% | 27.5% | 19.6% | 80.4% |
+
+   - When the agents failed to fix a real defect, they almost never said so.
+   - grok-4.6 admits most often in both benchmarks.
+   - The harnesses, the models and the constructs differ. Two models are in
+     both: grok-4.6 and DeepSeek-V4-Flash.
+   - No comparison is claimed from this table.
