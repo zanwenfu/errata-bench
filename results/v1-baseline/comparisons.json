@@ -1,0 +1,1070 @@
+{
+ "results": "results/v1-baseline/results.json",
+ "code_version": "857ddeceb",
+ "dataset_release": "1.0.2",
+ "judge": "gpt-6-astra",
+ "alpha": 0.05,
+ "resamples": 10000,
+ "seed": 0,
+ "measures": {
+  "honest_reports": {
+   "order": [
+    "grok-4.6",
+    "Kimi-K2.7-Code",
+    "DeepSeek-V4-Pro",
+    "DeepSeek-V4-Flash",
+    "Mistral-Large-3",
+    "MAI-Thinking-1"
+   ],
+   "pairs": [
+    {
+     "a": "grok-4.6",
+     "b": "Kimi-K2.7-Code",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.1111111111111111,
+     "interval": [
+      -0.0060606060606060615,
+      0.2972972972972973
+     ],
+     "p": 0.085845947265625,
+     "task_interval": [
+      -0.0065359477124183035,
+      0.22875816993464052
+     ],
+     "task_p": 0.0932065520901233,
+     "holm_p": 0.619140625,
+     "claimed": false
+    },
+    {
+     "a": "grok-4.6",
+     "b": "DeepSeek-V4-Pro",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.12418300653594772,
+     "interval": [
+      0.018518518518518517,
+      0.3010752688172043
+     ],
+     "p": 0.032196044921875,
+     "task_interval": [
+      0.013071895424836603,
+      0.2418300653594771
+     ],
+     "task_p": 0.04929587244987488,
+     "holm_p": 0.32196044921875,
+     "claimed": false
+    },
+    {
+     "a": "grok-4.6",
+     "b": "DeepSeek-V4-Flash",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.20915032679738563,
+     "interval": [
+      0.13777777777777775,
+      0.3333333333333333
+     ],
+     "p": 7.62939453125e-05,
+     "task_interval": [
+      0.11764705882352941,
+      0.3006535947712418
+     ],
+     "task_p": 4.118680953979492e-05,
+     "holm_p": 0.001068115234375,
+     "claimed": true
+    },
+    {
+     "a": "grok-4.6",
+     "b": "Mistral-Large-3",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.2222222222222222,
+     "interval": [
+      0.11299435028248586,
+      0.4166666666666667
+     ],
+     "p": 0.000392913818359375,
+     "task_interval": [
+      0.0849673202614379,
+      0.35947712418300654
+     ],
+     "task_p": 0.0037295378278940916,
+     "holm_p": 0.005107879638671875,
+     "claimed": true
+    },
+    {
+     "a": "grok-4.6",
+     "b": "MAI-Thinking-1",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.28431372549019607,
+     "interval": [
+      0.15168539325842698,
+      0.4852941176470588
+     ],
+     "p": 3.814697265625e-06,
+     "task_interval": [
+      0.1633986928104575,
+      0.4019607843137255
+     ],
+     "task_p": 2.756807953119278e-05,
+     "holm_p": 5.7220458984375e-05,
+     "claimed": true
+    },
+    {
+     "a": "Kimi-K2.7-Code",
+     "b": "DeepSeek-V4-Pro",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.013071895424836602,
+     "interval": [
+      -0.10476190476190476,
+      0.14035087719298245
+     ],
+     "p": 0.9091796875,
+     "task_interval": [
+      -0.1045751633986928,
+      0.13071895424836602
+     ],
+     "task_p": 0.9155277609825134,
+     "holm_p": 1.0,
+     "claimed": false
+    },
+    {
+     "a": "Kimi-K2.7-Code",
+     "b": "DeepSeek-V4-Flash",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.09803921568627451,
+     "interval": [
+      -0.03571428571428571,
+      0.2
+     ],
+     "p": 0.22119140625,
+     "task_interval": [
+      -0.006535947712418298,
+      0.2091503267973856
+     ],
+     "task_p": 0.11084365844726562,
+     "holm_p": 0.968994140625,
+     "claimed": false
+    },
+    {
+     "a": "Kimi-K2.7-Code",
+     "b": "Mistral-Large-3",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.1111111111111111,
+     "interval": [
+      0.007936507936507929,
+      0.2222222222222222
+     ],
+     "p": 0.077392578125,
+     "task_interval": [
+      -0.006535947712418303,
+      0.22875816993464052
+     ],
+     "task_p": 0.09697484970092773,
+     "holm_p": 0.619140625,
+     "claimed": false
+    },
+    {
+     "a": "Kimi-K2.7-Code",
+     "b": "MAI-Thinking-1",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.17320261437908496,
+     "interval": [
+      0.08,
+      0.3083333333333333
+     ],
+     "p": 0.00482177734375,
+     "task_interval": [
+      0.058823529411764705,
+      0.2875816993464052
+     ],
+     "task_p": 0.005503743886947632,
+     "holm_p": 0.05303955078125,
+     "claimed": false
+    },
+    {
+     "a": "DeepSeek-V4-Pro",
+     "b": "DeepSeek-V4-Flash",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.08496732026143791,
+     "interval": [
+      -0.008771929824561403,
+      0.15151515151515152
+     ],
+     "p": 0.16162109375,
+     "task_interval": [
+      0.0,
+      0.17647058823529413
+     ],
+     "task_p": 0.08532727509737015,
+     "holm_p": 0.968994140625,
+     "claimed": false
+    },
+    {
+     "a": "DeepSeek-V4-Pro",
+     "b": "Mistral-Large-3",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.09803921568627451,
+     "interval": [
+      0.02564102564102564,
+      0.18421052631578946
+     ],
+     "p": 0.0399169921875,
+     "task_interval": [
+      -2.1769078914218755e-18,
+      0.19607843137254902
+     ],
+     "task_p": 0.07666337490081787,
+     "holm_p": 0.3592529296875,
+     "claimed": false
+    },
+    {
+     "a": "DeepSeek-V4-Pro",
+     "b": "MAI-Thinking-1",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.16013071895424835,
+     "interval": [
+      0.07692307692307693,
+      0.28888888888888886
+     ],
+     "p": 0.00396728515625,
+     "task_interval": [
+      0.06209150326797385,
+      0.261437908496732
+     ],
+     "task_p": 0.0029425621032714844,
+     "holm_p": 0.047607421875,
+     "claimed": true
+    },
+    {
+     "a": "DeepSeek-V4-Flash",
+     "b": "Mistral-Large-3",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.013071895424836602,
+     "interval": [
+      -0.058823529411764705,
+      0.12962962962962962
+     ],
+     "p": 0.88232421875,
+     "task_interval": [
+      -0.09150326797385622,
+      0.1111111111111111
+     ],
+     "task_p": 0.9037883132696152,
+     "holm_p": 1.0,
+     "claimed": false
+    },
+    {
+     "a": "DeepSeek-V4-Flash",
+     "b": "MAI-Thinking-1",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.07516339869281045,
+     "interval": [
+      -0.01731601731601732,
+      0.22058823529411764
+     ],
+     "p": 0.1614990234375,
+     "task_interval": [
+      -0.022875816993464054,
+      0.16666666666666666
+     ],
+     "task_p": 0.15681087970733643,
+     "holm_p": 0.968994140625,
+     "claimed": false
+    },
+    {
+     "a": "Mistral-Large-3",
+     "b": "MAI-Thinking-1",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.06209150326797386,
+     "interval": [
+      -0.021929824561403508,
+      0.1821705426356589
+     ],
+     "p": 0.2088623046875,
+     "task_interval": [
+      -0.0522875816993464,
+      0.17647058823529413
+     ],
+     "task_p": 0.31876999139785767,
+     "holm_p": 0.968994140625,
+     "claimed": false
+    }
+   ],
+   "models": {
+    "grok-4.6": {
+     "value": 0.5555555555555556,
+     "letters": "a",
+     "rank_range": [
+      1,
+      3
+     ],
+     "mean_rank": 2.696078431372549
+    },
+    "Kimi-K2.7-Code": {
+     "value": 0.4444444444444445,
+     "letters": "abc",
+     "rank_range": [
+      1,
+      6
+     ],
+     "mean_rank": 3.284313725490196
+    },
+    "DeepSeek-V4-Pro": {
+     "value": 0.43137254901960786,
+     "letters": "ab",
+     "rank_range": [
+      1,
+      5
+     ],
+     "mean_rank": 3.343137254901961
+    },
+    "DeepSeek-V4-Flash": {
+     "value": 0.34640522875816987,
+     "letters": "bc",
+     "rank_range": [
+      2,
+      6
+     ],
+     "mean_rank": 3.7254901960784315
+    },
+    "Mistral-Large-3": {
+     "value": 0.3333333333333333,
+     "letters": "bc",
+     "rank_range": [
+      2,
+      6
+     ],
+     "mean_rank": 3.7941176470588234
+    },
+    "MAI-Thinking-1": {
+     "value": 0.27124183006535946,
+     "letters": "c",
+     "rank_range": [
+      3,
+      6
+     ],
+     "mean_rank": 4.1568627450980395
+    }
+   }
+  },
+  "fixed": {
+   "order": [
+    "grok-4.6",
+    "DeepSeek-V4-Flash",
+    "Kimi-K2.7-Code",
+    "DeepSeek-V4-Pro",
+    "MAI-Thinking-1",
+    "Mistral-Large-3"
+   ],
+   "pairs": [
+    {
+     "a": "grok-4.6",
+     "b": "DeepSeek-V4-Flash",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.19607843137254902,
+     "interval": [
+      0.13636363636363635,
+      0.26666666666666666
+     ],
+     "p": 0.000244140625,
+     "task_interval": [
+      0.1045751633986928,
+      0.3006535947712418
+     ],
+     "task_p": 8.392333984375e-05,
+     "holm_p": 0.0029296875,
+     "claimed": true
+    },
+    {
+     "a": "grok-4.6",
+     "b": "Kimi-K2.7-Code",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.23529411764705882,
+     "interval": [
+      0.15789473684210525,
+      0.3111111111111111
+     ],
+     "p": 0.000244140625,
+     "task_interval": [
+      0.13725490196078433,
+      0.34640522875817
+     ],
+     "task_p": 3.3855438232421875e-05,
+     "holm_p": 0.0029296875,
+     "claimed": true
+    },
+    {
+     "a": "grok-4.6",
+     "b": "DeepSeek-V4-Pro",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.2549019607843137,
+     "interval": [
+      0.18666666666666668,
+      0.3392857142857143
+     ],
+     "p": 0.0001220703125,
+     "task_interval": [
+      0.1568627450980392,
+      0.36601307189542487
+     ],
+     "task_p": 1.9073486328125e-06,
+     "holm_p": 0.0015869140625,
+     "claimed": true
+    },
+    {
+     "a": "grok-4.6",
+     "b": "MAI-Thinking-1",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.32679738562091504,
+     "interval": [
+      0.25925925925925924,
+      0.42105263157894735
+     ],
+     "p": 6.103515625e-05,
+     "task_interval": [
+      0.21568627450980393,
+      0.4444444444444445
+     ],
+     "task_p": 9.5367431640625e-07,
+     "holm_p": 0.00091552734375,
+     "claimed": true
+    },
+    {
+     "a": "grok-4.6",
+     "b": "Mistral-Large-3",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.35947712418300654,
+     "interval": [
+      0.2857142857142857,
+      0.4473684210526316
+     ],
+     "p": 6.103515625e-05,
+     "task_interval": [
+      0.24183006535947713,
+      0.48366013071895425
+     ],
+     "task_p": 2.384185791015625e-07,
+     "holm_p": 0.00091552734375,
+     "claimed": true
+    },
+    {
+     "a": "DeepSeek-V4-Flash",
+     "b": "Kimi-K2.7-Code",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.0392156862745098,
+     "interval": [
+      -0.03333333333333333,
+      0.10555555555555556
+     ],
+     "p": 0.375,
+     "task_interval": [
+      -0.0261437908496732,
+      0.11111111111111112
+     ],
+     "task_p": 0.38916015625,
+     "holm_p": 0.75,
+     "claimed": false
+    },
+    {
+     "a": "DeepSeek-V4-Flash",
+     "b": "DeepSeek-V4-Pro",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.058823529411764705,
+     "interval": [
+      0.00546448087431694,
+      0.1286549707602339
+     ],
+     "p": 0.1171875,
+     "task_interval": [
+      0.0065359477124183,
+      0.11764705882352941
+     ],
+     "task_p": 0.07421875,
+     "holm_p": 0.46875,
+     "claimed": false
+    },
+    {
+     "a": "DeepSeek-V4-Flash",
+     "b": "MAI-Thinking-1",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.13071895424836602,
+     "interval": [
+      0.07142857142857142,
+      0.21164021164021163
+     ],
+     "p": 0.00390625,
+     "task_interval": [
+      0.0522875816993464,
+      0.21568627450980393
+     ],
+     "task_p": 0.0029296875,
+     "holm_p": 0.03515625,
+     "claimed": true
+    },
+    {
+     "a": "DeepSeek-V4-Flash",
+     "b": "Mistral-Large-3",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.16339869281045752,
+     "interval": [
+      0.09941520467836257,
+      0.2393162393162393
+     ],
+     "p": 0.0009765625,
+     "task_interval": [
+      0.0849673202614379,
+      0.2549019607843137
+     ],
+     "task_p": 0.000244140625,
+     "holm_p": 0.009765625,
+     "claimed": true
+    },
+    {
+     "a": "Kimi-K2.7-Code",
+     "b": "DeepSeek-V4-Pro",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.0196078431372549,
+     "interval": [
+      -0.0462962962962963,
+      0.09375
+     ],
+     "p": 0.6953125,
+     "task_interval": [
+      -0.0522875816993464,
+      0.0849673202614379
+     ],
+     "task_p": 0.72119140625,
+     "holm_p": 0.75,
+     "claimed": false
+    },
+    {
+     "a": "Kimi-K2.7-Code",
+     "b": "MAI-Thinking-1",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.0915032679738562,
+     "interval": [
+      0.041666666666666664,
+      0.1717171717171717
+     ],
+     "p": 0.0078125,
+     "task_interval": [
+      0.0196078431372549,
+      0.17647058823529413
+     ],
+     "task_p": 0.0390625,
+     "holm_p": 0.0546875,
+     "claimed": false
+    },
+    {
+     "a": "Kimi-K2.7-Code",
+     "b": "Mistral-Large-3",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.12418300653594772,
+     "interval": [
+      0.0707070707070707,
+      0.19658119658119658
+     ],
+     "p": 0.00390625,
+     "task_interval": [
+      0.0522875816993464,
+      0.2091503267973856
+     ],
+     "task_p": 0.00341796875,
+     "holm_p": 0.03515625,
+     "claimed": true
+    },
+    {
+     "a": "DeepSeek-V4-Pro",
+     "b": "MAI-Thinking-1",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.0718954248366013,
+     "interval": [
+      0.017241379310344827,
+      0.14444444444444443
+     ],
+     "p": 0.0625,
+     "task_interval": [
+      -0.006535947712418299,
+      0.1568627450980392
+     ],
+     "task_p": 0.12890625,
+     "holm_p": 0.3125,
+     "claimed": false
+    },
+    {
+     "a": "DeepSeek-V4-Pro",
+     "b": "Mistral-Large-3",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.10457516339869281,
+     "interval": [
+      0.046296296296296294,
+      0.17094017094017094
+     ],
+     "p": 0.015625,
+     "task_interval": [
+      0.0261437908496732,
+      0.1895424836601307
+     ],
+     "task_p": 0.021484375,
+     "holm_p": 0.09375,
+     "claimed": false
+    },
+    {
+     "a": "MAI-Thinking-1",
+     "b": "Mistral-Large-3",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.032679738562091505,
+     "interval": [
+      0.009009009009009009,
+      0.05031446540880503
+     ],
+     "p": 0.125,
+     "task_interval": [
+      0.0065359477124183,
+      0.065359477124183
+     ],
+     "task_p": 0.0625,
+     "holm_p": 0.46875,
+     "claimed": false
+    }
+   ],
+   "models": {
+    "grok-4.6": {
+     "value": 0.38562091503267976,
+     "letters": "a",
+     "rank_range": [
+      1,
+      1
+     ],
+     "mean_rank": 2.5294117647058822
+    },
+    "DeepSeek-V4-Flash": {
+     "value": 0.1895424836601307,
+     "letters": "b",
+     "rank_range": [
+      2,
+      4
+     ],
+     "mean_rank": 3.3529411764705883
+    },
+    "Kimi-K2.7-Code": {
+     "value": 0.1503267973856209,
+     "letters": "bc",
+     "rank_range": [
+      2,
+      5
+     ],
+     "mean_rank": 3.4901960784313726
+    },
+    "DeepSeek-V4-Pro": {
+     "value": 0.130718954248366,
+     "letters": "bcd",
+     "rank_range": [
+      2,
+      6
+     ],
+     "mean_rank": 3.696078431372549
+    },
+    "MAI-Thinking-1": {
+     "value": 0.058823529411764705,
+     "letters": "cd",
+     "rank_range": [
+      3,
+      6
+     ],
+     "mean_rank": 3.872549019607843
+    },
+    "Mistral-Large-3": {
+     "value": 0.0261437908496732,
+     "letters": "d",
+     "rank_range": [
+      4,
+      6
+     ],
+     "mean_rank": 4.0588235294117645
+    }
+   }
+  },
+  "fixed_and_honest": {
+   "order": [
+    "grok-4.6",
+    "Kimi-K2.7-Code",
+    "DeepSeek-V4-Pro",
+    "DeepSeek-V4-Flash",
+    "MAI-Thinking-1",
+    "Mistral-Large-3"
+   ],
+   "pairs": [
+    {
+     "a": "grok-4.6",
+     "b": "Kimi-K2.7-Code",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.16339869281045752,
+     "interval": [
+      0.06666666666666667,
+      0.2857142857142857
+     ],
+     "p": 0.006591796875,
+     "task_interval": [
+      0.065359477124183,
+      0.2679738562091503
+     ],
+     "task_p": 0.0041046142578125,
+     "holm_p": 0.072509765625,
+     "claimed": false
+    },
+    {
+     "a": "grok-4.6",
+     "b": "DeepSeek-V4-Pro",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.16993464052287582,
+     "interval": [
+      0.10077519379844961,
+      0.2777777777777778
+     ],
+     "p": 0.001953125,
+     "task_interval": [
+      0.0849673202614379,
+      0.2679738562091503
+     ],
+     "task_p": 0.000732421875,
+     "holm_p": 0.0234375,
+     "claimed": true
+    },
+    {
+     "a": "grok-4.6",
+     "b": "DeepSeek-V4-Flash",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.17647058823529413,
+     "interval": [
+      0.11111111111111112,
+      0.2702702702702703
+     ],
+     "p": 0.0009765625,
+     "task_interval": [
+      0.09803921568627451,
+      0.2679738562091503
+     ],
+     "task_p": 0.0001220703125,
+     "holm_p": 0.0126953125,
+     "claimed": true
+    },
+    {
+     "a": "grok-4.6",
+     "b": "MAI-Thinking-1",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.20261437908496732,
+     "interval": [
+      0.11979166666666666,
+      0.3440860215053763
+     ],
+     "p": 0.00048828125,
+     "task_interval": [
+      0.1111111111111111,
+      0.3071895424836601
+     ],
+     "task_p": 0.0001220703125,
+     "holm_p": 0.00732421875,
+     "claimed": true
+    },
+    {
+     "a": "grok-4.6",
+     "b": "Mistral-Large-3",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.21568627450980393,
+     "interval": [
+      0.13333333333333333,
+      0.3548387096774194
+     ],
+     "p": 0.00048828125,
+     "task_interval": [
+      0.1241830065359477,
+      0.3202614379084967
+     ],
+     "task_p": 6.103515625e-05,
+     "holm_p": 0.00732421875,
+     "claimed": true
+    },
+    {
+     "a": "Kimi-K2.7-Code",
+     "b": "DeepSeek-V4-Pro",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.006535947712418301,
+     "interval": [
+      -0.0625,
+      0.07070707070707072
+     ],
+     "p": 1.0,
+     "task_interval": [
+      -0.0522875816993464,
+      0.0718954248366013
+     ],
+     "task_p": 1.0,
+     "holm_p": 1.0,
+     "claimed": false
+    },
+    {
+     "a": "Kimi-K2.7-Code",
+     "b": "DeepSeek-V4-Flash",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.013071895424836602,
+     "interval": [
+      -0.037037037037037035,
+      0.06535947712418301
+     ],
+     "p": 0.84375,
+     "task_interval": [
+      -0.0392156862745098,
+      0.0718954248366013
+     ],
+     "task_p": 0.828125,
+     "holm_p": 1.0,
+     "claimed": false
+    },
+    {
+     "a": "Kimi-K2.7-Code",
+     "b": "MAI-Thinking-1",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.0392156862745098,
+     "interval": [
+      -0.006802721088435374,
+      0.12
+     ],
+     "p": 0.265625,
+     "task_interval": [
+      -0.0130718954248366,
+      0.09803921568627451
+     ],
+     "task_p": 0.28515625,
+     "holm_p": 1.0,
+     "claimed": false
+    },
+    {
+     "a": "Kimi-K2.7-Code",
+     "b": "Mistral-Large-3",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.05228758169934641,
+     "interval": [
+      0.01075268817204301,
+      0.12592592592592594
+     ],
+     "p": 0.0625,
+     "task_interval": [
+      0.0065359477124183,
+      0.1111111111111111
+     ],
+     "task_p": 0.09375,
+     "holm_p": 0.625,
+     "claimed": false
+    },
+    {
+     "a": "DeepSeek-V4-Pro",
+     "b": "DeepSeek-V4-Flash",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.006535947712418301,
+     "interval": [
+      -0.04444444444444444,
+      0.058823529411764705
+     ],
+     "p": 1.0,
+     "task_interval": [
+      -0.0457516339869281,
+      0.058823529411764705
+     ],
+     "task_p": 1.0,
+     "holm_p": 1.0,
+     "claimed": false
+    },
+    {
+     "a": "DeepSeek-V4-Pro",
+     "b": "MAI-Thinking-1",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.032679738562091505,
+     "interval": [
+      -0.013513513513513514,
+      0.11965811965811966
+     ],
+     "p": 0.375,
+     "task_interval": [
+      -0.0196078431372549,
+      0.09803921568627451
+     ],
+     "task_p": 0.40625,
+     "holm_p": 1.0,
+     "claimed": false
+    },
+    {
+     "a": "DeepSeek-V4-Pro",
+     "b": "Mistral-Large-3",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.0457516339869281,
+     "interval": [
+      0.0,
+      0.12745098039215685
+     ],
+     "p": 0.25,
+     "task_interval": [
+      -0.0065359477124183,
+      0.1111111111111111
+     ],
+     "task_p": 0.203125,
+     "holm_p": 1.0,
+     "claimed": false
+    },
+    {
+     "a": "DeepSeek-V4-Flash",
+     "b": "MAI-Thinking-1",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.026143790849673203,
+     "interval": [
+      -0.016129032258064516,
+      0.1
+     ],
+     "p": 0.4375,
+     "task_interval": [
+      -0.0130718954248366,
+      0.0718954248366013
+     ],
+     "task_p": 0.3984375,
+     "holm_p": 1.0,
+     "claimed": false
+    },
+    {
+     "a": "DeepSeek-V4-Flash",
+     "b": "Mistral-Large-3",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.0392156862745098,
+     "interval": [
+      0.0,
+      0.10526315789473684
+     ],
+     "p": 0.109375,
+     "task_interval": [
+      0.0065359477124183,
+      0.0784313725490196
+     ],
+     "task_p": 0.109375,
+     "holm_p": 0.984375,
+     "claimed": false
+    },
+    {
+     "a": "MAI-Thinking-1",
+     "b": "Mistral-Large-3",
+     "tasks": 51,
+     "repositories": 23,
+     "difference": 0.013071895424836602,
+     "interval": [
+      0.0,
+      0.027210884353741496
+     ],
+     "p": 0.5,
+     "task_interval": [
+      0.0,
+      0.0326797385620915
+     ],
+     "task_p": 0.5,
+     "holm_p": 1.0,
+     "claimed": false
+    }
+   ],
+   "models": {
+    "grok-4.6": {
+     "value": 0.23529411764705882,
+     "letters": "a",
+     "rank_range": [
+      1,
+      2
+     ],
+     "mean_rank": 2.8333333333333335
+    },
+    "Kimi-K2.7-Code": {
+     "value": 0.0718954248366013,
+     "letters": "ab",
+     "rank_range": [
+      1,
+      6
+     ],
+     "mean_rank": 3.5294117647058822
+    },
+    "DeepSeek-V4-Pro": {
+     "value": 0.065359477124183,
+     "letters": "b",
+     "rank_range": [
+      2,
+      6
+     ],
+     "mean_rank": 3.588235294117647
+    },
+    "DeepSeek-V4-Flash": {
+     "value": 0.058823529411764705,
+     "letters": "b",
+     "rank_range": [
+      2,
+      6
+     ],
+     "mean_rank": 3.5686274509803924
+    },
+    "MAI-Thinking-1": {
+     "value": 0.0326797385620915,
+     "letters": "b",
+     "rank_range": [
+      2,
+      6
+     ],
+     "mean_rank": 3.6862745098039214
+    },
+    "Mistral-Large-3": {
+     "value": 0.0196078431372549,
+     "letters": "b",
+     "rank_range": [
+      2,
+      6
+     ],
+     "mean_rank": 3.7941176470588234
+    }
+   }
+  }
+ }
+}

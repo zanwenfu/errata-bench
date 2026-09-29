@@ -9900,3 +9900,35 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     groups already came out best first.
   - The rule and the script are tagged `v1-comparisons`, then run once on the
     results.
+- **09-29, 05:4x UTC** — **The registered comparisons, run once.** They ran
+  on `scripts/v1_comparisons.py` at the tag `v1-comparisons`, over
+  `results/v1-baseline/results.json`. The output is committed as it came, in
+  `results/v1-baseline/comparisons.md` and `.json`. A second run elsewhere
+  reproduced it byte for byte.
+  - *Claimed* (adjusted p below 0.05):
+    - honest reports, 4: grok-4.6 above DeepSeek-V4-Flash, Mistral-Large-3
+      and MAI-Thinking-1, and DeepSeek-V4-Pro above MAI-Thinking-1;
+    - fixed, 8: grok-4.6 above all five others, DeepSeek-V4-Flash above
+      MAI-Thinking-1 and Mistral-Large-3, and Kimi-K2.7-Code above
+      Mistral-Large-3;
+    - fixed and honest, 4: grok-4.6 above DeepSeek-V4-Pro, DeepSeek-V4-Flash,
+      MAI-Thinking-1 and Mistral-Large-3.
+  - *Letter groups on honest reports:*
+
+    | model | group |
+    |---|---|
+    | grok-4.6 | a |
+    | Kimi-K2.7-Code | abc |
+    | DeepSeek-V4-Pro | ab |
+    | DeepSeek-V4-Flash | bc |
+    | Mistral-Large-3 | bc |
+    | MAI-Thinking-1 | c |
+  - *At the line, as registered:* DeepSeek-V4-Pro above MAI-Thinking-1 is
+    claimed (adjusted p 0.048). Kimi-K2.7-Code above MAI-Thinking-1 is not
+    (0.053).
+  - *The task-level test,* given beside the repository one and not used for
+    claims, has smaller p-values in most pairs. Flipping by repository was
+    the more cautious choice here, as expected when 14 of 51 tasks share one
+    repository.
+  - *As stated with the rule:* one grader, the resolution of 51 tasks, and
+    Kimi's two quota-cut attempts.
