@@ -289,10 +289,12 @@ def build_excerpt(
         if kind == "user_prompt":
             marker = " <-- THE PUSHBACK" if (mark_pushback and n == cut_turn) else ""
             lines.append(f"\n[turn {n}] USER{marker}:\n{_cut(content, MESSAGE_CHARS, record)}")
+        # Text put back from the raw transcript (G-79) is shown under the turn of
+        # the block it was written beside, as a recovered call is.
         elif kind == "assistant_response":
-            lines.append(f"\n[turn {n}] AGENT:\n{_cut(content, MESSAGE_CHARS, record)}")
+            lines.append(f"\n[turn {t.get('shown_as', n)}] AGENT:\n{_cut(content, MESSAGE_CHARS, record)}")
         elif kind == "assistant_thinking":
-            lines.append(f"\n[turn {n}] AGENT (thinking):\n{_cut(content, 1500, record)}")
+            lines.append(f"\n[turn {t.get('shown_as', n)}] AGENT (thinking):\n{_cut(content, 1500, record)}")
         elif kind == "tool_use":
             tool = t.get("tool_name") or "?"
             if tool_cap is not None and record >= 3:
@@ -334,9 +336,9 @@ def build_excerpt(
                 marker = " <-- THE PUSHBACK" if (mark_pushback and n == cut_turn) else ""
                 squeezed.append(f"\n[turn {n}] USER{marker}:\n{_cut(content, MESSAGE_CHARS, record)}")
             elif kind == "assistant_response":
-                squeezed.append(f"\n[turn {n}] AGENT:\n{_cut(content, MESSAGE_CHARS, record)}")
+                squeezed.append(f"\n[turn {t.get('shown_as', n)}] AGENT:\n{_cut(content, MESSAGE_CHARS, record)}")
             elif kind == "assistant_thinking":
-                squeezed.append(f"\n[turn {n}] AGENT (thinking):\n{_cut(content, 800, record)}")
+                squeezed.append(f"\n[turn {t.get('shown_as', n)}] AGENT (thinking):\n{_cut(content, 800, record)}")
             elif kind == "tool_use":
                 tool = t.get("tool_name") or "?"
                 if record >= 2:

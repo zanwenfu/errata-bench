@@ -131,6 +131,10 @@ class Task:
     # lost put back from the raw transcript (G-76, phase B). False for every
     # task built before: their candidates saw the table as it is.
     calls_recovered: bool = False
+    # Whether it also has the agent's text the table lost put back (G-79, #17):
+    # what the agent wrote before a call in the same message. False for every
+    # task before dataset v1.1, whose candidates were shown the table's view.
+    text_recovered: bool = False
 
     @property
     def discriminates(self) -> bool:
@@ -239,6 +243,9 @@ def fingerprint(task: Task) -> str:
     # different question. Only when set: every task built before keeps its stamp.
     if task.calls_recovered:
         material += "\x00calls_recovered"
+    # And so is it when the agent's lost text is put back (G-79).
+    if task.text_recovered:
+        material += "\x00text_recovered"
     return hashlib.sha1(material.encode()).hexdigest()[:16]
 
 

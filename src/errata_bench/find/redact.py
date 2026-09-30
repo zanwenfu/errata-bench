@@ -313,5 +313,8 @@ def apply(
         out.append(t)
     # And a recovered call goes with its result: a call whose result was
     # removed would show work whose outcome the conversation no longer holds.
+    # Calls only: recovered text (G-79) has no result, and asked for one it
+    # would all be dropped.
     kept = {t.get("tool_call_id") for t in out if t.get("turn_type") == "tool_result"}
-    return [t for t in out if not (t.get("recovered") and t.get("tool_call_id") not in kept)]
+    return [t for t in out if not (t.get("recovered") and t.get("turn_type") == "tool_use"
+                                   and t.get("tool_call_id") not in kept)]

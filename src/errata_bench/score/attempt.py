@@ -594,20 +594,26 @@ async def _final_report(model: str, prompt: str, calls: list,
     return text, bool(text.strip()), "" if text.strip() else "the final report was empty", usage
 
 
-def with_lost_calls(task: Task, turns: list[dict]) -> list[dict]:
-    """``turns`` with the calls SWE-chat's table lost put back, for a task built with them (G-76).
+def with_lost_blocks(task: Task, turns: list[dict]) -> list[dict]:
+    """``turns`` with what SWE-chat's table lost put back, as far as the task was built with it.
 
-    One rule for the conversation the candidate reads and the edits replayed
-    into its tree. The build replayed the recovered edits, so an attempt that
-    replayed the table's alone started from a tree the conversation
-    contradicts: dipasqualew-vibereq-200's Edit of a file a lost Write had
-    created did not apply at all (B-258). A task built before shows the table
-    as its candidates saw it.
+    The calls (G-76, ``calls_recovered``): one rule for the conversation the
+    candidate reads and the edits replayed into its tree. The build replayed the
+    recovered edits, so an attempt that replayed the table's alone started from
+    a tree the conversation contradicts: dipasqualew-vibereq-200's Edit of a
+    file a lost Write had created did not apply at all (B-258).
+
+    The agent's text before its calls (G-79, ``text_recovered``), placed by the
+    calls, so after them. Text changes no edit.
+
+    A task built before either shows the table as its candidates saw it.
     """
-    if getattr(task, "calls_recovered", False):
-        from ..corpus.recover import recover
+    from ..corpus.recover import recover, restore_text
 
-        return recover(task.session_id, turns)
+    if getattr(task, "calls_recovered", False):
+        turns = recover(task.session_id, turns)
+    if getattr(task, "text_recovered", False):
+        turns = restore_text(task.session_id, turns)
     return turns
 
 
@@ -618,10 +624,11 @@ def candidate_turns(task: Task, turns: list[dict]) -> list[dict]:
     candidate must face the same question the agent faced, not a transcript
     telling it to be careful.
 
-    A task built with the lost calls put back (``calls_recovered``, G-76) shows
-    them; one built before shows the table as its candidates saw it.
+    A task built with the lost calls or text put back (``calls_recovered``,
+    G-76; ``text_recovered``, G-79) shows them; one built before shows the
+    table as its candidates saw it.
     """
-    turns = with_lost_calls(task, turns)
+    turns = with_lost_blocks(task, turns)
     if RECORD >= 3:
         # Whole (record 3): the results the corpus table cut, given back from the transcript.
         from ..corpus.recover import whole_results
@@ -648,10 +655,17 @@ def transcript_for(task: Task, turns: list[dict]) -> str:
 
 
 def resolution_turns(task: Task, turns: list[dict]) -> list[dict]:
-    """The turns the accepted answer was written after: its lost calls put back, and whole under record 3."""
-    from ..corpus.recover import recover, whole_results
+    """The turns the accepted answer was written after: its lost calls put back, and whole under record 3.
+
+    Its lost text too, for a task built with it (``text_recovered``, G-79):
+    only then, so the accepted-answer control of every task built before reads
+    the record it always has.
+    """
+    from ..corpus.recover import recover, restore_text, whole_results
 
     full = recover(task.session_id, turns)
+    if getattr(task, "text_recovered", False):
+        full = restore_text(task.session_id, full)
     return whole_results(task.session_id, full) if RECORD >= 3 else full
 
 
@@ -1443,7 +1457,7 @@ async def run(
     # Edits are taken from the raw transcript, before redaction: redaction
     # changes what the candidate reads, not what the agent actually did. With
     # the lost calls put back, as the build replayed them (B-258).
-    edits = edits_before(with_lost_calls(task, turns), task.cut_turn)
+    edits = edits_before(with_lost_blocks(task, turns), task.cut_turn)
     transcript = transcript_for(task, turns)
 
     base = scratch or Path(tempfile.gettempdir()) / "errata-bench-attempts"

@@ -4419,6 +4419,14 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   inlined in the kit). Guard section 60 drives all four scripts' `main`.
   Reverting the shared check alone turns it red on three of them; reverting
   the kit's copy alone, on the fourth.
+- **G-81 · The screening gates never read what v1's candidates are shown.**
+  *(opened 09-30, found by the Entire session; #17.)* `stages/screening.py`
+  builds the scope and leak gates' view, and the repair's re-check, with
+  `build_excerpt`'s defaults: record 1, 60,000 characters, each message cut
+  at 4,000. Candidates and graders read record 3, whole. So on long tasks part
+  of what a candidate sees was never screened for leaks: 25 of the 55
+  conversations run past 75,000 characters. The re-run #17 plans reads each
+  rebuilt conversation whole, as its candidates see it.
 - **G-80 · A copy of a repository takes over its sessions in the Entire
   corpus.** *(opened 09-30; #16.)* A repository copied from entireio/cli
   under another account, not a GitHub fork and created 6 September, kept
@@ -10391,3 +10399,49 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     dataset version); re-run the leak gate and the judge's admission; a
     pilot to measure how far scores move, then decide whether the v1
     baseline is re-run. The paid steps wait for a cost estimate and an OK.
+- **09-30, 06:5x UTC** — **G-79's preflight: every kind of block counted, and the
+  agent's text put back (#17).**
+  - *The inventory* (`scripts/table_block_inventory.py`), every kind of content
+    a Claude Code transcript holds for the main agent, against the stored rows:
+    a sample of 300 sessions against the table, and the 55 tasks from each
+    session's start to its cut against `shown_turns.json`.
+    - Calls and results: all shown in the tasks (1,506 calls, 404 of them put
+      back by G-76's recovery; 1,505 results).
+    - The agent's text before a call in the same message: 582 of 589 absent in
+      the tasks (7 are empty), 10,489 of 10,693 in the sample. A message's
+      closing text is kept: 52 of 52, and 2,735 of 2,736.
+    - Thinking: 373 of 409 absent in the tasks (35 empty), 231,873 characters
+      in 44 tasks. Not put back: whether a candidate should read another
+      model's thinking is open, for the user.
+    - The developer's own text: nothing lost. In the sample, 717 of 720
+      "absent" user texts were tool output, command notices and IDE context,
+      kept as `system_injected` or `queue_operation` rows. In the tasks, the 7
+      absent are 5 redacted turns, 1 rewritten turn and one "Tool loaded."
+      marker.
+    - Every one of the 55 tasks' transcripts is Claude Code's.
+  - *The fix.* `corpus.recover.restore_text` puts each lost text back between
+    its message's neighbours, placed by the blocks of it the rows hold (calls
+    by id, including G-76's; a closing text matched in order), with a
+    fractional turn number, shown under the turn of the block it was written
+    beside. A message's closing block is never put back; a sub-agent's text,
+    thinking (unless asked) and an entry written twice add nothing.
+    - `Task.text_recovered`, stamped into the fingerprint, gates it:
+      `with_lost_blocks` (was `with_lost_calls`) and `resolution_turns` put
+      the text back only for a task built with it, so every task before v1.1
+      renders as its candidates saw it.
+    - `find.redact.apply` kept a recovered row only when its result was
+      kept, a rule for calls; asked of text, which has no result, it would
+      have dropped all of it. It now asks it of calls only.
+  - *Checks.* `checks/guards_hold.py` §154, nine checks on one fixture. Each
+    of 12 rules reverted alone fails the suite, with a fresh bytecode cache
+    per run; the first run found one fixture that did not exercise its rule
+    (a duplicate entry placed where the closing-block rule already skipped
+    it), fixed before this entry. The five CI suites pass.
+  - *Also found, to fix in the same pass:* G-81 (above), and `llm.resilient`
+    still reading "429" anywhere in an error as a throttle, the substring
+    `attempt._transient` stopped matching on 09-28 (found by the Entire
+    session).
+  - *Next:* re-render the 55 frozen tasks with the text put back (a new
+    dataset version; the working copies are unchanged), then the paid steps,
+    each priced first: the leak gate over each conversation whole (G-81) and
+    the judge's admission, then a pilot.

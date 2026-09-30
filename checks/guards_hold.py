@@ -11347,6 +11347,111 @@ check(_refused_last.startswith(NO_NETWORK),
       f"and the suite reaches no network: a connection off the machine is refused before it is made: {_refused_last}")
 check(not _tried_last, f"and no section asked for one (B-264): {sorted(set(_tried_last))}")
 
+print("\n154. the agent's text the table lost is put back in its message's place (G-79, #17)")
+# The table keeps the last block of each assistant message, so what the agent
+# wrote before a call is gone: 582 of 641 agent texts up to the cut in v1's 55
+# tasks. `restore_text` puts each back between its message's neighbours.
+_dir154 = Path(tempfile.mkdtemp())
+_msg154 = lambda msg, *blocks, side=False: json.dumps(
+    {"type": "assistant", "isSidechain": side, "message": {"id": msg, "content": list(blocks)}})
+_say154 = lambda text: {"type": "text", "text": text}
+_call154 = lambda cid, name, given: {"type": "tool_use", "id": cid, "name": name, "input": given}
+(_dir154 / "s154.jsonl").write_text("\n".join([
+    json.dumps({"type": "user", "message": {"content": "deploy it"}}),
+    _msg154("m1", _say154("Let me check the config first.")),
+    _msg154("m1", _say154("Let me check the config first.")),  # the same entry written twice
+    _msg154("m1", _call154("c1", "Read", {"file_path": "/r/config.ts"})),
+    _msg154("ms", _say154("subagent narration"), _call154("sub1", "Edit", {"file_path": "/r/s.ts"}), side=True),
+    _msg154("m2", {"type": "thinking", "thinking": "private reasoning about the fix"}),
+    _msg154("m2", _say154("Now I'll fix both files.")),
+    _msg154("m2", _call154("e1", "Edit", {"file_path": "/r/a.ts"})),
+    _msg154("m2", _call154("e2", "Edit", {"file_path": "/r/b.ts"})),
+    _msg154("m3", _say154("Both files are fixed.")),
+    _msg154("m5", _say154("orphan text"), _call154("gone", "Bash", {"command": "rm -rf build"})),
+    _msg154("m6", _say154("A first thought."), _say154("B second thought.")),
+    _msg154("mA", _call154("x1", "Bash", {"command": "make"}), _say154("trailing note after make"),
+            _call154("y1", "Bash", {"command": "make test"})),
+    _msg154("mB", _say154("before ls"), _call154("z1", "Bash", {"command": "ls"})),
+    _msg154("mC", _call154("a1", "Bash", {"command": "echo a"}), _say154("between the two calls"),
+            _call154("b1", "Bash", {"command": "echo b"})),
+    _msg154("m7", _call154("q1", "Read", {"file_path": "/r/q.ts"}), _say154("wrapped up")),
+    _msg154("m8", _say154("Checking again."), _say154("Both files are fixed.")),
+]) + "\n")
+_table154 = [
+    _T63(1, "user_prompt", content="deploy it"),
+    _T63(2, "tool_use", tool_name="Read", file_path="/r/config.ts", content="{}", tool_call_id="c1"),
+    _T63(3, "tool_result", content="config contents", tool_call_id="c1"),
+    _T63(4, "tool_use", tool_name="Edit", file_path="/r/b.ts", content="{}", tool_call_id="e2"),
+    _T63(5, "tool_result", content="a.ts updated", tool_call_id="e1"),
+    _T63(6, "tool_result", content="b.ts updated", tool_call_id="e2"),
+    _T63(7, "assistant_response", content="Both files are fixed."),
+    _T63(8, "assistant_response", content="B second thought."),
+    _T63(9, "tool_use", tool_name="Edit", file_path="/r/s.ts", content="{}", tool_call_id="sub1"),
+    _T63(11, "tool_use", tool_name="Bash", command="make", content="{}", tool_call_id="x1"),
+    _T63(12, "tool_use", tool_name="Bash", command="ls", content="{}", tool_call_id="z1"),
+    _T63(20, "tool_result", content="a done", tool_call_id="a1"),
+    _T63(21, "tool_use", tool_name="Bash", command="echo b", content="{}", tool_call_id="b1"),
+    _T63(22, "tool_result", content="b done", tool_call_id="b1"),
+    _T63(30, "tool_result", content="q contents", tool_call_id="q1"),
+    _T63(40, "assistant_response", content="Both files are fixed."),
+]
+_t154 = Task("t154", "r/r", "u", "sha", "s154", 40, 41, 42, 43, "wrong " * 10, "right " * 10, "a defect", "none")
+recover_mod.transcript_path = lambda sid: _dir154 / f"{sid}.jsonl"
+try:
+    _calls154 = recover_mod.recover("s154", _table154)
+    _back154 = recover_mod.restore_text("s154", _calls154)
+    _think154 = recover_mod.restore_text("s154", _calls154, thinking=True)
+    _none154 = recover_mod.restore_text("no-transcript", _calls154)
+    _flag154 = _dc78.replace(_t154, calls_recovered=True, text_recovered=True)
+    _only_calls154 = attempt_mod.candidate_turns(_dc78.replace(_t154, calls_recovered=True), _table154)
+    _shown154 = attempt_mod.candidate_turns(_flag154, _table154)
+    _res_off154 = attempt_mod.resolution_turns(_dc78.replace(_t154, calls_recovered=True), _table154)
+    _res_on154 = attempt_mod.resolution_turns(_flag154, _table154)
+finally:
+    recover_mod.transcript_path = _NO_TRANSCRIPTS
+_said154 = lambda ts: [(round(t["turn_number"], 3), t["shown_as"], t["content"]) for t in ts
+                       if t.get("recovered") and t.get("turn_type") == "assistant_response"]
+check(_said154(_back154) == [(1.5, 2, "Let me check the config first."), (3.25, 4, "Now I'll fix both files."),
+                             (7.5, 8, "A first thought."), (11.333, 11, "trailing note after make"),
+                             (11.667, 12, "before ls"), (19.75, 21, "between the two calls"),
+                             (35.0, 40, "Checking again.")],
+      f"each lost text is put back just before the next block of its message and shown under that block's turn: "
+      f"{_said154(_back154)}")
+check([t["turn_number"] for t in _back154 if not t.get("recovered")] == [t["turn_number"] for t in _table154]
+      and [t["turn_number"] for t in _back154] == sorted(t["turn_number"] for t in _back154)
+      and len({t["turn_number"] for t in _back154}) == len(_back154),
+      "no stored turn moves, and every row keeps a turn number of its own")
+check(not any(t.get("content") in ("subagent narration", "orphan text", "wrapped up",
+                                  "private reasoning about the fix") for t in _back154 if t.get("recovered"))
+      and [t.get("content") for t in _back154].count("Let me check the config first.") == 1
+      and [t.get("content") for t in _back154].count("Both files are fixed.") == 2
+      and not any(t.get("turn_type") == "assistant_thinking" for t in _back154),
+      "a sub-agent's text, a message the table holds nothing of, a message's closing block, thinking unless "
+      "asked, and an entry written twice add nothing")
+check([(round(t["turn_number"], 3), t["shown_as"]) for t in _think154 if t.get("turn_type") == "assistant_thinking"]
+      == [(3.167, 4)]
+      and _said154(_think154)[1] == (3.333, 4, "Now I'll fix both files.") and _none154 is _calls154,
+      "asked, thinking goes back before the text it preceded; a session with no transcript is unchanged")
+check(max(t["turn_number"] for t in _back154 if t.get("content") == "between the two calls") < 20,
+      "text written between two calls of one message comes before either call's result")
+_x154 = _bx70(_back154, 40, record=3, max_chars=10**9)
+check("[turn 2] AGENT:\nLet me check the config first.\n[turn 2] AGENT calls Read" in _x154
+      and "[turn 4] AGENT:\nNow I'll fix both files.\n[turn 4] AGENT calls Edit" in _x154
+      and not re.search(r"\[turn \d+\.\d+\]", _x154),
+      "put-back text is shown under the turn of the block it was written beside, never a fractional one")
+check(len(_said154(_apply77(_back154, [9]))) == 7
+      and [c for _, _, c in _said154(_apply77(_back154, [4]))] == [
+          "Let me check the config first.", "A first thought.", "trailing note after make", "before ls",
+          "between the two calls", "Checking again."],
+      "redaction keeps put-back text unless its own turn is removed, and then takes it with that turn")
+check(not _said154(_only_calls154) and len(_said154(_shown154)) == 7
+      and not _said154(_res_off154) and len(_said154(_res_on154)) == 7,
+      "a task shows and grades the put-back text only when built with it (`text_recovered`)")
+check(fingerprint(_dc78.replace(_t78, calls_recovered=True, text_recovered=True))
+      != fingerprint(_dc78.replace(_t78, calls_recovered=True))
+      and fingerprint(_t78) == "d1c8f4a8161d2a2f",
+      "a task built with the text put back is a different question; one built before keeps its stamp")
+
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:
     print("  -", f)

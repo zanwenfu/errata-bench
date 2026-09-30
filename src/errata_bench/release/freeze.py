@@ -231,10 +231,10 @@ def freeze(task: Task, turns: list[dict], out: Path, *, branch: str | None, hist
     ``turns`` are the task's session turns as `turns_of` gives them; ``language``
     is the repository's, as the corpus records it, which decides its container.
     """
-    from ..score.attempt import transcript_for, with_lost_calls
+    from ..score.attempt import transcript_for, with_lost_blocks
 
     result = Frozen(task.task_id, branch=branch or DEFAULT_BRANCH)
-    full = with_lost_calls(task, turns)
+    full = with_lost_blocks(task, turns)
     edits = edits_before(full, task.cut_turn)
     work = Path(tempfile.mkdtemp(prefix=f"freeze-{task.task_id[:20]}-", dir=scratch))
     try:

@@ -232,6 +232,146 @@ def recover(session_id: str, turns: list[dict]) -> list[dict]:
     return sorted(turns + added, key=lambda t: t["turn_number"] if t.get("turn_number") is not None else 0)
 
 
+def _flat(text) -> str:
+    """Text with its whitespace collapsed, as rows and transcript blocks are compared."""
+    return " ".join(str(text or "").split())
+
+
+def raw_messages(path: Path) -> list[dict]:
+    """The main agent's messages in order, each with its id and its content blocks, each block once.
+
+    Claude Code writes each block of a message as its own entry under the
+    message's id, and an entry written twice adds nothing. Sub-agents' messages
+    are left out, as `raw_calls` leaves out their calls.
+    """
+    order: list[str] = []
+    blocks: dict[str, list[dict]] = {}
+    seen: dict[str, set] = {}
+    with path.open(errors="replace") as fh:
+        for n, line in enumerate(fh):
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(entry, dict):
+                continue
+            message = entry.get("message")
+            if (entry.get("type") != "assistant" or entry.get("isSidechain")
+                    or not isinstance(message, dict) or not isinstance(message.get("content"), list)):
+                continue
+            key = message.get("id") or f"line-{n}"
+            if key not in blocks:
+                order.append(key)
+                blocks[key], seen[key] = [], set()
+            for block in message["content"]:
+                if not isinstance(block, dict):
+                    continue
+                ident = (block.get("type"), block.get("id") or _flat(block.get("text") or block.get("thinking")))
+                if ident not in seen[key]:
+                    seen[key].add(ident)
+                    blocks[key].append(block)
+    return [{"id": key, "blocks": blocks[key]} for key in order]
+
+
+# The kinds of block the table's one-block-per-message rule loses that
+# `restore_text` puts back, and the row each becomes. Thinking is put back only
+# when asked: whether a candidate should read another model's thinking is #17's
+# open question.
+RESTORED_AS = {"text": ("assistant_response", True), "thinking": ("assistant_thinking", False)}
+
+
+def restore_text(session_id: str, turns: list[dict], *, thinking: bool = False) -> list[dict]:
+    """``turns`` with the agent's text the table lost put back, each in its message's place (G-79).
+
+    The table keeps the last block of each assistant message, so what the agent
+    wrote before a call in the same message is gone: 582 of the 641 agent texts
+    up to the cut in v1's 55 tasks. `recover` put the calls back; this puts the
+    text back the same way. A message is placed by the blocks of it the turns
+    hold -- its calls by id, including those `recover` put back, and its
+    closing text matched in order -- and each lost text goes between its
+    neighbours in the message, with a fractional turn number, so no stored turn
+    moves. It is shown under the turn of the block that follows it
+    (`shown_as`), as a recovered call is, and says it was put back
+    (`recovered`). A message the turns hold nothing of is left out: there is
+    nothing to place it by. A message's closing block is never put back: the
+    table keeps it (2,735 of 2,736 closing texts in a sample of 300 sessions),
+    and one it did keep but was not matched would be shown twice. Returned
+    unchanged when the session has no transcript in Claude Code's format.
+
+    ``thinking`` also puts back the thinking the rule lost, as thinking rows.
+    """
+    if not has_transcript(session_id):
+        return turns
+    kinds = {"text", "thinking"} if thinking else {"text"}
+    rows = sorted((t for t in turns if t.get("turn_number") is not None), key=lambda t: t["turn_number"])
+    numbers = [t["turn_number"] for t in rows]
+    call_row = {t["tool_call_id"]: i for i, t in enumerate(rows)
+                if t.get("turn_type") == "tool_use" and t.get("tool_call_id")}
+    said = [(i, _flat(t.get("content"))) for i, t in enumerate(rows) if t.get("turn_type") == "assistant_response"]
+    # Each interval between two rows, and what goes into it in the order the
+    # agent wrote it. Keyed by the interval alone: the end of one message and
+    # the start of the next can fall between the same two rows.
+    gaps: dict[tuple, list[tuple[dict, object]]] = {}
+    last = -1
+    for message in raw_messages(transcript_path(session_id)):
+        blocks = message["blocks"]
+        # Where each block of the message is among the rows, when the rows hold it.
+        at: list[int | None] = []
+        for j, b in enumerate(blocks):
+            if b.get("type") == "tool_use":
+                at.append(call_row.get(b.get("id")))
+            elif b.get("type") == "text" and j == len(blocks) - 1 and _flat(b.get("text")):
+                at.append(next((i for i, s in said if i > last and s == _flat(b.get("text"))), None))
+            else:
+                at.append(None)
+        placed = [j for j, i in enumerate(at) if i is not None]
+        if not placed:
+            continue
+        last = max(last, max(at[j] for j in placed))
+        for j, b in enumerate(blocks):
+            body = _flat(b.get("text") if b.get("type") == "text" else b.get("thinking"))
+            if at[j] is not None or j == len(blocks) - 1 or b.get("type") not in kinds or not body:
+                continue
+            before = [p for p in placed if p < j]
+            after = [p for p in placed if p > j]
+            # Between the block before it and the next row of all, so no row,
+            # a result included, ever falls inside the interval it is given.
+            if before:
+                low = numbers[at[before[-1]]]
+                nxt = at[before[-1]] + 1
+                high = numbers[nxt] if nxt < len(rows) else low + 1
+            else:
+                first = at[after[0]]
+                low = numbers[first - 1] if first > 0 else numbers[first] - 1
+                high = numbers[first]
+            label_row = rows[at[after[0]]] if after else rows[at[before[-1]]]
+            gaps.setdefault((low, high), []).append((b, label_row.get("shown_as", label_row["turn_number"])))
+    added = []
+    for (low, high), members in gaps.items():
+        if not low < high:
+            continue
+        for r, (b, label) in enumerate(members, 1):
+            turn_type, conversational = RESTORED_AS[b.get("type")]
+            added.append({
+                "session_id": session_id,
+                "turn_number": low + (high - low) * r / (len(members) + 1),
+                "role": "assistant",
+                "turn_type": turn_type,
+                "content": str((b.get("text") if b.get("type") == "text" else b.get("thinking")) or "").strip(),
+                "tool_name": None,
+                "command": None,
+                "file_path": None,
+                "prompt_pushback": None,
+                "is_conversational": conversational,
+                "tool_call_id": None,
+                "recovered": True,
+                "shown_as": label,
+            })
+    if not added:
+        return turns
+    return sorted(turns + added, key=lambda t: t["turn_number"] if t.get("turn_number") is not None else 0)
+
+
 # What a sub-agent writes. Its calls are recorded only as `progress` entries of
 # the main agent's call that spawned it (data.type "agent_progress", the call's
 # id in `parentToolUseID`); the conversations table has no rows for them and
