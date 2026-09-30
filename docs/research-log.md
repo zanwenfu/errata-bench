@@ -4419,6 +4419,29 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   inlined in the kit). Guard section 60 drives all four scripts' `main`.
   Reverting the shared check alone turns it red on three of them; reverting
   the kit's copy alone, on the fourth.
+- **G-80 · A copy of a repository takes over its sessions in the Entire
+  corpus.** *(opened 09-30; #16.)* A repository copied from entireio/cli
+  under another account, not a GitHub fork and created 6 September, kept
+  entireio/cli's `.entire/settings.json`, which names Entire's checkpoint
+  repository. The collector reads a repository's own checkpoints and those of
+  the checkpoint remote its settings name, so it collected entireio/cli's
+  sessions a second time under the copy.
+  - *In the corpus.* Each session is written once, but the tie-break (the
+    first repository in name order keeps a session unless only a later one
+    holds its trailer) left 1,512 of the 2,359 shared Claude Code sessions
+    with the copy, 846 with entireio/cli and 1 with entireio/entire-graph.
+    The copy is the corpus's largest "repository". entire.io credits it with
+    2 sessions of its own.
+  - *What it touches.* The repository and licence a task from those sessions
+    would name, and per-repository counts and caps. Session counts are right.
+    The 09-30 entry's "12,494 sessions" counts 3,052 second copies: 9,442
+    distinct.
+  - *Fix (proposed).* Credit a session held by several repositories to the
+    owner discovery already names for its commits (the earliest-created
+    non-fork); a check with a copied-settings fixture, shown failing when the
+    fix is reverted; re-assemble the corpus.
+  - *How it was found.* Comparing the crawl with entire.io's own session
+    lists (09-30, 04:4x).
 - **G-79 · The table keeps only the last block of each assistant message, so
   the agent's text before a call is lost.** *(opened 09-29;
   `scripts/lost_text_blocks.py`; #17.)* This is G-76's cause, measured for
@@ -4440,6 +4463,17 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   - *What it touches.* Candidates and graders see the earlier agent's actions
     without its narration. The candidate's own record is whole, since Harbor
     writes it. Whether the loss changes answers or readings is not measured.
+  - *How much text (09-30, same script).* 64,057 characters absent, against
+    4,400,798 of conversation shown (whitespace collapsed): 1.4% of the two.
+    Per task, the absent share's quartiles are 0.6%, 1.4% and 2.5%. 30 absent
+    blocks are 300 characters or longer, and 33 hold a completion word
+    (fixed, passes, deployed, done, ...), in 16 tasks: a rough marker of the
+    claims a candidate might have read.
+  - *Raised to high priority on 09-30,* and disclosed in
+    `docs/known-issues.md` and the README. The fix, in this order: restore the
+    text; rebuild the conversations (a new dataset version); re-run the leak
+    gate and the judge's admission; a pilot to measure how far scores move,
+    before deciding whether the v1 baseline is re-run.
   - *How it was found.* While checking what a second source must match (#16).
     That source writes every block.
 - **G-78 · An agent could change the record it is graded on.** *(opened
@@ -10302,3 +10336,58 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
       `scripts/crawl_corpus_stats.py`, run on the VM before the commit. It
       is to be rerun there as committed.
   - The VM was deallocated after, with the data on its disk.
+- **09-30, 04:4x UTC** — **entire.io's own session lists, checked against the
+  crawl (#16); G-80 opened.**
+  - *What entire.io serves without a login.* The page
+    `entire.io/gh/<owner>/<repo>/sessions` reads
+    `entire.io/api/v1/cache/gh/<owner>/<repo>/sessions`, described in
+    Entire's public OpenAPI document:
+    - each repository's sessions, up to 200 a page; `scope=all` gives every
+      linked session, the default only the default branch's;
+    - for each: agent, model, token counts, steps, checkpoints, sub-agents,
+      the agent's and the developer's share of committed lines, the first
+      prompt, times, and kind (for example review sessions);
+    - filters by agent, model, date of last activity and text.
+    - A session's transcript, its sub-agents and Entire's own analyses need a
+      login, and nothing lists every repository that uses Entire. For public
+      repositories the transcripts are those the crawl already reads.
+    - Its terms allow API use within its rate limits, and forbid using it to
+      harvest personal information for spam, recruiting or sale. Its
+      robots.txt allows everything.
+  - *Coverage, entireio/cli.* Of the 1,600 sessions it lists with activity
+    since 20 April (two disjoint windows add to the same total), the crawl
+    holds 1,587 (99.2%). The crawl also holds 172 sessions created since
+    then that it does not list, not yet explained.
+  - *The model.* On the 1,217 Claude Code sessions compared, the model the
+    crawl read from checkpoint metadata equals entire.io's for 1,118, and for
+    1,167 without the `[1m]` suffix; for the other 50 the crawl's metadata
+    has none. Across the corpus, 3,022 sessions have none in metadata, and
+    the transcript names one for 3,010 of them (its commonest model; 255
+    sessions change model). Where both exist they agree on 3,293 of 3,436.
+  - *G-80*, found by this comparison (above).
+  - *New sessions by model.* Created after 19 April, not in SWE-chat, in a
+    sandboxable language, with G-80's sessions credited to entireio/cli, by
+    each transcript's commonest model: 3,212 sessions, 47,107 developer
+    messages, 139 repositories.
+    - Claude Opus 4.7 and 4.8: 1,270; Opus 5: 588; Sonnet 5: 470; Claude 4.6
+      and earlier: 435; Fable 5.x: 329; Opus 5.5: 103; other: 17.
+    - Claude 5 models together: 1,490 sessions and 22,891 developer
+      messages from 88 repositories, 736 of the sessions in entireio/cli.
+    - Among other agents' new sessions, Codex ran GPT-5.6 in 330 and GPT-6 in
+      159. The pipeline reads Claude Code only.
+  - *How it was measured.* One-off scripts over a session index written on
+    the VM (two runs, about four minutes in all) and entire.io's lists, read
+    anonymously at one request a second; not committed. Committing them as
+    a check is the first step of the Entire work.
+- **09-30, 05:3x UTC** — **G-79 raised to high priority and disclosed (#17).**
+  - `scripts/lost_text_blocks.py` now also measures how much text is lost:
+    64,057 characters against 4,400,798 shown, 1.4%; per task, quartiles of
+    0.6%, 1.4% and 2.5%; 30 absent blocks of 300 or more characters; 33 with
+    a completion word, in 16 tasks. Its earlier counts are unchanged.
+  - `docs/known-issues.md` states it among its first points and in full
+    under known defects; the README qualifies "the conversation as it stood"
+    and lists it first among its limitations.
+  - The order agreed: restore the text; rebuild the conversations (a new
+    dataset version); re-run the leak gate and the judge's admission; a
+    pilot to measure how far scores move, then decide whether the v1
+    baseline is re-run. The paid steps wait for a cost estimate and an OK.

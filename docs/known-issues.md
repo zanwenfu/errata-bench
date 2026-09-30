@@ -1,14 +1,22 @@
 # errata-bench v1: what it is, its limits, and what comes next
 
 Written on 28 September 2026, after five independent reviews of v1.0.2, and
-brought up to date the same day and on 29 September, with the first official
-results. The current release is **code v1.0.4**
+brought up to date the same day, on 29 September with the first official
+results, and on 30 September with a defect in what the tasks show (G-79).
+The current release is **code v1.0.4**
 with **dataset v1.0.2** (the tasks did not change). Each item links to its
 issue, and everything still to do is tracked in one place:
 [#11](https://github.com/zanwenfu/errata-bench/issues/11).
 
 ## In short
 
+- **A known defect in what the tasks show, high priority
+  ([#17](https://github.com/zanwenfu/errata-bench/issues/17)).** The
+  conversations lack most of what the earlier agent wrote between its tool
+  calls: 91% of its messages there, about 1.4% of the text shown. Its calls,
+  their results and the developer's messages are shown. The effect on scores
+  is not yet measured. Details, and the fix, are
+  [below](#known-defects-and-what-v103-and-v104-fixed).
 - **You can run it.** v1 runs any coding agent on 55 real tasks, in
   realistic containers with the network closed, and grades the result with
   your own key. This was checked end to end on a fresh download.
@@ -130,6 +138,34 @@ be taken to mean.
    not yet a canary string to detect training on the tasks.
 
 ## Known defects, and what v1.0.3 and v1.0.4 fixed
+
+- **Open, high priority: the conversations lack most of the earlier agent's
+  own words (G-79, [#17](https://github.com/zanwenfu/errata-bench/issues/17)).**
+  Measured by `scripts/lost_text_blocks.py`.
+  - *What happens.* Claude Code stores each part of an agent message as its
+    own entry, and SWE-chat's table keeps only the last part of each message.
+    Anything the agent wrote before a tool call in the same message is lost.
+    v1 restores the lost calls (G-76), but not the text.
+  - *How much.* In the part of each session a task shows, 536 of the 587
+    agent messages (91%) are missing, in 50 of the 55 tasks. That is 64,057
+    characters against 4.4 million shown, about 1.4%; per task, the middle
+    half lose between 0.6% and 2.5%. 506 of the 536 are under 300
+    characters. 33 hold a completion word such as "fixed" or "deployed", in
+    16 tasks.
+  - *What it touches.* Candidates and both graders see the earlier agent's
+    calls, their results and the developer's messages, but almost none of
+    what the agent said along the way. So v1's conversations are not "the
+    conversation as it stood". The candidate's own record is complete, and
+    rebuilding the repository does not depend on the lost text.
+  - *What it does to results.* Not yet measured. Every model in the v1
+    baseline was run and graded on the same view, so its comparisons are like
+    for like, but they describe v1's tasks as released, not the full
+    conversations. The judge's admission was measured on this view too.
+  - *The fix, in order:* restore the text from the raw transcripts, as
+    `recover.py` does for calls; rebuild the conversations, a new dataset
+    version; re-run the leak gate and the judge's admission on them; re-run a
+    pilot to measure how far scores move, then decide whether the baseline is
+    re-run.
 
 Use the code at tag `v1.0.4`. The `v1.0.2` code tag has the defects below,
 and writes an outdated label (the exploratory 78%) into `results.json`.

@@ -12,7 +12,9 @@ developer and a coding agent, taken from the public
 back on the agent's work: it had claimed something it had not established,
 dismissed a failure, or handed work back unfinished. errata-bench rebuilds the
 repository and the conversation as they stood just before the agent's faulty
-answer, puts a new model in the agent's place with real tools in a sandbox,
+answer (in v1, without most of what the agent wrote between its tool calls: a
+known defect, [G-79](docs/known-issues.md), being fixed), puts a new model in
+the agent's place with real tools in a sandbox,
 records everything it does, and then checks every claim in its answer against
 that record.
 
@@ -850,6 +852,12 @@ Every number here is produced by a committed script from stored rows:
 
 ## 7. Limitations
 
+- **What the tasks show is incomplete (G-79, high priority, #17).** The
+  conversations lack most of what the earlier agent wrote between its tool
+  calls: 91% of its messages in the part a task shows, about 1.4% of the
+  text. Its calls, their results and the developer's messages are all shown.
+  The effect on scores is not yet measured; the fix is a new dataset version
+  ([known issues](docs/known-issues.md)).
 - **Scale.** 55 tasks from 25 repositories, and one repository (entireio/cli)
   has 16 of them; the headline set caps it at 8. Only large differences
   between models can be detected. SWE-chat's supply of usable moments is
