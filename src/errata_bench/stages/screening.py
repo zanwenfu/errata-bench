@@ -398,8 +398,8 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
     from ..find.answerable import ANSWERABLE_GATE, agent_message_before, asks_for_something
     from ..construct.build import last_user_message
     from ..find.leakage import signals_trouble
-    from ..corpus.turns import build_excerpt, load_session_turns
-    from ..corpus.recover import has_transcript, recovered
+    from ..corpus.turns import RECORD, RECORD_CHARS, build_excerpt, load_session_turns
+    from ..corpus.recover import has_transcript, recovered, restore_text, whole_results
     from ..find.redact import apply, carried_by, survey
     from ..find.scope import SCOPE_GATE, in_scope
 
@@ -486,7 +486,14 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
             request = (message or {}).get("content") or ""
             # The conversation the agent had, which both gates below read: a
             # bare "yes" asks for whatever the agent had just proposed (B-252).
-            excerpt = build_excerpt(ts, r["cut"])
+            # Read as its candidate will be shown it (G-81): the calls and the
+            # agent's text the table lost put back (G-76, G-79), each result
+            # whole, nothing cut. The gates read record 1 -- 60,000 characters,
+            # each message cut at 4,000 -- while v1's candidates read record 3
+            # whole, so on 25 of its 55 tasks part of what a candidate saw was
+            # never screened for a leak. `candidate_turns` builds the same view.
+            view = whole_results(r["session_id"], restore_text(r["session_id"], ts))
+            excerpt = build_excerpt(view, r["cut"], max_chars=RECORD_CHARS, record=RECORD)
             if request:
                 verdict, tally, scope = await _agree(
                     lambda: in_scope(request, r.get("defect", ""), conversation=excerpt), passes, keep_on=True,
@@ -510,10 +517,12 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
             out["redacted_turns"] = []
             out["rewritten_turns"] = {}
             out["redaction_worked"] = False
-            # Whether these gates read the record with SWE-chat's lost calls put
-            # back (G-76). The build shows them to a candidate only if so, so the
-            # candidate never sees a call the leak gate did not.
+            # Whether these gates read the record with SWE-chat's lost calls and
+            # the agent's lost text put back (G-76, G-79). The build shows them
+            # to a candidate only if so, so the candidate never sees a call or a
+            # word the leak gate did not.
             out["calls_recovered"] = has_transcript(r["session_id"])
+            out["text_recovered"] = has_transcript(r["session_id"])
 
             # `verdict`, not `leak.signals_trouble`: the row is repaired when the
             # gate as a whole says it leaks, which with more than one reading is
@@ -522,7 +531,7 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
                 # Where the leak is, before paying to repair it. Every outcome
                 # of this branch is written down: fourteen rows leaked across
                 # the stored runs, none was repaired, and not one row said why.
-                out["leak_carried_by"] = carried_by(ts, r["cut"], leak.quote)
+                out["leak_carried_by"] = carried_by(view, r["cut"], leak.quote)
             if verdict and out["leak_carried_by"] == "elsewhere":
                 out["redaction_outcome"] = (
                     "not attempted: the words that leak are in a tool call, a tool "
@@ -540,8 +549,10 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
                     if not red.touched else "attempted"
                 )
                 if red.repairable:
-                    kept = apply(ts, red.removed_turns, red.rewritten)
-                    again = await signals_trouble(build_excerpt(kept, r["cut"]))
+                    # Checked again on the view the candidate would be shown.
+                    kept = apply(view, red.removed_turns, red.rewritten)
+                    again = await signals_trouble(build_excerpt(kept, r["cut"], max_chars=RECORD_CHARS,
+                                                                record=RECORD))
                     out["redaction_outcome"] = (
                         "repaired" if not again.signals_trouble
                         else f"still leaks after editing turns {red.touched}: {again.reasoning}"

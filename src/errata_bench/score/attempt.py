@@ -41,7 +41,7 @@ from agents.models.interface import Model, ModelProvider
 from agents.models.multi_provider import MultiProvider
 from agents.run_context import RunContextWrapper
 from ..corpus.turns import RECORD, RECORD_CHARS, build_excerpt, load_session_turns
-from ..llm import MODEL, _refused, candidate_client, configure_client
+from ..llm import MODEL, STATUS_429, _refused, candidate_client, configure_client
 from ..construct.container import MOUNT, Container, host_allowed
 from ..construct.edits import edits_before, replay
 from ..find.redact import apply as apply_redaction
@@ -290,7 +290,6 @@ WAIT_CAP_S = 60
 NO_CHOICE_SENDS = 10
 
 
-_STATUS_429 = re.compile(r"(?:error code|status(?: code)?|http)\W{0,3}429\b|\b429 too many requests", re.IGNORECASE)
 
 
 def _transient(e: BaseException) -> str | None:
@@ -301,7 +300,7 @@ def _transient(e: BaseException) -> str | None:
     # refusal reading "resulted in 142953 tokens" was taken for a throttle and
     # waited on thirty times (09-28 review).
     if (isinstance(e, openai.RateLimitError) or getattr(e, "status_code", None) == 429
-            or _STATUS_429.search(str(e)[:200])):
+            or STATUS_429.search(str(e)[:200])):
         return "throttled"
     if isinstance(e, (openai.APIConnectionError, openai.InternalServerError)):
         return "dropped"

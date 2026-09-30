@@ -479,6 +479,7 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
                     edits_replayed=rep.applied,
                     edits_verified=rep.verified,
                     calls_recovered=bool(row.get("calls_recovered")) and has_transcript(row["session_id"]),
+                    text_recovered=bool(row.get("text_recovered")) and has_transcript(row["session_id"]),
                 )
             )
             seen.add(task_id)

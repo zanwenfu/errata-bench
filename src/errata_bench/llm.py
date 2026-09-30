@@ -461,6 +461,12 @@ def with_field_guide(instructions: str, output_type) -> str:
 # the transport's beneath it.
 _DROPPED = frozenset({"APITimeoutError", "APIConnectionError", "InternalServerError", "TimeoutError",
                       "ConnectError", "ConnectTimeout", "ReadTimeout", "ReadError", "RemoteProtocolError"})
+# A status read where the SDK and gateways write one ("Error code: 429", "HTTP
+# 503"), never from a number anywhere in an error: a context-length refusal
+# reading "resulted in 142953 tokens" was waited on as a throttle thirty times
+# (09-28 review), and `resilient` read errors the same way until 09-30.
+STATUS_429 = re.compile(r"(?:error code|status(?: code)?|http)\W{0,3}429\b|\b429 too many requests", re.IGNORECASE)
+STATUS_50X = re.compile(r"(?:error code|status(?: code)?|http)\W{0,3}50[234]\b", re.IGNORECASE)
 
 
 async def resilient(make_call, *, attempts: int = 4, pause: float = 60.0):
@@ -497,9 +503,14 @@ async def resilient(make_call, *, attempts: int = 4, pause: float = 60.0):
             # timing out. After a sleep every call in flight fails within
             # seconds, and a stage reported itself finished with its rows in
             # error until someone ran it again (B-251).
-            throttled = "no choices" in message or "429" in message or "rate limit" in message
-            dropped = (type(e).__name__ in _DROPPED
-                       or re.search(r"timed out|connection (?:error|reset|refused)|\b50[234]\b"
+            # A status by its code, or where an error writes one: a 429 or a 503
+            # inside a token count is neither.
+            status, head = getattr(e, "status_code", None), str(e)[:200]
+            throttled = ("no choices" in message or "rate limit" in message or status == 429
+                         or STATUS_429.search(head) is not None)
+            dropped = (type(e).__name__ in _DROPPED or status in (502, 503, 504)
+                       or STATUS_50X.search(head) is not None
+                       or re.search(r"timed out|connection (?:error|reset|refused)"
                                     r"|bad gateway|service unavailable", message) is not None)
             if not throttled and not dropped:
                 raise

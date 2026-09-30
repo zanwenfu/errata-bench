@@ -5474,7 +5474,7 @@ def _build79(turns, *, flag=True, commits=None, checkpoints=None):
     row = {"session_id": "s79", "repo_id": "acme/up", "request": 1, "failed": 8, "complaint": 9,
            "resolved": 10, "cut": 7, "kind": "none", "path": "src/a.py", "token": "",
            "defect": "a defect", "rounds": 1, "usable": True, "asks_for_something": True,
-           "within_scope": True, "signals_trouble": False, "calls_recovered": flag}
+           "within_scope": True, "signals_trouble": False, "calls_recovered": flag, "text_recovered": flag}
     return _B43w.build([row])
 
 
@@ -5526,6 +5526,9 @@ check(not _bad79.tasks and any("differs from what the conversation showed" in w 
 check([t.calls_recovered for t in _ok79.tasks] == [True] and [t.calls_recovered for t in _off79.tasks] == [False]
       and [t.calls_recovered for t in _none79.tasks] == [False],
       "the task shows the recovered calls only if its screening read them and the transcript is here")
+check([t.text_recovered for t in _ok79.tasks] == [True] and [t.text_recovered for t in _off79.tasks] == [False]
+      and [t.text_recovered for t in _none79.tasks] == [False],
+      "and the agent's lost text on the same terms (G-79)")
 _git79c = lambda cmd: _cs66.tree_changing_git([_T63(1, "tool_use", tool_name="Bash", command=cmd)], 2)
 _changes79 = ["git pull", "git checkout -- src/a.py", "git stash", "git reset --hard HEAD~1",
               "git merge feat", "git checkout -b feat origin/feat", "git -C sub restore src/a.py"]
@@ -11376,6 +11379,15 @@ _call154 = lambda cid, name, given: {"type": "tool_use", "id": cid, "name": name
             _call154("b1", "Bash", {"command": "echo b"})),
     _msg154("m7", _call154("q1", "Read", {"file_path": "/r/q.ts"}), _say154("wrapped up")),
     _msg154("m8", _say154("Checking again."), _say154("Both files are fixed.")),
+    # A lost text whose words a later message closes with: matched there, it
+    # would pass for held and never be put back.
+    _msg154("mP", _say154("Let me look."), _call154("p1", "Read", {"file_path": "/r/p.ts"})),
+    _msg154("mQ", _say154("Let me look.")),
+    # A text after a held block, where the next row of all is a call put back
+    # inside the same whole turn: it goes before that call, not onto it.
+    _msg154("mD", _call154("f1", "Bash", {"command": "echo f"}), _say154("after f, before g"),
+            _call154("g1", "Bash", {"command": "echo g"})),
+    _msg154("mE", _call154("h1", "Bash", {"command": "echo h"}), _call154("i1", "Bash", {"command": "echo i"})),
 ]) + "\n")
 _table154 = [
     _T63(1, "user_prompt", content="deploy it"),
@@ -11394,6 +11406,16 @@ _table154 = [
     _T63(22, "tool_result", content="b done", tool_call_id="b1"),
     _T63(30, "tool_result", content="q contents", tool_call_id="q1"),
     _T63(40, "assistant_response", content="Both files are fixed."),
+    _T63(50, "tool_use", tool_name="Read", file_path="/r/p.ts", content="{}", tool_call_id="p1"),
+    _T63(51, "tool_result", content="p contents", tool_call_id="p1"),
+    _T63(60, "assistant_response", content="Let me look."),
+    _T63(70, "tool_use", tool_name="Bash", command="echo f", content="{}", tool_call_id="f1"),
+    _T63(71, "tool_use", tool_name="Bash", command="echo i", content="{}", tool_call_id="i1"),
+    _T63(72, "tool_result", content="h", tool_call_id="h1"),
+    _T63(73, "tool_result", content="i", tool_call_id="i1"),
+    _T63(74, "tool_use", tool_name="Bash", command="echo g", content="{}", tool_call_id="g1"),
+    _T63(75, "tool_result", content="f", tool_call_id="f1"),
+    _T63(76, "tool_result", content="g", tool_call_id="g1"),
 ]
 _t154 = Task("t154", "r/r", "u", "sha", "s154", 40, 41, 42, 43, "wrong " * 10, "right " * 10, "a defect", "none")
 recover_mod.transcript_path = lambda sid: _dir154 / f"{sid}.jsonl"
@@ -11414,13 +11436,16 @@ _said154 = lambda ts: [(round(t["turn_number"], 3), t["shown_as"], t["content"])
 check(_said154(_back154) == [(1.5, 2, "Let me check the config first."), (3.25, 4, "Now I'll fix both files."),
                              (7.5, 8, "A first thought."), (11.333, 11, "trailing note after make"),
                              (11.667, 12, "before ls"), (19.75, 21, "between the two calls"),
-                             (35.0, 40, "Checking again.")],
+                             (30.5, 40, "Checking again."), (40.5, 50, "Let me look."),
+                             (70.25, 74, "after f, before g")],
       f"each lost text is put back just before the next block of its message and shown under that block's turn: "
       f"{_said154(_back154)}")
 check([t["turn_number"] for t in _back154 if not t.get("recovered")] == [t["turn_number"] for t in _table154]
       and [t["turn_number"] for t in _back154] == sorted(t["turn_number"] for t in _back154)
-      and len({t["turn_number"] for t in _back154}) == len(_back154),
-      "no stored turn moves, and every row keeps a turn number of its own")
+      and len({t["turn_number"] for t in _back154}) == len(_back154)
+      and not any(t["turn_number"] == int(t["turn_number"]) for t in _back154 if t.get("recovered")),
+      "no stored turn moves, every row keeps a turn number of its own, and none put back takes a whole one, "
+      "which a redaction or a rewrite would take for a turn")
 check(not any(t.get("content") in ("subagent narration", "orphan text", "wrapped up",
                                   "private reasoning about the fix") for t in _back154 if t.get("recovered"))
       and [t.get("content") for t in _back154].count("Let me check the config first.") == 1
@@ -11439,18 +11464,77 @@ check("[turn 2] AGENT:\nLet me check the config first.\n[turn 2] AGENT calls Rea
       and "[turn 4] AGENT:\nNow I'll fix both files.\n[turn 4] AGENT calls Edit" in _x154
       and not re.search(r"\[turn \d+\.\d+\]", _x154),
       "put-back text is shown under the turn of the block it was written beside, never a fractional one")
-check(len(_said154(_apply77(_back154, [9]))) == 7
+check(len(_said154(_apply77(_back154, [9]))) == 9
       and [c for _, _, c in _said154(_apply77(_back154, [4]))] == [
           "Let me check the config first.", "A first thought.", "trailing note after make", "before ls",
-          "between the two calls", "Checking again."],
+          "between the two calls", "Checking again.", "Let me look.", "after f, before g"],
       "redaction keeps put-back text unless its own turn is removed, and then takes it with that turn")
-check(not _said154(_only_calls154) and len(_said154(_shown154)) == 7
-      and not _said154(_res_off154) and len(_said154(_res_on154)) == 7,
+check(not _said154(_only_calls154) and len(_said154(_shown154)) == 9
+      and not _said154(_res_off154) and len(_said154(_res_on154)) == 9,
       "a task shows and grades the put-back text only when built with it (`text_recovered`)")
 check(fingerprint(_dc78.replace(_t78, calls_recovered=True, text_recovered=True))
       != fingerprint(_dc78.replace(_t78, calls_recovered=True))
       and fingerprint(_t78) == "d1c8f4a8161d2a2f",
       "a task built with the text put back is a different question; one built before keeps its stamp")
+# The collector's corpus (#16) keeps every block as its own row: there the text
+# and the thinking are already held, and nothing may be put back twice.
+(_dir154 / "c154.jsonl").write_text("\n".join([
+    json.dumps({"type": "user", "message": {"content": "go"}}),
+    _msg154("n1", _say154("Looking at it."), _call154("k1", "Read", {"file_path": "/r/k.ts"})),
+    _msg154("n2", {"type": "thinking", "thinking": "hmm"}, _say154("Found it."),
+            _call154("k2", "Edit", {"file_path": "/r/k.ts"})),
+    _msg154("n3", _say154("All done.")),
+]) + "\n")
+_whole154 = [
+    _T63(1, "user_prompt", content="go"),
+    _T63(2, "assistant_response", content="Looking at it."),
+    _T63(3, "tool_use", tool_name="Read", file_path="/r/k.ts", content="{}", tool_call_id="k1"),
+    _T63(4, "tool_result", content="k contents", tool_call_id="k1"),
+    _T63(5, "assistant_thinking", content="hmm"),
+    _T63(6, "assistant_response", content="Found it."),
+    _T63(7, "tool_use", tool_name="Edit", file_path="/r/k.ts", content="{}", tool_call_id="k2"),
+    _T63(8, "tool_result", content="k updated", tool_call_id="k2"),
+    _T63(9, "assistant_response", content="All done."),
+]
+recover_mod.transcript_path = lambda sid: _dir154 / f"{sid}.jsonl"
+try:
+    _kept154 = recover_mod.restore_text("c154", _whole154, thinking=True)
+finally:
+    recover_mod.transcript_path = _NO_TRANSCRIPTS
+check(_kept154 is _whole154,
+      "where the rows already hold every block, as the collector's corpus does, nothing is put back")
+
+print("\n155. a model call is retried for a throttle or a dropped connection by its status, not a number in its text")
+# `resilient` read "429" anywhere in an error as a throttle and "502/503/504" as
+# a dropped connection, as `attempt._transient` did until 09-28: a length
+# refusal counting 142953 tokens was waited on thirty times.
+import errata_bench.llm as _llm155
+
+
+def _tries155(message, status=None):
+    tries = {"n": 0}
+
+    async def call():
+        tries["n"] += 1
+        e = Exception(message)
+        if status is not None:
+            e.status_code = status
+        raise e
+    try:
+        asyncio.run(_llm155.resilient(call, attempts=3, pause=0))
+    except Exception:
+        pass
+    return tries["n"]
+
+
+check(_tries155("Error code: 400 - maximum context length is 131072 tokens. However, your messages resulted in "
+                "142953 tokens (429 of them in tools, 503 in images).") == 1
+      and _tries155("Error code: 429 - Requests to this deployment have exceeded the token rate limit") == 3
+      and _tries155("Error code: 503 - the service is temporarily overloaded") == 3
+      and _tries155("the upstream answered oddly", status=429) == 3
+      and _tries155("the upstream answered oddly", status=502) == 3,
+      "a length refusal with 429 and 503 among its numbers is raised at once; a 429 or a 503 where an error "
+      "writes its status, or by its code, is retried")
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:

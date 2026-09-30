@@ -392,6 +392,54 @@ def main() -> int:
               and row.get("redaction_touched") == [3] and row.get("redaction_reason") == "turn 3 is a complaint",
               f"and one that still leaks afterwards says what was tried: {str(row.get('redaction_outcome'))[:60]!r}")
 
+    # G-81. A leak in the agent's text the table lost (G-79) is found where the
+    # candidate reads it, and a repair is checked again on that view: removing
+    # another turn leaves it in place, which a re-check of the table's turns,
+    # which lack it, would take for a repair.
+    import errata_bench.corpus.recover as recover5
+    dir5 = Path(tempfile.mkdtemp())
+    (dir5 / "s-said.jsonl").write_text(json.dumps(
+        {"type": "assistant", "isSidechain": False, "message": {"id": "m1", "content": [
+            {"type": "text", "text": "Sorry, I got this wrong again. Reading the helper."},
+            {"type": "tool_use", "id": "said1", "name": "Read",
+             "input": {"file_path": "/Users/d/code/up/src/retry.py"}}]}}) + "\n")
+    SESSIONS["s-said"] = SESSION[:2] + [
+        {"turn_number": 4, "turn_type": "tool_use", "tool_name": "Read", "tool_call_id": "said1",
+         "content": json.dumps({"file_path": "/Users/d/code/up/src/retry.py"})},
+        {"turn_number": 5, "turn_type": "tool_result", "tool_call_id": "said1", "content": "def retry(): pass"},
+    ] + SESSION[3:]
+
+    async def leaks_in_its_text(excerpt, **kw):
+        records("signals_trouble")
+        if "I got this wrong again" in excerpt:
+            return Leakage(signals_trouble=True, quote="Sorry, I got this wrong again.",
+                           reasoning="the agent apologises for failing again")
+        return Leakage(signals_trouble=False, quote="", reasoning="nothing is given away")
+
+    kept5 = recover5.transcript_path
+    recover5.transcript_path = lambda sid: dir5 / f"{sid}.jsonl"
+    said5 = {}
+    try:
+        d = Paths(Path(tempfile.mkdtemp()) / "run")
+        append(d.moments, {"session_id": "s-said", "turn_number": 7, "repo_id": "acme/up",
+                           "kind": "correction", "agent_turns_before": 4})
+        for stage in (stage_triage, stage_read, stage_locate, stage_signature):
+            asyncio.run(stage(d, 10**9, concurrency=1))
+        leakage_mod.signals_trouble = leaks_in_its_text
+        asyncio.run(stage_screen(d, 10**9, concurrency=1))
+        said5 = (load(d.screened) or [{}])[0]
+    except Exception as e:
+        check(False, f"a stage raised before the row could be read: {type(e).__name__}: {e}")
+    finally:
+        recover5.transcript_path = kept5
+        leakage_mod.signals_trouble = fake_signals_trouble
+    check(said5.get("signals_trouble") is True and said5.get("leak_carried_by") == "prose"
+          and said5.get("redaction_worked") is False
+          and str(said5.get("redaction_outcome", "")).startswith("still leaks after editing turns [3]"),
+          f"a leak in the agent's put-back text is found where its candidate reads it, and a repair that "
+          f"leaves it is not taken for one: {said5.get('leak_carried_by')!r}, "
+          f"{str(said5.get('redaction_outcome'))[:60]!r} {said5.get('error') or ''}")
+
     print("\n6. a moment whose task could never be run is not read at full price")
     # G-48 / D-31. `find_moments` asks whether the repository's language has a
     # container, but nothing asked again when the rows were read, and
@@ -481,11 +529,16 @@ def main() -> int:
     # stage is checked, since each loads the turns for itself.
     import errata_bench.corpus.recover as recover_mod
     dir8 = Path(tempfile.mkdtemp())
-    (dir8 / "s-rec.jsonl").write_text("\n".join(json.dumps(
+    # And what the agent wrote before those calls, which the table drops too
+    # (G-79): only what a candidate is shown, and the gates that read it, get it
+    # back (G-81); every stage that picks turns reads the table's turns.
+    (dir8 / "s-rec.jsonl").write_text("\n".join([json.dumps(
+        {"type": "assistant", "isSidechain": False, "message": {"id": "m1", "content": [
+            {"type": "text", "text": "I'll read the retry helper first."}]}})] + [json.dumps(
         {"type": "assistant", "isSidechain": False, "message": {"id": "m1", "content": [
             {"type": "tool_use", "id": cid, "name": "Read",
              "input": {"file_path": f"/Users/d/code/up/src/{name}"}}]}})
-        for cid, name in (("lost", "retry.py"), ("kept", "upload.py"))) + "\n")
+        for cid, name in (("lost", "retry.py"), ("kept", "upload.py"))]) + "\n")
     SESSIONS["s-rec"] = SESSION[:2] + [
         {"turn_number": 4, "turn_type": "tool_use", "tool_name": "Read", "tool_call_id": "kept",
          "content": json.dumps({"file_path": "/Users/d/code/up/src/upload.py"})},
@@ -494,18 +547,24 @@ def main() -> int:
     ] + SESSION[3:]
     saw8: dict[str, bool] = {}
     stage8 = {"now": ""}
-    seen8 = lambda turns: any(t.get("recovered") for t in turns)
+    seen8 = lambda turns: any(t.get("recovered") and t.get("turn_type") == "tool_use" for t in turns)
+    said8: dict[str, bool] = {}
+    text8 = lambda turns: any(t.get("recovered") and t.get("turn_type") == "assistant_response" for t in turns)
+    gates8: dict = {}
 
     def excerpt8(turns, cut, **kw):
         saw8[stage8["now"]] = saw8.get(stage8["now"], False) or seen8(turns)
+        said8[stage8["now"]] = said8.get(stage8["now"], False) or text8(turns)
+        if stage8["now"] == "screen":
+            gates8.setdefault("kw", kw)
         return fake_build_excerpt(turns, cut, **kw)
 
     async def read8(turns, turn, **kw):
-        saw8["read"] = seen8(turns)
+        saw8["read"], said8["read"] = seen8(turns), text8(turns)
         return await fake_read_pushback(turns, turn, **kw)
 
     async def locate8(turns, turn, **kw):
-        saw8["locate"] = seen8(turns)
+        saw8["locate"], said8["locate"] = seen8(turns), text8(turns)
         return await fake_locate(turns, turn, **kw)
 
     kept8 = (recover_mod.transcript_path, turns_mod.build_excerpt, reading_mod.read_pushback,
@@ -529,6 +588,14 @@ def main() -> int:
     check(bool(screened8) and screened8[0].get("calls_recovered") is True,
           f"and the screened row says so, for the build to pass on: "
           f"{screened8[0].get('calls_recovered') if screened8 else 'no row'}")
+    from errata_bench.corpus.turns import RECORD as RECORD8, RECORD_CHARS as RECORD_CHARS8
+    check(said8.get("screen") is True and gates8.get("kw", {}).get("record") == RECORD8
+          and gates8.get("kw", {}).get("max_chars") == RECORD_CHARS8
+          and not any(said8.get(k) for k in ("triage", "read", "locate")),
+          f"the gates read the conversation as its candidate is shown it, the agent's lost text put back and "
+          f"nothing cut (G-81), while the stages that pick turns read the table's: {said8}, {gates8.get('kw')}")
+    check(bool(screened8) and screened8[0].get("text_recovered") is True,
+          "and the screened row says the text was put back, for the build to pass on")
 
     print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
     for f in FAIL:

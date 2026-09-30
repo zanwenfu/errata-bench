@@ -10445,3 +10445,36 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     dataset version; the working copies are unchanged), then the paid steps,
     each priced first: the leak gate over each conversation whole (G-81) and
     the judge's admission, then a pilot.
+- **09-30, 07:4x UTC** — **G-81 fixed; the put-back text made safe on every corpus;
+  `resilient` reads a status by its code (#17).**
+  - *G-81.* Screening's scope and leak gates, and the repair's re-check, now
+    read the conversation as its candidate is shown it: record 3 whole, the
+    calls and the agent's text put back, each result whole. Where a leak sits
+    is read on the same view. A screened row carries `text_recovered`, and the
+    build passes it to the task. The stages that pick turns (triage, the
+    reader, locate) still read the table's turns: a put-back text has a
+    fractional turn number, and they name turns by whole numbers.
+  - *`restore_text`, three changes found by the new checks:*
+    - a text the rows already hold is matched, in order and before the next
+      held block of its message, and not put back: the collector's corpus
+      (#16) holds every block, and there every text would have been shown
+      twice;
+    - a put-back text never takes a whole turn number: one between rows 2 and
+      4 went to 3.0, and a redaction of "turn 3" took it (the front-stages
+      fixture found it);
+    - thinking is matched as text is, for when it is put back.
+  - *`llm.resilient`* read "429" anywhere in an error as a throttle and
+    "502/503/504" as a dropped connection. Both are now read by the status
+    code, or where an error writes its status; the pattern is shared with
+    `attempt._transient`.
+  - *Checks.* guards_hold §154 (a table that holds every block; a look-alike
+    text further on; a put-back call inside the same whole turn), §155
+    (`resilient`), §79 (`text_recovered` through the build); front_stages_run
+    §5 (a leak in put-back text is located there, and a repair that leaves it
+    is not taken for one) and §8 (what each stage reads). 23 rules, each
+    reverted alone with a fresh bytecode cache, fail a suite; the first runs
+    found two fixtures that did not exercise their rule, both fixed before
+    this entry. The six CI suites pass.
+  - `scripts/rerender_release.py` renders a frozen release's conversations
+    again from the corpus, with no GitHub, and refuses a task whose replayed
+    edits would change. Not yet run.

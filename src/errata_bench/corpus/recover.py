@@ -28,6 +28,7 @@ record they were not shown would change the question.
 from __future__ import annotations
 
 import json
+import math
 from pathlib import Path
 
 
@@ -307,7 +308,9 @@ def restore_text(session_id: str, turns: list[dict], *, thinking: bool = False) 
     numbers = [t["turn_number"] for t in rows]
     call_row = {t["tool_call_id"]: i for i, t in enumerate(rows)
                 if t.get("turn_type") == "tool_use" and t.get("tool_call_id")}
-    said = [(i, _flat(t.get("content"))) for i, t in enumerate(rows) if t.get("turn_type") == "assistant_response"]
+    held = {kind: [(i, _flat(t.get("content"))) for i, t in enumerate(rows) if t.get("turn_type") == row_type]
+            for kind, (row_type, _) in RESTORED_AS.items()}
+    words = lambda b: _flat(b.get("text") if b.get("type") == "text" else b.get("thinking"))
     # Each interval between two rows, and what goes into it in the order the
     # agent wrote it. Keyed by the interval alone: the end of one message and
     # the start of the next can fall between the same two rows.
@@ -315,22 +318,32 @@ def restore_text(session_id: str, turns: list[dict], *, thinking: bool = False) 
     last = -1
     for message in raw_messages(transcript_path(session_id)):
         blocks = message["blocks"]
-        # Where each block of the message is among the rows, when the rows hold it.
-        at: list[int | None] = []
-        for j, b in enumerate(blocks):
-            if b.get("type") == "tool_use":
-                at.append(call_row.get(b.get("id")))
-            elif b.get("type") == "text" and j == len(blocks) - 1 and _flat(b.get("text")):
-                at.append(next((i for i, s in said if i > last and s == _flat(b.get("text"))), None))
-            else:
-                at.append(None)
+        # Where each block of the message is among the rows, when the rows hold
+        # it: a call by its id, and a text by its words, matched in order after
+        # the messages before -- the closing text anywhere after them, any
+        # other only before the next block of its message the rows hold, so it
+        # never takes a later message's words. SWE-chat's table holds no text
+        # but the closing one; the collector's corpus (#16) holds every block,
+        # and there nothing is put back twice.
+        at: list[int | None] = [call_row.get(b.get("id")) if b.get("type") == "tool_use" else None for b in blocks]
+        close = len(blocks) - 1
+        if close >= 0 and blocks[close].get("type") in held and words(blocks[close]):
+            at[close] = next((i for i, s in held[blocks[close]["type"]] if i > last and s == words(blocks[close])),
+                             None)
+        cursor = last
+        for j in range(close):
+            bound = next((at[k] for k in range(j + 1, len(blocks)) if at[k] is not None), None)
+            if blocks[j].get("type") in held and words(blocks[j]) and bound is not None:
+                hit = next((i for i, s in held[blocks[j]["type"]] if cursor < i < bound and s == words(blocks[j])),
+                           None)
+                if hit is not None:
+                    at[j], cursor = hit, hit
         placed = [j for j, i in enumerate(at) if i is not None]
         if not placed:
             continue
         last = max(last, max(at[j] for j in placed))
         for j, b in enumerate(blocks):
-            body = _flat(b.get("text") if b.get("type") == "text" else b.get("thinking"))
-            if at[j] is not None or j == len(blocks) - 1 or b.get("type") not in kinds or not body:
+            if at[j] is not None or j == len(blocks) - 1 or b.get("type") not in kinds or not words(b):
                 continue
             before = [p for p in placed if p < j]
             after = [p for p in placed if p > j]
@@ -348,6 +361,10 @@ def restore_text(session_id: str, turns: list[dict], *, thinking: bool = False) 
             gaps.setdefault((low, high), []).append((b, label_row.get("shown_as", label_row["turn_number"])))
     added = []
     for (low, high), members in gaps.items():
+        # Short of the next whole number too: redactions and rewrites name turns
+        # by whole numbers, and a text placed at 3.0 between rows 2 and 4 would be
+        # taken for turn 3, removed or rewritten with it.
+        high = min(high, math.floor(low) + 1)
         if not low < high:
             continue
         for r, (b, label) in enumerate(members, 1):
