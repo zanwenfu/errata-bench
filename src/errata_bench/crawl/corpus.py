@@ -14,9 +14,13 @@ Code's edit tools when it rebuilds a task, and the other agents' edits need
 the same first (#16, "Scope"). Every session left out is counted, with its
 reason, in ``corpus/left_out.json``.
 
-A session fetched under two repositories is written once. That happens when
-two repositories name one checkpoint repository, so the session is kept under
-the repository whose commits carry its checkpoint's trailer.
+A session fetched under several repositories is written once. That happens
+when they name one checkpoint repository: each is given all of its sessions.
+The session is credited to a repository whose commits carry its checkpoint's
+trailer, if any does, and among those, or else among all, to the first by
+discovery's rank, as a commit's owner is chosen: not a fork, then earliest
+created (`discover.rank`). Name order alone credited Entire's own sessions to
+a copy of entireio/cli that kept its settings and its trailers (G-80).
 
 Everything is streamed: conversations are written a session at a time in row
 groups, so memory holds one session's rows, not the corpus.
@@ -35,6 +39,7 @@ import pyarrow as pa
 import pyarrow.parquet as pq
 
 from ..store.rows import load
+from .discover import rank
 from .shape import CONVERSATIONS, claude_code_rows, is_claude_code, read_entries
 
 S = pa.large_string()
@@ -138,17 +143,20 @@ def assemble(out: Path, *, log=print) -> dict:
 
     left_out: Counter = Counter()
     agents_left: Counter = Counter()
-    owner_of: dict[str, tuple[str, dict]] = {}
+    # Which repository a session several hold is credited to (the module's
+    # docstring, G-80). Metadata is keyed by the name search found a repository
+    # under; a repository is fetched under its full name.
+    named = {**{m["full_name"]: m for m in meta.values() if m.get("full_name")}, **meta}
+    holders: dict[str, list[tuple[str, dict]]] = {}
     for repo in sorted(fetched):
         for s in load(out / "raw" / repo.replace("/", "__") / "sessions.jsonl"):
-            sid = s["session_id"]
-            if sid in owner_of:
-                prev_repo = owner_of[sid][0]
-                if repo in trailer_repos.get(s["checkpoint_id"], ()) and prev_repo not in trailer_repos.get(s["checkpoint_id"], ()):
-                    owner_of[sid] = (repo, s)
-                left_out["the same session under a second repository"] += 1
-                continue
-            owner_of[sid] = (repo, s)
+            holders.setdefault(s["session_id"], []).append((repo, s))
+    owner_of: dict[str, tuple[str, dict]] = {}
+    for sid, held in holders.items():
+        linked = [h for h in held if h[0] in trailer_repos.get(h[1]["checkpoint_id"], ())]
+        owner_of[sid] = min(linked or held, key=lambda h: rank(h[0], named))
+        if len(held) > 1:
+            left_out["the same session under a second repository"] += len(held) - 1
 
     sessions, logs, checkpoint_sessions = [], [], {}
     writer = pq.ParquetWriter(corpus / "conversations.parquet.part", CONVERSATIONS)
