@@ -10223,3 +10223,43 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
 
     All 39 of the collector's and these readers' rules were broken one at a
     time, and each time a check failed.
+- **09-30, 00:4x UTC** — **The collector against SWE-chat on all of SWE-chat's
+  repositories: the same sessions, bar SWE-chat's own redaction (#16, step 6).**
+  - *The run.* On the run VM, the collector fetched SWE-chat's 201
+    repositories in under 15 minutes, 15.4 GB in all:
+    - 136 still publish their checkpoints;
+    - 47 have taken them down;
+    - 18 are gone or private.
+
+    `scripts/crawl_roundtrip.py` compares each session's lines as JSON:
+    SWE-chat re-spaced every line, so bytes never match.
+  - *SWE-chat's 5,850 sessions:*
+    - 3,209 identical;
+    - 65 identical, with lines written after its snapshot;
+    - 909 differ;
+    - 1,667 not collected. All but 94 of those are in repositories that no
+      longer publish.
+
+    The crawl also collected 8,243 sessions from these repositories, more
+    than SWE-chat holds.
+  - *The 909, read line by line:*
+    - 818 differ only where SWE-chat wrote its own redaction marks
+      (`[REDACTED:SECRET]`, `[REDACTED:AWS_KEY]`, `[REDACTED:ENV]`, ...).
+      Our copy has the original: sometimes a real-looking key, sometimes
+      nothing secret at all (`runtime.openrouterApiKey`);
+    - 75 differ mostly in SWE-chat lines that no longer parse as JSON
+      (44,269 lines), with more redaction marks, and 439 lines that nothing
+      explains;
+    - 3 differ only in length;
+    - 13, all entireio/cli sessions from early January under the old
+      date-prefixed ids, share no line with SWE-chat's copy. The likeliest
+      reading is that the pre-release CLI then kept only a slice of a session
+      in each checkpoint, so neither copy is whole. Sessions after April come
+      from CLI versions that keep the whole session in every checkpoint.
+  - *So,* of the 4,183 SWE-chat sessions still published, 4,092 (97.8%) are
+    the same data up to SWE-chat's redaction.
+  - *What follows for the new corpus.* SWE-chat's scan caught secrets that
+    Entire's redaction let through, so a secret scan must run over
+    everything collected before any of it is released. Two repositories (a
+    pair sharing one checkpoint repository) returned the same 510 sessions;
+    `crawl.corpus` writes such a session once.
