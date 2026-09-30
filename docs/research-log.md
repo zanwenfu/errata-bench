@@ -10118,3 +10118,36 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
       long, which the reader refused as it should.
     - The one rule that broke without a failure (ids of the wrong form) was
       also guarded by the shard rule. It has a check of its own now.
+- **09-30, 00:0x UTC** — **The collector's rows in SWE-chat's shape, with
+  nothing dropped (#16).** `crawl/shape.py` writes a Claude Code transcript as
+  rows of SWE-chat's conversations schema.
+  - *Checked against SWE-chat.* `scripts/crawl_shape_vs_swechat.py` runs it
+    on SWE-chat's own raw transcripts (300 Claude Code sessions, seed 0) and
+    compares with SWE-chat's rows:
+    - every call (17,440), result (21,418) and agent message (2,008) SWE-chat
+      kept is among ours;
+    - call inputs are identical;
+    - 21,320 results are identical and 91 are longer in ours, where SWE-chat
+      cut them;
+    - ours also holds what SWE-chat dropped: 4,019 calls, 8,346 agent
+      messages and 4,453 thinking blocks;
+    - residue: 7 results, 5 paths, 2 commands and 23 of 3,778 developer
+      messages differ or go unmatched.
+  - *Matched to SWE-chat's form on the way:*
+    - tool inputs with non-ASCII escaped;
+    - an image written `[Image: image/png]`;
+    - agent text stripped;
+    - a message typed while the agent was busy kept as the developer's. It
+      is written only as a queue entry, and 194 of the first unmatched
+      messages were these;
+    - a built-in command (`<command-name>/model`) kept as injected;
+    - a command's expanded instructions kept as the developer's request.
+  - *Where it differs on purpose:*
+    - background-task notices (216), system instructions and CI events are
+      not the developer's, though SWE-chat counted most of them so;
+    - context an IDE attaches is kept, where SWE-chat dropped it;
+    - 337 developer messages SWE-chat split into pieces are one row each.
+  - *Checks.* `checks/crawl_holds.py` section 5 holds each rule. Its 27 rules
+    across the collector were broken one at a time, and each time a check
+    failed. The one that first broke without a failure did so because the
+    fixture's snapshot had no time to drop; the fixture now has one.

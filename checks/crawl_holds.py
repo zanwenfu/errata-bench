@@ -19,6 +19,7 @@ from pathlib import Path
 sys.path.insert(0, "src")
 
 from errata_bench.crawl import discover, entire  # noqa: E402
+from errata_bench.crawl.shape import CONVERSATIONS, claude_code_rows  # noqa: E402
 from errata_bench.crawl.fetch import fetch_all, fetch_repo  # noqa: E402
 from errata_bench.store.rows import load  # noqa: E402
 
@@ -271,6 +272,59 @@ with tempfile.TemporaryDirectory() as t:
           f"the v1 policy keeps permissive and copyleft licences since the date, and says why not: {v1}")
     check(perm["ok/mit"] is None and perm["ok/gpl"].startswith("licence GPL-3.0 outside"),
           "the permissive policy leaves copyleft out")
+
+
+print("5. A Claude Code transcript as SWE-chat's rows, nothing dropped")
+T = "2026-05-01T10:00:0{}Z"
+entries = [
+    {"type": "user", "timestamp": T.format(0), "message": {"role": "user", "content": "please fix the parser"}},
+    {"type": "assistant", "timestamp": T.format(1), "message": {"id": "m1", "model": "x", "usage": {"output_tokens": 7},
+     "content": [{"type": "text", "text": "\n\nI'll read it first."}]}},
+    {"type": "assistant", "timestamp": T.format(2), "message": {"id": "m1", "model": "x", "usage": {"output_tokens": 9},
+     "content": [{"type": "tool_use", "id": "t1", "name": "Read", "input": {"file_path": "/r/p.py"}}]}},
+    {"type": "assistant", "timestamp": T.format(3), "message": {"id": "m1", "model": "x", "usage": {"output_tokens": 11},
+     "content": [{"type": "tool_use", "id": "t2", "name": "Bash", "input": {"command": "pytest", "note": "caf\u00e9"}}]}},
+    {"type": "user", "timestamp": T.format(4), "message": {"role": "user", "content": [
+        {"type": "tool_result", "tool_use_id": "t1", "content": "x = 1"},
+        {"type": "tool_result", "tool_use_id": "t2", "content": [{"type": "text", "text": "1 passed"}]}]}},
+    {"type": "queue-operation", "timestamp": T.format(5), "operation": "enqueue", "content": "no, don't touch tests"},
+    {"type": "queue-operation", "timestamp": T.format(5), "operation": "enqueue", "content": "<task-notification>done</task-notification>"},
+    {"type": "user", "timestamp": T.format(6), "message": {"role": "user", "content": "<command-name>/model</command-name>"}},
+    {"type": "user", "timestamp": T.format(6), "isMeta": True, "message": {"role": "user", "content": [
+        {"type": "text", "text": "Review the diff carefully."}]}},
+    {"type": "user", "timestamp": T.format(7), "message": {"role": "user", "content": [
+        {"type": "text", "text": "see this"}, {"type": "image", "source": {"media_type": "image/png", "data": "AAAA"}}]}},
+    {"type": "file-history-snapshot", "messageId": "m1", "snapshot": {}, "timestamp": T.format(8)},
+    {"type": "custom-title", "title": "t"},
+]
+rows = claude_code_rows("s", "o/r", "o/r#abc", entries)
+kinds = [(r["turn_type"], r["tool_call_id"] or (r["content"] or "")[:20]) for r in rows]
+check([r["turn_number"] for r in rows] == list(range(len(rows))) and all(r["turn_id"] == f"s#{r['turn_number']}" for r in rows),
+      "rows are numbered from 0 in order, each with its own id")
+check(sum(r["turn_type"] == "tool_use" for r in rows) == 2 and ("assistant_response", "I'll read it first.") in kinds,
+      "every block of a message is a row: both batched calls and the text before them (G-76, G-79), text stripped")
+check([r["output_tokens"] for r in rows if r["role"] in ("assistant", "tool_use")] == [None, None, 11],
+      "a message's token counts go on its last row only, so they are counted once")
+res = {r["tool_call_id"]: r for r in rows if r["turn_type"] == "tool_result"}
+check(res["t1"]["tool_name"] == "Read" and res["t2"]["content"] == "1 passed" and res["t2"]["tool_name"] == "Bash",
+      "a result carries its call's name, and its text")
+call = next(r for r in rows if r["tool_call_id"] == "t2")
+read = next(r for r in rows if r["tool_call_id"] == "t1")
+check(read["file_path"] == "/r/p.py" and call["command"] == "pytest" and call["tool_input_json"] == json.dumps(
+      {"command": "pytest", "note": "caf\u00e9"}) and "\\u00e9" in call["tool_input_json"],
+      "a call's path, command and input are extracted, the input in SWE-chat's escaped form")
+user = [(r["turn_type"], r["content"]) for r in rows if r["role"] == "user"]
+check(("user_prompt", "no, don't touch tests") in user and ("system_injected", "<task-notification>done</task-notification>") in user,
+      "a message typed while the agent was busy is the developer's; a queued task notice is not")
+check(("system_injected", "<command-name>/model</command-name>") in user and ("user_prompt", "Review the diff carefully.") in user,
+      "a built-in command is injected; a command's expanded instructions are the developer's request")
+check(("user_prompt", "see this\n[Image: image/png]") in user, "an image is kept as SWE-chat wrote it")
+snap = next(r for r in rows if r["turn_type"] == "file_snapshot")
+check(snap["role"] == "metadata" and snap["timestamp"] is None and not any(r["content"].startswith('{"type": "custom-title"')
+      for r in rows), "a snapshot is a metadata row without a time; a title is no row")
+import pyarrow as pa  # noqa: E402
+check(pa.Table.from_pylist(rows, schema=CONVERSATIONS).num_rows == len(rows),
+      "the rows fit SWE-chat's conversations schema exactly")
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 sys.exit(1 if FAIL else 0)
