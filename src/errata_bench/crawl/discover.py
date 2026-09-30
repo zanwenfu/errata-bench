@@ -176,7 +176,7 @@ def fetch_meta(out: Path, *, get: Callable[[str, dict], dict] = gh_get, gap_s: f
 
 def rank(repo: str, meta: dict[str, dict]) -> tuple:
     """How the holders of one commit, or of one session (`corpus.assemble`), are ordered: not a fork, then earliest
-    created, then by name."""
+    created, then by name. A repository with no creation date on record comes after every dated one of its kind."""
     m = meta.get(repo) or {}
     return (bool(m.get("fork")), m.get("created_at") or "9999", repo)
 

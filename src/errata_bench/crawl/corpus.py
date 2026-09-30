@@ -16,11 +16,16 @@ reason, in ``corpus/left_out.json``.
 
 A session fetched under several repositories is written once. That happens
 when they name one checkpoint repository: each is given all of its sessions.
-The session is credited to a repository whose commits carry its checkpoint's
-trailer, if any does, and among those, or else among all, to the first by
-discovery's rank, as a commit's owner is chosen: not a fork, then earliest
-created (`discover.rank`). Name order alone credited Entire's own sessions to
-a copy of entireio/cli that kept its settings and its trailers (G-80).
+The session is credited to a repository whose commits carry the trailer of
+its latest checkpoint, if any does; else to one whose commits carry an earlier
+checkpoint's; else to any holder. Within the first of those groups that has
+one, it goes to the first by discovery's rank, as a commit's owner is chosen:
+not a fork, then earliest created (`discover.rank`), and the holder's own copy
+of the session is the one written. Name order alone credited Entire's own
+sessions to a copy of entireio/cli that kept its settings and its trailers
+(G-80). A copy is still credited over its original when the original is a
+GitHub fork, or has no creation date on record; neither is true of any
+repository selected so far.
 
 Everything is streamed: conversations are written a session at a time in row
 groups, so memory holds one session's rows, not the corpus.
@@ -151,10 +156,16 @@ def assemble(out: Path, *, log=print) -> dict:
     for repo in sorted(fetched):
         for s in load(out / "raw" / repo.replace("/", "__") / "sessions.jsonl"):
             holders.setdefault(s["session_id"], []).append((repo, s))
+    def link(held: tuple[str, dict]) -> int:
+        """0: the holder's commits carry its copy's latest checkpoint's trailer; 1: an earlier one's; 2: none."""
+        repo, row = held
+        if repo in trailer_repos.get(row.get("checkpoint_id"), ()):
+            return 0
+        return 1 if any(repo in trailer_repos.get(c, ()) for c in row.get("checkpoint_ids") or []) else 2
+
     owner_of: dict[str, tuple[str, dict]] = {}
     for sid, held in holders.items():
-        linked = [h for h in held if h[0] in trailer_repos.get(h[1]["checkpoint_id"], ())]
-        owner_of[sid] = min(linked or held, key=lambda h: rank(h[0], named))
+        owner_of[sid] = min(held, key=lambda h: (link(h), rank(h[0], named)))
         if len(held) > 1:
             left_out["the same session under a second repository"] += len(held) - 1
 
