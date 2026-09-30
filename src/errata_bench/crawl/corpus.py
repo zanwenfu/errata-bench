@@ -45,6 +45,7 @@ import pyarrow.parquet as pq
 
 from ..store.rows import load
 from .discover import rank
+from .label import digest
 from .shape import CONVERSATIONS, claude_code_rows, is_claude_code, read_entries
 
 S = pa.large_string()
@@ -124,6 +125,10 @@ def assemble(out: Path, *, log=print) -> dict:
     corpus.mkdir(parents=True, exist_ok=True)
     meta = {r["query_repo"]: r for r in load(out / "discover" / "repos.jsonl")}
     fetched = {r["repo"]: r for r in load(out / "fetch.jsonl") if r.get("status") == "ok"}
+    # Pushback labels (`crawl.label`), each put on the row it was made for.
+    labels = {(r["session_id"], r["turn_number"]): (r["label"], r["digest"])
+              for r in load(out / "labels.jsonl") if r.get("label") and not r.get("error")}
+    labelled: Counter = Counter()
 
     # Commits, and which checkpoint each links to: from `link` when it ran,
     # else from discovery's trailer commits (default branches only, no patch).
@@ -156,6 +161,7 @@ def assemble(out: Path, *, log=print) -> dict:
     for repo in sorted(fetched):
         for s in load(out / "raw" / repo.replace("/", "__") / "sessions.jsonl"):
             holders.setdefault(s["session_id"], []).append((repo, s))
+
     def link(held: tuple[str, dict]) -> int:
         """0: the holder's commits carry its copy's latest checkpoint's trailer; 1: an earlier one's; 2: none."""
         repo, row = held
@@ -185,6 +191,13 @@ def assemble(out: Path, *, log=print) -> dict:
                 continue
             pk = f"{repo}#{s['checkpoint_id']}"
             rows = claude_code_rows(sid, repo, pk, entries, strategy=s.get("strategy"))
+            for r in rows:
+                got = labels.get((sid, r["turn_number"])) if r["turn_type"] == "user_prompt" else None
+                if got and got[1] == digest(r["content"]):
+                    r["prompt_pushback"] = got[0]
+                    labelled["put on its message"] += 1
+                elif got:
+                    labelled["not put: the message changed since it was labelled"] += 1
             if not any(r["turn_type"] == "user_prompt" for r in rows):
                 left_out["no developer message"] += 1
                 continue
@@ -302,7 +315,8 @@ def assemble(out: Path, *, log=print) -> dict:
     _write(corpus / "commits.parquet", commit_rows, COMMITS)
     _write(corpus / "repositories.parquet", repositories, REPOSITORIES)
     summary = {"sessions": len(sessions), "repositories": len(repositories), "checkpoints": len(checkpoints),
-               "commit_rows": len(commit_rows), "left_out": dict(left_out), "agents_left_for_later": dict(agents_left)}
+               "commit_rows": len(commit_rows), "left_out": dict(left_out), "agents_left_for_later": dict(agents_left),
+               "labels": dict(labelled)}
     (corpus / "left_out.json").write_text(json.dumps(summary, indent=1) + "\n")
     log(json.dumps(summary))
     return summary
