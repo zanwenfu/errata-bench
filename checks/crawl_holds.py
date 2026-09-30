@@ -470,81 +470,109 @@ print("7. A session several repositories hold is credited to its original, not t
 # its sessions. A copy of entireio/cli under another account, not a GitHub
 # fork, kept its settings, and its copied history kept the trailers too. It
 # sorted first by name, and name order credited 1,512 of Entire's sessions to
-# it. Here five code repositories name one checkpoint repository, which holds
-# three sessions.
+# it. Here seven code repositories name one checkpoint repository holding seven
+# sessions, and an eighth holds one of them in its own refs.
 with tempfile.TemporaryDirectory() as t:
     import pyarrow.parquet as pq  # noqa: E402
 
     tmp = Path(t)
     srv, works, out = tmp / "srv", tmp / "works", tmp / "out"
     works.mkdir()
-    cids = {"g80": "a1b2c3d4e5f6", "pair": "b2c3d4e5f6a1", "orphan": "c3d4e5f6a1b2"}
+    # Each session's checkpoints in the checkpoint repository, oldest first.
+    cps = {"g80": ["a1b2c3d4e5f6"], "pair": ["b2c3d4e5f6a1"], "orphan": ["c3d4e5f6a1b2"], "forkonly": ["d4e5f6a1b2c3"],
+           "early": ["e5f6a1b2c3d4", "f6a1b2c3d4e5"], "late": ["a2b3c4d5e6f7", "b3c4d5e6f7a2"], "multi": ["c4d5e6f7a2b3"]}
+    own = "d5e6f7a2b3c4"  # "multi"'s checkpoint in s/own's own refs
+
+    def checkpoint(cid: str, sid: str, when: str) -> dict:
+        """One checkpoint of the v1 layout, holding one session."""
+        return {f"{cid[:2]}/{cid[2:]}/metadata.json": json.dumps({"checkpoint_id": cid}),
+                f"{cid[:2]}/{cid[2:]}/0/metadata.json": session_meta(sid, when),
+                f"{cid[:2]}/{cid[2:]}/0/full.jsonl": cc_transcript(sid, f"please fix {sid}", f"toolu_{sid}")}
+
     cp_files = {}
-    for sid, cid in cids.items():
-        cp_files[f"{cid[:2]}/{cid[2:]}/metadata.json"] = json.dumps({"checkpoint_id": cid})
-        cp_files[f"{cid[:2]}/{cid[2:]}/0/metadata.json"] = session_meta(sid, "2026-05-01T10:00:05Z")
-        cp_files[f"{cid[:2]}/{cid[2:]}/0/full.jsonl"] = cc_transcript(sid, f"please fix {sid}", f"toolu_{sid}")
+    for sid, ids in cps.items():
+        for i, cid in enumerate(ids):
+            cp_files.update(checkpoint(cid, sid, f"2026-05-01T1{i}:00:05Z"))
     serve(srv, "o/cps", {entire.V1_BRANCH: build_tree(works, cp_files)})
 
-    def code_repo(name: str, trailers: list[str]) -> Path:
+    def code_repo(name: str, trailers: list[str], refs: dict | None = None) -> Path:
         """A code repository served at srv/name, with one commit per checkpoint trailer."""
-        repo = serve(srv, name, {})
+        repo = serve(srv, name, refs or {})
         for cid in trailers:
             (repo / "x.txt").write_text(cid + "\n")
             sh("git", "add", "-A", cwd=repo)
             sh("git", "commit", "-q", "-m", f"work\n\nEntire-Checkpoint: {cid}", cwd=repo)
         return repo
 
-    orig = code_repo("o/orig", [cids["g80"]])
+    orig = code_repo("o/orig", cps["g80"])
     trailer_sha = sh("git", "rev-parse", "HEAD", cwd=orig).strip()
-    code_repo("z/late", [cids["pair"]])
+    code_repo("z/late", cps["pair"] + cps["late"][1:])  # "late"'s latest checkpoint
+    back = code_repo("b/back", cps["early"][:1] + cps["late"][:1])  # only earlier checkpoints
+    early_sha = sh("git", "rev-parse", "HEAD~1", cwd=back).strip()
     code_repo("a/early", [])
-    code_repo("f/fork", [])
-    # The copy: the original's history, trailers and all. "C/copy" sorts first.
-    copy = srv / "C" / "copy"
-    copy.parent.mkdir(parents=True, exist_ok=True)
-    sh("git", "clone", "-q", "--bare", str(orig), str(copy))
-    sh("git", "config", "uploadpack.allowFilter", "true", cwd=copy)
-    sh("git", "config", "uploadpack.allowAnySHA1InWant", "true", cwd=copy)
-    # Created, fork, and the name search found it under ("a/early" was renamed since).
+    code_repo("f/fork", cps["forkonly"])
+    code_repo("s/own", [own], {entire.V1_BRANCH: build_tree(works, checkpoint(own, "multi", "2026-05-01T12:00:05Z"))})
+    for name in ("C/copy", "A/nometa"):  # the original's history, trailers and all; both sort first
+        copy = srv / name
+        copy.parent.mkdir(parents=True, exist_ok=True)
+        sh("git", "clone", "-q", "--bare", str(orig), str(copy))
+        sh("git", "config", "uploadpack.allowFilter", "true", cwd=copy)
+        sh("git", "config", "uploadpack.allowAnySHA1InWant", "true", cwd=copy)
+    # Created, fork, and the name search found it under ("a/early" was renamed since). A/nometa has
+    # no metadata, as when fetched by name; s/own names no checkpoint repository.
     held = {"C/copy": ("2026-09-06T00:00:00Z", False, "C/copy"), "o/orig": ("2026-01-01T00:00:00Z", False, "o/orig"),
-            "z/late": ("2026-05-01T00:00:00Z", False, "z/late"),
+            "z/late": ("2026-05-01T00:00:00Z", False, "z/late"), "b/back": ("2025-06-01T00:00:00Z", False, "b/back"),
             "a/early": ("2025-01-01T00:00:00Z", False, "a/early-was"),
-            "f/fork": ("2024-01-01T00:00:00Z", True, "f/fork")}
+            "f/fork": ("2024-01-01T00:00:00Z", True, "f/fork"), "s/own": ("2026-02-01T00:00:00Z", False, "s/own")}
     names_cps = json.dumps({"strategy_options": {"checkpoint_remote": {"provider": "github", "repo": "o/cps"}}})
     where = {"base": srv.as_uri()}
-    for name in held:
-        append(out / "fetch.jsonl", fetch_repo(name, out, settings=lambda r: names_cps, **where))
+    for name in [*held, "A/nometa"]:
+        append(out / "fetch.jsonl", fetch_repo(name, out, settings=lambda r: None if r == "s/own" else names_cps,
+                                               **where))
         link_repo(name, out, **where)
     (out / "discover").mkdir(parents=True, exist_ok=True)
     (out / "discover" / "repos.jsonl").write_text("".join(json.dumps({
         "query_repo": query, "full_name": name, "license": "MIT", "language": "Go", "fork": fork,
-        "created_at": when}) + "\n" for name, (when, fork, query) in held.items()))
+        "created_at": when}) + "\n" for name, (when, fork, query) in held.items())
+        + json.dumps({"query_repo": "gone/x", "missing": True, "error": None}) + "\n")  # a 404: no full_name
     (out / "discover" / "commits.jsonl").write_text("")
     summary = assemble(out, log=lambda *_: None)
     corpus = out / "corpus"
     credited = {r["session_id"]: r["repo_id"] for r in pq.read_table(corpus / "sessions.parquet").to_pylist()}
     check(credited.get("g80") == "o/orig",
-          "a session a copy also holds, with the original's settings and its trailers, is credited to the "
-          f"original, the earliest-created holder that is not a fork (G-80): {credited.get('g80')}")
+          "a session two copies also hold, with the original's settings and its trailers, one of them with no "
+          f"metadata, is credited to the original, the earliest-created holder that is not a fork (G-80): "
+          f"{credited.get('g80')}")
     check(credited.get("pair") == "z/late",
           f"a session only one holder's commits link stays with that holder, however new: {credited.get('pair')}")
     check(credited.get("orphan") == "a/early",
           "a session no holder's commits link goes to the earliest-created holder, never to a fork, its "
           f"creation read under the name it is fetched by: {credited.get('orphan')}")
+    check(credited.get("forkonly") == "f/fork", f"a session only a fork's commits link goes to the fork: "
+          f"{credited.get('forkonly')}")
+    check(credited.get("early") == "b/back",
+          "a session no holder links by its latest checkpoint goes to one that links an earlier checkpoint: "
+          f"{credited.get('early')}")
+    check(credited.get("late") == "z/late",
+          "and a holder linking its latest checkpoint comes before an older one linking only an earlier "
+          f"checkpoint: {credited.get('late')}")
+    check(credited.get("multi") == "s/own",
+          "each holder is judged by its own copy's checkpoints: a session a repository also holds in its own "
+          f"refs, which its commits link, is credited to it: {credited.get('multi')}")
     repos = {r["repo_id"] for r in pq.read_table(corpus / "repositories.parquet").to_pylist()}
-    check(summary["sessions"] == 3 and summary["left_out"] == {"the same session under a second repository": 12}
-          and repos == {"a/early", "o/orig", "z/late"},
+    check(summary["sessions"] == 7 and summary["left_out"] == {"the same session under a second repository": 43}
+          and repos == {"a/early", "b/back", "f/fork", "o/orig", "s/own", "z/late"},
           f"each session is written once and every second copy counted; a repository credited with none is not "
           f"in the corpus: {summary['sessions']} sessions, {summary['left_out']}, {sorted(repos)}")
     rows = {(r["session_id"], r["repo_id"]) for r in
             pq.read_table(corpus / "conversations.parquet", columns=["session_id", "repo_id"]).to_pylist()}
     shas = {r["checkpoint_pk"]: json.loads(r["commit_shas"]) for r in
             pq.read_table(corpus / "checkpoints.parquet").to_pylist()}
-    check(rows == {("g80", "o/orig"), ("pair", "z/late"), ("orphan", "a/early")}
-          and shas.get(f"o/orig#{cids['g80']}") == [trailer_sha] and f"C/copy#{cids['g80']}" not in shas,
-          "every table files a session under the repository credited, its checkpoint linked to that "
-          "repository's commit")
+    check(set(credited) == set(cps) and rows == {(s, credited[s]) for s in cps}
+          and shas.get(f"o/orig#{cps['g80'][0]}") == [trailer_sha] and shas.get(f"b/back#{cps['early'][0]}") == [early_sha]
+          and not any(pk.startswith(("C/copy#", "A/nometa#")) for pk in shas),
+          "every table files a session under the repository credited, its checkpoints linked to that "
+          "repository's commits")
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 sys.exit(1 if FAIL else 0)
