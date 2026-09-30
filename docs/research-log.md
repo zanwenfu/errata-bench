@@ -10191,3 +10191,35 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     patch cap, the assembly, and the pipeline reading the result through
     ERRATA_CORPUS in a fresh process. All 35 of the collector's rules were
     broken one at a time, and each time a check failed.
+- **09-30, 00:1x UTC** — **The two pipeline gaps for newer Claude Code closed,
+  and SWE-chat read exactly as before (#16).**
+  - *`recover.has_transcript`.* It still reads a transcript whose first entry
+    has a type SWE-chat's period knew as Claude Code's. One that opens
+    otherwise is now Claude Code's when its user or assistant entries have
+    Claude Code's shape (a `sessionId`, a `message` with a `role`).
+    Before, a 2.1 transcript opening with `bridge-session` was foreign, and
+    the build would have refused every session in it.
+  - *Sub-agents.*
+    - `recover.subagent_edits` also reads the collector's sub-agent
+      transcripts (`subagents/<session>/<spawning call>/`). A sub-agent's
+      edit before the cut is then refused by the build, as it always was,
+      instead of passing unseen.
+    - A new gate refuses a sub-agent spawned before the cut that left no
+      record at all, in progress entries or its own transcript. It applies
+      only where the corpus keeps sub-agent transcripts.
+  - *SWE-chat unchanged, measured on all of it* (`checks/recover_over_corpus.py`,
+    comparing with the readers as they were at 8a7817dc1):
+    - `has_transcript` answers the same on 5,850 of 5,850 transcripts
+      (4,929 Claude Code);
+    - `subagent_edits` returns the same on every transcript with progress
+      entries (400 sessions with sub-agent edits);
+    - the new gate never fires.
+
+    Every other suite passes.
+  - *Checks.* `checks/crawl_holds.py` covers:
+    - a 2.1 transcript read as Claude Code's, another agent's as foreign;
+    - a sub-agent's edit placed at its spawning call;
+    - an unrecorded sub-agent refused only at or before the cut.
+
+    All 39 of the collector's and these readers' rules were broken one at a
+    time, and each time a check failed.

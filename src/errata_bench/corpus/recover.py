@@ -54,18 +54,36 @@ def has_transcript(session_id: str) -> bool:
 
     Any file was enough before, so screening marked all 623 OpenCode rows
     `calls_recovered` although `raw_calls` reads nothing from them.
+
+    A transcript whose first entry is of a type SWE-chat's period knew is Claude
+    Code's, as before. One that opens otherwise is Claude Code's when its user
+    or assistant entries have Claude Code's shape: newer versions open with
+    types SWE-chat never saw (2.1.246's `bridge-session`), and the collector's
+    corpus holds them (#16). Other agents' transcripts have no such entries.
+    Across SWE-chat's 5,850 transcripts the two readings agree on every one.
     """
     path = transcript_path(session_id)
     if not path.is_file():
         return False
-    with path.open() as fh:
-        for line in fh:
+    first = None
+    with path.open(errors="replace") as fh:
+        for n, line in enumerate(fh):
+            if n >= 500:
+                break
             try:
                 entry = json.loads(line)
             except ValueError:
                 continue
-            if isinstance(entry, dict) and entry.get("type") is not None:
-                return entry["type"] in CLAUDE_CODE_TYPES
+            if not isinstance(entry, dict):
+                continue
+            if first is None and entry.get("type") is not None:
+                first = entry["type"]
+                if first in CLAUDE_CODE_TYPES:
+                    return True
+            message = entry.get("message")
+            if (entry.get("type") in ("user", "assistant") and "sessionId" in entry and isinstance(message, dict)
+                    and "role" in message):
+                return True
     return False
 
 
@@ -224,17 +242,54 @@ def recover(session_id: str, turns: list[dict]) -> list[dict]:
 SUBAGENT_WRITES = frozenset({"Edit", "Write", "MultiEdit", "NotebookEdit"})
 
 
+def subagent_dir(session_id: str) -> Path | None:
+    """Where the collector keeps this session's subagent transcripts, when the corpus has them (#16).
+
+    SWE-chat's corpus has none, so this is None there and nothing below changes
+    for it.
+    """
+    from .sessions import CORPUS
+
+    root = CORPUS / "subagents"
+    return root / session_id if root.is_dir() else None
+
+
 def subagent_edits(session_id: str) -> list[dict]:
     """File edits the session's sub-agents made, each with the main agent's call that spawned it.
 
     `spawned_by` is that call's id: a sub-agent's own sub-agent is followed up
-    to the main agent's call.
+    to the main agent's call. Read from the parent's transcript, where Claude
+    Code wrote sub-agents' calls as progress entries until 2.1, and from the
+    sub-agents' own transcripts where the collector kept them
+    (``subagents/<session>/<spawning call>/agent-*.jsonl``).
     """
     path = transcript_path(session_id)
-    if not path.is_file():
-        return []
     parent: dict[str, str | None] = {}
     edits: list[dict] = []
+    own = subagent_dir(session_id)
+    for folder in sorted(own.iterdir()) if own is not None and own.is_dir() else []:
+        for sub in sorted(folder.glob("agent-*.jsonl")):
+            with sub.open(errors="replace") as fh:
+                for line in fh:
+                    if '"tool_use"' not in line:
+                        continue
+                    try:
+                        entry = json.loads(line)
+                    except ValueError:
+                        continue
+                    message = entry.get("message") if isinstance(entry, dict) else None
+                    content = message.get("content") if isinstance(message, dict) else None
+                    for block in content if isinstance(content, list) else []:
+                        if not (isinstance(block, dict) and block.get("type") == "tool_use" and block.get("id")):
+                            continue
+                        parent[block["id"]] = folder.name
+                        if block.get("name") in SUBAGENT_WRITES:
+                            given = block.get("input") if isinstance(block.get("input"), dict) else {}
+                            edits.append({"id": block["id"], "tool": block["name"],
+                                          "file_path": given.get("file_path") or given.get("notebook_path"),
+                                          "parent": folder.name})
+    if not path.is_file():
+        return _placed(edits, parent)
     with path.open() as fh:
         for line in fh:
             if '"agent_progress"' not in line:
@@ -259,6 +314,11 @@ def subagent_edits(session_id: str) -> list[dict]:
                     edits.append({"id": block["id"], "tool": block["name"],
                                   "file_path": given.get("file_path") or given.get("notebook_path"),
                                   "parent": entry.get("parentToolUseID")})
+    return _placed(edits, parent)
+
+
+def _placed(edits: list[dict], parent: dict[str, str | None]) -> list[dict]:
+    """Each edit with the main agent's call it descends from."""
     for e in edits:
         top, seen = e["parent"], set()
         while top in parent and top not in seen:
@@ -266,3 +326,36 @@ def subagent_edits(session_id: str) -> list[dict]:
             top = parent[top]
         e["spawned_by"] = top
     return edits
+
+
+SPAWNING_TOOLS = frozenset({"Task", "Agent"})
+
+
+def unrecorded_subagents(session_id: str, turns: list[dict]) -> list[str]:
+    """The main agent's sub-agent calls whose sub-agent left no record here: their ids.
+
+    Only where the corpus keeps sub-agent transcripts (the collector's, #16).
+    There, a sub-agent's work is either in its own transcript or, before
+    Claude Code 2.1, in the parent's progress entries. A call with neither
+    record may have changed files no replay knows of. Empty for SWE-chat,
+    whose corpus keeps no sub-agent transcripts, so its builds are unchanged.
+    """
+    own = subagent_dir(session_id)
+    if own is None:
+        return []
+    kept = {p.name for p in own.iterdir()} if own.is_dir() else set()
+    progressed: set[str] = set()
+    path = transcript_path(session_id)
+    if path.is_file():
+        with path.open(errors="replace") as fh:
+            for line in fh:
+                if '"agent_progress"' in line:
+                    try:
+                        entry = json.loads(line)
+                    except ValueError:
+                        continue
+                    if isinstance(entry, dict) and entry.get("parentToolUseID"):
+                        progressed.add(str(entry["parentToolUseID"]))
+    return [str(t["tool_call_id"]) for t in turns if t.get("turn_type") == "tool_use"
+            and t.get("tool_name") in SPAWNING_TOOLS and t.get("tool_call_id")
+            and str(t["tool_call_id"]) not in kept and str(t["tool_call_id"]) not in progressed]

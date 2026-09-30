@@ -395,7 +395,8 @@ with tempfile.TemporaryDirectory() as t:
         "a3/b2c4d5e6f7/0/full.jsonl": cc_transcript("cc1", "please fix a.txt", "toolu_e1"),
         "a3/b2c4d5e6f7/1/metadata.json": session_meta("codex1", "2026-05-01T11:00:00Z", agent="Codex"),
         "a3/b2c4d5e6f7/1/full.jsonl": b'{"type": "session_meta", "payload": {}}\n',
-        "a3/b2c4d5e6f7/tasks/toolu_e1/agent-s1.jsonl": b'{"subagent": true}\n',
+        "a3/b2c4d5e6f7/tasks/toolu_e1/agent-s1.jsonl": json.dumps({"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": "toolu_sub1", "name": "Write", "input": {"file_path": "/w/c.txt"}}]}}).encode() + b"\n",
     })
     sh("git", "fetch", "-q", str(v1[0]), v1[1], cwd=code)
     sh("git", "update-ref", entire.V1_BRANCH, v1[1], cwd=code)
@@ -428,12 +429,21 @@ with tempfile.TemporaryDirectory() as t:
     check(cc1.exists() and cc1.read_bytes() == cc_transcript("cc1", "please fix a.txt", "toolu_e1")
           and (corpus / "subagents" / "cc1" / "toolu_e1" / "agent-s1.jsonl").exists(),
           "the transcript and its subagents' are linked into the corpus")
+    (corpus / "transcripts" / "codex9.jsonl").write_text('{"type": "session_meta", "payload": {}}\n')
     probe = subprocess.run([sys.executable, "-c", """
 import json, sys
 sys.path.insert(0, "src")
-from errata_bench.corpus import sessions, turns, timeline
+from errata_bench.corpus import sessions, turns, timeline, recover
+from errata_bench.construct import build
 rows = turns.load_session_turns({"cc1"})["cc1"]
-print(json.dumps({"repos": {k: [v.language, v.license_type] for k, v in sessions.load_repos().items()},
+spawn = [{"turn_type": "tool_use", "tool_name": "Agent", "tool_call_id": "toolu_gone", "turn_number": 1},
+         {"turn_type": "tool_use", "tool_name": "Agent", "tool_call_id": "toolu_e1", "turn_number": 2}]
+print(json.dumps({"has": [recover.has_transcript("cc1"), recover.has_transcript("codex9")],
+                  "sub": [(e["file_path"], e["spawned_by"]) for e in recover.subagent_edits("cc1")],
+                  "unrecorded": recover.unrecorded_subagents("cc1", spawn),
+                  "before_cut": [build.unrecorded_subagents_before("cc1", spawn, 1),
+                                 build.unrecorded_subagents_before("cc1", spawn, 0)],
+                  "repos": {k: [v.language, v.license_type] for k, v in sessions.load_repos().items()},
                   "commits": sessions.session_commits(),
                   "by_repo": {k: len(v) for k, v in timeline.load_commits_by_repo().items()},
                   "turns": [[r["turn_type"], r["content"]] for r in rows if r["turn_type"] in
@@ -448,6 +458,12 @@ print(json.dumps({"repos": {k: [v.language, v.license_type] for k, v in sessions
                                ["tool_use", json.dumps({"file_path": "/w/a.txt"})], ["tool_result", "edited"],
                                ["assistant_response", "Done, and the tests pass."]],
           "and read its turns whole: the text before the edit is there")
+    check(got.get("has") == [True, False], "a 2.1 transcript is Claude Code's to the pipeline; another agent's is foreign")
+    check(got.get("sub") == [["/w/c.txt", "toolu_e1"]],
+          "a sub-agent's edit is read from its own transcript and placed at the call that spawned it")
+    check(got.get("unrecorded") == ["toolu_gone"], "a sub-agent call with no record at all is named, one with a record is not")
+    check(got.get("before_cut") == [["toolu_gone"], []],
+          "and the build refuses it only when the call came at or before the cut")
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 sys.exit(1 if FAIL else 0)

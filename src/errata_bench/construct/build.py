@@ -25,7 +25,7 @@ import re
 import tempfile
 from pathlib import Path
 
-from ..corpus.recover import foreign_transcript, has_transcript, recovered, subagent_edits
+from ..corpus.recover import foreign_transcript, has_transcript, recovered, subagent_edits, unrecorded_subagents
 from ..corpus.sessions import load_repos
 from .consistency import check as consistency_check, tree_changing_git, why_inconsistent
 from .edits import OUTSIDE, edits_before, replay, unreplayed_writes
@@ -164,6 +164,18 @@ def subagent_edits_before(session_id: str, turns: list[dict], cut: int) -> list[
         if (when is None or when <= cut) and not OUTSIDE.match(e["file_path"] or ""):
             out.append(e["file_path"] or "(no path)")
     return out
+
+
+def unrecorded_subagents_before(session_id: str, turns: list[dict], cut: int) -> list[str]:
+    """Sub-agent calls made at or before the cut that left no record of what they did.
+
+    Only where the corpus keeps sub-agent transcripts (#16): there such a
+    sub-agent may have edited files that no replay knows of. Never on SWE-chat,
+    whose corpus keeps none (`checks/recover_over_corpus.py`).
+    """
+    at = {str(t["tool_call_id"]): t["turn_number"] for t in turns
+          if t.get("turn_type") == "tool_use" and t.get("tool_call_id") and t.get("turn_number") is not None}
+    return [c for c in unrecorded_subagents(session_id, turns) if at.get(c) is not None and at[c] <= cut]
 
 
 def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
@@ -364,6 +376,10 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
             if by_subagent:
                 reject(f"a sub-agent edited files before the cut, which the replay does not "
                        f"reproduce: {by_subagent[0][:90]}")
+                continue
+            unknown = unrecorded_subagents_before(row["session_id"], turns, row["cut"])
+            if unknown:
+                reject(f"a sub-agent ran before the cut and left no record of what it did: {unknown[0][:60]}")
                 continue
             # A transcript in another agent's format: the table may hold none of
             # the session's calls (a Copilot session's has no tool rows, while its
