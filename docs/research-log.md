@@ -10263,3 +10263,42 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     everything collected before any of it is released. Two repositories (a
     pair sharing one checkpoint repository) returned the same 510 sessions;
     `crawl.corpus` writes such a session once.
+- **09-30, 02:5x UTC** — **The first full collection: 6,464 Claude Code
+  sessions, 4,140 of them new since SWE-chat (#16).**
+  - *Discovery, now committed code* (`crawl_entire.py discover`, `meta` and
+    `select`, run on the laptop). It reproduces the survey of 09-29:
+    - 87,380 trailer-commit rows; 1,776 repositories once copies are merged;
+    - 436 selected: licensed under the v1 policy, with a trailer commit since
+      20 April, 20,247 of them;
+    - left out: 692 with nothing since April, 647 with no licence, 1 WTFPL;
+    - GitHub marked 19 of the 131 slices read as possibly incomplete.
+  - *Fetch, link and assemble on the run VM,* at 00d045010, about 45
+    minutes.
+    - Fetch: 282 repositories with checkpoints, 154 with none, 12,494
+      sessions (26.7 GB). 1,511 imported sessions and 355 with no transcript
+      were left out.
+    - Link: 282 repositories, with their trailer commits and patches.
+    - The corpus (`data/entire/corpus/` on the VM, SWE-chat's six tables):
+      6,464 Claude Code sessions from 203 repositories, 24,758 checkpoints,
+      27,243 commit rows, 4.6 million conversation rows.
+    - Left out of the corpus: 3,052 copies of a session under a second
+      repository, and 2,970 other agents' sessions kept for later (Codex
+      1,411, OpenCode 693, Copilot CLI 478, Pi 179, Cursor 79). One
+      repository named Entire's own checkpoint repository in its settings,
+      so its 2,981 sessions are Entire's, written once.
+  - *What is new.* Of the 6,464 sessions:
+    - 4,143 were created after 19 April, and 4,140 of those are not in
+      SWE-chat;
+    - 1,724 are SWE-chat's own sessions, since the selected repositories
+      include their older history.
+
+    Of the 4,140 new, 3,212 are in a language the pipeline can sandbox, from
+    140 repositories, with 47,107 developer messages. That is what pushback
+    labelling would read.
+    - By language: Go 1,783, Python 757, TypeScript 537, Rust 515.
+    - Two repositories hold 668 and 641 of the new sessions, so the
+      per-repository cap will matter.
+    - These counts came from the computation now committed as
+      `scripts/crawl_corpus_stats.py`, run on the VM before the commit. It
+      is to be rerun there as committed.
+  - The VM was deallocated after, with the data on its disk.
