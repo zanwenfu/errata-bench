@@ -27,6 +27,7 @@ import shutil
 import time
 import urllib.error
 import urllib.request
+from datetime import datetime, timezone
 from pathlib import Path
 
 from ..store.rows import append, load
@@ -87,13 +88,36 @@ def _copies(repo: Path, layout: entire.Layout, source: str) -> tuple[list[entire
                             "cli_version": (root or {}).get("cli_version"), "branch": (root or {}).get("branch"),
                             "sessions": len(indexes), "files_touched": len((root or {}).get("files_touched") or []),
                             "metadata_readable": root is not None})
+        # Subagent transcripts sit at the checkpoint's root, tasks/<tool-use id>/,
+        # for whichever of its sessions made that call.
+        tasks = {p: o for p, o in files.items() if p.startswith("tasks/") and p.count("/") == 2
+                 and (p.endswith(".jsonl") or p.endswith("/task.json"))}
         for n in indexes:
             meta = _json(blobs.get(files.get(f"{n}/metadata.json", "")))
             if meta is None:
                 continue
-            meta = {**meta, "_transcript_oid": files.get(f"{n}/full.jsonl"), "_source": source, "_layout": kind}
+            meta = {**meta, "_transcript_oid": files.get(f"{n}/full.jsonl"), "_source": source, "_layout": kind,
+                    "_tasks": tasks}
             copies.append(entire.Copy(checkpoint_id=cid, tree=f"{rev}:{prefix}{n}", metadata=meta))
     return copies, checkpoints
+
+
+def _call_ids(path: Path) -> set[str]:
+    """Every tool call id in a transcript, read a line at a time."""
+    ids = set()
+    with open(path, "rb") as f:
+        for line in f:
+            if b'"tool_use"' not in line:
+                continue
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                continue
+            content = ((entry.get("message") or {}).get("content") if isinstance(entry, dict) else None) or []
+            for block in content if isinstance(content, list) else []:
+                if isinstance(block, dict) and block.get("type") == "tool_use" and block.get("id"):
+                    ids.add(str(block["id"]))
+    return ids
 
 
 def _sha256(path: Path) -> str:
@@ -123,7 +147,8 @@ def fetch_repo(repo_id: str, out: Path, *, keep_git: bool = False, base: str = "
     from: GitHub, or local fixtures in the checks.
     """
     t0 = time.time()
-    status = {"repo": repo_id, "sources": [], "checkpoints": 0, "sessions": 0, "skipped": {}, "bytes": 0}
+    status = {"repo": repo_id, "sources": [], "checkpoints": 0, "sessions": 0, "skipped": {}, "bytes": 0,
+              "fetched_at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")}
     try:
         refs = ls_remote(f"{base}/{repo_id}")
     except GitError as e:
@@ -185,6 +210,31 @@ def fetch_repo(repo_id: str, out: Path, *, keep_git: bool = False, base: str = "
         prefetch(git_dir, [o for o, _ in targets])
         total += write_blobs(git_dir, targets)
 
+    # A session's subagents: every checkpoint it was in may hold some, since
+    # Entire writes a task's transcript once, at the condensation after it ends.
+    # Claude Code 2.1 no longer writes a subagent's calls into the parent's
+    # transcript, so these are the only record of what its subagents did.
+    by_checkpoint: dict[tuple[Path, str], dict] = {}
+    for g, c in copies:
+        by_checkpoint[(g, c.checkpoint_id)] = c.metadata.get("_tasks") or {}
+    subagents: dict[str, int] = {}
+    task_targets: dict[Path, list[tuple[str, Path]]] = {}
+    for sid, copy, seen_in in keep:
+        calls = _call_ids(dest / "transcripts" / f"{sid}.jsonl")
+        placed = set()
+        for g, c in copies:
+            if c.session_id != sid:
+                continue
+            for path, oid in by_checkpoint.get((g, c.checkpoint_id), {}).items():
+                _, call, name = path.split("/")
+                if call in calls and entire.SAFE_ID.match(call) and entire.SAFE_ID.match(name) and (call, name) not in placed:
+                    placed.add((call, name))
+                    task_targets.setdefault(g, []).append((oid, dest / "subagents" / sid / call / name))
+        subagents[sid] = len({call for call, _ in placed})
+    for git_dir, targets in task_targets.items():
+        prefetch(git_dir, [o for o, _ in targets])
+        total += write_blobs(git_dir, targets)
+
     dest.mkdir(parents=True, exist_ok=True)
     with open(dest / "sessions.jsonl.part", "w") as f:
         for sid, copy, seen_in in keep:
@@ -193,7 +243,8 @@ def fetch_repo(repo_id: str, out: Path, *, keep_git: bool = False, base: str = "
             row = {k: copy.metadata.get(k) for k in SESSION_FIELDS}
             row.update({"repo": repo_id, "source": copy.metadata["_source"], "layout": copy.metadata["_layout"],
                         "checkpoint_id": copy.checkpoint_id, "checkpoint_ids": seen_in,
-                        "transcript_bytes": path.stat().st_size, "transcript_sha256": digest})
+                        "transcript_bytes": path.stat().st_size, "transcript_sha256": digest,
+                        "subagent_tasks": subagents.get(sid, 0)})
             f.write(json.dumps(row) + "\n")
     (dest / "sessions.jsonl.part").replace(dest / "sessions.jsonl")
     with open(dest / "checkpoints.jsonl.part", "w") as f:

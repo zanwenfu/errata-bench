@@ -4,12 +4,16 @@
     .venv/bin/python scripts/crawl_entire.py meta
     .venv/bin/python scripts/crawl_entire.py select --since 2026-04-20 --policy v1
     .venv/bin/python scripts/crawl_entire.py fetch --workers 4 [--limit N] [--repo OWNER/NAME ...]
+    .venv/bin/python scripts/crawl_entire.py link --workers 3
+    .venv/bin/python scripts/crawl_entire.py assemble
     .venv/bin/python scripts/crawl_entire.py status
+
+Then point the pipeline at the result: ERRATA_CORPUS=data/entire/corpus.
 
 Every stage writes under --out (default data/entire, which git ignores) and
 resumes where it stopped. discover and meta use the `gh` CLI's login (GitHub's
-search needs one); fetch is anonymous git and needs no login, so it can run on
-a machine without one. Read-only throughout: nothing is written to GitHub and
+search needs one); fetch and link are anonymous git and need no login, so they
+can run on a machine without one. Read-only throughout: nothing is written to GitHub and
 no model is called.
 """
 
@@ -24,7 +28,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
-from errata_bench.crawl import discover, fetch  # noqa: E402
+from errata_bench.crawl import corpus, discover, fetch, link  # noqa: E402
 from errata_bench.store.rows import load  # noqa: E402
 
 
@@ -48,6 +52,10 @@ def main(argv: list[str]) -> int:
     f.add_argument("--limit", type=int, default=0, help="only the first N selected repositories, by most recent sessions")
     f.add_argument("--repo", action="append", default=[], help="fetch these repositories instead of the selection")
     f.add_argument("--keep-git", action="store_true")
+    k = sub.add_parser("link")
+    k.add_argument("--workers", type=int, default=3)
+    k.add_argument("--repo", action="append", default=[], help="link these repositories instead of every one fetched")
+    sub.add_parser("assemble")
     sub.add_parser("status")
     args = ap.parse_args(argv)
 
@@ -66,6 +74,12 @@ def main(argv: list[str]) -> int:
             chosen.sort(key=lambda r: (-r["owned_since"], r["repo"]))
             repos = [r["repo"] for r in chosen][: args.limit or None]
         fetch.fetch_all(repos, args.out, workers=args.workers, keep_git=args.keep_git)
+    elif args.stage == "link":
+        repos = args.repo or sorted({r["repo"] for r in load(args.out / "fetch.jsonl") if r.get("status") == "ok"})
+        sizes = {r.get("full_name") or r["query_repo"]: r.get("size_kb") for r in load(args.out / "discover" / "repos.jsonl")}
+        link.link_all(repos, args.out, workers=args.workers, sizes=sizes)
+    elif args.stage == "assemble":
+        corpus.assemble(args.out)
     elif args.stage == "status":
         rows = load(args.out / "fetch.jsonl")
         by = collections.Counter(r["status"] for r in rows)

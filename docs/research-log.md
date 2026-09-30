@@ -10151,3 +10151,43 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     across the collector were broken one at a time, and each time a check
     failed. The one that first broke without a failure did so because the
     fixture's snapshot had no time to drop; the fixture now has one.
+- **09-30, 00:1x UTC** — **The collector end to end: linking commits,
+  assembling SWE-chat's six tables, and the pipeline reading them (#16).**
+  - *Link* (`crawl/link.py`). A blobless clone of every branch. From it, each
+    commit with a trailer (`git log --all`, reaching where commit search's
+    default branch does not), with its name-status, line counts and patch,
+    each blob fetched in batches. A patch over 1 MB is cut and marked. The
+    clone is deleted after.
+  - *Assemble* (`crawl/corpus.py`) writes `data/entire/corpus/` in SWE-chat's
+    six schemas: conversations streamed a session at a time, transcripts
+    hard-linked. It writes only Claude Code for now, each session left out
+    counted with its reason.
+  - *The pipeline reads it* with `ERRATA_CORPUS=data/entire/corpus`, read once
+    in `corpus/sessions.py`. Unset, it is SWE-chat as before, and every suite
+    still passes.
+    - End to end on two real repositories: 11 sessions, 20 checkpoints and 34
+      linked commits.
+    - The pipeline's own readers load it: `load_repos`, `session_commits`,
+      `load_commits_by_repo`, `load_session_turns`, `whole_results`.
+    - `build_excerpt` renders a session with 49 agent messages beside its
+      139 calls.
+  - *Newer Claude Code needed three changes, found on that run:*
+    - *New entry types* (`bridge-session`, `atis-latch` in 2.1.246) made the
+      collector's format test refuse a Claude Code session. Claude Code is
+      now recognized by its entries' shape.
+    - *Attachments* in 2.1 are mostly hook output (6,305 in 5 sessions) and
+      are now metadata. A queued message delivered as an attachment is the
+      developer's, unless it is a notice.
+    - *A subagent's calls* are no longer written into the parent's
+      transcript, so `recover.subagent_edits` would find none. The fetch now
+      collects every subagent transcript Entire keeps, from every checkpoint
+      its session was in, and the corpus links them under `subagents/`.
+  - *Two pipeline gaps remain before new-era sessions are fed*, recorded in
+    #16:
+    - `recover.has_transcript` reads only the first entry's type, so it calls
+      a 2.1 transcript foreign and the build would refuse the session;
+    - the build's sub-agent gate needs to read `subagents/`.
+  - *Checks.* `checks/crawl_holds.py` section 6: linking across branches, the
+    patch cap, the assembly, and the pipeline reading the result through
+    ERRATA_CORPUS in a fresh process. All 35 of the collector's rules were
+    broken one at a time, and each time a check failed.

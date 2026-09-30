@@ -13,6 +13,7 @@ both of those carry traps worth documenting where they are used.
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -24,7 +25,13 @@ from ..project import ROOT
 # errata_bench/corpus.py and pointed at src/data/swe-chat once it became
 # errata_bench/corpus/sessions.py -- taking every corpus-reading stage
 # with it.
-CORPUS = ROOT / "data" / "swe-chat"
+#
+# ERRATA_CORPUS names another corpus in SWE-chat's shape, such as the one the
+# Entire collector assembles (`crawl.corpus`, #16). It is read once, here, and
+# every reader takes CORPUS from this module, so one process reads one corpus.
+# Unset, it is SWE-chat, as before.
+CORPUS = (Path(os.environ["ERRATA_CORPUS"]).expanduser().resolve() if os.environ.get("ERRATA_CORPUS")
+          else ROOT / "data" / "swe-chat")
 
 
 @dataclass

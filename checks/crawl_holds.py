@@ -20,8 +20,10 @@ sys.path.insert(0, "src")
 
 from errata_bench.crawl import discover, entire  # noqa: E402
 from errata_bench.crawl.shape import CONVERSATIONS, claude_code_rows  # noqa: E402
+from errata_bench.crawl.corpus import assemble  # noqa: E402
 from errata_bench.crawl.fetch import fetch_all, fetch_repo  # noqa: E402
-from errata_bench.store.rows import load  # noqa: E402
+from errata_bench.crawl.link import PATCH_CAP, link_repo  # noqa: E402
+from errata_bench.store.rows import append, load  # noqa: E402
 
 FAIL = []
 
@@ -36,8 +38,12 @@ def sh(*args, cwd=None):
                           "GIT_COMMITTER_EMAIL": "t@t"}).stdout.decode()
 
 
-def transcript(n: int, tag: str) -> bytes:
-    return b"".join(json.dumps({"type": "user", "n": i, "tag": tag}).encode() + b"\n" for i in range(n))
+def transcript(n: int, tag: str, call: str | None = None) -> bytes:
+    lines = [json.dumps({"type": "user", "n": i, "tag": tag}).encode() + b"\n" for i in range(n)]
+    if call:  # the main agent's call that spawned a subagent
+        lines.append(json.dumps({"type": "assistant", "message": {"content": [
+            {"type": "tool_use", "id": call, "name": "Agent", "input": {}}]}}).encode() + b"\n")
+    return b"".join(lines)
 
 
 def session_meta(sid: str, created: str, **extra) -> str:
@@ -129,17 +135,21 @@ with tempfile.TemporaryDirectory() as t:
         "a3/b2c4d5e6f7/metadata.json": json.dumps({"checkpoint_id": "a3b2c4d5e6f7", "files_touched": ["x"]}),
         "a3/b2c4d5e6f7/0/metadata.json": session_meta("s1", "2026-05-01T10:00:00Z"),
         "a3/b2c4d5e6f7/0/full.jsonl": transcript(3, "early"),
+        "a3/b2c4d5e6f7/tasks/toolu_s1/agent-a1.jsonl": b'{"sub": 1}\n',
+        "a3/b2c4d5e6f7/tasks/toolu_s1/task.json": b'{"tool_use_id": "toolu_s1"}',
         "a3/b2c4d5e6f7/1/metadata.json": session_meta("s-imported", "2026-05-01T09:00:00Z", kind="imported"),
         "a3/b2c4d5e6f7/1/full.jsonl": transcript(2, "imp"),
         "c4/d5e6f7a8b9/metadata.json": json.dumps({"checkpoint_id": "c4d5e6f7a8b9"}),
         "c4/d5e6f7a8b9/0/metadata.json": session_meta("s1", "2026-05-01T11:00:00Z"),
-        "c4/d5e6f7a8b9/0/full.jsonl": transcript(5, "late"),
+        "c4/d5e6f7a8b9/0/full.jsonl": transcript(5, "late", call="toolu_s1"),
         "c4/d5e6f7a8b9/1/metadata.json": session_meta("../evil", "2026-05-01T11:00:00Z"),
         "c4/d5e6f7a8b9/1/full.jsonl": transcript(1, "evil"),
     })
     cp1 = build_tree(works, {"metadata.json": json.dumps({"checkpoint_id": ulid}),
                              "0/metadata.json": session_meta("s3", "2026-08-01T10:00:00Z"),
-                             "0/full.jsonl": transcript(4, "refs")})
+                             "0/full.jsonl": transcript(4, "refs", call="toolu_s3"),
+                             "tasks/toolu_s3/agent-b2.jsonl": b'{"sub": 3}\n',
+                             "tasks/toolu_zz/agent-c3.jsonl": b'{"sub": "not this session"}\n'})
     v2 = build_tree(works, {"main.txt": "v2 data, not read"})
     serve(srv, "o/both", {entire.V1_BRANCH: v1, f"refs/entire/checkpoints/0D/{ulid}": cp1,
                           "refs/entire/checkpoints/v2/main": v2})
@@ -160,14 +170,22 @@ with tempfile.TemporaryDirectory() as t:
     check(row["status"] == "ok" and row["checkpoints"] == 3 and set(sessions) == {"s1", "s3"},
           f"a repository with both layouts yields both's sessions, the v2 ref unread: {row['status']}, "
           f"{row['checkpoints']} checkpoints, sessions {sorted(sessions)}")
-    check((tr / "s1.jsonl").read_bytes() == transcript(5, "late") and sessions["s1"]["checkpoint_id"] == "c4d5e6f7a8b9"
+    check((tr / "s1.jsonl").read_bytes() == transcript(5, "late", call="toolu_s1") and sessions["s1"]["checkpoint_id"] == "c4d5e6f7a8b9"
           and sessions["s1"]["checkpoint_ids"] == ["a3b2c4d5e6f7", "c4d5e6f7a8b9"],
           "a session in two checkpoints is taken whole, from the later, byte for byte")
-    check((tr / "s3.jsonl").read_bytes() == transcript(4, "refs") and sessions["s3"]["layout"] == "refs",
+    check((tr / "s3.jsonl").read_bytes() == transcript(4, "refs", call="toolu_s3") and sessions["s3"]["layout"] == "refs",
           "a per-checkpoint ref's session is read from the ref's root")
     check(row["skipped"] == {"imported": 1, "unsafe_session_id": 1} and not (tr / "s-imported.jsonl").exists()
           and not any(p.name.startswith("..") for p in tr.iterdir()) and not (out / "raw" / "evil.jsonl").exists(),
           f"imported history and an id unsafe as a file name are left out, and counted: {row['skipped']}")
+    sub = out / "raw" / "o__both" / "subagents"
+    a1 = sub / "s1" / "toolu_s1" / "agent-a1.jsonl"
+    check(a1.exists() and a1.read_bytes() == b'{"sub": 1}\n'
+          and (sub / "s1" / "toolu_s1" / "task.json").exists() and sessions["s1"]["subagent_tasks"] == 1,
+          "a session's subagent transcript is collected from an earlier checkpoint it was in, with its task record")
+    check((sub / "s3" / "toolu_s3" / "agent-b2.jsonl").exists() and not (sub / "s3" / "toolu_zz").exists()
+          and not any(p.name == "agent-c3.jsonl" for p in sub.rglob("*")),
+          "only subagents the session's own calls spawned are filed under it")
     check(not any((out / "git").rglob("*.pack")), "no git data is left behind once a repository is done")
     check(json.loads((out / "raw" / "o__both" / "checkpoints.jsonl").read_text().splitlines()[0])["files_touched"] == 1,
           "one row per checkpoint, from its own metadata")
@@ -325,6 +343,111 @@ check(snap["role"] == "metadata" and snap["timestamp"] is None and not any(r["co
 import pyarrow as pa  # noqa: E402
 check(pa.Table.from_pylist(rows, schema=CONVERSATIONS).num_rows == len(rows),
       "the rows fit SWE-chat's conversations schema exactly")
+
+
+print("6. Linking code commits, assembling the corpus, and the pipeline reading it")
+
+
+def cc_transcript(sid: str, ask: str, call: str) -> bytes:
+    """A small Claude Code transcript: a request, text and an edit in one message, its result, an answer."""
+    base = {"sessionId": sid, "version": "2.1.246", "uuid": "u"}
+    lines = [
+        {**base, "type": "bridge-session", "bridgeSessionId": "b"},
+        {**base, "type": "user", "timestamp": "2026-05-01T10:00:00Z", "message": {"role": "user", "content": ask}},
+        {**base, "type": "assistant", "timestamp": "2026-05-01T10:00:01Z", "message": {"role": "assistant", "id": "m",
+         "content": [{"type": "text", "text": "Editing a.txt now."}]}},
+        {**base, "type": "assistant", "timestamp": "2026-05-01T10:00:02Z", "message": {"role": "assistant", "id": "m",
+         "content": [{"type": "tool_use", "id": call, "name": "Edit", "input": {"file_path": "/w/a.txt"}}]}},
+        {**base, "type": "user", "timestamp": "2026-05-01T10:00:03Z", "message": {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": call, "content": "edited"}]}},
+        {**base, "type": "assistant", "timestamp": "2026-05-01T10:00:04Z", "message": {"role": "assistant", "id": "n",
+         "content": [{"type": "text", "text": "Done, and the tests pass."}]}},
+    ]
+    return b"".join(json.dumps(x).encode() + b"\n" for x in lines)
+
+
+with tempfile.TemporaryDirectory() as t:
+    tmp = Path(t)
+    srv = tmp / "srv"
+    code = srv / "o" / "full"
+    code.mkdir(parents=True)
+    sh("git", "init", "-q", "-b", "main", cwd=code)
+    (code / "a.txt").write_text("one\n")
+    sh("git", "add", "-A", cwd=code)
+    sh("git", "commit", "-q", "-m", "start", cwd=code)
+    (code / "a.txt").write_text("one\ntwo\n")
+    sh("git", "commit", "-q", "-am", "fix\n\nEntire-Checkpoint: a3b2c4d5e6f7", cwd=code)
+    sh("git", "checkout", "-q", "-b", "feature", cwd=code)
+    (code / "b.txt").write_text("b\n")
+    sh("git", "add", "-A", cwd=code)
+    sh("git", "commit", "-q", "-m", f"feature work\n\nEntire-Checkpoint: {ulid}", cwd=code)
+    (code / "big.txt").write_text(("y" * 99 + "\n") * (PATCH_CAP // 100 + 200))  # a patch past the cap
+    sh("git", "add", "-A", cwd=code)
+    sh("git", "commit", "-q", "-m", f"a large file\n\nEntire-Checkpoint: {ulid}", cwd=code)
+    sh("git", "checkout", "-q", "main", cwd=code)
+    (code / "a.txt").write_text("one\ntwo\nthree\n")
+    sh("git", "commit", "-q", "-am", "mentions the Entire-Checkpoint: a3b2c4d5e6f7 idea in prose", cwd=code)
+    works = tmp / "works"
+    works.mkdir()
+    v1 = build_tree(works, {
+        "a3/b2c4d5e6f7/metadata.json": json.dumps({"checkpoint_id": "a3b2c4d5e6f7"}),
+        "a3/b2c4d5e6f7/0/metadata.json": session_meta("cc1", "2026-05-01T10:00:05Z", strategy="manual-commit"),
+        "a3/b2c4d5e6f7/0/full.jsonl": cc_transcript("cc1", "please fix a.txt", "toolu_e1"),
+        "a3/b2c4d5e6f7/1/metadata.json": session_meta("codex1", "2026-05-01T11:00:00Z", agent="Codex"),
+        "a3/b2c4d5e6f7/1/full.jsonl": b'{"type": "session_meta", "payload": {}}\n',
+        "a3/b2c4d5e6f7/tasks/toolu_e1/agent-s1.jsonl": b'{"subagent": true}\n',
+    })
+    sh("git", "fetch", "-q", str(v1[0]), v1[1], cwd=code)
+    sh("git", "update-ref", entire.V1_BRANCH, v1[1], cwd=code)
+    sh("git", "config", "uploadpack.allowFilter", "true", cwd=code)
+    sh("git", "config", "uploadpack.allowAnySHA1InWant", "true", cwd=code)
+    where = {"base": srv.as_uri()}
+
+    out = tmp / "out"
+    row = link_repo("o/full", out, **where)
+    linked = {r["commit_message"].split("\n")[0]: r for r in load(out / "link" / "o__full" / "commits.jsonl")}
+    check(row["status"] == "ok" and set(linked) == {"fix", "feature work", "a large file"},
+          f"every trailer commit on any branch is linked, and prose is not: {sorted(linked)}")
+    check(linked["fix"]["files_changed"] == "M\ta.txt" and linked["fix"]["total_additions"] == 1
+          and linked["fix"]["checkpoint_ids"] == ["a3b2c4d5e6f7"] and "+two" in linked["fix"]["patch"],
+          "a linked commit carries its name-status, line counts, patch and checkpoint")
+    check(linked["a large file"]["patch_cut"] and len(linked["a large file"]["patch"]) <= PATCH_CAP,
+          "a patch over the cap is cut and marked")
+    check(not (out / "git-link").exists() or not any((out / "git-link").iterdir()), "the clone is deleted after linking")
+
+    append(out / "fetch.jsonl", fetch_repo("o/full", out, settings=lambda r: None, **where))
+    (out / "discover").mkdir(parents=True, exist_ok=True)
+    (out / "discover" / "repos.jsonl").write_text(json.dumps({"query_repo": "o/full", "full_name": "o/full",
+                                                             "license": "MIT", "language": "Go", "fork": False}) + "\n")
+    (out / "discover" / "commits.jsonl").write_text("")
+    summary = assemble(out, log=lambda *_: None)
+    corpus = out / "corpus"
+    check(summary["sessions"] == 1 and summary["left_out"] == {"not a Claude Code transcript (for later)": 1},
+          f"only Claude Code sessions are written, the others counted, a new format included: {summary}")
+    cc1 = corpus / "transcripts" / "cc1.jsonl"
+    check(cc1.exists() and cc1.read_bytes() == cc_transcript("cc1", "please fix a.txt", "toolu_e1")
+          and (corpus / "subagents" / "cc1" / "toolu_e1" / "agent-s1.jsonl").exists(),
+          "the transcript and its subagents' are linked into the corpus")
+    probe = subprocess.run([sys.executable, "-c", """
+import json, sys
+sys.path.insert(0, "src")
+from errata_bench.corpus import sessions, turns, timeline
+rows = turns.load_session_turns({"cc1"})["cc1"]
+print(json.dumps({"repos": {k: [v.language, v.license_type] for k, v in sessions.load_repos().items()},
+                  "commits": sessions.session_commits(),
+                  "by_repo": {k: len(v) for k, v in timeline.load_commits_by_repo().items()},
+                  "turns": [[r["turn_type"], r["content"]] for r in rows if r["turn_type"] in
+                            ("user_prompt", "assistant_response", "tool_use", "tool_result")]}))
+"""], capture_output=True, text=True, env={**os.environ, "ERRATA_CORPUS": str(corpus)})
+    got = json.loads(probe.stdout or "{}")
+    check(got.get("repos") == {"o/full": ["Go", "MIT"]} and got.get("by_repo") == {"o/full": 3},
+          f"the pipeline's readers load the corpus from ERRATA_CORPUS: {probe.stderr[-200:] or 'repositories, commits'}")
+    check(sorted(got.get("commits", {}).get("cc1", [])) == [linked["fix"]["commit_sha"]],
+          "a session reaches the commit its checkpoint's trailer names")
+    check(got.get("turns") == [["user_prompt", "please fix a.txt"], ["assistant_response", "Editing a.txt now."],
+                               ["tool_use", json.dumps({"file_path": "/w/a.txt"})], ["tool_result", "edited"],
+                               ["assistant_response", "Done, and the tests pass."]],
+          "and read its turns whole: the text before the edit is there")
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 sys.exit(1 if FAIL else 0)

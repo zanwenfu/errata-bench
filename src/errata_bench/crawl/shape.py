@@ -175,9 +175,22 @@ def claude_code_rows(session_id: str, repo_id: str, checkpoint_pk: str, entries:
             if entry.get("operation") == "enqueue" and isinstance(text, str) and text.strip():
                 add("user", user_kind({}, text), text, entry)
         elif kind == "attachment":
-            text = _text((entry.get("attachment") or {}).get("content")) if isinstance(entry.get("attachment"), dict) else ""
-            add("user", "system_injected", text or json.dumps(entry, ensure_ascii=False), entry)
-        # Other entry types (titles, permission modes, last-prompt markers) carry no turn.
+            att = entry.get("attachment") if isinstance(entry.get("attachment"), dict) else {}
+            if att.get("type") == "queued_command" and isinstance(att.get("prompt"), str) and att["prompt"].strip():
+                # A message queued while the agent was busy, delivered as an
+                # attachment by newer versions: the developer's unless it is
+                # itself a notice (`commandMode` "task-notification").
+                kind_of = ("system_injected" if att.get("commandMode") not in (None, "prompt")
+                           else user_kind({}, att["prompt"]))
+                add("user", kind_of, att["prompt"], entry)
+            elif att.get("type") == "edited_text_file":
+                add("user", "system_injected", json.dumps(att, ensure_ascii=False), entry)
+            else:
+                # Hook output, reminders, memory files, tool and skill listings:
+                # the harness talking to itself, kept as metadata.
+                add("metadata", "system_event", json.dumps(entry, ensure_ascii=False), entry)
+        # Other entry types (titles, permission modes, last-prompt markers,
+        # bridge sessions) carry no turn.
 
     usage_rows = set(last_of_message.values())
     out, conversational = [], 0
@@ -226,8 +239,15 @@ def read_entries(path) -> list[dict]:
 
 
 def is_claude_code(entries: list[dict]) -> bool:
-    """Whether a transcript is in Claude Code's format (the entry types `recover.CLAUDE_CODE_TYPES` lists)."""
-    from ..corpus.recover import CLAUDE_CODE_TYPES
+    """Whether a transcript is in Claude Code's format, read from its entries' shape.
 
-    kinds = {e.get("type") for e in entries[:200]}
-    return bool(kinds) and kinds <= CLAUDE_CODE_TYPES | {None} and bool(kinds & {"user", "assistant"})
+    Not from a list of entry types: Claude Code adds types (2.1.246 writes
+    `bridge-session` and `atis-latch`, which SWE-chat's period never saw).
+    Its user and assistant entries carry a `sessionId` and a `message` with a
+    `role`; Codex, OpenCode, Copilot and Cursor write none of that.
+    """
+    for e in entries[:500]:
+        msg = e.get("message")
+        if e.get("type") in ("user", "assistant") and "sessionId" in e and isinstance(msg, dict) and "role" in msg:
+            return True
+    return False
