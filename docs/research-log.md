@@ -4428,12 +4428,13 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   conversations run past 75,000 characters. The re-run #17 plans reads each
   rebuilt conversation whole, as its candidates see it.
 - **G-80 · A copy of a repository takes over its sessions in the Entire
-  corpus.** *(opened 09-30; #16.)* A repository copied from entireio/cli
-  under another account, not a GitHub fork and created 6 September, kept
-  entireio/cli's `.entire/settings.json`, which names Entire's checkpoint
-  repository. The collector reads a repository's own checkpoints and those of
-  the checkpoint remote its settings name, so it collected entireio/cli's
-  sessions a second time under the copy.
+  corpus.** *(opened 09-30; fixed 09-30, the 07:0x entry; #16.)* A
+  repository copied from entireio/cli under another account, not a GitHub
+  fork and created 6 September, kept entireio/cli's `.entire/settings.json`,
+  which names Entire's checkpoint repository. The collector reads a
+  repository's own checkpoints and those of the checkpoint remote its
+  settings name, so it collected entireio/cli's sessions a second time under
+  the copy.
   - *In the corpus.* Each session is written once, but the tie-break (the
     first repository in name order keeps a session unless only a later one
     holds its trailer) left 1,512 of the 2,359 shared Claude Code sessions
@@ -4448,6 +4449,14 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
     owner discovery already names for its commits (the earliest-created
     non-fork); a check with a copied-settings fixture, shown failing when the
     fix is reverted; re-assemble the corpus.
+  - *Fixed 09-30* (the 09-30 07:0x entry, and the two commits before it).
+    A shared session goes, by its links first, to a holder whose commits
+    carry its latest checkpoint's trailer, else an earlier checkpoint's,
+    else any holder; among those, to the first by discovery's rank (not a
+    fork, then earliest created, then by name), each holder judged by its
+    own copy.
+    Re-assembled: 1,512 sessions moved from the copy to entireio/cli, and 1
+    from entireio/entire-graph; nothing else changed.
   - *How it was found.* Comparing the crawl with entire.io's own session
     lists (09-30, 04:4x).
 - **G-79 · The table keeps only the last block of each assistant message, so
@@ -10316,9 +10325,12 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     - GitHub marked 19 of the 131 slices read as possibly incomplete.
   - *Fetch, link and assemble on the run VM,* at 00d045010, about 45
     minutes.
-    - Fetch: 282 repositories with checkpoints, 154 with none, 12,494
-      sessions (26.7 GB). 1,511 imported sessions and 355 with no transcript
-      were left out.
+    - Fetch: 282 repositories with checkpoints, 154 with none, ~~12,494
+      sessions~~ **12,494 copies of 9,442 sessions** (26.7 GB) *(corrected
+      09-30: a session is fetched once for each repository whose settings
+      name its checkpoint repository, and 3,052 copies were a second one;
+      G-80)*. 1,511 imported sessions and 355 with no transcript were left
+      out.
     - Link: 282 repositories, with their trailer commits and patches.
     - The corpus (`data/entire/corpus/` on the VM, SWE-chat's six tables):
       6,464 Claude Code sessions from 203 repositories, 24,758 checkpoints,
@@ -10445,6 +10457,97 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     dataset version; the working copies are unchanged), then the paid steps,
     each priced first: the leak gate over each conversation whole (G-81) and
     the judge's admission, then a pilot.
+- **09-30, 07:0x UTC** — **G-80 fixed: a session several repositories hold is
+  credited to its original, and the Entire corpus re-assembled (#16).** Done
+  in the Entire session's own worktree and branch, beside #17's work.
+  - *The rule* (`crawl/corpus.py`, `assemble`). Every repository whose
+    settings name one checkpoint repository is given all of its sessions.
+    - Such a session is credited by its links first: to a holder whose
+      commits carry the trailer of its latest checkpoint, else of an earlier
+      one, else to any holder.
+    - Among those, it goes to the first by discovery's rank: not a fork, then
+      earliest created, then by name (`discover.rank`, now shared with
+      `owners()`, whose results are unchanged).
+    - Each holder is judged by its own copy, and that copy is the one
+      written.
+
+    Before, name order decided unless only a later holder's commits carried
+    the latest checkpoint's trailer. The copy of entireio/cli carried the
+    copied trailers and sorted first.
+  - *The check* (`checks/crawl_holds.py` section 7, 9 checks). Eight code
+    repositories and one checkpoint repository with seven sessions. Among
+    them:
+    - the original, and two copies of it, trailers and all, that sort
+      first, one of them with no metadata;
+    - a repository renamed since search found it, and a 404 metadata row;
+    - a session only a fork links;
+    - one linked only by an earlier checkpoint;
+    - one linked by a newer holder's latest checkpoint and an older holder's
+      earlier one;
+    - one a repository also holds in its own refs.
+
+    The old rule fails 5 of the 9 checks. 13 single-piece mutants, each with
+    a fresh bytecode cache, were all caught. All six offline suites pass with
+    no corpus, on the fix alone and rebased onto main.
+  - *Reviewed* by an independent read-only agent after the first commit
+    (a96cf9d36 before its rebase). Nothing was blocking. It found:
+    - three wrong implementations the check would have passed: a missing
+      creation date ranking first, metadata rows without a full name read,
+      and fork status placed ahead of linkage;
+    - an overclaim: "a copy is never credited".
+
+    The second commit covers the three and corrects the wording. The
+    review's note that only the latest checkpoint was read became the
+    earlier-checkpoint tier.
+  - *What the rule still gets wrong, by construction.* A copy is credited
+    over its original when the original is a GitHub fork, or has no creation
+    date on record. Neither occurs today: none of the 436 selected
+    repositories is a fork or undated, and no discovered commit changes
+    owner without the fork rule (87,380 trailer-commit rows checked).
+  - *Re-assembled on the run VM* at f5240e1c3, about 6 minutes: the second
+    commit before its rebase, its crawl code byte for byte the one committed.
+    The pre-fix corpus is kept beside it as `corpus.pre-g80`.
+    - The same 6,464 sessions and transcripts, and the same counts left
+      out: 3,052 second copies, 2,970 other agents' sessions, 8 with no
+      developer message.
+    - 1,513 sessions credited anew: 1,512 from the copy to entireio/cli, and
+      1 from entireio/entire-graph to entireio/cli. No other session's
+      repository changed.
+    - entireio/cli goes from 847 sessions to 2,360. The copy leaves the
+      corpus: 202 repositories (was 203), 24,720 checkpoints (24,758) and
+      23,241 commit rows (27,243).
+    - Two moved sessions keep their transcripts byte for byte but list more
+      checkpoints, 15 for 14 and 12 for 6: entireio/cli's fetch saw more of
+      the live checkpoint repository's refs.
+    - The entire-graph session spans two repositories:
+      - entire-graph's own refs hold 2 of its checkpoints (35 MB of
+        transcript);
+      - Entire's checkpoint repository holds 29 (51 MB), and entireio/cli's
+        commits link them;
+      - the old rule, judging the later holder by the earlier holder's
+        checkpoint, credited entire-graph;
+      - it now goes to entireio/cli, the older holder whose commits link
+        it, with its fuller copy: 431 developer messages for 350, and 4,023
+        more conversation rows.
+    - The first commit's corpus (at a96cf9d36) and the reviewed one are
+      identical: the earlier-checkpoint tier moves no session today.
+  - *Whose copy is written.* 2,397 sessions are held by several
+    repositories. 39 of them come from more than one source, and 3 have
+    differing transcripts. The credited copy is never shorter than another
+    holder's.
+  - *As committed,* `scripts/crawl_corpus_stats.py` on the re-assembled
+    corpus, the rerun the 02:5x entry asked for.
+    - Of the 4,140 new sessions, 3,213 are in a sandboxable language, from
+      139 repositories, with 47,538 developer messages.
+    - The 04:4x entry's 3,212 and 47,107 credited only the copy's sessions
+      to entireio/cli. The entire-graph session (C there, Go in
+      entireio/cli) is the difference.
+    - entireio/cli now holds 1,310 of the new sessions; the next four hold
+      146, 119, 116 and 107. The per-repository cap matters more than it
+      did.
+  - *Next (#16):* record each session's model beside the corpus; commit the
+    check against entire.io's lists; then pushback labelling, which waits for
+    a cost estimate and an OK.
 - **09-30, 07:4x UTC** — **G-81 fixed; the put-back text made safe on every corpus;
   `resilient` reads a status by its code (#17).**
   - *G-81.* Screening's scope and leak gates, and the repair's re-check, now
