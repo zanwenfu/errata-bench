@@ -465,5 +465,86 @@ print(json.dumps({"has": [recover.has_transcript("cc1"), recover.has_transcript(
     check(got.get("before_cut") == [["toolu_gone"], []],
           "and the build refuses it only when the call came at or before the cut")
 
+print("7. A session several repositories hold is credited to its original, not to a copy (G-80)")
+# Every repository whose settings name one checkpoint repository is given all of
+# its sessions. A copy of entireio/cli under another account, not a GitHub
+# fork, kept its settings, and its copied history kept the trailers too. It
+# sorted first by name, and name order credited 1,512 of Entire's sessions to
+# it. Here five code repositories name one checkpoint repository, which holds
+# three sessions.
+with tempfile.TemporaryDirectory() as t:
+    import pyarrow.parquet as pq  # noqa: E402
+
+    tmp = Path(t)
+    srv, works, out = tmp / "srv", tmp / "works", tmp / "out"
+    works.mkdir()
+    cids = {"g80": "a1b2c3d4e5f6", "pair": "b2c3d4e5f6a1", "orphan": "c3d4e5f6a1b2"}
+    cp_files = {}
+    for sid, cid in cids.items():
+        cp_files[f"{cid[:2]}/{cid[2:]}/metadata.json"] = json.dumps({"checkpoint_id": cid})
+        cp_files[f"{cid[:2]}/{cid[2:]}/0/metadata.json"] = session_meta(sid, "2026-05-01T10:00:05Z")
+        cp_files[f"{cid[:2]}/{cid[2:]}/0/full.jsonl"] = cc_transcript(sid, f"please fix {sid}", f"toolu_{sid}")
+    serve(srv, "o/cps", {entire.V1_BRANCH: build_tree(works, cp_files)})
+
+    def code_repo(name: str, trailers: list[str]) -> Path:
+        """A code repository served at srv/name, with one commit per checkpoint trailer."""
+        repo = serve(srv, name, {})
+        for cid in trailers:
+            (repo / "x.txt").write_text(cid + "\n")
+            sh("git", "add", "-A", cwd=repo)
+            sh("git", "commit", "-q", "-m", f"work\n\nEntire-Checkpoint: {cid}", cwd=repo)
+        return repo
+
+    orig = code_repo("o/orig", [cids["g80"]])
+    trailer_sha = sh("git", "rev-parse", "HEAD", cwd=orig).strip()
+    code_repo("z/late", [cids["pair"]])
+    code_repo("a/early", [])
+    code_repo("f/fork", [])
+    # The copy: the original's history, trailers and all. "C/copy" sorts first.
+    copy = srv / "C" / "copy"
+    copy.parent.mkdir(parents=True, exist_ok=True)
+    sh("git", "clone", "-q", "--bare", str(orig), str(copy))
+    sh("git", "config", "uploadpack.allowFilter", "true", cwd=copy)
+    sh("git", "config", "uploadpack.allowAnySHA1InWant", "true", cwd=copy)
+    # Created, fork, and the name search found it under ("a/early" was renamed since).
+    held = {"C/copy": ("2026-09-06T00:00:00Z", False, "C/copy"), "o/orig": ("2026-01-01T00:00:00Z", False, "o/orig"),
+            "z/late": ("2026-05-01T00:00:00Z", False, "z/late"),
+            "a/early": ("2025-01-01T00:00:00Z", False, "a/early-was"),
+            "f/fork": ("2024-01-01T00:00:00Z", True, "f/fork")}
+    names_cps = json.dumps({"strategy_options": {"checkpoint_remote": {"provider": "github", "repo": "o/cps"}}})
+    where = {"base": srv.as_uri()}
+    for name in held:
+        append(out / "fetch.jsonl", fetch_repo(name, out, settings=lambda r: names_cps, **where))
+        link_repo(name, out, **where)
+    (out / "discover").mkdir(parents=True, exist_ok=True)
+    (out / "discover" / "repos.jsonl").write_text("".join(json.dumps({
+        "query_repo": query, "full_name": name, "license": "MIT", "language": "Go", "fork": fork,
+        "created_at": when}) + "\n" for name, (when, fork, query) in held.items()))
+    (out / "discover" / "commits.jsonl").write_text("")
+    summary = assemble(out, log=lambda *_: None)
+    corpus = out / "corpus"
+    credited = {r["session_id"]: r["repo_id"] for r in pq.read_table(corpus / "sessions.parquet").to_pylist()}
+    check(credited.get("g80") == "o/orig",
+          "a session a copy also holds, with the original's settings and its trailers, is credited to the "
+          f"original, the earliest-created holder that is not a fork (G-80): {credited.get('g80')}")
+    check(credited.get("pair") == "z/late",
+          f"a session only one holder's commits link stays with that holder, however new: {credited.get('pair')}")
+    check(credited.get("orphan") == "a/early",
+          "a session no holder's commits link goes to the earliest-created holder, never to a fork, its "
+          f"creation read under the name it is fetched by: {credited.get('orphan')}")
+    repos = {r["repo_id"] for r in pq.read_table(corpus / "repositories.parquet").to_pylist()}
+    check(summary["sessions"] == 3 and summary["left_out"] == {"the same session under a second repository": 12}
+          and repos == {"a/early", "o/orig", "z/late"},
+          f"each session is written once and every second copy counted; a repository credited with none is not "
+          f"in the corpus: {summary['sessions']} sessions, {summary['left_out']}, {sorted(repos)}")
+    rows = {(r["session_id"], r["repo_id"]) for r in
+            pq.read_table(corpus / "conversations.parquet", columns=["session_id", "repo_id"]).to_pylist()}
+    shas = {r["checkpoint_pk"]: json.loads(r["commit_shas"]) for r in
+            pq.read_table(corpus / "checkpoints.parquet").to_pylist()}
+    check(rows == {("g80", "o/orig"), ("pair", "z/late"), ("orphan", "a/early")}
+          and shas.get(f"o/orig#{cids['g80']}") == [trailer_sha] and f"C/copy#{cids['g80']}" not in shas,
+          "every table files a session under the repository credited, its checkpoint linked to that "
+          "repository's commit")
+
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 sys.exit(1 if FAIL else 0)
