@@ -58,7 +58,7 @@ a rank range (see "The comparison rule").
 - **Rules:** trace rules 6.
 - **Settling:** each observation is settled by the majority of the readings
   that can be checked. The answer is scored when those readings are most of
-  them and agree on what the measures read (README, step 11).
+  them and agree on what the measures read ([method, step 11](method.md#step-11-from-three-readings-to-one-verdict)).
 - **Client settings:** grading defaults to a 900-second timeout, 5 retries and
   concurrency 4.
 - **One grading run per folder**, with the admission's own judge: grading

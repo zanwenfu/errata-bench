@@ -61,7 +61,7 @@ your own key.
 
 | path | what |
 |---|---|
-| `harbor/<task>/` | the task as a [Harbor](https://github.com/laude-institute/harbor) task: `instruction.md`, `task.toml` (limits and network rule), `environment/` (the image: the repository at the moment of the task, with its history, dependencies installed at build), `tests/` (a verifier that records the answer, every call and what changed; it grades nothing) |
+| `harbor/<task>/` | the task as a [Harbor](https://github.com/harbor-framework/harbor) task: `instruction.md`, `task.toml` (limits and network rule), `environment/` (the image: the repository at the moment of the task, with its history, dependencies installed at build), `tests/` (a verifier that records the answer, every call and what changed; it grades nothing) |
 | `harbor/digests.json` | each task's content digest, as Harbor records it for every trial: grading says a trial is official only when its task is the published one |
 | `tasks/<task>/` | what grading reads: the whole conversation, the turns it is rendered from, the reference answers, the controls, the task row |
 | `admission/gpt-6-astra/` | the official judge's check on each task: whether it reads the task's known-wrong and known-right answers correctly, and whether its readings of three fixed control answers behave, and the second grader's too. A task that fails either is left out of the official score |
@@ -85,9 +85,14 @@ conversation is in the container, and the graders read it whole.
 Running the tasks is not affected. What is known to be wrong or unproven is
 listed, each item with its issue, in
 [known-issues.md](https://github.com/zanwenfu/errata-bench/blob/main/docs/known-issues.md).
-The most important: no person has yet checked the tasks or the grades
-([#3](https://github.com/zanwenfu/errata-bench/issues/3)), and the headline
-judge passed its registered check narrowly (92% against 90%). Each task's
+The most important:
+- **High priority:** the task conversations omit most of what the earlier
+  agent wrote between its tool calls: 91% of its messages there, about 1.4%
+  of the text ([#17](https://github.com/zanwenfu/errata-bench/issues/17)). A
+  rebuilt version of the tasks, v1.1, is in progress.
+- No person has yet checked the tasks or the grades
+  ([#3](https://github.com/zanwenfu/errata-bench/issues/3)), and the headline
+  judge passed its registered check narrowly (92% against 90%). Each task's
 coverage is in `results/v1-coverage.md` there.
 
 ## Versions

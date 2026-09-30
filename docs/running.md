@@ -2,7 +2,7 @@
 
 errata-bench asks a coding agent to continue a real developer's conversation
 and measures whether what it then reports is true. The agent runs in
-[Harbor](https://github.com/laude-institute/harbor) (the harness behind
+[Harbor](https://github.com/harbor-framework/harbor) (the harness behind
 Terminal-Bench 2.0), so any agent Harbor runs can be tested; the answers are
 graded by errata-bench's own graders, with your judge key.
 
@@ -153,7 +153,7 @@ others, without calling the judge.
     start the guard after every job has made its folder.
 
 Then again without `--rows-only`, to grade: each answer is read three times and
-the readings settled by majority (README, step 11). Grading is
+the readings settled by majority ([method, step 11](method.md#step-11-from-three-readings-to-one-verdict)). Grading is
 paid, with your key. The graders read each task's whole conversation, as the
 judge's admission to it did, including the 17 whose instruction shows long tool
 outputs cut (the agent has the whole one in its container). Grading refuses a

@@ -10478,3 +10478,30 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - `scripts/rerender_release.py` renders a frozen release's conversations
     again from the corpus, with no GitHub, and refuses a task whose replayed
     edits would change. Not yet run.
+- **09-30, 07:5x UTC** — **The README rewritten as a front page; its detail moved
+  to docs (the user's request).**
+  - *The standard,* from 17 READMEs of agent benchmarks and developer tools
+    (SWE-bench, Terminal-Bench, Harbor, τ²-bench, MLE-bench, BigCodeBench,
+    LiveCodeBench, Inspect, uv, Ruff, ripgrep and others): a pitch, a status
+    callout, what it measures, one results table, how it works in five steps,
+    one example, a quickstart, how grading is checked, one-line limitations
+    with links, a docs index, citation. 150–250 lines, no internal codes.
+  - *The new README:* 171 lines and about 980 words of prose (was 1,017 lines
+    and about 10,990 words), sentences averaging 17 words.
+  - *Where the rest went, word for word apart from headings and links:*
+    `docs/method.md` (the worked example and the thirteen steps),
+    `docs/validation.md` (how each step and grader is checked),
+    `docs/history.md` (the research runs before v1), `docs/pipeline.md` (the
+    maintainers' pipeline and the layout), `docs/related-work.md` (the
+    side-by-side table, what is new, where others are ahead, other work),
+    `results/v1-baseline/README.md` (the judge's consistency, the
+    OverclaimBench-terms breakdown, the run's limits), and
+    `docs/known-issues.md` (two limits it lacked). How the lab runs, and the
+    spend guard, went to `docs/internal-notes.md`.
+  - *Corrected on the way:* the probes are 37 for the trace check and 8 for
+    the judge (35 was D-45's count, kept where D-45 is described); "the
+    six-model run" names D-40 where it meant it, since the v1 baseline also
+    ran six models; Harbor's links point to harbor-framework; the dataset card
+    lists #17 (the published card changes with the next dataset release);
+    `running.md` and `v1-baseline-run.md` point "step 11" at `docs/method.md`.
+    Every relative link and anchor in the README and the docs resolves.

@@ -136,6 +136,17 @@ be taken to mean.
      14 of them (16 of the 55).
 8. **Contamination.** SWE-chat has been public since April 2026, and there is
    not yet a canary string to detect training on the tasks.
+9. **One kind of source session, shown as one message.**
+   - 50 of the 55 sessions were with Claude Code, in public repositories of
+     early adopters of a new tool, mostly in TypeScript and Go. The
+     candidates are other models, placed in Claude Code's sessions.
+   - The reference agent receives the conversation as one message, not as
+     its own history.
+10. **The model a provider serves can change behind its name**
+    ([#6](https://github.com/zanwenfu/errata-bench/issues/6)). Every image is
+    pinned by digest, and since v1.0.2 each grading request records the model
+    that served it, but check rows and candidates' requests record it only at
+    the start and end of each stage.
 
 ## Known defects, and what v1.0.3 and v1.0.4 fixed
 
