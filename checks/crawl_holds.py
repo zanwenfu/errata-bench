@@ -389,6 +389,25 @@ check(said == {"start": 1, "<command-message>ship-it</command-message> <command-
                "<command-message>notes</command-message> <command-name>notes</command-name> <command-args>ok</command-args>": 1},
       f"a queued slash command is paired with its command form by name and arguments, a built-in one leaves no "
       f"developer row, and a queue entry delivered as content blocks stays the row for its message (G-84): {said}")
+# G-85. A transcript can hold its history twice (the same uuids), and a call can be
+# re-sent in another message under the id of one already written.
+history = [
+    {"type": "user", "uuid": "u1", "timestamp": T.format(0), "message": {"role": "user", "content": "go"}},
+    {"type": "assistant", "uuid": "a1", "timestamp": T.format(1), "message": {"id": "m1", "model": "x", "content": [
+        {"type": "tool_use", "id": "c1", "name": "Edit", "input": {"file_path": "/r/a.py"}}]}},
+    {"type": "user", "uuid": "u2", "timestamp": T.format(2), "message": {"role": "user", "content": [
+        {"type": "tool_result", "tool_use_id": "c1", "content": "ok"}]}},
+]
+twice = [*history, *history,
+         {"type": "assistant", "uuid": "a2", "timestamp": T.format(3), "message": {"id": "m2", "model": "x", "content": [
+             {"type": "tool_use", "id": "c1", "name": "Edit", "input": {"file_path": "/r/a.py"}}]}},
+         {"type": "user", "uuid": "u3", "timestamp": T.format(4), "message": {"role": "user", "content": [
+             {"type": "tool_result", "tool_use_id": "c1", "content": "ok"}]}},
+         {"type": "user", "uuid": "u4", "timestamp": T.format(5), "message": {"role": "user", "content": "go"}}]
+kinds2 = [r["turn_type"] for r in claude_code_rows("t", "o/r", "o/r#t", twice)]
+check(kinds2.count("tool_use") == 1 and kinds2.count("tool_result") == 1 and kinds2.count("user_prompt") == 2,
+      f"an entry written twice is read once, a call re-sent under its own id is one call with one result, and a "
+      f"message said again in an entry of its own stays (G-85): {kinds2}")
 check(("system_injected", "<command-name>/model</command-name>") in user and ("user_prompt", "Review the diff carefully.") in user,
       "a built-in command is injected; a command's expanded instructions are the developer's request")
 check(("user_prompt", "see this\n[Image: image/png]") in user, "an image is kept as SWE-chat wrote it")

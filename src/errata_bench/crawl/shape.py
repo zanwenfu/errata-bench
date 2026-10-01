@@ -171,11 +171,48 @@ def queued_and_delivered(entries: list[dict]) -> set[int]:
     return paired
 
 
+def _said(entry: dict) -> str:
+    """What an entry says, without its bookkeeping (branch, directory, version, ids)."""
+    return json.dumps([entry.get(k) for k in ("type", "subtype", "message", "attachment", "content")], sort_keys=True)
+
+
+def once(entries: list[dict]) -> list[dict]:
+    """The transcript with each entry once (G-85).
+
+    In 42 of the collected corpus's transcripts, a session's history is written
+    into its file again partway through: 36,036 entries under the uuid they
+    already had, among them 8,859 of the developer's turns. Every call, result
+    and message after that point became a row twice, and a build would replay a
+    session's edits twice. The copy refreshes the entry's bookkeeping (branch,
+    directory, version) but says what the first said, in 35,993 of the 36,036.
+    So an entry is left out when an earlier one has its uuid and says the same.
+    Two that share a uuid but say different things are both kept.
+    """
+    said: dict[str, set[str]] = {}
+    out = []
+    for entry in entries:
+        uuid = entry.get("uuid")
+        if uuid:
+            this = _said(entry)
+            if this in said.setdefault(uuid, set()):
+                continue
+            said[uuid].add(this)
+        out.append(entry)
+    return out
+
+
 def claude_code_rows(session_id: str, repo_id: str, checkpoint_pk: str, entries: list[dict],
                      strategy: str | None = None) -> list[dict]:
-    """The session's rows in order, numbered from 0."""
+    """The session's rows in order, numbered from 0.
+
+    Each entry is read once (`once`), and so is each call and its result: a
+    call re-sent under a new entry with the id of one already written, as a
+    retried or replayed message is, is not a second call (G-85).
+    """
+    entries = once(entries)
     rows: list[dict] = []
     call_names: dict[str, str] = {}
+    results: set[str] = set()  # calls whose result is written
     last_of_message: dict[str, int] = {}  # message id -> index of its last row
     delivered = queued_and_delivered(entries)
 
@@ -198,6 +235,9 @@ def claude_code_rows(session_id: str, repo_id: str, checkpoint_pk: str, entries:
             for block in content if isinstance(content, list) else []:
                 if isinstance(block, dict) and block.get("type") == "tool_result":
                     cid = block.get("tool_use_id")
+                    if cid and cid in results:
+                        continue
+                    results.add(cid)
                     add("tool_result", "tool_result", _text(block.get("content")), entry, tool_call_id=cid,
                         tool_name=call_names.get(cid))
         elif kind == "assistant":
@@ -212,6 +252,8 @@ def claude_code_rows(session_id: str, repo_id: str, checkpoint_pk: str, entries:
                 elif btype == "thinking":
                     i = add("assistant", "assistant_thinking", block.get("thinking") or "", entry, model=msg.get("model"))
                 elif btype == "tool_use":
+                    if block.get("id") and block.get("id") in call_names:
+                        continue
                     inp = block.get("input") if isinstance(block.get("input"), dict) else {}
                     dumped = json.dumps(inp)  # SWE-chat's form: non-ASCII escaped; the same JSON either way
                     call_names[block.get("id")] = block.get("name")
