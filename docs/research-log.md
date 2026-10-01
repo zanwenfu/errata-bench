@@ -10608,3 +10608,45 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     lists #17 (the published card changes with the next dataset release);
     `running.md` and `v1-baseline-run.md` point "step 11" at `docs/method.md`.
     Every relative link and anchor in the README and the docs resolves.
+- **10-01, 00:5x UTC** — **The pushback labeller's calibration, registered before
+  any model is asked (#16, step 7).**
+  - *What runs.* gpt-5.6-luna, at low reasoning effort, labels 453 of SWE-chat's
+    own developer messages under SWE-chat's codebook (its paper's Appendix
+    E.2.4), shown what triage shows of each.
+    - The sample, seed 0: 100 each of SWE-chat's non_pushback, correction and
+      failure_report, 60 rejection and 40 takeover (398 once the overlaps go).
+    - Also the 55 moments v1's tasks were built from, all real complaints.
+  - *Why a small model, and only one.*
+    - The pipeline reads the label only as pushback or not: `run.py`'s
+      `PUSHBACK_KINDS`. Its kind is read by nothing after `find_moments`; a
+      task's `kind` is the signature's present, introduced or none.
+    - SWE-chat labelled its corpus with a 9B model.
+    - gpt-5.6-luna is not one of the six models v1 scores. It is on Azure
+      credits, and its deployment allows 1,000 requests and 1M tokens a minute.
+    - The calibration checks one model against labels already held; it is not
+      a comparison. A stronger model, gpt-6.1-sol, is tried only if this one
+      fails: alone, on the same sample, under the same rules.
+  - *The pass rules.* All must hold, and none changes after the labels are seen:
+    1. no row failed, and every message has an answer. A request the content
+       filter refuses is counted, and counts as not called;
+    2. at least 50 of the 55 v1 task moments are called pushback;
+    3. at least 85% of SWE-chat's sampled failure_report messages are called
+       pushback;
+    4. agreement with SWE-chat's labels on pushback or not, reweighted to how
+       often each occurs, is at least 70%.
+  - *Why 70%, not the 75% proposed on 09-30.*
+    - SWE-chat's labeller is about 79% right on pushback or not, by its
+      paper's validation.
+    - So a labeller right 90% of the time, with errors independent of its,
+      agrees with it about 73% of the time. 75% could fail a good labeller.
+    - Calling nothing a pushback scores 58%.
+  - *Cost.* $0.56 at list price ($0.20 / $1.20 per 1M tokens) if each answer
+    writes 500 tokens, before any cache. Capped at $1 by `--max-usd`, which now
+    also stops a run mid-way.
+  - *Code.* The three commits before this entry:
+    - the labeller asks with an effort, records it, keeps one model per file,
+      and keeps a filtered request rather than asking it forever;
+    - its report says whether these rules pass;
+    - gpt-6-sol's price is corrected. Tallies of its calls made before were
+      five times its listed rate.
+    Six CI suites pass.
