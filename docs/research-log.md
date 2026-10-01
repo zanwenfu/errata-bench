@@ -11047,3 +11047,31 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - The six CI suites pass. The corpus is next re-assembled with both fixes,
     the pilot resumed (only the messages whose text moved are asked again),
     and the end-to-end check run again.
+- **10-01, 05:1x UTC** — **Ready for the full labelling run: the corpus
+  re-assembled with the review's fixes and G-85's, and every check run again on
+  it (#16).**
+  - *The re-assembly.* 04:23 to 04:28 UTC on the VM; the one before is kept as
+    `corpus.pre-g85`.
+    - Repositories, checkpoints, commits and session logs are identical. In
+      sessions only the call and prompt counts changed.
+    - Conversations: 4,561,932 rows to 4,519,861, none new. Among the rows
+      gone are 11,064 calls, exactly the copies counted before, and 733
+      developer rows.
+    - Calls written more than once: 0, from 7,569. Every session is in order
+      and numbered without a gap.
+    - Developer messages repeating an earlier one: 10.2%.
+    - All 224 pilot labels were put on their messages: the fixes moved
+      nothing in the pilot's sessions. Resumed, the pilot asks nothing.
+  - *End to end again, on a scratch assembly.*
+    - All 224 labels are stored on their developer rows, matching the file in
+      label and digest, and nowhere else.
+    - `run.py moments` draws the same 12 moments in each mode, each at a
+      labelled pushback of its kind.
+  - *Checks.* The six CI suites pass at the final commit on the VM, in a clean
+    copy without the corpus.
+  - *The full run.*
+    - 16,702 messages beyond the pilot, in 1,490 Claude 5 sessions.
+    - $12.68 at list price, with 100 tokens written per message assumed; 71
+      to 78 were measured. About 65 minutes at the measured 260 a minute.
+    - Capped at $15 by `--max-usd`, which also stops a run mid-way.
+    - It resumes by text and refuses a second run over the same file.
