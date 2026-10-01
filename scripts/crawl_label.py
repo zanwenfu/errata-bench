@@ -75,7 +75,7 @@ def main(argv: list[str]) -> int:
         s.add_argument("--limit", type=int, default=0, help="label at most this many messages")
     c = sub.choices["calibrate"]
     c.add_argument("--out", type=Path, default=None,
-                   help="default data/entire/label-calibration-<model>[-<effort>].jsonl")
+                   help="default data/entire/label-calibration-<model>[-<effort>][-seed<seed>].jsonl")
     c.add_argument("--tasks", type=Path, default=TASKS, help="v1's frozen tasks, for the moments they were built from")
     c.add_argument("--seed", type=int, default=0)
     lab = sub.choices["label"]
@@ -111,7 +111,8 @@ def main(argv: list[str]) -> int:
         if CORPUS.resolve() != (ROOT / "data" / "swe-chat").resolve():
             raise SystemExit(f"calibration reads SWE-chat, not {CORPUS}")
         if args.out is None:
-            args.out = Path("data/entire") / f"label-calibration-{args.model}{'-' + args.effort if args.effort else ''}.jsonl"
+            args.out = Path("data/entire") / (f"label-calibration-{args.model}{'-' + args.effort if args.effort else ''}"
+                                              f"{f'-seed{args.seed}' if args.seed else ''}.jsonl")
         picked, frequency = L.calibration_sample(CORPUS, PER_CLASS, args.seed, also=v1_moments(args.tasks))
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.with_suffix(".frequency.json").write_text(json.dumps(frequency) + "\n")

@@ -114,11 +114,35 @@ def digest(text: str | None) -> str:
     return hashlib.sha256((text or "").encode("utf-8", "surrogatepass")).hexdigest()[:16]
 
 
+# Claude Code's own notices and command output, written into the developer's
+# turn. In SWE-chat each of the 2,824 messages opening with a task notification
+# is the notice and one line of Claude Code's after it, and the 169 opening with
+# a command's output are that output. None holds a word anyone typed, and
+# SWE-chat's labeller called 22% of the notices pushback. Not labelled since
+# 10-01, the first calibration having counted them as SWE-chat's failure reports.
+OWN = ("task-notification", "bash-stdout", "bash-stderr", "local-command-stdout", "local-command-stderr")
+OWN_LINE = ("Read the output file to retrieve the result:", "Full transcript available at:")
+# A block, and the one line Claude Code writes after a notice.
+_OWN_BLOCK = re.compile(r"<(%s)>.*?(?:</\1>|\Z)(?:\s*(?:%s)[^\n]*)?"
+                        % ("|".join(OWN), "|".join(map(re.escape, OWN_LINE))), re.DOTALL)
+
+
+def written_by_claude_code(text: str) -> bool:
+    """Whether a message is only Claude Code's own: its notice or output blocks, each with its one line after.
+
+    A message that opens with one but holds anything else, typed after it or
+    between two, is the developer's and is labelled.
+    """
+    text = (text or "").strip()
+    return text.startswith(tuple(f"<{tag}>" for tag in OWN)) and not _OWN_BLOCK.sub("", text).strip()
+
+
 def to_label(turns: list[dict]) -> list[dict]:
-    """A session's developer messages that are labelled: SWE-chat's non-interruption prompts.
+    """A session's developer messages that are labelled: SWE-chat's non-interruption prompts, less Claude Code's own.
 
     Not an interruption, which SWE-chat left unlabelled, not the summary that
-    opens a continued session, and not an empty message. A turn the table
+    opens a continued session, not Claude Code's own notice or output
+    (`written_by_claude_code`), and not an empty message. A turn the table
     holds twice is labelled once: SWE-chat's has 39 developer rows that repeat
     another's session, turn and text, in 13 sessions.
     """
@@ -127,7 +151,7 @@ def to_label(turns: list[dict]) -> list[dict]:
         text = (t.get("content") or "").strip()
         if (t.get("turn_type") == "user_prompt" and t.get("turn_number") is not None and text
                 and not text.startswith(INTERRUPTED) and not text.startswith(CONTINUED)
-                and t["turn_number"] not in seen):
+                and not written_by_claude_code(text) and t["turn_number"] not in seen):
             seen.add(t["turn_number"])
             out.append(t)
     return out

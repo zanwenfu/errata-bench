@@ -10680,3 +10680,27 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     - an amendment: `to_label` skips Claude Code's own notices and output, as
       it skips interruptions and continuation summaries, and gpt-5.6-luna is
       calibrated again on a fresh sample, under the same rules.
+- **10-01, 01:4x UTC** — **Amendment after the failed calibration: Claude Code's
+  own messages are not labelled, and gpt-5.6-luna is calibrated again on a
+  fresh sample (the user's choice) (#16).**
+  - *What changes.* `to_label` no longer takes a message that is only Claude
+    Code's own.
+    - That is one or more blocks opening `<task-notification>`,
+      `<bash-stdout>`, `<bash-stderr>`, `<local-command-stdout>` or
+      `<local-command-stderr>`, each with the one line Claude Code writes
+      after a notice.
+    - A message holding anything else, typed after the blocks or between
+      them, is still labelled.
+    - On SWE-chat this skips 2,993 of the 58,745 messages and no other: 2,824
+      notices and 169 command outputs.
+  - *Why this is not fitting the rules to the result.* Nobody typed these
+    messages, so none of them can be a developer pushing back, whatever any
+    labeller calls it. The full run also stops paying to label them.
+  - *What stays the same.* gpt-5.6-luna at low effort; the four rules and
+    their thresholds; 100, 100, 100, 60 and 40 messages by SWE-chat's label;
+    and the same 55 v1 task moments.
+  - *What is new.*
+    - A fresh draw with seed 1 from the amended pool: 455 messages from 406
+      sessions, in a file of its own.
+    - The first run's file is kept, and its fail stands.
+    - Estimate $0.34 at list price, capped at $1.
