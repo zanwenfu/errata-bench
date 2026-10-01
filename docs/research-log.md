@@ -4489,6 +4489,31 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
     delivered twice. Then a check, shown failing when the fix is reverted,
     and the corpus re-assembled before the full labelling run. Labels are
     keyed by turn, and the fix moves turns.
+- **G-85 · A transcript can hold a session's history twice, and a call can be
+  re-sent under its id.** *(opened and fixed 10-01, the 04:2x entry; #16.)*
+  - *How it was found.* The session fixing #17 found 16 calls written twice in
+    one SWE-chat-shaped session.
+  - *How often, on the collected corpus.* 7,569 tool calls were written more
+    than once (11,064 extra rows), in 34 sessions. SWE-chat's own table has 887
+    such calls, in 562 sessions.
+  - *The cause.* In 42 transcripts, the history is written into the file
+    again partway through: 36,036 entries under the uuid they already had,
+    8,859 of them the developer's turns.
+    - The copy refreshes the entry's bookkeeping (gitBranch, slug, cwd,
+      promptId, version) but says the same, in 35,993 of the 36,036.
+    - Separately, 1,073 calls were re-sent under new entries with the id of one
+      already written.
+  - *What it touched.*
+    - Every row after the replay was there twice: calls, results, agent text,
+      and the developer's messages, which labelling would pay for twice.
+    - A build replays a session's edits from its calls, so it would have
+      replayed some twice.
+  - *Fixed 10-01.* `crawl/shape.py`:
+    - `once` leaves out an entry when an earlier one has its uuid and says the
+      same;
+    - a call whose id is already written, and its result, are written once.
+    - `crawl_holds` section 5 holds both. Against SWE-chat's rows (300
+      sessions) nothing changes.
 - **G-79 · The table keeps only the last block of each assistant message, so
   the agent's text before a call is lost.** *(opened 09-29;
   `scripts/lost_text_blocks.py`; #17.)* This is G-76's cause, measured for
@@ -10984,3 +11009,41 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - *The full run, estimated for free.* 16,824 messages beyond the pilot, at
     $12.75 at list price. That is about 65 minutes at the measured 260
     answers a minute.
+- **10-01, 04:2x UTC** — **An independent review of the branch before the full
+  run, its findings fixed, and G-85 opened and fixed (#16).**
+  - *The review.* A read-only agent, with the reviewer's own scripts and a
+    stand-in for the model. Nothing it found would have put a wrong label on a
+    row in a run made then. Four defects:
+    1. *Resume ignored the digest.* After a re-assembly that moved turns, a
+       message at a turn holding another text's row was never asked: 9 of 56
+       in the reviewer's one-row shift.
+       - A row now counts as answered only for the message's current digest,
+         in `label_turns` and the script's estimate.
+       - After the same shift, every moved message is asked again: 0 stale,
+         0 never asked.
+       - Assembly counts a label whose turn holds no developer message,
+         rather than dropping it unseen.
+    2. *G-84 missed queued slash commands.* A command is queued as typed and
+       delivered as Claude Code's command form: in all 5 sessions of the
+       reviewer's fixture that had one.
+       - `as_typed` now matches them by name and arguments.
+       - A delivery whose prompt is content blocks keeps its queue row, and
+         takes it out of waiting.
+       - Against SWE-chat's rows: 12 fewer rows, nothing else changed.
+    3. *Nothing stopped two runs over one file,* which would pay twice. The run
+       now holds `store.rows.only_one`; a second is refused before it asks
+       anything.
+    4. *Pairing goes by text,* so in a version that writes only the queue, a
+       later identical message can take an earlier one's place. Documented,
+       and not seen against SWE-chat's rows.
+    - Minor: d40_spend's docstring; the script's examples and where to run it
+      from; the estimate is low for Chinese, Japanese and Korean text, where
+      the spend cap holds.
+  - *Still uncovered:* no check covers the labeller itself. Attempts to write
+    one were stopped by Claude's own safety filter, three times. It has been
+    tried by hand: stand-ins, the reviewer's scripts, and real runs.
+  - *G-85* (above): an entry written into its transcript again is read once,
+    and a call re-sent under its id is one call.
+  - The six CI suites pass. The corpus is next re-assembled with both fixes,
+    the pilot resumed (only the messages whose text moved are asked again),
+    and the end-to-end check run again.
