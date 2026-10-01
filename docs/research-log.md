@@ -10928,3 +10928,28 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     22,098 before the fix and the 10-01 skips. Of them, 37 are a hook's
     text ("Stop hook feedback:", 36), to be skipped with the next labeller
     change.
+- **10-01, 03:4x UTC** — **The labeller asks SWE-chat's codebook again (the
+  user's choice), as a first flag that our triage then decides on. The pilot
+  is registered for the re-assembled corpus (#16).**
+  - *The choice.* With SWE-chat, its labels flagged candidates and our triage
+    decided. Here the codebook flags and triage decides. The codebook caught
+    95.2% of triage's pushbacks, and triage's own question as a first filter
+    84.6%.
+  - *The labeller now.*
+    - gpt-5.6-luna at low effort, asked the codebook word for word, the same
+      asking path that passed the 02:0x check.
+    - It skips what no one typed: interruptions, continuation summaries,
+      Claude Code's own notices and output, a message another Claude session
+      sent, a skill's text as it loads, and a Stop hook's feedback.
+    - Recomputed under these skips, the 02:0x check still passes. 4 of its
+      moments are now skipped, all triage non-pushbacks; 278 of 292 pushbacks
+      are caught, 55 of 55 v1 moments, and 61 of 150 non-pushbacks flagged.
+  - *The pilot,* on the corpus re-assembled for G-84.
+    - The same draw as before: 20 Claude 5 sessions, seed 0, into a fresh
+      `labels.jsonl`. The earlier one was moved to
+      `labels.codebook-pilot-1001.jsonl`, since G-84 moved its turns.
+    - Each message called pushback, and those called non_pushback, read by
+      hand.
+    - Then an end-to-end check: a scratch assembly with these labels, and
+      `run.py`'s `find_moments` reading it.
+    - Estimate about $0.20.
