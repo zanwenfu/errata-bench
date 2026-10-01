@@ -34,7 +34,6 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
-import re
 import sys
 import time
 import uuid
@@ -165,7 +164,7 @@ async def run(instruction: str, out: Path, model: str, seconds: int, turns: int,
         # Its calls are kept and its reply is empty: an attempt that ran out
         # of time and reported nothing, graded as no answer, not lost.
         talk = Conversation(reply="", ran_out=True, ended_by="wall time", usage=context.get("usage"))
-    if talk.error and (_too_long(talk.error) or _FILTERED.search(talk.error)):
+    if talk.error and (_too_long(talk.error) or _filtered(talk.error)):
         # The conversation grew past what the model can read, or the provider's
         # filter refused it. That is this agent on this model -- it keeps the
         # whole history -- not a failure to retry: retried, it fails the same
@@ -204,15 +203,11 @@ async def run(instruction: str, out: Path, model: str, seconds: int, turns: int,
 # stacks use (vLLM, TGI, Mistral's, Azure AI's), since none of the six
 # candidates overflowed in 1,520 stored attempts and their own is unseen.
 # Matched only on a refusal (400/413), never on a throttle.
-_TOO_LONG = re.compile(
-    r"context_length_exceeded|maximum context length|prompt is too long|too many tokens"
-    r"|maximum prompt length|exceeds? (?:the )?(?:model'?s? )?(?:context|token limit|maximum)"
-    r"|context window|input is too long|too long for the model|reduce the length"
-    r"|inputs? tokens \+ max_new_tokens|max_tokens.{0,40}context|token limit", re.IGNORECASE)
-
-
-# A provider's content filter refusing the request: as deterministic as a length.
-_FILTERED = re.compile(r"content_filter|ResponsibleAIPolicyViolation|content management policy", re.IGNORECASE)
+# One list for every stage that meets a refusal (`llm.refusal`), imported where
+# it is read and never at the top: Harbor's own process imports this module for
+# its VERSION (`errata_harbor.agents.Reference.version`), and importing `llm`
+# reads the repository's .env, whose keys and provider `Reference.run` then
+# forwarded into the task's container, exported or not (10-01).
 
 
 def request_timeout_s() -> float:
@@ -229,13 +224,20 @@ def _too_long(error: str) -> bool:
 
     Only a refusal of the request itself (400, or 413 "too large"), never a
     throttle, a quota or an authorisation failure: a 403 "exceeded the monthly
-    token limit" is the account, not the conversation (09-28 review).
+    token limit" is the account, not the conversation (09-28 review). Read by
+    `llm.refusal`, as every stage reads one: this copy took "404 in your prompt"
+    for an account's 404 (10-01 review).
     """
-    if re.search(r"\b(?:401|402|403|404|429)\b|rate limit|quota|monthly|billing", error, re.IGNORECASE):
-        return False
-    if re.search(r"\b413\b|request entity too large|payload too large", error, re.IGNORECASE):
-        return True
-    return bool(_TOO_LONG.search(error))
+    from ..llm import refusal
+
+    return refusal(error) == "too long"
+
+
+def _filtered(error: str) -> bool:
+    """Whether an error is the provider's content filter refusing the request: as deterministic as a length."""
+    from ..llm import refusal
+
+    return refusal(error) == "content filter"
 
 
 def main(argv: list[str]) -> int:

@@ -5,7 +5,7 @@
 
 Run it on a copy of a release, never the release itself:
 
-    cp -Rc release/v1 release/v1.1
+    cp -R release/v1 release/v1.1
     scripts/rerender_release.py release/v1.1 --text-recovered
 
 A frozen task's working copy is the repository with the session's edits
@@ -24,10 +24,18 @@ directory's -- and set to show the agent's text SWE-chat's table lost when
   grading/task.json       the task row, with its new flag;
   task.json               its fingerprint and the two digests.
 
-workspace.tar.gz and grading/references.json are not touched. A task whose
-replayed edits would change is refused and left as it was. The manifest records
-when and by which code. Needs the corpus, not GitHub; makes no model calls.
-The exit code is 0 only if every task was written and checked.
+workspace.tar.gz and grading/references.json are not touched. Each task is
+rendered into a scratch folder and moved into place only once every check has
+passed, so a task refused -- its replayed edits would change, or its turns do
+not render its conversation -- is left exactly as it was; and its files are
+written beside the ones they replace before any is moved, so one whose files
+cannot be written is left as it was too. Stopped part way, run
+it again: each task is rendered again from its row. --text-recovered sets
+the flag only for a session whose transcript is in Claude Code's format, as the
+build does; without it, each task keeps the flag it has. The manifest records,
+per task, the flag it was rendered with, and when and by which code. Needs the
+corpus, not GitHub; makes no model calls. The exit code is 0 only if every task
+was written and checked.
 """
 
 from __future__ import annotations
@@ -36,13 +44,17 @@ import argparse
 import dataclasses
 import hashlib
 import json
+import os
+import shutil
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from errata_bench.construct.edits import edits_before  # noqa: E402
+from errata_bench.corpus.recover import has_transcript  # noqa: E402
 from errata_bench.corpus.turns import load_session_turns  # noqa: E402
 from errata_bench.project import code_version  # noqa: E402
 from errata_bench.release.freeze import controls_of, write_shown_turns  # noqa: E402
@@ -50,25 +62,61 @@ from errata_bench.score.attempt import transcript_for, turns_of, with_lost_block
 from errata_bench.spec import Task, fingerprint  # noqa: E402
 
 
+RENDERED = ("conversation.txt", "shown_turns.json", "task.json", "grading/controls.json", "grading/task.json",
+            "grading/turns.json")
+# A rendered file's name while it is written beside the one it replaces.
+STAGED = ".rerender-new"
+
+
+class PartlyRendered(RuntimeError):
+    """Some of a task's rendered files were moved into place and the rest were not: it is neither version."""
+
+
 def rerender(task: Task, turns: list[dict], folder: Path) -> tuple[bool, str]:
-    """Write one frozen task's conversation files again; whether it was written and checked, and why not."""
+    """Write one frozen task's conversation files again; whether it was written and checked, and why not.
+
+    Rendered into a scratch copy of the files it rewrites; they replace the task's own only when every check
+    has passed, so a refused task is left as it was.
+    """
     before = edits_before(with_lost_blocks(dataclasses.replace(task, text_recovered=False), turns), task.cut_turn)
     full = with_lost_blocks(task, turns)
     if edits_before(full, task.cut_turn) != before:
         return False, "its replayed edits would change, so its working copy would no longer match"
-    (folder / "conversation.txt").write_bytes(transcript_for(task, turns).encode("utf-8"))
-    if not write_shown_turns(task, turns, folder):
-        return False, "the turns kept do not render the conversation the candidate is shown"
-    grading = folder / "grading"
-    for name, body in (("controls.json", controls_of(task, turns)), ("task.json", task.to_json()),
-                       ("turns.json", [t for t in full
-                                       if (t.get("turn_number") or 0) <= (task.resolved_turn or task.cut_turn)])):
-        (grading / name).write_text(json.dumps(body, indent=1, ensure_ascii=False) + "\n")
-    meta = json.loads((folder / "task.json").read_text())
-    meta["fingerprint"] = fingerprint(task)
-    meta["conversation_sha256"] = hashlib.sha256((folder / "conversation.txt").read_bytes()).hexdigest()
-    meta["shown_turns_sha256"] = hashlib.sha256((folder / "shown_turns.json").read_bytes()).hexdigest()
-    (folder / "task.json").write_text(json.dumps(meta, indent=1) + "\n")
+    with tempfile.TemporaryDirectory(prefix="rerender-") as tmp:
+        scratch = Path(tmp)
+        (scratch / "grading").mkdir()
+        shutil.copyfile(folder / "task.json", scratch / "task.json")
+        (scratch / "conversation.txt").write_bytes(transcript_for(task, turns).encode("utf-8"))
+        if not write_shown_turns(task, turns, scratch):
+            return False, "the turns kept do not render the conversation the candidate is shown"
+        for name, body in (("controls.json", controls_of(task, turns)), ("task.json", task.to_json()),
+                           ("turns.json", [t for t in full
+                                           if (t.get("turn_number") or 0) <= (task.resolved_turn or task.cut_turn)])):
+            (scratch / "grading" / name).write_text(json.dumps(body, indent=1, ensure_ascii=False) + "\n")
+        meta = json.loads((scratch / "task.json").read_text())
+        meta["fingerprint"] = fingerprint(task)
+        meta["conversation_sha256"] = hashlib.sha256((scratch / "conversation.txt").read_bytes()).hexdigest()
+        meta["shown_turns_sha256"] = hashlib.sha256((scratch / "shown_turns.json").read_bytes()).hexdigest()
+        (scratch / "task.json").write_text(json.dumps(meta, indent=1) + "\n")
+        # Each written beside the file it replaces, then all moved into place, so a
+        # write that fails (a full disk) leaves the task exactly as it was: copied
+        # in one by one, a failure left it half rendered, recorded as untouched
+        # (10-01 review). grading/task.json, which says which repair the task
+        # holds, is moved last.
+        try:
+            for name in RENDERED:
+                shutil.copyfile(scratch / name, folder / (name + STAGED))
+        except BaseException:
+            for name in RENDERED:
+                (folder / (name + STAGED)).unlink(missing_ok=True)
+            raise
+        moved = []
+        try:
+            for name in sorted(RENDERED, key=lambda n: n == "grading/task.json"):
+                os.replace(folder / (name + STAGED), folder / name)
+                moved.append(name)
+        except OSError as e:
+            raise PartlyRendered(f"{moved} moved into place and the rest not: {type(e).__name__}: {e}") from e
     return True, ""
 
 
@@ -84,11 +132,13 @@ def main(argv: list[str]) -> int:
         folders = [d for d in folders if d.name in set(args.only)]
     if not folders:
         ap.error(f"no frozen tasks under {args.release / 'tasks'}")
-    tasks = {d.name: Task.from_json(json.loads((d / "grading" / "task.json").read_text())) for d in folders}
+    stored = {d.name: Task.from_json(json.loads((d / "grading" / "task.json").read_text())) for d in folders}
+    tasks = dict(stored)
     if args.text_recovered:
-        tasks = {k: dataclasses.replace(t, text_recovered=True) for k, t in tasks.items()}
+        tasks = {k: dataclasses.replace(t, text_recovered=has_transcript(t.session_id)) for k, t in tasks.items()}
     loaded = load_session_turns({t.session_id for t in tasks.values()})
     bad, rows = 0, []
+    now, version = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), code_version()
     for d in folders:
         task = tasks[d.name]
         shown_before = (d / "conversation.txt").read_bytes()
@@ -96,7 +146,11 @@ def main(argv: list[str]) -> int:
         shown = json.loads((d / "shown_turns.json").read_text()) if ok else []
         put_back = sum(1 for t in shown if t.get("recovered") and t.get("turn_type") == "assistant_response")
         grew = len((d / "conversation.txt").read_bytes()) - len(shown_before) if ok else 0
-        rows.append({"task_id": d.name, "ok": ok, "text_put_back": put_back, "characters_added": grew,
+        # What is on disk: a refused task keeps the flag it had. Each row says when
+        # and by which code, so rows kept from an earlier run keep theirs.
+        rows.append({"task_id": d.name, "ok": ok,
+                     "text_recovered": task.text_recovered if ok else stored[d.name].text_recovered,
+                     "text_put_back": put_back, "characters_added": grew, "at": now, "code_version": version,
                      **({"reason": why} if not ok else {})})
         bad += not ok
         print(f"  {'ok  ' if ok else 'FAIL'} {d.name:42} {put_back:4} texts put back, {grew:+8,} characters"
@@ -104,8 +158,7 @@ def main(argv: list[str]) -> int:
     manifest_path = args.release / "manifest.json"
     manifest = json.loads(manifest_path.read_text()) if manifest_path.exists() else {}
     manifest["rerendered"] = {
-        "at": datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), "code_version": code_version(),
-        "text_recovered": args.text_recovered,
+        "at": now, "code_version": version,
         "tasks": sorted(rows + [r for r in (manifest.get("rerendered") or {}).get("tasks", [])
                                 if r["task_id"] not in {x["task_id"] for x in rows}], key=lambda r: r["task_id"])}
     manifest_path.write_text(json.dumps(manifest, indent=1) + "\n")

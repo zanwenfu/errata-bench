@@ -10,7 +10,8 @@ from __future__ import annotations
 import time
 
 from ..project import code_version
-from ..store import Paths, Progress, _gather, append, completed, held, key_of, load, replace
+from ..llm import metering
+from ..store import Paths, Progress, _gather, append, append_used, completed, held, key_of, load, replace
 
 #: What a rejection says when the tree could not be fetched. The row is sound
 #: and the network was not, which is a different thing from a task this corpus
@@ -216,9 +217,22 @@ def stage_build(paths: Paths, limit: int) -> Progress:
     return p
 
 
+def admission_unmixable(paths: Paths, grader: str) -> str | None:
+    """Why this judge's admission readings may not be added to in this folder, or None (`admission_problems`)."""
+    from ..instrument.control import admission_problems
+
+    problems = admission_problems(load(paths.calibration) if paths.calibration.exists() else [],
+                                  load(paths.controls) if paths.controls.exists() else [], grader)
+    if not problems:
+        return None
+    return (f"refused: this folder's admission by {grader} was {'; '.join(problems)}: admit in a new run "
+            f"directory; nothing was asked")
+
+
 async def stage_calibrate(paths: Paths, limit: int, concurrency: int) -> Progress:
     """Check the judge can read each task's known-wrong and known-right answers."""
-    from ..score.judge import calibrate
+    from ..score.judge import RULES as JUDGE_RULES, calibrate
+    from ..llm import reading_setup
     from ..llm import judge_model
     from ..spec import fingerprint, read
 
@@ -226,6 +240,14 @@ async def stage_calibrate(paths: Paths, limit: int, concurrency: int) -> Progres
     t0 = time.monotonic()
     tasks = read(paths.tasks)
     grader = judge_model()
+    # An admission is made under one judge's rules, provider and API: added to
+    # one read under others, it would resume on their rows (09-30 review).
+    refused = admission_unmixable(paths, grader)
+    if refused:
+        p.notes.append(refused)
+        p.failed = 1
+        p.took_s = time.monotonic() - t0
+        return p
     # Keyed on the judge as well as the task. Calibration rows already store
     # `judge_model` because "the verdict belongs to that judge and says nothing
     # about another one", but the resume key did not read it, so pointing
@@ -246,7 +268,7 @@ async def stage_calibrate(paths: Paths, limit: int, concurrency: int) -> Progres
     async def one(t):
         try:
             c = await calibrate(t, model=grader, conversations=conversations.get(t.task_id))
-            append(
+            append_used(
                 paths.calibration,
                 {
                     "task_id": t.task_id,
@@ -257,6 +279,11 @@ async def stage_calibrate(paths: Paths, limit: int, concurrency: int) -> Progres
                     # -- and the grading stage can now be pointed at a
                     # different model than the one calibrated here.
                     "judge_model": grader,
+                    # And under which of its rules: grading refuses an admission
+                    # made under others (G-82 changed them).
+                    "judge_rules": JUDGE_RULES,
+                    # And through which provider, API and field guide (`llm.reading_setup`).
+                    "reading_setup": reading_setup(),
                     # Which version of the task this verdict is about. A task
                     # rebuilt under the same name keeps its reference answers'
                     # gate otherwise: the answers were correctly retired and
@@ -298,7 +325,7 @@ async def stage_calibrate(paths: Paths, limit: int, concurrency: int) -> Progres
             # completed() cannot tell a call that failed from a judge that
             # misread the pair, and one dropped connection retires a sound
             # task for good -- the same trap the other stages were fixed for.
-            append(
+            append_used(
                 paths.calibration,
                 {"task_id": t.task_id, "judge_model": grader, "sound": False, "code_version": code_version(),
                  "error": f"{type(e).__name__}: {e}",
@@ -307,7 +334,7 @@ async def stage_calibrate(paths: Paths, limit: int, concurrency: int) -> Progres
             return False
 
     if todo:
-        results = await _gather([one(t) for t in todo], concurrency)
+        results = await _gather([metering(one(t)) for t in todo], concurrency)
         p.produced = sum(1 for r in results if r)
         p.failed = sum(1 for r in results if not r)
     p.took_s = time.monotonic() - t0
@@ -349,6 +376,12 @@ async def stage_control(paths: Paths, limit: int, concurrency: int,
 
     p = Progress("control")
     t0 = time.monotonic()
+    refused = admission_unmixable(paths, judge_model())
+    if refused:
+        p.notes.append(refused)
+        p.failed = 1
+        p.took_s = time.monotonic() - t0
+        return p
     sound = {r["task_id"] for r in load(paths.calibration) if can_be_scored(r)}
     tasks = [t for t in read(paths.tasks) if t.task_id in sound]
     # A control that could not run is not a control that failed. An errored row
@@ -404,6 +437,8 @@ async def stage_control(paths: Paths, limit: int, concurrency: int,
     # read against the conversation it was written after, not the cut.
     from ..instrument.control import trace_behaved
     from ..score.attempt import INSTRUCTIONS as CANDIDATE_RULES, control_conversations_for, environment_note
+    from ..score.judge import RULES as JUDGE_RULES
+    from ..llm import reading_setup
     from ..score.trace import RULES as TRACE_RULES, check as check_trace, kept_claims
     from ..score.trace import stored as stored_claim
 
@@ -423,7 +458,9 @@ async def stage_control(paths: Paths, limit: int, concurrency: int,
                 given=f"{CANDIDATE_RULES}\n\n{environment_note('an environment it never used: it ran no commands' if not calls else 'host')}",
             )
             trace_ok = trace_behaved(control, trace)
-            append(paths.controls, {**result.to_json(), "judge_model": grader, "code_version": code_version(),
+            append_used(paths.controls, {**result.to_json(), "judge_model": grader, "judge_rules": JUDGE_RULES,
+                                    "reading_setup": reading_setup(),
+                                    "code_version": code_version(),
                                     "pass": n, "passes": need(task, control),
                                     "task_fingerprint": fingerprint(task),
                                     "trace_honest": trace.honest,
@@ -435,7 +472,7 @@ async def stage_control(paths: Paths, limit: int, concurrency: int,
                                     "trace_claims": kept_claims([stored_claim(c) for c in trace.claims])})
             return "behaved" if (result.ok and trace_ok) else "wrong"
         except Exception as e:
-            append(
+            append_used(
                 paths.controls,
                 {"task_id": task.task_id, "control": control.name, "ok": False,
                  "judge_model": grader, "pass": n, "passes": need(task, control), "code_version": code_version(),
@@ -444,7 +481,7 @@ async def stage_control(paths: Paths, limit: int, concurrency: int,
             )
             return f"{type(e).__name__}: {e}"
 
-    results = await _gather([one(t, c, n) for t, c, n in jobs], concurrency)
+    results = await _gather([metering(one(t, c, n)) for t, c, n in jobs], concurrency)
     # A verdict and an error are different news. A dropped connection was
     # printed as "behaved wrongly -- those tasks are unsound", about a reading
     # that was stored as an error and succeeds on the next run. And both are

@@ -129,11 +129,22 @@ class ClaudeRefused(RuntimeError):
     """A call to a Claude deployment on Azure, refused before anything was sent."""
 
 
+def chosen_provider() -> str:
+    """ERRATA_PROVIDER as `provider` reads it, stripped and lower-cased, without refusing.
+
+    Every reader of the setting goes through this or `provider`: read once with
+    `.strip()` and elsewhere without, " azure" sent the calls to Azure on the
+    Responses API with no field guide while the admission's rows recorded chat
+    completions with it (10-01 review).
+    """
+    return os.environ.get("ERRATA_PROVIDER", "").strip().lower()
+
+
 def bound_for_azure(url: str | None = None) -> bool:
     """Whether a request goes to Azure: ERRATA_PROVIDER=azure, or ``url`` on an Azure host."""
     from urllib.parse import urlparse
 
-    if os.environ.get("ERRATA_PROVIDER", "").lower() == "azure":
+    if chosen_provider() == "azure":
         return True
     host = (urlparse(url).hostname or "") if url else ""
     return host == "azure.com" or host.endswith(".azure.com")
@@ -203,6 +214,48 @@ async def _note_served(response) -> None:
     seen.append(str(model) if model else "unknown")
 
 
+# The token use of the work in progress, when a row is metering it (`metered`).
+_METER: "contextvars.ContextVar[dict | None]" = contextvars.ContextVar("errata_meter", default=None)
+
+
+@contextlib.contextmanager
+def metered():
+    """Add up the token use of every model call made inside, through `resilient` (09-30 review).
+
+    Screening, calibration, the controls and the gate recorded none, so the
+    steps before a pilot could be neither priced nor stopped. Per task: each
+    concurrent row meters its own calls. Yields a dict filled in as calls finish.
+    """
+    total: dict = {}
+    token = _METER.set(total)
+    try:
+        yield total
+    finally:
+        _METER.reset(token)
+
+
+def current_usage() -> dict | None:
+    """The token use metered so far for the row in progress, or None outside a meter."""
+    total = _METER.get()
+    return None if total is None else dict(total)
+
+
+async def metering(coro):
+    """Run one row's work under its own meter (`metered`), for a stage that runs rows side by side."""
+    with metered():
+        return await coro
+
+
+def _meter(result) -> None:
+    """Add one finished call's usage to the meter in effect, if any."""
+    total = _METER.get()
+    if total is None:
+        return
+    used = usage_of(result)
+    for key, value in (used or {}).items():
+        total[key] = total.get(key, 0) + (value or 0)
+
+
 @contextlib.contextmanager
 def served_models():
     """Collect the model that served each request made inside, in order (#6)."""
@@ -222,6 +275,85 @@ def _http_client(transport=None):
                                    **({"transport": transport} if transport is not None else {}))
 
 
+# How providers word a request refused for its length: OpenAI's, and the
+# wordings other serving stacks use (vLLM, TGI, Mistral's, Azure AI's, Gemini's
+# "exceeds the maximum number of tokens allowed"). Matched only on a refusal of
+# the request itself, never a throttle, a quota or an authorisation failure.
+TOO_LONG = re.compile(
+    r"context_length_exceeded|maximum context length|prompt is too long|too many tokens"
+    r"|maximum prompt length|exceeds? (?:the )?(?:model'?s? )?(?:context|token limit|maximum)"
+    r"|context window|input is too long|too long for the model|reduce the length"
+    r"|`?inputs?`? tokens \+ `?max_new_tokens`?|max_tokens.{0,40}context|token limit", re.IGNORECASE)
+# A provider's content filter refusing the request: as deterministic as a length.
+FILTERED = re.compile(r"content_filter|ResponsibleAIPolicyViolation|content management policy", re.IGNORECASE)
+# A status code is read where the SDK writes it ("Error code: 404 - ..."), never
+# as a number anywhere in the message: "you requested 4404 tokens (404 in your
+# prompt; ...)" is a length refusal, and read as an account's 404 it was retried
+# on every run (10-01 review).
+_STATUS = r"(?:error code|status(?: code)?|http(?:/[\d.]+)?)\W{0,3}"
+# The account or the provider's capacity, not the request: asked again later, it may pass.
+ACCOUNT = re.compile(_STATUS + r"(?:401|402|403|404|429)\b|rate.?limit|quota|monthly|billing", re.IGNORECASE)
+# The request's size, refused by the HTTP layer before any model read it.
+TOO_LARGE = re.compile(_STATUS + r"413\b|request entity too large|payload too large", re.IGNORECASE)
+
+
+def refusal(error: str) -> str | None:
+    """"too long" or "content filter" when a provider refused the request itself, for good; None otherwise.
+
+    Asked again, the same request gets the same answer, so a stage records it
+    once instead of retrying it on every run (09-30 review: screening knew four
+    wordings of the first and none of the second). A 403 "exceeded the monthly
+    token limit" is the account, not the request (09-28 review).
+    """
+    if ACCOUNT.search(error):
+        return None
+    if FILTERED.search(error):
+        return "content filter"
+    if TOO_LARGE.search(error) or TOO_LONG.search(error):
+        return "too long"
+    return None
+
+
+def provider() -> str:
+    """Which API every model call goes to, "azure" or "openai", as ERRATA_PROVIDER names it.
+
+    Never inferred from the variables present: inferring Azure from
+    AZURE_OPENAI_BASE_URL once rerouted every call to a resource with no
+    deployments. And never left to a default when Azure is configured: with
+    Azure's settings in .env and ERRATA_PROVIDER unset, an admission run by hand
+    would have gone to api.openai.com on the OpenAI key, another account (09-30
+    review). Both cases refuse before any call.
+    """
+    import os
+
+    _load_dotenv()
+    chosen = chosen_provider()
+    if chosen in ("azure", "openai"):
+        return chosen
+    if chosen:
+        raise RuntimeError(f"ERRATA_PROVIDER={chosen!r} is neither azure nor openai; nothing was called.")
+    if os.environ.get("AZURE_OPENAI_BASE_URL"):
+        raise RuntimeError("AZURE_OPENAI_BASE_URL is set but ERRATA_PROVIDER is not: export ERRATA_PROVIDER=azure "
+                           "to use Azure, or ERRATA_PROVIDER=openai for OpenAI's API; nothing was called.")
+    return "openai"
+
+
+def reading_setup() -> dict:
+    """How a model is asked, beyond the model and the rules: the provider, the API surface, and whether the
+    output fields' meanings are written into the instructions (`with_field_guide`). A judge admitted one way
+    and graded another reads a different prompt, so admission rows record this and grading compares it."""
+    import os
+
+    chosen = provider()
+    if chosen == "openai" and os.environ.get("OPENAI_BASE_URL"):
+        chosen = "openai-compatible"
+    forced = os.environ.get("ERRATA_FIELD_GUIDE")
+    guide = forced == "1" if forced in ("0", "1") else chosen == "azure"
+    return {"provider": chosen,
+            "api": os.environ.get("ERRATA_API") or ("chat_completions" if chosen == "azure" else "responses"),
+            "field_guide": guide}
+
+
 def candidate_client():
     """An API client for a candidate's own calls: set up as `configure_client`'s, retrying nothing.
 
@@ -236,7 +368,7 @@ def candidate_client():
 
     _load_dotenv()
     timeout = float(os.environ.get("ERRATA_TIMEOUT") or REQUEST_TIMEOUT_S)
-    if os.environ.get("ERRATA_PROVIDER", "").lower() == "azure":
+    if provider() == "azure":
         base, key = os.environ.get("AZURE_OPENAI_BASE_URL"), os.environ.get("AZURE_OPENAI_API_KEY")
         if not base or not key:
             raise RuntimeError("ERRATA_PROVIDER=azure needs AZURE_OPENAI_BASE_URL and AZURE_OPENAI_API_KEY.")
@@ -251,10 +383,11 @@ def candidate_client():
 def configure_client() -> None:
     """Install an API client that fails fast instead of hanging.
 
-    Azure is used when AZURE_OPENAI_BASE_URL is set, and the direct OpenAI API
-    otherwise. Azure's v1 surface accepts `Authorization: Bearer`, verified
-    against the live endpoint, so the ordinary client works with a base_url --
-    no AsyncAzureOpenAI, no api-version juggling.
+    Azure when ERRATA_PROVIDER=azure, OpenAI's API when it is openai or when
+    nothing of Azure's is configured, and a refusal otherwise (`provider`).
+    Azure's v1 surface accepts `Authorization: Bearer`, verified against the
+    live endpoint, so the ordinary client works with a base_url -- no
+    AsyncAzureOpenAI, no api-version juggling.
     """
     global _client_configured
     if _client_configured:
@@ -277,7 +410,7 @@ def configure_client() -> None:
     # inferring it from AZURE_OPENAI_BASE_URL silently rerouted every call in
     # the pipeline to a resource with no deployments, and the working path
     # became unreachable while its credential was still sitting there.
-    azure = os.environ.get("ERRATA_PROVIDER", "").lower() == "azure"
+    azure = provider() == "azure"
     if azure:
         base = os.environ.get("AZURE_OPENAI_BASE_URL")
         key = os.environ.get("AZURE_OPENAI_API_KEY")
@@ -320,9 +453,7 @@ def configure_client() -> None:
     # perfectly valid JSON for the same schema through chat completions. Both
     # surfaces answer, so this is about how structured output is requested, not
     # about reachability.
-    api = os.environ.get("ERRATA_API") or (
-        "chat_completions" if os.environ.get("ERRATA_PROVIDER", "").lower() == "azure" else ""
-    )
+    api = os.environ.get("ERRATA_API") or ("chat_completions" if azure else "")
     if api:
         from agents import set_default_openai_api
 
@@ -366,7 +497,10 @@ def served(model: str) -> dict:
     except ClaudeRefused as e:
         return {**row, "error": str(e)}
     _load_dotenv()
-    azure = os.environ.get("ERRATA_PROVIDER", "").lower() == "azure"
+    try:
+        azure = provider() == "azure"
+    except RuntimeError as e:
+        return {**row, "error": str(e)}
     key = os.environ.get("AZURE_OPENAI_API_KEY" if azure else "OPENAI_API_KEY")
     base = os.environ.get("AZURE_OPENAI_BASE_URL") if azure else None
     if not key or (azure and not base):
@@ -441,11 +575,7 @@ def with_field_guide(instructions: str, output_type) -> str:
     set to 1 or 0 forces it either way.
     """
     forced = os.environ.get("ERRATA_FIELD_GUIDE")
-    wanted = (
-        forced == "1"
-        if forced in ("0", "1")
-        else os.environ.get("ERRATA_PROVIDER", "").lower() == "azure"
-    )
+    wanted = forced == "1" if forced in ("0", "1") else chosen_provider() == "azure"
     if not wanted:
         return instructions
     schema = output_type.model_json_schema()
@@ -467,6 +597,9 @@ _DROPPED = frozenset({"APITimeoutError", "APIConnectionError", "InternalServerEr
 # (09-28 review), and `resilient` read errors the same way until 09-30.
 STATUS_429 = re.compile(r"(?:error code|status(?: code)?|http)\W{0,3}429\b|\b429 too many requests", re.IGNORECASE)
 STATUS_50X = re.compile(r"(?:error code|status(?: code)?|http)\W{0,3}50[234]\b", re.IGNORECASE)
+# What in a provider's error payload says it is busy, as opposed to refusing the request.
+PAYLOAD_BUSY = re.compile(r"rate.?limit|too many requests|throttl|overloaded|capacity"
+                          r"|['\"]?code['\"]?\W{0,3}(?:429|50[234])\b", re.IGNORECASE)
 
 
 async def resilient(make_call, *, attempts: int = 4, pause: float = 60.0):
@@ -488,7 +621,9 @@ async def resilient(make_call, *, attempts: int = 4, pause: float = 60.0):
     last = None
     for attempt in range(attempts):
         try:
-            return await make_call()
+            result = await make_call()
+            _meter(result)
+            return result
         except Exception as e:  # noqa: BLE001 - re-raised below unless transient
             # A refused Claude call reaches here as a connection error; it is
             # not one, and waiting will not change the answer.
@@ -506,8 +641,13 @@ async def resilient(make_call, *, attempts: int = 4, pause: float = 60.0):
             # A status by its code, or where an error writes one: a 429 or a 503
             # inside a token count is neither.
             status, head = getattr(e, "status_code", None), str(e)[:200]
-            throttled = ("no choices" in message or "rate limit" in message or status == 429
-                         or STATUS_429.search(head) is not None)
+            # An empty 200 is Azure's throttle. One that carries the provider's own
+            # error ("... has no choices (possible provider error payload): {...}")
+            # is that error, busy only if it says so: a length refusal or a content
+            # filter sent that way was waited on as a throttle, four times.
+            payload = message.split("no choices", 1)[1].partition(":")[2] if "no choices" in message else ""
+            throttled = (("no choices" in message and (not payload.strip() or PAYLOAD_BUSY.search(payload) is not None))
+                         or "rate limit" in message or status == 429 or STATUS_429.search(head) is not None)
             dropped = (type(e).__name__ in _DROPPED or status in (502, 503, 504)
                        or STATUS_50X.search(head) is not None
                        or re.search(r"timed out|connection (?:error|reset|refused)"

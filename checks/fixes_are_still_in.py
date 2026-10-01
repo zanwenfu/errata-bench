@@ -23,6 +23,7 @@ from errata_bench.score import trace as T
 from errata_bench.score.attempt import Attempt, ToolCall
 from errata_bench.score.judge import Judgement
 from errata_bench.stages import run_stages, stage_attempt, stage_build, stage_grade
+from errata_bench.score.judge import RULES as JUDGE_RULES
 from errata_bench.store import Paths, Progress, append, load
 # from the code, not a copy: a control added there must appear in every
 # fixture, or the fixture quietly stops admitting its tasks.
@@ -89,9 +90,11 @@ def mktask(tid="t", defect="a defect"):
 def run_dir(tids=("t",)):
     p = Paths(Path(tempfile.mkdtemp()) / "run")
     write([mktask(t) for t in tids], p.tasks)
-    p.calibration.write_text("".join(json.dumps({"task_id": t, "sound": True}) + "\n" for t in tids))
-    p.controls.write_text("".join(json.dumps({"task_id": t, "control": c, "ok": True}) + "\n"
-                                  for t in tids for c in CONTROL_NAMES))
+    # An admission under the judge's current rules (grading refuses another's).
+    p.calibration.write_text("".join(json.dumps({"task_id": t, "sound": True, "judge_rules": JUDGE_RULES}) + "\n"
+                                     for t in tids))
+    p.controls.write_text("".join(json.dumps({"task_id": t, "control": c, "ok": True, "judge_rules": JUDGE_RULES})
+                                  + "\n" for t in tids for c in CONTROL_NAMES))
     return p
 
 
@@ -699,7 +702,7 @@ check("GATE-2", "and a row claiming sound cannot override the line it fails",
 
 # the calibration gate, through the stage that spends containers
 d = run_dir()
-P.replace(d.calibration, [{"task_id": "t", "sound": True, **BREAKS}])
+P.replace(d.calibration, [{"task_id": "t", "sound": True, "judge_rules": JUDGE_RULES, **BREAKS}])
 asyncio.run(stage_attempt(d, 10**9, concurrency=2, repeats=1))
 check("GATE-3", "no candidate runs against a task whose known pair does not separate",
       not load(d.answers))
@@ -707,7 +710,7 @@ check("GATE-3", "no candidate runs against a task whose known pair does not sepa
 # the control gate, through both stages that apply it
 for missing, label in ((True, "never ran"), (False, "half ran")):
     d = run_dir()
-    rows = [] if missing else [{"task_id": "t", "control": "null", "ok": True}]
+    rows = [] if missing else [{"task_id": "t", "control": "null", "ok": True, "judge_rules": JUDGE_RULES}]
     P.replace(d.controls, rows)
     asyncio.run(stage_attempt(d, 10**9, concurrency=2, repeats=1))
     check(f"GATE-4 ({label})", f"no candidate runs against a task whose controls {label}",
@@ -715,7 +718,7 @@ for missing, label in ((True, "never ran"), (False, "half ran")):
 
 d = run_dir()
 asyncio.run(stage_attempt(d, 10**9, concurrency=2, repeats=1))
-P.replace(d.controls, [{"task_id": "t", "control": "null", "ok": True}])
+P.replace(d.controls, [{"task_id": "t", "control": "null", "ok": True, "judge_rules": JUDGE_RULES}])
 pg = asyncio.run(stage_grade(d, 10**9, concurrency=2))
 check("GATE-5", "and an answer already collected is not graded once its controls lapse",
       not load(d.attempts) and any("controls" in n for n in pg.notes))

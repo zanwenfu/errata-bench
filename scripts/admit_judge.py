@@ -27,7 +27,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from errata_bench.release.admission import conversations_from  # noqa: E402
 from errata_bench.spec import Task  # noqa: E402
-from errata_bench.store import Paths, load  # noqa: E402
+from errata_bench.store import Paths, load, only_one  # noqa: E402
 
 
 def main(argv: list[str]) -> int:
@@ -44,18 +44,36 @@ def main(argv: list[str]) -> int:
         return 2
 
     from errata_bench.instrument.control import controlled
-    from errata_bench.llm import judge_model
+    from errata_bench.llm import judge_model, provider
     from errata_bench.score.judge import can_be_scored
     from errata_bench.stages.building import stage_calibrate, stage_control
 
+    try:
+        provider()
+    except RuntimeError as e:
+        print(f"refused: {e}", file=sys.stderr)
+        return 2
+    # Long prompts, read whole, as grading reads them: a request cut off at the
+    # client's 120 seconds is sent again and paid again (09-28 preflight).
+    os.environ.setdefault("ERRATA_TIMEOUT", "900")
+    os.environ.setdefault("ERRATA_MAX_RETRIES", "5")
     paths = Paths(args.out)
+    rows = [json.loads((d / "grading" / "task.json").read_text())
+            for d in sorted((args.release / "tasks").iterdir()) if (d / "grading" / "task.json").is_file()
+            and (not args.only or d.name in set(args.only))]
+    wanted = "".join(json.dumps(Task.from_json(r).to_json()) + "\n" for r in rows)
+    # Written once, and the stages resume on it: a folder admitted on other
+    # tasks, or on other versions of them, would report them "already done"
+    # and admit nothing new (09-30 review).
+    if paths.tasks.exists() and paths.tasks.read_text() != wanted:
+        print(f"refused: {args.out} holds an admission of other tasks or task versions than these; admit into a "
+              f"new --out; nothing was read", file=sys.stderr)
+        return 2
     args.out.mkdir(parents=True, exist_ok=True)
     if not paths.tasks.exists():
-        rows = [json.loads((d / "grading" / "task.json").read_text())
-                for d in sorted((args.release / "tasks").iterdir()) if (d / "grading" / "task.json").is_file()
-                and (not args.only or d.name in set(args.only))]
-        paths.tasks.write_text("".join(json.dumps(Task.from_json(r).to_json()) + "\n" for r in rows))
-    with conversations_from(args.release):
+        paths.tasks.write_text(wanted)
+    # One admission per folder: two would each pay for every reading (10-01 review).
+    with only_one(args.out, "admitting a judge"), conversations_from(args.release):
         calibrated = asyncio.run(stage_calibrate(paths, args.limit, args.concurrency))
         print(calibrated.line().strip())
         controls = asyncio.run(stage_control(paths, args.limit, args.concurrency, passes=args.passes))

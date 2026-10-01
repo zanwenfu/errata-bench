@@ -36,7 +36,8 @@ from pathlib import Path
 
 from ..score.judge import can_be_scored
 from ..project import code_version
-from ..store import Paths, Progress, _gather, append, completed, load
+from ..llm import metering
+from ..store import Paths, Progress, _gather, append, append_used, completed, load
 
 
 def observations(run: Path, model: str, *, passing=None) -> dict[str, list[bool]]:
@@ -57,24 +58,30 @@ def observations(run: Path, model: str, *, passing=None) -> dict[str, list[bool]
     # are kept, as the build's prune keeps them.
     prints = {t.task_id: fingerprint(t) for t in read(paths.tasks)} if paths.tasks.exists() else {}
     current = lambda row: row.get("task_fingerprint") in (None, prints.get(row.get("task_id")))
-    for row in load(paths.gate):
-        if row.get("judge_model") == model and not row.get("error") and current(row):
-            # Re-derived from the four stored readings rather than read off the
-            # verdict recorded at the time. What counts as the known-right
-            # answer reading correctly is a rule, and the rule changes; the
-            # readings do not. So tightening it costs nothing and cannot
-            # silently leave old verdicts in place beside new ones.
-            seen.setdefault(row["task_id"], []).append(
-                can_be_scored(row, **({"passing": passing} if passing else {}))
-            )
+    rows = [row for row in load(paths.gate) if row.get("judge_model") == model and not row.get("error")
+            and current(row)]
     rejudged = run / "rejudge"
     if rejudged.exists():
         for d in sorted(p for p in rejudged.iterdir() if p.is_dir()):
-            for row in load(Paths(d).calibration):
-                if row.get("judge_model") == model and not row.get("error") and current(row):
-                    seen.setdefault(row["task_id"], []).append(
-                        can_be_scored(row, **({"passing": passing} if passing else {}))
-                    )
+            rows += [row for row in load(Paths(d).calibration)
+                     if row.get("judge_model") == model and not row.get("error") and current(row)]
+    # Readings under one judge's rules only: a run holding several keeps this
+    # code's, or the newest it has. A run with no rules recorded reads as before.
+    versions = {row.get("judge_rules") for row in rows}
+    if len(versions) > 1:
+        from ..score.judge import RULES
+
+        keep = RULES if RULES in versions else max(v for v in versions if v is not None)
+        rows = [row for row in rows if row.get("judge_rules") == keep]
+    for row in rows:
+        # Re-derived from the four stored readings rather than read off the
+        # verdict recorded at the time. What counts as the known-right
+        # answer reading correctly is a rule, and the rule changes; the
+        # readings do not. So tightening it costs nothing and cannot
+        # silently leave old verdicts in place beside new ones.
+        seen.setdefault(row["task_id"], []).append(
+            can_be_scored(row, **({"passing": passing} if passing else {}))
+        )
     return seen
 
 
@@ -100,7 +107,8 @@ async def measure(
     run: Path, model: str, *, passes: int = 10, concurrency: int = 6
 ) -> Progress:
     """Read every task's known pair `passes` times over, and record each answer."""
-    from ..score.judge import calibrate
+    from ..llm import reading_setup
+    from ..score.judge import RULES as JUDGE_RULES, calibrate
     from ..spec import fingerprint, read
 
     paths = Paths(run)
@@ -111,9 +119,11 @@ async def measure(
     # rebuilt under the same name is not a reading of this one (B-251).
     prints = {t.task_id: fingerprint(t) for t in tasks}
     current = lambda row: row.get("task_fingerprint") in (None, prints.get(row.get("task_id")))
+    # And under these rules: a reading under others is not one of this judge's now (09-30 review).
     done = {
         (r["task_id"], r["pass"])
-        for r in completed(paths.gate) if r.get("judge_model") == model and current(r)
+        for r in completed(paths.gate)
+        if r.get("judge_model") == model and current(r) and r.get("judge_rules") == JUDGE_RULES
     }
     jobs = [(t, n) for t in tasks for n in range(passes) if (t.task_id, n) not in done]
     p.skipped = len(tasks) * passes - len(jobs)
@@ -132,16 +142,19 @@ async def measure(
         try:
             c = await calibrate(task, model=model, conversations=conversations.get(task.task_id))
         except Exception as e:  # noqa: BLE001 - dropped and retried, as elsewhere
-            append(paths.gate, {
+            append_used(paths.gate, {
                 "task_id": task.task_id, "pass": n, "judge_model": model, "code_version": code_version(),
                 "task_fingerprint": prints[task.task_id],
                 "error": f"{type(e).__name__}: {e}",
             })
             return False
-        append(paths.gate, {
+        append_used(paths.gate, {
             "task_id": task.task_id,
             "pass": n,
             "judge_model": model,
+            # Under which rules, and how asked, as the admission's own rows say (09-30 review).
+            "judge_rules": JUDGE_RULES,
+            "reading_setup": reading_setup(),
             "code_version": code_version(),
             "task_fingerprint": prints[task.task_id],
             # The verdict this tool exists to measure.
@@ -161,7 +174,7 @@ async def measure(
         })
         return c.sound
 
-    results = await _gather([one(t, n) for t, n in jobs], concurrency)
+    results = await _gather([metering(one(t, n)) for t, n in jobs], concurrency)
     p.produced = sum(1 for r in results if r)
     p.failed = sum(1 for r in results if not r)
     p.took_s = time.monotonic() - t0

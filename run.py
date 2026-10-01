@@ -22,6 +22,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import os
 import sys
 from collections.abc import Sequence
 from pathlib import Path
@@ -151,6 +152,11 @@ def find_moments(
     # spent their calls on it. None of the 623 OpenCode sessions has one (nor
     # a tool result), and they were 173 of the next batches' 1,774 moments.
     stamped: set[str] = set()
+    # And whether the corpus holds a session's rows twice: 34 of SWE-chat's do,
+    # 13 every row, and their candidates would read each message twice (09-30
+    # review). Counted for the sessions with a moment only.
+    numbers: dict[str, set] = {s: set() for s in need}
+    doubled: set[str] = set()
     for batch in conv.iter_batches(
         batch_size=200_000, columns=["session_id", "turn_number", "turn_type", "timestamp"]
     ):
@@ -160,6 +166,10 @@ def find_moments(
             session = cols["session_id"][i]
             if valid[i] and session in need:
                 stamped.add(session)
+            if session in numbers:
+                if cols["turn_number"][i] in numbers[session]:
+                    doubled.add(session)
+                numbers[session].add(cols["turn_number"][i])
             cutoff = need.get(session)
             if cutoff is None or cols["turn_number"][i] >= cutoff:
                 continue
@@ -181,6 +191,23 @@ def find_moments(
     if unstamped:
         print(f"  {unstamped} moments left out: no turn in their session carries a timestamp, "
               "so the build could not find the commit it started from", flush=True)
+    # And a session with no transcript here in Claude Code's format: the build
+    # refuses it ("the calls and text the table lost cannot be put back"), after
+    # triage, reading, locating and screening have spent their calls on it. 1 of
+    # SWE-chat's 1,562 first-pushback moments, and any session of a partial copy
+    # of the Entire corpus, whose transcripts are fetched apart (09-30 review).
+    from errata_bench.corpus.recover import has_transcript
+
+    twice = sum(1 for m in fresh if m["session_id"] in doubled)
+    fresh = [m for m in fresh if m["session_id"] not in doubled]
+    if twice:
+        print(f"  {twice} moments left out: the corpus holds rows of their session twice, under the same "
+              "turn numbers", flush=True)
+    untranscribed = sum(1 for m in fresh if not has_transcript(m["session_id"]))
+    fresh = [m for m in fresh if has_transcript(m["session_id"])]
+    if untranscribed:
+        print(f"  {untranscribed} moments left out: their session has no transcript here in Claude Code's "
+              "format, so the build could not put back what the table lost", flush=True)
     # Counted over the same rows `fresh` considers -- moments not already
     # collected. Counted over all of them it reported every moment any earlier
     # run had taken, every time: 456 printed where 68 were newly withheld, a
@@ -365,6 +392,10 @@ def main() -> None:
         help="comma-separated pushback kinds to collect",
     )
     ap.add_argument(
+        "--rescreen-old", action="store_true",
+        help="screen again the rows screened before the gates read the candidate's view (G-81): each "
+             "reads its whole conversation, at the gates' price, and the build refuses them until then")
+    ap.add_argument(
         "--passes",
         type=int,
         default=1,
@@ -407,10 +438,26 @@ def main() -> None:
 
     root = Path(args.run)
     paths = Paths(root)
+    if args.rescreen_old:
+        os.environ["ERRATA_RESCREEN_OLD"] = "1"
 
     if args.command == "status":
         show_status(paths)
         return
+
+    # The commands that call a model: the account is named before any call
+    # (`llm.provider`), and long prompts, read whole, get the time grading gives
+    # them, since one cut off at the client's 120 seconds is sent again and paid
+    # again (09-30 review). `judges` and `moments` read what is stored.
+    if args.command in ("rejudge", "gate", "stages"):
+        from errata_bench.llm import provider
+
+        try:
+            provider()
+        except RuntimeError as e:
+            ap.error(str(e))
+        os.environ.setdefault("ERRATA_TIMEOUT", "900")
+        os.environ.setdefault("ERRATA_MAX_RETRIES", "5")
 
     if args.command == "rejudge":
         # Grades what the run already holds with another model; runs no
@@ -433,6 +480,9 @@ def main() -> None:
             summary = asyncio.run(
                 rejudge(root, args.judge, concurrency=args.concurrency, passes=args.passes)
             )
+        if summary.get("refused"):
+            # Said by `rejudge` already; nothing was asked (10-01 review: this read on and crashed).
+            sys.exit(2)
         shown = {k: v for k, v in summary.items() if k != "disagreements"}
         print("\n   ", json.dumps(shown, indent=2).replace("\n", "\n    "))
         print(f"\n  {len(summary['disagreements'])} attempts graded differently from the original")

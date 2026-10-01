@@ -38,6 +38,9 @@ never edits another step's file.
 
 Also in a run directory:
 - `served.jsonl`: which model each Azure deployment actually served;
+- `<stage>.dropped.jsonl`: the failed rows a stage dropped from its file when
+  it ran again, each with the usage it recorded, which the spend tally prices
+  (`store.rows.completed`);
 - `report.json`: the stage's summary.
 
 Each run also has a log beside it (`runs/<run>.log`, `runs/<run>.admit.log`).
@@ -171,6 +174,9 @@ no model calls.
 | each task frozen: the working copy (`workspace.tar.gz`), `task.json`, the conversation the candidate is shown (`conversation.txt`) and the turns it is rendered from (`shown_turns.json`), and `grading/` (references, controls, the task row, the turns to the resolution) | `scripts/freeze_tasks.py` | `release/v1/tasks/<task>/`, `release/v1/manifest.json` |
 | each task's image, built and its own checks run offline | `scripts/build_environments.py`, on the server | `environment/` in each task folder, `environments.json` |
 | what building every image found, counts and task names only | `scripts/environments_summary.py` | `results/v1-environments.md` |
+| v1.1: each frozen task's conversation rendered again with the agent's lost text put back (G-79), its working copy untouched | `scripts/rerender_release.py`, on a copy of `release/v1` | `release/v1.1/tasks/<task>/`, `manifest.json` (`rerendered`) |
+| v1.1: each task screened again on the conversation its candidate is shown, from before its repair (G-81, G-83); paid, on the screening model | `scripts/rescreen_release.py` | a run directory: `signatures.jsonl` (one row per task), `screened.jsonl` |
+| v1.1: each task kept, repaired again, its old repair undone, or set aside, by its screened row | `scripts/apply_rescreen.py` | the release's `tasks/`, `set-aside/<task>/`, `harbor/`, `manifest.json` (`rescreened`) |
 | the Harbor tasks: `instruction.md`, `task.toml`, `environment/`, `tests/` | `scripts/export_harbor.py` | `release/v1/harbor/<task>/`, `export.json` |
 | one Harbor trial's record for grading: the answer, every call, what changed | the task's `tests/test.sh` (`errata_bench.release.verify`) | `<job>/<trial>/verifier/answer.json` and `reward.json` |
 | each task's content digest, as Harbor records it for every trial | `python -m errata_harbor.digests`, in Harbor's environment | `release/v1/harbor/digests.json` |

@@ -166,10 +166,11 @@ def fresh_run(task_ids):
         for t in task_ids
     ]
     write(tasks, paths.tasks)
+    # An admission under the judge's current rules (grading refuses another's).
     paths.calibration.write_text(
-        "".join(json.dumps({"task_id": t, "sound": True}) + "\n" for t in task_ids))
+        "".join(json.dumps({"task_id": t, "sound": True, "judge_rules": judge_mod.RULES}) + "\n" for t in task_ids))
     paths.controls.write_text(
-        "".join(json.dumps({"task_id": t, "control": c, "ok": True}) + "\n"
+        "".join(json.dumps({"task_id": t, "control": c, "ok": True, "judge_rules": judge_mod.RULES}) + "\n"
                 for t in task_ids for c in CONTROL_NAMES))
     return paths
 

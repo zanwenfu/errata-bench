@@ -112,6 +112,19 @@ def main(argv: list[str]) -> int:
     bad = [str(r) for r in args.runs if not (r / "tasks.jsonl").is_file()]
     if bad:
         ap.error(f"not a run directory (no tasks.jsonl): {', '.join(bad)}")
+    # The sheets show each reader what this code would show it, so the answers
+    # must have been graded under this code's rules (09-30 review: rules 4 and 7
+    # prompts were shown for answers graded under 3 and 6).
+    # The judge's rules are written on its judgement (`Judgement.to_json`), the
+    # trace check's on the row: read at the row's top level, every real run was
+    # refused, this code's own included (10-01 review).
+    judged = lambda a: (a.get("judgement") or {}).get("judge_rules", a.get("judge_rules"))
+    other = [str(r) for r in args.runs if any(
+        judged(a) != judge_mod.RULES or a.get("trace_rules") != trace_mod.RULES
+        for a in load(Paths(r).attempts) if not a.get("error"))]
+    if other:
+        ap.error(f"graded under other rules than this code's (judge {judge_mod.RULES}, trace {trace_mod.RULES}): "
+                 f"{', '.join(other)}; build the kit with the code they were graded with")
     if args.out.exists() and any(args.out.iterdir()):
         ap.error(f"{args.out} is not empty; choose a new folder so no sheet is overwritten")
     key_path = args.out.parent / f"{args.out.name}-KEY.json"

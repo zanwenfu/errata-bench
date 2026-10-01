@@ -40,14 +40,24 @@ from pydantic import BaseModel, Field
 
 from ..llm import MODEL, configure_client, resilient, with_field_guide
 
+# The rows `corpus.turns.build_excerpt` shows; every other kind is noise to the candidate.
+SHOWN = frozenset({"user_prompt", "assistant_response", "assistant_thinking", "tool_use", "tool_result"})
+
 # How much of each turn the surveyor is shown. A rewrite covers only this much.
 SURVEY_CHARS = 2500
+
+
+def turn_number(x) -> int | float:
+    """A turn as the rows number it: whole numbers stay ints, as every stored task has them, and a text put back
+    from the transcript keeps its fraction (G-79)."""
+    x = float(x)
+    return int(x) if x.is_integer() else x
 
 
 class TurnVerdict(BaseModel):
     """What to do with one turn: keep it, rewrite it, or drop it."""
 
-    turn: int = Field(description="The turn number you are judging.")
+    turn: float = Field(description="The turn number you are judging, exactly as its [turn ...] label shows it.")
     leaks: bool = Field(
         description=(
             "True when this turn signals that the agent has made a mistake or that "
@@ -194,17 +204,14 @@ def carried_by(turns: list[dict], cut_turn: int, quote: str) -> str:
     "exactly" still reflows a line. "not found" means the quote was a
     paraphrase, and the surveyor is asked as before.
     """
-    def fold(text: str) -> str:
-        return " ".join(str(text or "").lower().split())
-
-    needle = fold(quote)[:60]
+    needle = _fold(quote)[:60]
     if len(needle) < 12:            # too short to place: "no", "wrong", an empty quote
         return "not found"
     prose, rest = [], []
     for t in turns:
         if (t.get("turn_number") or 0) > cut_turn:
             continue
-        body = fold(t.get("content")) + " " + fold(t.get("command"))
+        body = _fold(t.get("content")) + " " + _fold(t.get("command"))
         (prose if t.get("turn_type") in ("user_prompt", "assistant_response") else rest).append(body)
     if any(needle in body for body in prose):
         return "prose"
@@ -213,15 +220,30 @@ def carried_by(turns: list[dict], cut_turn: int, quote: str) -> str:
     return "not found"
 
 
+def _fold(text) -> str:
+    return " ".join(str(text or "").lower().split())
+
+
+def carrying(turns: list[dict], cut_turn, quote: str) -> set:
+    """The prose turns that hold the leak gate's quote, folded as `carried_by` folds it: what the surveyor must be
+    shown, however far back they are. Empty when the quote is too short to place."""
+    needle = _fold(quote)[:60]
+    if len(needle) < 12:
+        return set()
+    return {t.get("turn_number") for t in turns
+            if (t.get("turn_number") or 0) <= cut_turn and t.get("turn_type") in ("user_prompt", "assistant_response")
+            and needle in _fold(t.get("content"))}
+
+
 @dataclass
 class Redaction:
     """What was edited or removed, and whether the result is usable."""
 
-    removed_turns: list[int] = field(default_factory=list)
-    rewritten: dict[int, str] = field(default_factory=dict)
+    removed_turns: list[int | float] = field(default_factory=list)
+    rewritten: dict[int | float, str] = field(default_factory=dict)
     diffuse: bool = False
     reason: str = ""
-    quotes: dict[int, str] = field(default_factory=dict)
+    quotes: dict[int | float, str] = field(default_factory=dict)
 
     @property
     def touched(self) -> list[int]:
@@ -237,39 +259,65 @@ class Redaction:
         return not self.diffuse and bool(self.touched)
 
 
-async def survey(turns: list[dict], cut_turn: int, *, model: str = MODEL) -> Redaction:
-    """Decide, per turn, whether to keep it, rewrite it, or drop it."""
+async def survey(turns: list[dict], cut_turn: int, *, model: str = MODEL, must_show=(),
+                 request_turn: int | float | None = None) -> Redaction:
+    """Decide, per turn, whether to keep it, rewrite it, or drop it.
+
+    ``must_show`` are turns shown whatever their place, beside the last 40: those
+    carrying the leak gate's quote, which may lie further back (`carrying`).
+    ``request_turn`` is the developer's message the candidate must answer, which
+    the surveyor is told never to drop (see `stages.screening`).
+    """
     from agents import Agent, Runner
 
     configure_client()
-    shown = [
+    rows = [
         t
         for t in turns
         if (t.get("turn_number") or 0) <= cut_turn
         and t.get("turn_type") in ("user_prompt", "assistant_response")
         and (t.get("content") or "").strip()
     ]
-    if not shown:
+    if not rows:
         return Redaction(reason="no conversational turns to survey")
+    keep = set(must_show)
+    # The last 40 turns the table holds, with every text put back among them:
+    # counted in the 40, the short put-back texts pushed 8 of v1's 142 developer
+    # turns out of the surveyor's sight.
+    stored = [t for t in rows if not t.get("recovered")]
+    start = stored[-40].get("turn_number") if len(stored) > 40 else None
+    shown = [t for t in rows if start is None or (t.get("turn_number") or 0) >= start or t.get("turn_number") in keep]
+    # A text put back has a turn like 66.33333333333333; the surveyor is shown
+    # it to three places and its answer is read back to the row's own number,
+    # so a verdict copied as 66.333 still names the row.
+    label = lambda n: f"{turn_number(round(float(n), 3))}"
+    exact = {label(t["turn_number"]): turn_number(t["turn_number"]) for t in shown}
+    named = lambda v: exact.get(label(v), turn_number(v))
 
     rendered = "\n\n".join(
-        f"[turn {t.get('turn_number')}] "
+        f"[turn {label(t['turn_number'])}] "
         f"{'USER' if t.get('turn_type') == 'user_prompt' else 'AGENT'}:\n"
         f"{(t.get('content') or '')[:SURVEY_CHARS]}"
-        for t in shown[-40:]
+        for t in shown
     )
+    instructions = INSTRUCTIONS
+    if request_turn is not None:
+        instructions += (
+            f"\n\nTurn {label(request_turn)} is the developer's message the next model must answer. Never drop it. "
+            "If its hint can be taken out and its request kept, rewrite it. If the request is itself the "
+            "objection, mark it leaking with an empty rewrite: the conversation will be set aside.")
     agent = Agent(
-        name="hint-surveyor", instructions=with_field_guide(INSTRUCTIONS, Survey), model=model, output_type=Survey
+        name="hint-surveyor", instructions=with_field_guide(instructions, Survey), model=model, output_type=Survey
     )
     result = await resilient(lambda: Runner.run(agent, f"The conversation:\n\n{rendered}", max_turns=3))
     s: Survey = result.final_output
     leaking = [v for v in s.verdicts if v.leaks]
     return Redaction(
-        removed_turns=[v.turn for v in leaking if v.action == "drop"],
-        rewritten={v.turn: v.rewrite for v in leaking if v.action == "rewrite"},
+        removed_turns=[named(v.turn) for v in leaking if v.action == "drop"],
+        rewritten={named(v.turn): v.rewrite for v in leaking if v.action == "rewrite"},
         diffuse=s.diffuse,
         reason=s.reasoning,
-        quotes={v.turn: v.quote for v in leaking if v.quote},
+        quotes={named(v.turn): v.quote for v in leaking if v.quote},
     )
 
 
@@ -292,13 +340,25 @@ def apply(
     drop = set(removed)
     edits = rewritten or {}
     out = []
+    stored = None       # the last row the table itself held that the candidate is shown
     for t in turns:
         n = t.get("turn_number") or 0
+        # Only rows the conversation shows: a file snapshot, a progress row or a
+        # system notice between a removed turn and the agent's answer to it hid
+        # the answer from this rule in 18% of cases (09-30 review).
+        if not t.get("recovered") and t.get("turn_type") in SHOWN:
+            stored = n
         if n in drop:
             continue
         # A call put back from the raw transcript (G-76) is shown under the turn
         # of the call it was issued beside, so removing that turn removes it.
         if t.get("recovered") and t.get("shown_as") in drop:
+            continue
+        # Text put back right after a removed turn is the agent's answer to it
+        # (G-79), and it restates what was removed: "I see the issue! The admin
+        # buttons aren't showing up" answered a complaint a repair had dropped.
+        if (t.get("recovered") and t.get("turn_type") in ("assistant_response", "assistant_thinking")
+                and stored in drop):
             continue
         if n in edits:
             # The surveyor sees each turn truncated, so a rewrite of a long turn

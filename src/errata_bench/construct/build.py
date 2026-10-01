@@ -232,6 +232,14 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
                 reject("no signature was derived")
                 continue
 
+            # Before the leak rule: a row whose gates could not read the conversation
+            # has no leak verdict, and a missing one would read as clean. `too_long`
+            # is the same refusal as 30afcc7be wrote it (10-01 review).
+            refused = row.get("provider_refused") or (row.get("too_long") and f"too long: {row['too_long']}")
+            if refused:
+                reject(f"never screened whole: the screening model's provider refused it ({str(refused)[:80]})")
+                continue
+
             # A conversation that leaks is repaired before it is rejected. Removing
             # the turns that carry the hint recovers nine of fourteen leaking tasks
             # while keeping 78-100% of the text, so the candidate still has the work
@@ -255,6 +263,14 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
 
             turns = turns_by_session.get(row["session_id"]) or []
             by_turn = {t.get("turn_number"): t for t in turns}
+            # A session whose rows the corpus holds twice, under the same turn
+            # numbers, would show its candidate each message twice (09-30 review).
+            # A call put back sits at a fraction strictly between two stored turns
+            # (`recover`), so it never repeats one, nor another put back.
+            stored = [t.get("turn_number") for t in turns]
+            if len(stored) != len(set(stored)):
+                reject("the corpus holds rows of this session twice, under the same turn numbers")
+                continue
 
             # A missing verdict is not a pass. Screened rows written before the scope
             # gate existed carry no `within_scope` at all, and testing only for False
@@ -388,6 +404,19 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
             if foreign_transcript(row["session_id"]):
                 reject("the session's transcript is not in Claude Code's format, so its calls "
                        "cannot be checked against the table")
+                continue
+            # And one with no transcript at all: the table keeps the last block of
+            # each agent message (G-76, G-79), so its conversation would lack the
+            # calls and the text the table lost, with nothing to put them back from.
+            if not has_transcript(row["session_id"]):
+                reject("the session has no transcript here, so the calls and text the table lost "
+                       "cannot be put back")
+                continue
+            # A row screened before the lost calls and text were put back: its gates
+            # read the table's turns, not what its candidate would be shown (G-81).
+            if not (row.get("calls_recovered") and row.get("text_recovered")):
+                reject("screened on the table's turns, before the calls and text it lost were put back: "
+                       "screen it again")
                 continue
 
             base = scratch or Path(tempfile.gettempdir()) / "errata-bench-build"
