@@ -11108,3 +11108,30 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     - merge main into the branch first, since triage and the gates changed
       there (#17);
     - then the finding stages on these moments.
+- **10-01, 07:3x UTC** — **Triage of the Entire moments: 273 of 681 worth
+  reading, $22.58 to $27.68 (#16).** The user's OK, with gpt-6-astra kept as
+  triage's model, as in v1.
+  - *Not merged with main first.* Triage's stage is identical on main. Main's
+    pending change to how a continuation summary is shown would have touched
+    none of these moments: no triage view held one.
+  - *The moments.* `run.py moments --max-per-repo 20`, as v1's `later-cap20`:
+    - first mode: 351, in 73 repositories (`runs/entire-first-cap20`);
+    - later mode: 330, in 68 repositories (`runs/entire-later-cap20`).
+    - Each repository holds 20 at most. Uncapped there were 1,422, 40% of the
+      first-mode ones in entireio/cli.
+  - *The run.* `run.py stages --only triage`, gpt-6-astra on Azure,
+    concurrency 4, on the VM: 30 first, at 07:20, to measure the cost; then the
+    rest, 07:24 to 07:32 UTC.
+  - *Verdicts.* No row failed.
+    - First mode: 135 worth reading, 216 not.
+    - Later mode: 138 worth reading, 192 not.
+    - 273 of 681 (40%), as triage kept two in five of SWE-chat's flagged
+      moments in v1.
+  - *Cost.* This branch's triage rows record no usage, so it comes from
+    Azure's token metrics for gpt-6-astra over 07:19 to 07:38, the only
+    traffic in that window: 2,040,849 tokens in and 43,401 out. That is about
+    3,000 in and 64 out per moment, $22.58 at list price, or $27.68 if all
+    input bills at the cache-write rate.
+  - *Next, the user's choice:* the reading stages on the 273. Main's changes
+    to screening, the gates and spend metering (#17) bear on those stages, so
+    merging main comes first.
