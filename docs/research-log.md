@@ -11075,3 +11075,36 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
       to 78 were measured. About 65 minutes at the measured 260 a minute.
     - Capped at $15 by `--max-usd`, which also stops a run mid-way.
     - It resumes by text and refuses a second run over the same file.
+- **10-01, 07:0x UTC** — **The full labelling run: 16,921 messages of 1,490
+  Claude 5 sessions labelled, carried into the corpus, and 1,422 moments drawn
+  (#16).** The user's OK, at the 05:1x estimate.
+  - *The run.* From 05:57 to 06:53 UTC on the VM, with the commit of the 05:1x
+    entry.
+    - gpt-5.6-luna, low effort, the codebook; concurrency 8, capped at $15.
+    - 16,702 messages beyond the pilot's 224, in 55 minutes, 304 a minute.
+    - None failed. 5 were refused by the content filter: kept as `filtered`,
+      with no label.
+    - Tokens: 51,721,329 in and 1,232,928 out, 309,032 of them reasoning. Per
+      answer 3,057 in and 73 out.
+    - $11.77 at list price for all 16,921 answers, the pilot's included
+      (estimate $12.68).
+  - *Labels:* non_pushback 9,875, correction 6,379, failure_report 574,
+    rejection 93. Pushback is 41.6%.
+  - *Into the corpus.* Re-assembled 06:56 to 07:01 UTC; the unlabelled one is
+    kept as `corpus.pre-labels`.
+    - All 16,921 labels were put on their messages, none changed and none
+      unplaced. As stored they match the labels file, on developer rows only.
+    - Sessions, repositories, checkpoints and commits are as before.
+  - *Moments,* `run.py moments` with no cap:
+    - first mode: 730 in 730 sessions and 73 repositories (correction 690,
+      failure_report 37, rejection 3);
+    - later mode: 692 in 692 sessions and 68 repositories (correction 629,
+      failure_report 53, rejection 10);
+    - none in both, and each at a labelled pushback of its kind.
+    - They are concentrated. entireio/cli holds 292 of the 730, the next two
+      72 and 61, and 26 repositories hold one each. A per-repository cap, as
+      v1's `later-cap20` had, is the next stage's choice.
+  - *Next,* the user's decisions, paid:
+    - merge main into the branch first, since triage and the gates changed
+      there (#17);
+    - then the finding stages on these moments.
