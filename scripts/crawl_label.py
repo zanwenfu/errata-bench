@@ -1,22 +1,27 @@
 """Label which developer messages push back, as SWE-chat labelled its own (#16, step 7; `crawl/label.py`).
 
     # what a run would cost, calling no model
-    .venv/bin/python scripts/crawl_label.py calibrate --model DeepSeek-V4-Flash --estimate
-    .venv/bin/python scripts/crawl_label.py label --corpus data/entire/corpus --model DeepSeek-V4-Flash --estimate
+    .venv/bin/python scripts/crawl_label.py calibrate --model gpt-5.6-luna --effort low --out-tokens 500 --estimate
+    .venv/bin/python scripts/crawl_label.py label --corpus data/entire/corpus --model gpt-5.6-luna --effort low \\
+        --out-tokens 500 --estimate
 
     # paid: the calibration on SWE-chat's own messages, then its report
-    ERRATA_PROVIDER=azure .venv/bin/python scripts/crawl_label.py calibrate --model DeepSeek-V4-Flash --max-usd 2
-    .venv/bin/python scripts/crawl_label.py report data/entire/label-calibration.jsonl
+    ERRATA_PROVIDER=azure .venv/bin/python scripts/crawl_label.py calibrate --model gpt-5.6-luna --effort low \\
+        --out-tokens 500 --max-usd 1
+    .venv/bin/python scripts/crawl_label.py report data/entire/label-calibration-gpt-5.6-luna-low.jsonl
 
     # paid: the collected corpus's messages, Claude 5 sessions first
     ERRATA_PROVIDER=azure .venv/bin/python scripts/crawl_label.py label --corpus data/entire/corpus \\
-        --model DeepSeek-V4-Flash --max-usd 45
+        --model gpt-5.6-luna --effort low --out-tokens <the calibration's mean> --max-usd 35
 
 `calibrate` reads SWE-chat (the default corpus) and refuses any other; `label`
 reads the collected corpus and refuses SWE-chat. A paid run first prices what it
-will ask and refuses to start above `--max-usd`. Every row records its token
-use, so the spend can be reconciled after. Labels go on the corpus's rows when
-it is next assembled (`crawl_entire.py assemble`).
+will ask and refuses to start above `--max-usd`, and stops asking once what it
+has spent reaches it; run again, it asks the rest. The estimate assumes
+`--out-tokens` written per message: a reasoning model writes more than the 90 a
+label and its reason take, so give it the calibration's measured mean. Every
+row records its token use, so the spend can be reconciled after. Labels go on
+the corpus's rows when it is next assembled (`crawl_entire.py assemble`).
 """
 
 from __future__ import annotations
@@ -27,6 +32,7 @@ import importlib.util
 import json
 import os
 import sys
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -34,15 +40,15 @@ TASKS = ROOT.parent / "errata-bench" / "release" / "v1.0.2-dataset" / "tasks"
 PER_CLASS = {"non_pushback": 100, "correction": 100, "failure_report": 100, "rejection": 60, "takeover": 40}
 
 
-def prices(model: str) -> tuple[float, float]:
-    """(input, output) USD per 1M tokens, from the price table the spend tallies use."""
+def pricing(model: str):
+    """(input, output) USD per 1M tokens, and what a call's usage cost, from the table the spend tallies use."""
     spec = importlib.util.spec_from_file_location("d40_spend", ROOT / "scripts" / "d40_spend.py")
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
     if model not in mod.PRICE:
         raise SystemExit(f"no list price for {model!r} in scripts/d40_spend.py; add it before running")
     price_in, _, price_out = mod.PRICE[model]
-    return price_in, price_out
+    return price_in, price_out, lambda usage: mod.usd(model, usage)
 
 
 def v1_moments(tasks: Path) -> list[tuple[str, int]]:
@@ -59,13 +65,17 @@ def main(argv: list[str]) -> int:
     sub = ap.add_subparsers(dest="command", required=True)
     for name in ("calibrate", "label"):
         s = sub.add_parser(name)
-        s.add_argument("--model", required=True, help="the deployment that labels (DeepSeek-V4-Flash, say)")
+        s.add_argument("--model", required=True, help="the deployment that labels (gpt-5.6-luna, say)")
+        s.add_argument("--effort", default=None, help="the reasoning effort asked for (low, say); the model's own if unset")
         s.add_argument("--estimate", action="store_true", help="price the run and stop; no model is called")
-        s.add_argument("--max-usd", type=float, default=0.0, help="refuse to start when the estimate is above this")
+        s.add_argument("--out-tokens", type=int, default=90, help="output tokens per message the estimate assumes")
+        s.add_argument("--max-usd", type=float, default=0.0,
+                       help="refuse to start when the estimate is above this, and stop asking when the spend reaches it")
         s.add_argument("--concurrency", type=int, default=4)
         s.add_argument("--limit", type=int, default=0, help="label at most this many messages")
     c = sub.choices["calibrate"]
-    c.add_argument("--out", type=Path, default=Path("data/entire/label-calibration.jsonl"))
+    c.add_argument("--out", type=Path, default=None,
+                   help="default data/entire/label-calibration-<model>[-<effort>].jsonl")
     c.add_argument("--tasks", type=Path, default=TASKS, help="v1's frozen tasks, for the moments they were built from")
     c.add_argument("--seed", type=int, default=0)
     lab = sub.choices["label"]
@@ -100,12 +110,14 @@ def main(argv: list[str]) -> int:
     if args.command == "calibrate":
         if CORPUS.resolve() != (ROOT / "data" / "swe-chat").resolve():
             raise SystemExit(f"calibration reads SWE-chat, not {CORPUS}")
+        if args.out is None:
+            args.out = Path("data/entire") / f"label-calibration-{args.model}{'-' + args.effort if args.effort else ''}.jsonl"
         picked, frequency = L.calibration_sample(CORPUS, PER_CLASS, args.seed, also=v1_moments(args.tasks))
         args.out.parent.mkdir(parents=True, exist_ok=True)
         args.out.with_suffix(".frequency.json").write_text(json.dumps(frequency) + "\n")
         sessions, only, extra = {s for s, _ in picked}, set(picked), picked
-        print(f"calibration: {len(picked)} messages from {len(sessions)} sessions; SWE-chat's labels occur "
-              f"{dict(frequency)}")
+        print(f"calibration: {len(picked)} messages from {len(sessions)} sessions, into {args.out}; "
+              f"SWE-chat's labels occur {dict(frequency)}")
     else:
         if (args.corpus / "conversations.parquet").resolve() == (ROOT / "data" / "swe-chat" / "conversations.parquet").resolve():
             raise SystemExit("label reads the collected corpus, not SWE-chat")
@@ -123,24 +135,33 @@ def main(argv: list[str]) -> int:
             if only is None or (s, t["turn_number"]) in only]
     if args.limit:
         todo = todo[:args.limit]
-    price_in, price_out = prices(args.model)
+    price_in, price_out, cost_of = pricing(args.model)
     cost = L.estimate([(L.context_for(turns[s], t["turn_number"]), L.message_for(t)) for s, t in todo],
-                      price_in=price_in, price_out=price_out)
-    print(f"estimate at {args.model}'s list price (${price_in}/${price_out} per 1M, no cache): {cost}")
+                      price_in=price_in, price_out=price_out, out_tokens=args.out_tokens)
+    print(f"estimate at {args.model}'s list price (${price_in}/${price_out} per 1M, no cache, "
+          f"{args.out_tokens} tokens written per message): {cost}")
     if args.estimate:
         return 0
     if cost["usd"] > args.max_usd:
         raise SystemExit(f"estimated ${cost['usd']} is above --max-usd {args.max_usd}: nothing was asked")
     os.environ.setdefault("ERRATA_MODEL", args.model)
-    counts = asyncio.run(L.label_turns(turns, args.out, model=args.model, concurrency=args.concurrency,
-                                       limit=args.limit, only=only, extra=extra))
+    began = time.monotonic()
+    counts = asyncio.run(L.label_turns(turns, args.out, model=args.model, effort=args.effort,
+                                       concurrency=args.concurrency, limit=args.limit, only=only, extra=extra,
+                                       spend=cost_of, max_usd=args.max_usd))
+    minutes = (time.monotonic() - began) / 60
     rows = load(args.out)
-    used_in = sum((r.get("usage") or {}).get("input_tokens", 0) for r in rows)
-    used_out = sum((r.get("usage") or {}).get("output_tokens", 0) for r in rows)
-    print(f"labelled: {dict(counts)}; tokens in the file: {used_in:,} in, {used_out:,} out, "
-          f"${used_in / 1e6 * price_in + used_out / 1e6 * price_out:.2f} at list price")
+    asked = [r for r in rows if r.get("usage")]
+    used_in = sum(r["usage"].get("input_tokens", 0) for r in asked)
+    used_out = sum(r["usage"].get("output_tokens", 0) for r in asked)
+    thinking = sum(r["usage"].get("reasoning_tokens", 0) for r in asked)
+    print(f"labelled this run: {dict(counts)} in {minutes:.1f} min ({sum(counts.values()) / max(minutes, 1e-9):.0f} "
+          f"a minute at concurrency {args.concurrency})")
+    print(f"the file: {len(asked)} answers; {used_in:,} tokens in, {used_out:,} out ({thinking:,} of them reasoning); "
+          f"per answer {used_in / max(len(asked), 1):.0f} in, {used_out / max(len(asked), 1):.0f} out; "
+          f"${sum(cost_of(r['usage']) for r in asked):.2f} at list price")
     if args.command == "calibrate":
-        print(json.dumps(L.calibration_report(rows, frequency), indent=1))
+        print(json.dumps(L.calibration_report(rows, frequency, expected=len(picked)), indent=1))
     return 0
 
 

@@ -25,12 +25,14 @@ and carrying the message's digest; `corpus.assemble` puts a label on its row
 only while the digest still matches. A row that errored is asked again. The
 model's explanation is stored as ``why``: the row store takes "error:" in a
 row's ``reason`` for a failure, and a pushback's explanation often says it.
+A file holds one model's labels at one reasoning effort, which each row records.
 """
 
 from __future__ import annotations
 
 import asyncio
 import hashlib
+import re
 from collections import Counter
 from pathlib import Path
 from typing import Literal
@@ -44,6 +46,9 @@ PUSHBACK = frozenset(LABELS) - {"non_pushback"}
 CONTEXT_CHARS = 9000
 INTERRUPTED = "[Request interrupted by user"
 CONTINUED = "This session is being continued"
+# A provider's content filter refusing the request, as `release.reference_agent`
+# reads one: asking again gets the same refusal.
+FILTERED = re.compile(r"content_filter|ResponsibleAIPolicyViolation|content management policy", re.IGNORECASE)
 
 # SWE-chat's user pushback classifier, Appendix E.2.4 of arXiv 2604.20779 (v1),
 # transcribed from the PDF: its extraction spaced apostrophes and hyphens
@@ -153,34 +158,48 @@ def prompt_for(context: str, message: str) -> str:
     return f"Preceding conversation context:\n{context}\n\nUser prompt to classify:\n{message}"
 
 
-async def classify(context: str, message: str, *, model: str) -> tuple[Pushback, dict | None]:
-    """One message's label under the codebook, and the call's token use."""
-    from agents import Agent, Runner
+async def classify(context: str, message: str, *, model: str, effort: str | None = None
+                   ) -> tuple[Pushback, dict | None]:
+    """One message's label under the codebook, and the call's token use; `effort` is the reasoning effort asked."""
+    from agents import Agent, ModelSettings, Runner
+    from openai.types.shared import Reasoning
 
     from ..llm import configure_client, resilient, usage_of, with_field_guide
 
     configure_client()
     agent = Agent(name="pushback", instructions=with_field_guide(CODEBOOK, Pushback), model=model,
-                  output_type=Pushback)
+                  output_type=Pushback,
+                  model_settings=ModelSettings(reasoning=Reasoning(effort=effort)) if effort else ModelSettings())
     result = await resilient(lambda: Runner.run(agent, prompt_for(context, message), max_turns=2))
     return result.final_output, usage_of(result)
 
 
-async def label_turns(turns_by_session: dict[str, list[dict]], out: Path, *, model: str, concurrency: int = 4,
-                      limit: int = 0, only: set | None = None, extra: dict | None = None, ask=None,
-                      log=print) -> Counter:
+async def label_turns(turns_by_session: dict[str, list[dict]], out: Path, *, model: str, effort: str | None = None,
+                      concurrency: int = 4, limit: int = 0, only: set | None = None, extra: dict | None = None,
+                      ask=None, spend=None, max_usd: float = 0.0, log=print) -> Counter:
     """Label every message of these sessions not already labelled in `out`; the labels given.
 
     `only` restricts it to those (session, turn) keys, and `extra` adds fields
     to each row by key (calibration's reference label). `ask` is the call that
     labels one message, `classify` unless another is given. Resumable: a
     message with a row that did not error is not asked again.
+
+    One file holds one model's labels at one effort: resumed under another, a
+    run would take the first model's labels for its own. With `spend`, which
+    prices a call's usage, no message is asked once the calls this run made
+    reach `max_usd`; a later run asks the rest. A request the provider's content
+    filter refuses is recorded as ``filtered``, with no label, and not asked again.
     """
     ask = ask or classify
     from ..llm import ClaudeRefused
     from ..project import code_version
-    from ..store.rows import append, completed
+    from ..store.rows import append, completed, load
 
+    if out.exists():
+        other = {(r.get("model"), r.get("effort")) for r in load(out)} - {(model, effort)}
+        if other:
+            raise ValueError(f"{out} holds labels by {sorted(other, key=str)}, not by {model} at effort {effort}: "
+                             f"one file holds one model's labels")
     done = {(r["session_id"], r["turn_number"]) for r in completed(out)} if out.exists() else set()
     todo = [(sid, t) for sid, turns in sorted(turns_by_session.items()) for t in to_label(turns)
             if (sid, t["turn_number"]) not in done and (only is None or (sid, t["turn_number"]) in only)]
@@ -188,21 +207,32 @@ async def label_turns(turns_by_session: dict[str, list[dict]], out: Path, *, mod
         todo = todo[:limit]
     log(f"{len(todo)} messages to label ({len(done)} already labelled)")
     version, gate, counts = code_version(), asyncio.Semaphore(concurrency), Counter()
+    spent = 0.0
 
     async def one(sid: str, turn: dict) -> None:
+        nonlocal spent
         async with gate:
+            if spend is not None and spent >= max_usd:
+                counts["not asked: the spend cap was reached"] += 1
+                return
             row = {"session_id": sid, "turn_number": turn["turn_number"], "digest": digest(turn.get("content")),
-                   "model": model, "code_version": version, **((extra or {}).get((sid, turn["turn_number"])) or {})}
+                   "model": model, "effort": effort, "code_version": version,
+                   **((extra or {}).get((sid, turn["turn_number"])) or {})}
             try:
                 verdict, usage = await ask(context_for(turns_by_session[sid], turn["turn_number"]),
-                                           message_for(turn), model=model)
+                                           message_for(turn), model=model, effort=effort)
                 row.update(label=verdict.label, why=verdict.reason, usage=usage)
+                if spend is not None:
+                    spent += spend(usage)
             except ClaudeRefused:
                 raise
-            except Exception as e:  # recorded, and asked again on the next run
-                row["error"] = f"{type(e).__name__}: {str(e)[-300:]}"
+            except Exception as e:  # recorded, and asked again on the next run unless filtered
+                if FILTERED.search(str(e)):
+                    row["filtered"] = f"{type(e).__name__}: {str(e)[-300:]}"
+                else:
+                    row["error"] = f"{type(e).__name__}: {str(e)[-300:]}"
             append(out, row)
-            counts[row.get("label") or "error"] += 1
+            counts[row.get("label") or ("filtered" if "filtered" in row else "error")] += 1
             if sum(counts.values()) % 200 == 0:
                 log(f"  {sum(counts.values())}/{len(todo)}: {dict(counts)}")
 
@@ -269,6 +299,12 @@ def entire_sessions(corpus: Path, *, since: str, exclude: set[str], model_patter
 
 
 REFERENCE = ("non_pushback", "correction", "failure_report", "rejection", "takeover")
+# The calibration's pass rules, registered in the research log (10-01) before
+# any model was asked. SWE-chat's labels are about 79% right on pushback or not
+# (the paper's validation), so agreement with them is bounded below 100%:
+# a labeller right 90% of the time agrees about 73% of the time.
+PASS = {"v1 task moments called pushback, at least": 50, "SWE-chat failure reports called pushback, at least": 0.85,
+        "agreement on pushback or not, reweighted, at least": 0.70}
 
 
 def calibration_sample(corpus: Path, per_class: dict[str, int], seed: int = 0,
@@ -314,17 +350,22 @@ def calibration_sample(corpus: Path, per_class: dict[str, int], seed: int = 0,
     return picked, frequency
 
 
-def calibration_report(rows: list[dict], frequency: Counter) -> dict:
-    """How far the labels agree with SWE-chat's, on SWE-chat's own messages.
+def calibration_report(rows: list[dict], frequency: Counter, expected: int | None = None) -> dict:
+    """How far the labels agree with SWE-chat's, on SWE-chat's own messages, and whether that passes `PASS`.
 
     For each of SWE-chat's labels, the share of its sampled messages labelled a
     pushback here: for a first filter, what matters most is that SWE-chat's
     pushbacks come out as pushbacks. Agreement on pushback or not is also given
     reweighted to how often each of SWE-chat's labels occurs, since the sample
     draws the classes in fixed numbers. The moments v1's tasks were built from
-    are counted apart.
+    are counted apart; one the content filter refused counts as not called.
+    A pass also needs no failed row and, given `expected`, every message answered.
     """
     errors = sum(1 for r in rows if r.get("error"))
+    filtered = sum(1 for r in rows if r.get("filtered") and not r.get("error"))
+    v1_called = sum(1 for r in rows if r.get("source") == "v1 task" and r.get("label") in PUSHBACK
+                    and not r.get("error"))
+    v1_answered = sum(1 for r in rows if r.get("source") == "v1 task" and not r.get("error"))
     rows = [r for r in rows if r.get("label") and not r.get("error")]
     sample = [r for r in rows if r.get("source") == "sample"]
     by_ref = {ref: Counter(r["label"] for r in sample if r.get("swechat") == ref) for ref in REFERENCE}
@@ -335,8 +376,15 @@ def calibration_report(rows: list[dict], frequency: Counter) -> dict:
     weight = sum(frequency[ref] for ref in REFERENCE if agrees[ref] is not None)
     binary = sum(frequency[ref] * agrees[ref] for ref in REFERENCE if agrees[ref] is not None) / weight if weight else None
     four = [r for r in sample if r.get("swechat") in LABELS]
-    tasks = [r for r in rows if r.get("source") == "v1 task"]
-    return {"labelled": len(rows), "errors": errors, "by_swechat_label": {k: dict(v) for k, v in by_ref.items()},
+    rule_v1, rule_failure, rule_agree = PASS.values()
+    passes = {"no row failed": errors == 0,
+              "every message answered": expected is None or len(rows) + filtered == expected,
+              "v1 task moments": v1_called >= rule_v1,
+              "failure reports": called["failure_report"] is not None and called["failure_report"] >= rule_failure,
+              "agreement": binary is not None and binary >= rule_agree}
+    return {"labelled": len(rows), "filtered": filtered, "errors": errors, "expected": expected,
+            "by_swechat_label": {k: dict(v) for k, v in by_ref.items()},
             "called_pushback": called, "binary_agreement_reweighted": binary,
             "four_class_agreement": sum(r["label"] == r["swechat"] for r in four) / len(four) if four else None,
-            "v1_task_moments_called_pushback": [sum(r["label"] in PUSHBACK for r in tasks), len(tasks)]}
+            "v1_task_moments_called_pushback": [v1_called, v1_answered],
+            "rules": PASS, "passes": passes, "passed": all(passes.values())}
