@@ -10897,3 +10897,34 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     itself, and loses one real pushback in seven. The codebook loses one in
     twenty, and triage turns away its false flags at one call each, as it did
     SWE-chat's. The choice of question goes back to the user.
+- **10-01, 02:5x UTC** — **The corpus re-assembled with G-84's fix, and
+  compared with the one before (#16).** The re-assembly ran from 02:49 to
+  02:55 UTC on the VM.
+  - *What changed.*
+    - The summary is the same as before: 6,464 sessions, 202 repositories,
+      24,720 checkpoints, 23,241 commit rows, and the same sessions left out.
+    - Repositories, checkpoints, commits and session logs are identical. In
+      sessions only `prompt_count` changed.
+    - Conversations: 4,600,192 rows to 4,561,932. That is 11,018 developer
+      rows and 27,242 injected ones gone, the latter Claude Code's queued
+      notices delivered the same way, and none new.
+    - Every session keeps its other rows in order, numbered from 0 without a
+      gap.
+  - *Repeats.* Developer messages over 30 characters that repeat an earlier
+    one in their session:
+
+    | | before | after | SWE-chat |
+    |---|---|---|---|
+    | share of all | 18.9% | 10.5% | 7.2% |
+    | within 10 turns | 7,358 | 420 | 347 |
+    | 11 to 50 turns | 1,064 | 614 | 454 |
+    | over 50 turns | 7,114 | 6,782 | 2,868 |
+
+    Those far apart are of the same kinds in both corpora: monitoring loops
+    ("Check all running experiments…"), reused prompts, interruption
+    markers, and commands or skills loaded again. Entire's users use more
+    of them.
+  - *To label.* The Claude 5 sessions now hold 17,084 messages to label,
+    22,098 before the fix and the 10-01 skips. Of them, 37 are a hook's
+    text ("Stop hook feedback:", 36), to be skipped with the next labeller
+    change.
