@@ -4459,6 +4459,36 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
     from entireio/entire-graph; nothing else changed.
   - *How it was found.* Comparing the crawl with entire.io's own session
     lists (09-30, 04:4x).
+- **G-84 · The collector writes a message typed while the agent was busy
+  twice.** *(opened 10-01; #16.)*
+  - *How it happens.* Claude Code writes such a message to a queue entry,
+    and newer versions write it again when it is delivered: as the
+    developer's own entry, or as a `queued_command` attachment. The collector
+    makes a developer row from the queue entry, so that a message written
+    nowhere else is kept (the 09-29 round trip). It also makes a row from the
+    delivered copy.
+  - *How often.* In the raw transcripts, 48,043 of 65,905 queued messages
+    (73%) are delivered as well: 32,327 as the developer's entry and 16,090
+    as an attachment, 374 of them as both. 17,862 are written only to the
+    queue.
+  - *In the corpus.*
+    - 18.9% of developer messages over 30 characters repeat an earlier one in
+      their session; SWE-chat's rate is 7.2%.
+    - Within 10 turns of the first copy the collected corpus has 7,358
+      repeats, and SWE-chat 347. SWE-chat recorded the queue as bookkeeping
+      rows ("enqueued", "delivered") with one developer row, so v1 is not
+      touched.
+    - In the 10-01 pilot, 51 of 286 labelled messages repeat an earlier one.
+  - *What it touches.*
+    - Every stage's view of a conversation: the developer seems to say the
+      same thing twice.
+    - Labelling, which pays for each copy.
+    - Which turn is a moment, and its context.
+  - *Fix (proposed).* Keep the queue entry's row only when the message is
+    not delivered later in the same transcript, and keep one row for one
+    delivered twice. Then a check, shown failing when the fix is reverted,
+    and the corpus re-assembled before the full labelling run. Labels are
+    keyed by turn, and the fix moves turns.
 - **G-79 · The table keeps only the last block of each assistant message, so
   the agent's text before a call is lost.** *(opened 09-29;
   `scripts/lost_text_blocks.py`; #17.)* This is G-76's cause, measured for
@@ -10776,3 +10806,35 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
       out. 260 answers a minute at concurrency 8, read in three batches.
   - **Passed.** Next is the pilot on the Entire corpus, its pushbacks read by
     hand.
+- **10-01, 02:2x UTC** — **The Entire pilot, read by hand. G-84 opened: the
+  collector writes a queued message twice (#16).**
+  - *The pilot.* gpt-5.6-luna at low effort labelled every message of 20
+    Claude 5 sessions drawn with seed 0 (`label --sessions 20`): 286
+    messages, $0.20.
+    - It called 143 pushback: 134 corrections, 5 failure reports and 4
+      rejections.
+  - *The 143, each read with the agent's turn before it:*
+    - about a third object to the agent's work, such as "You should have
+      pushed into this folder/repo/branch", "still failing", or "We need
+      JUST ONE CALL to initRootLogging";
+    - about a third are feedback while iterating, such as a long naming
+      session ("scout or ranger seems better");
+    - about a third are not pushback: instructions, answers to the agent's
+      questions, new tasks. The codebook's correction includes "changing
+      requirements/direction/scope mid-task".
+    - 12 were not typed by the developer: 9 messages from another Claude
+      session (`<cross-session-message`), 2 skill texts ("Base directory for
+      this skill") and 1 screenshot alone.
+    - 27 repeat an earlier message in their session (G-84).
+  - *The 143 called non_pushback.* Few misses: mostly challenging questions
+    ("why do we need X?"), which the codebook calls non_pushback, and one to
+    three that read as soft failure reports.
+  - *So* recall is as the triage check found. A label of pushback is a
+    candidate, not a finding: triage turned away 60% of what SWE-chat
+    flagged, and this labeller flags 41% of what triage turns away.
+  - *Before the full run:*
+    - fix G-84 and re-assemble;
+    - leave unlabelled the messages another Claude session sent, and skill
+      texts, as Claude Code's own notices are left;
+    - the user's choice whether the labeller asks SWE-chat's codebook or
+      triage's own question.
