@@ -87,9 +87,13 @@ listed, each item with its issue, in
 [known-issues.md](https://github.com/zanwenfu/errata-bench/blob/main/docs/known-issues.md).
 The most important:
 - **High priority:** the task conversations omit most of what the earlier
-  agent wrote between its tool calls: 91% of its messages there, about 1.4%
-  of the text ([#17](https://github.com/zanwenfu/errata-bench/issues/17)). A
-  rebuilt version of the tasks, v1.1, is in progress.
+  agent wrote between its tool calls: 577 of its 630 messages there (92%),
+  about 1.5% of the text ([#17](https://github.com/zanwenfu/errata-bench/issues/17)).
+  Three more defects in what the tasks show are fixed in the code since: the
+  leak screen read less of each conversation than candidates see (G-81), the
+  graders could take the earlier agent's words as evidence (G-82), and in 5
+  tasks a repair removed the developer's request (G-83). A rebuilt version of
+  the tasks, v1.1, is in progress.
 - No person has yet checked the tasks or the grades
   ([#3](https://github.com/zanwenfu/errata-bench/issues/3)), and the headline
   judge passed its registered check narrowly (92% against 90%). Each task's

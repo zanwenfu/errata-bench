@@ -21,6 +21,16 @@ Building tasks and running candidates:
     python run.py stages                   everything, including candidates in containers
     python run.py status                   what exists so far
 
+`ERRATA_PROVIDER` must name the provider whenever Azure's settings are present:
+a run refuses before any call rather than send it to the wrong account. A row
+screened before the gates read the candidate's view (G-81) is screened again
+only with `--rescreen-old`, since each gate then reads its whole conversation.
+Every stage that calls a model records each row's token use, so
+`scripts/harbor_spend.py --admitted runs/<run>` prices a run's finding,
+screening and admission, and `ADMITTED=runs/<run> scripts/harbor-guard.sh`
+stops them at a dollar line. The pipeline's own candidates (`attempt`) are
+not priced there.
+
 Grading stored answers with another grader, running no candidate:
 
     python run.py rejudge --run runs/<run> --judge <deployment> --passes 3

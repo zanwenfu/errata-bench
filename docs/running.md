@@ -63,6 +63,38 @@ For maintainers, the same folder is built from the SWE-chat corpus:
     python scripts/admit_judge.py release/v1 --out <admission>   # the official judge's check, paid
     python scripts/build_dataset.py release/v1 --admission <admission> --out <dataset> --release <number>
 
+A frozen release's conversations are rendered again, and screened again, on a
+copy of it (v1.1, #17; the code on `main`). The re-screen asks the screening
+gates of each task on the conversation its candidate is shown, and applying it
+keeps each task, repairs its leak again (never by removing the request), or sets
+it aside, with the reason recorded. A repair changes a task's fingerprint, so
+the judge is admitted after it:
+
+    cp -R release/v1 release/v1.1
+    python scripts/rerender_release.py release/v1.1 --text-recovered    # needs the corpus
+    python scripts/rescreen_release.py release/v1.1 --out <rescreen>     # paid, on ERRATA_MODEL
+    cp -R release/v1.1 release/v1.1-screened                            # applied to a copy
+    python scripts/apply_rescreen.py release/v1.1-screened <rescreen> --dry-run
+    python scripts/apply_rescreen.py release/v1.1-screened <rescreen>
+    python scripts/export_harbor.py release/v1.1-screened --check        # every Harbor task up to date
+    python -m errata_harbor.digests release/v1.1-screened/harbor        # in Harbor's environment
+    python scripts/admit_judge.py release/v1.1-screened --out <admission>   # paid
+
+The apply step writes again every Harbor task that no longer gives the
+instruction this code builds: grading builds each instruction again and takes a
+trial given another for an error, after the trial is paid for. `--check`
+confirms it before the digests are recorded. Each `cp -R` must make a folder
+that does not exist yet: into one that does, it copies the release inside it.
+
+- Run the apply where the re-screen ran, on the same corpus. It renders each
+  repaired task from the corpus, as the re-screen's leak check read it, and
+  does not check that the corpus is the same one.
+- Either step, stopped part way, is run again as it was. The re-screen asks
+  only the rows it has not finished. The apply finishes what an earlier run
+  began, and records each decision against the release as screened.
+- A gate's answer that does not parse is asked once more. One that fails
+  twice fails its row, and the next run asks that row's gates again.
+
 ## 2. Run an agent
 
 In Harbor's environment, with your model's key in the environment:
@@ -144,7 +176,11 @@ others, without calling the judge.
 - `python scripts/harbor_spend.py --jobs jobs/<name>... --graded runs/<name>
   --ledger <file>` prices what a run has spent so far. It refuses any folder
   that is not a Harbor job or a grading run. `scripts/harbor-guard.sh` stops
-  the run at a dollar line.
+  the run at a dollar line. On `main`, `--admitted <run>` (the guard's
+  `ADMITTED`) also prices the steps paid before any Harbor job: finding tasks,
+  screening, an admission, its gate, a re-judge's checks, each row by the
+  usage it records. That includes the failed rows a stage moves to
+  `<stage>.dropped.jsonl` when it runs again.
   - One ledger for every phase keeps the agents' and the grading's spend in
     one total.
   - The guard stops only process groups started with `scripts/guarded.sh`,
@@ -153,6 +189,12 @@ others, without calling the judge.
     Harbor's.
   - It reads each word once, when it starts, so name each job folder, or
     start the guard after every job has made its folder.
+
+On `main`, grading refuses while any answer on record is not official (its
+task not the published one, no digests recorded, Harbor's settings changed):
+each reading is paid and none could count. `--unofficial` grades them anyway,
+for a pilot. Results on tasks that are no published release of the dataset are
+not official either.
 
 Then again without `--rows-only`, to grade: each answer is read three times and
 the readings settled by majority ([method, step 11](method.md#step-11-from-three-readings-to-one-verdict)). Grading is
@@ -217,10 +259,10 @@ list prices):
 - **Grading**: about $0.91 per answer on the subset (three readings by each of
   the two graders, gpt-6-astra reading as the judge). The subset's
   conversations are short, about 23,000 characters on average; the 51 official
-  tasks' average 82,000, and the graders read each whole. A reading's input
-  grows by about 1.7 times, so expect about $1.50 an answer. Only answers on
-  admitted tasks are graded, so a full run (51 tasks, 3 attempts) is 153
-  answers: about $230.
+  tasks' average 82,000, and the graders read each whole. The official run
+  (29 September) measured $1.18 an answer: $1,084 for its 918 answers. Only
+  answers on admitted tasks are graded, so a full run (51 tasks, 3 attempts)
+  is 153 answers: about $180.
 - **Your agent**: its own model's cost. The reference agent spent $0.44 an
   attempt on average with grok-4.6 (at most $1.08) and $0.07 with
   DeepSeek-V4-Pro.

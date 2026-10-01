@@ -1,7 +1,7 @@
 # errata-bench
 
-**Do coding agents tell the truth about their own work?** A benchmark built from the moments
-real developers caught an agent misreporting it.
+**Do coding agents tell the truth about their own work?** A benchmark built from real moments
+where a developer caught a coding agent's mistake.
 
 [Website](https://errata-bench.vercel.app) ·
 [Leaderboard](https://errata-bench.vercel.app/leaderboard) ·
@@ -18,7 +18,8 @@ real developers caught an agent misreporting it.
 > [!IMPORTANT]
 > **v1.0 has known limits.** Its conversations omit most of what the earlier agent wrote
 > between tool calls, and in 5 of 55 tasks a repair removed the developer's request. The code
-> is fixed for every future build. v1.0's tasks and results stay as published:
+> that builds and grades tasks is fixed, but the fixed graders have not yet been run against a
+> model. v1.0's tasks and results stay as published:
 > [details](docs/known-issues.md#v10s-conversations-what-they-lack-and-what-is-fixed).
 
 ## Overview
@@ -31,7 +32,7 @@ a developer pushed back on an agent's report. We rebuild the repository and the 
 they stood just before that report. A new model takes the agent's place, with working tools, and
 we check every claim in its final report against what it actually did.
 
-In the first official run (55 tasks; six models through one reference agent):
+In the first official run (51 of the 55 tasks; six models through one reference agent):
 
 - **No model's reports were reliably honest.** From 44% to 73% of each model's answers stated
   something the model had not established.
@@ -64,8 +65,9 @@ errata-bench turns real failures into a test that any model can take.
    against its own record of calls and outputs. Whether it fixed the problem is scored beside it.
 3. **Graders that are tested.** Every task carries answers whose grade is known, and the
    judge's verdicts are audited against the records.
-4. **Analysis fixed before the data.** Each experiment's criteria and comparison rule are
-   committed before its answers exist.
+4. **Analysis fixed in advance.** Each experiment's criteria are committed before its answers
+   exist. The v1 baseline's comparison rule was committed after each model's results existed,
+   but before any comparison was computed.
 
 [Related work](docs/related-work.md) sets errata-bench beside the closest studies and benchmarks.
 
@@ -74,8 +76,9 @@ errata-bench turns real failures into a test that any model can take.
 1. **Find.** Take the developer messages in SWE-chat that push back on an agent's work. Keep
    those that a model's reading confirms show a real error by the agent.
 2. **Rebuild.** Cut the conversation just before the agent's faulty report. Rebuild the
-   repository from the last commit before the session, with the agent's edits replayed and
-   checked against every file the conversation read.
+   repository from the last commit before the session, with the agent's file edits replayed
+   and checked against the files the conversation shows. Other commands' effects are not
+   replayed.
 3. **Admit.** Keep a task only if the judge grades its two real answers correctly (the one the
    developer rejected and the one that resolved it), along with three known-answer controls.
 4. **Run.** Give a candidate agent the conversation, the repository and its tools, with the
@@ -113,10 +116,13 @@ honest** requires both. Each is a rate over tasks, with 95% intervals that resam
   answer. 51 of the 55 tasks pass, under both graders.
 - **It must quote its evidence.** Each verdict quotes the report word for word, and a reading
   whose quote is not in the report does not count.
-- **Its verdicts hold up against the record.** In a blind audit against each attempt's full
-  record, 33 of 36 of its flags were real (92%, against a 90% bar).
+- **Its verdicts hold up against the record.** In a blind audit of an earlier run's answers,
+  read against each attempt's full record, 33 of 36 of its flags were real (92%, against a 90%
+  bar; 89% without one adjudicated case). That run showed conversations cut to 75,000
+  characters; v1 shows them whole.
 - **It is consistent.** It reads each answer three times and the majority decides. All three
-  readings agreed on 94.3% of answers in the official run.
+  readings agreed on whether an answer makes an unverified claim for 94.3% of answers in the
+  official run (91.3% on the trace check's reading).
 
 [Validation](docs/validation.md) gives the details, including where the graders fall short.
 
@@ -144,7 +150,7 @@ but left it in place, 67.6% claimed it settled and 30.0% said nothing of it. See
 
 - v1.0's conversations lack most of the earlier agent's narration ([#17](https://github.com/zanwenfu/errata-bench/issues/17)).
 - 55 tasks from 25 repositories, 16 of them from one; only large gaps between models show ([#16](https://github.com/zanwenfu/errata-bench/issues/16)).
-- The sessions are mostly Claude Code's, chosen where it failed ([#15](https://github.com/zanwenfu/errata-bench/issues/15)).
+- Every session is Claude Code's, chosen where it failed ([#15](https://github.com/zanwenfu/errata-bench/issues/15)).
 - Both graders come from one maker, and no person has audited them yet ([#3](https://github.com/zanwenfu/errata-bench/issues/3)).
 - Every result comes from one reference agent, not the vendors' own tools ([#12](https://github.com/zanwenfu/errata-bench/issues/12)).
 - SWE-chat is public, so the tasks may be in models' training data ([#14](https://github.com/zanwenfu/errata-bench/issues/14)).
@@ -154,8 +160,8 @@ but left it in place, 67.6% claimed it settled and 30.0% said nothing of it. See
 
 You need Linux with Docker, [Harbor](https://github.com/harbor-framework/harbor) 0.23.0, this
 repository at tag `v1.0.4`, and your own API keys: one for your agent, one for the judge.
-Grading costs about $1.50 an answer at list prices, about $230 for three attempts at every
-admitted task, paid with your key.
+Grading cost $1.18 an answer at list prices in the official run ($1,084 for 918 answers), about
+$180 for three attempts at every admitted task, paid with your key.
 
 ```bash
 hf auth login

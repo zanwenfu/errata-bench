@@ -3884,7 +3884,7 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   the honest figure for that build is 6 of 7. And the 24 uncalibrated built
   tasks read exactly like discards in any built-versus-admitted count.
   Replaced by G-60 and G-61 below.
-- **G-16 · Some answers the developer accepted are themselves overclaims.** *(Moot, checked 09-30: D-37 retires a task whose accepted answer fails its control, and ClusterCockpit-cc-backend-35 left the set in phase B's rebuild.)* *(Contradicted by R-26 on 09-21: the example below, `ClusterCockpit-cc-backend-35`, reads solved both orders, held the gate 7/7, criterion 3/3, and is scoreable -- either the example was wrong or the judge no longer sees the overclaim; open on that question.)*
+- **G-16 · Some answers the developer accepted are themselves overclaims.** *(Open, corrected 10-01: the 09-30 note called it moot because D-37 retires a task whose accepted answer fails its control and ClusterCockpit-cc-backend-35 left the set in phase B's rebuild. That retires the example, not the question R-26 left: whether the judge sees an accepted answer that overclaims. It read ClusterCockpit-35's as solved.)* *(Contradicted by R-26 on 09-21: the example below, `ClusterCockpit-cc-backend-35`, reads solved both orders, held the gate 7/7, criterion 3/3, and is scoreable -- either the example was wrong or the judge no longer sees the overclaim; open on that question.)*
   ClusterCockpit's resolution says "Frontend built successfully. Reload the
   /config page — the PlotRenderOptions should now appear" without ever
   checking the render. With no clean contrast between the known-wrong and
@@ -4441,7 +4441,13 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
     removed turn goes with it: it answers what was removed ("I see the issue!
     The admin buttons aren't showing up", Safecast-95).
   - *v1.1.* The five keep their removed requests until they are screened
-    again, a paid step.
+    again, a paid step. Since 10-01 the whole release is screened again task
+    by task, from before each task's repair, on the conversation its candidate
+    is shown (`scripts/rescreen_release.py`, which refuses a task whose view
+    does not render its `conversation.txt` byte for byte: all 55 of v1.1's
+    do), and `scripts/apply_rescreen.py` applies the verdicts: a task kept,
+    its leak repaired again, its old repair undone where nothing leaks any
+    more, or set aside, each recorded with the verdicts it rests on.
 - **G-82 · The graders counted the earlier agent's own words as evidence.**
   *(opened and fixed in the code 09-30, found by an independent review;
   #17.)* D-36 A2 (the judge) and G-70 (the trace check) told the graders that
@@ -4464,10 +4470,15 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   completed in the fix pass of 22:2x UTC; #17.)* `stages/screening.py`
   builds the scope and leak gates' view, and the repair's re-check, with
   `build_excerpt`'s defaults: record 1, 60,000 characters, each message cut
-  at 4,000. Candidates and graders read record 3, whole. So on long tasks part
-  of what a candidate sees was never screened for leaks: 25 of the 55
-  conversations run past 75,000 characters. The re-run #17 plans reads each
-  rebuilt conversation whole, as its candidates see it.
+  at 4,000, each call shown only by its command or file, results cut to fit.
+  Candidates and graders read record 3, whole. Rendered that way, the screen
+  saw 27% of the text the candidates read (1.31 of 4.92 million characters;
+  the median task 36%, and 36 tasks under half), and less than the candidate,
+  by more than 1%, on 51 of the 55 tasks. 31 conversations run past 60,000 characters and 26 past 75,000.
+  *(Corrected 10-01, from the second review: this entry said 25 past 75,000,
+  v1-plan.md's count on an earlier render, and described only the 60,000
+  cut.)* A frozen release is now screened again on the conversation each
+  candidate is shown (`scripts/rescreen_release.py`).
 - **G-80 · A copy of a repository takes over its sessions in the Entire
   corpus.** *(opened 09-30; #16.)* A repository copied from entireio/cli
   under another account, not a GitHub fork and created 6 September, kept
@@ -4510,12 +4521,16 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   - *The 55 v1 tasks.* Inside each task's shown span, the raw transcripts hold
     587 agent text messages, and 536 of them (91%) are absent from
     `conversation.txt`, in 50 of 55 tasks. The conversations show 1,506 calls
-    and 53 agent messages.
+    and 53 agent messages. *(10-01: the script's floor, of blocks of at least
+    20 characters between a task's first and last shown call. The fix puts
+    back 577 texts in 52 tasks, and v1.1 shows 630 agent messages: 577 of 630,
+    92%, were missing. The docs now give that count.)*
   - *What it touches.* Candidates and graders see the earlier agent's actions
     without its narration. The candidate's own record is whole, since Harbor
     writes it. Whether the loss changes answers or readings is not measured.
   - *How much text (09-30, same script).* 64,057 characters absent, against
-    4,400,798 of conversation shown (whitespace collapsed): 1.4% of the two.
+    4,400,798 of conversation shown (whitespace collapsed): 1.46% of the text
+    shown, 1.4% of shown and absent together.
     Per task, the absent share's quartiles are 0.6%, 1.4% and 2.5%. 30 absent
     blocks are 300 characters or longer, and 33 hold a completion word
     (fixed, passes, deployed, done, ...), in 16 tasks: a rough marker of the
@@ -4756,7 +4771,7 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   selection also inflates failure rates in general, the objection publicly
   raised against OverclaimBench. It needs a control: moments where the source
   agent did not fail.
-- **G-68 · No row records which model version answered, or what it cost.** *(Partly closed, checked 09-30: every row records its token usage (B-254), and each stage the model that served it (G-75); the rest is #6.)*
+- **G-68 · No row records which model version answered, or what it cost.** *(Partly closed, checked 09-30: every answer and grading row records its token usage (B-254), and each stage the model that served it (G-75); the rest is #6. Corrected 10-01: calibration, control and screening rows recorded none until the second review's fixes; since then the rows of every stage that calls a model do, finding tasks included, and those of the release re-screen, the admission and the two older re-screen scripts. A call that failed after the provider billed it records none.)*
   *(opened 09-23.)* Answer rows carry the deployment name, `seconds`,
   `budget_s` and `max_turns`, but not the served model identifier or any
   token usage. Azure deployments can change underneath a name, and the
@@ -10602,7 +10617,10 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     rate by −1.2 to +2.9 points, and the order holds but for a tie at 34.8%.
     The used-set in `restore_text` was removed as unreachable: on v1's 55
     sessions and 300 sampled ones, with and without thinking, both versions
-    give identical rows (706 of 706).
+    give identical rows (706 of 706). *(10-01: on the collector's rows it was
+    reachable, and 621 texts were put back twice; see the second review below.
+    The 706 and the 311 below were counted by scratch scripts not in the
+    repository, and the second review could not reconcile them.)*
   - *v1.1, rendered, not released.* `release/v1.1`: 55 of 55 tasks written and
     checked, 577 texts put back, workspaces and references byte-identical to
     v1's; exported for Harbor as 1.1.0, every put-back text in every
@@ -10665,7 +10683,10 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     the claim under test. Two conditions no input could reach were removed: a
     sub-agent check in `_prompt`, whose reader skips sub-agents first, and the
     flag in screening's ranking, which the order rows are written in already
-    decides.
+    decides. *(10-01: wrong about the flag. The order decides only between
+    rows screened the same number of times; an old row screened three times
+    outranked a new one screened once, so a re-screen paid for every row and
+    kept none, on every run. Restored, with a check; see below.)*
   - *Verified at the end.* 79 single-rule mutants, one per rule this pass added
     or changed, each reverted alone with a fresh bytecode cache: every one
     fails a check about its own rule. The six CI suites pass, with `TMPDIR`
@@ -10677,3 +10698,190 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     now does, v1.1's state), the README rewritten research-first on the
     model of the website (the problem, the approach, how it is evaluated,
     then how to run it).
+- **10-01, 11:3x UTC** — **The second review of the fix pass, a fresh review of its
+  fixes, and every new rule reverted alone: the steps before v1.1's release made
+  safe to run (#17).**
+  - *Five independent reviews of 30afcc7be and 111e2ef78* (readiness for the next
+    experiments, the conversation, the graders, the claims, the sources). Every
+    finding was reproduced before it was fixed.
+  - *What would have cost money, or given a wrong result:*
+    - a re-screen at fewer passes than an old row paid for every row and kept
+      none, on every run (the rank flag; restored, the correction is above);
+    - with Azure's settings in `.env` and `ERRATA_PROVIDER` unset, an admission
+      run by hand went to OpenAI's API, another account. Every entry point now
+      refuses an ambiguous provider (`llm.provider`), and every reader of the
+      setting reads it the same way (`llm.chosen_provider`). Admission rows
+      record the provider, API and field guide they were read through
+      (`reading_setup`), and grading compares them;
+    - screening, calibration, the controls, the gate and the finding stages
+      recorded no token use, so nothing could price or stop them. Each row now
+      records its own calls' use (`llm.metered`, `store.append_used`), and so do
+      the release re-screen and the two older re-screen scripts.
+      `harbor_spend.py --admitted` prices them by the model that read each row;
+      the guard takes `ADMITTED` with no Harbor job, and tallies once more when
+      its run ends. A call that failed after the provider billed it records
+      none: the tally is a floor;
+    - admissions:
+      - `admit_judge.py` into a reused folder reported a stale admission as done
+        and exited 0; it now refuses a folder holding other tasks, and two
+        admissions into one folder;
+      - grading refuses a stale `--out`, and an admission copy that differs from
+        `--admission`'s;
+      - an admission refusal in the pipeline's stages exits non-zero;
+      - a re-judge refuses a folder read under other rules (and `run.py` no
+        longer crashes on that refusal);
+      - the dataset build refuses an admission with problems, the published
+        judge's rows only;
+      - another judge's rows no longer set off a refusal;
+      - the trace check's rules are compared, not only the judge's;
+      - the annotation kit and a re-judge's settled rows read the judge's rules
+        where the judge writes them, on its judgement: read at the row's top
+        level, the kit refused every real run;
+    - G-82 left four sentences in the graders' prompts that let an AGENT line
+      count; they are rewritten, with checks that the old wording is gone. An
+      agent's summary of an earlier conversation, which Claude Code stores as
+      the developer's message, is shown as the agent's (`turns.speaker`). Rules
+      4 and 7 changed their wording again before any reading under them (none
+      exists, here or on the run VM), so their numbers stand;
+    - a provider's permanent refusal (a content filter, or another wording of
+      "too long") was retried on every run. One classifier (`llm.refusal`) now
+      records it once, everywhere, the reference agent included, and reads a
+      status code only where the SDK writes it: "404 in your prompt" was read
+      as an account's 404. The build sets such a row aside, as 30afcc7be's code
+      named it too;
+    - smaller screening defects:
+      - the rule dropping put-back text that answers a removed turn missed 18%
+        of cases, by counting rows the candidate never sees;
+      - the repair's re-check was asked once, whatever `--passes` said;
+      - the re-screen scripts read a repaired row on its conversation before
+        the repair;
+      - Harbor's note on cut conversations understated an edit's cut;
+    - `restore_text` put 621 held texts back a second time in 19 of the
+      collector's sessions;
+    - paid stages ran on sessions the build refuses for having no transcript,
+      and on sessions SWE-chat holds twice; `find_moments` now leaves both out;
+    - one failed probe call lost the run's other paid readings, and the trace
+      probes' runner then asked all 39 again; each probe now stands alone;
+    - releases:
+      - nothing ran the leak gate over a frozen release, and nothing applied a
+        re-screen to one;
+      - `scripts/rescreen_release.py` asks the stage's three gates of each
+        task, after checking that each task's view renders its
+        `conversation.txt` byte for byte (55 of 55 v1.1 tasks do);
+      - `scripts/apply_rescreen.py` keeps each task, repairs it again, undoes
+        its old repair, or sets it aside, each recorded with the verdicts it
+        rests on, as each task is done;
+      - grading builds each instruction again and takes a trial given another
+        for an error, after the trial is paid for. v1.1's 17 long tasks were
+        exported before the note on cut conversations was reworded, so their
+        Harbor tasks are out of date: the apply step writes again every Harbor
+        task that no longer gives this code's instruction, `export_harbor.py
+        --check` names any left, and grading refuses such a release before
+        reading anything;
+    - grading paid for answers that could not count. It now refuses while any
+      answer on record is not official, unless `--unofficial`, and results on
+      tasks that are no published release are not official.
+  - *Corrected in the documents (the claims review):*
+    - the README:
+      - 51 of the 55 tasks;
+      - the comparison rule was committed after the results existed;
+      - the rebuild check;
+      - the audit's and the agreement's qualifiers;
+      - every session is Claude Code's;
+      - grading cost $1.18 an answer;
+    - known-issues, method and validation:
+      - G-81 understated: the screen saw 27% of the text, less than the
+        candidate on 51 of 55 tasks;
+      - the lost text as 577 of 630;
+      - what the surveyor reads, and when the gates are asked again;
+      - the graders' rules and probes (39 and 10), not yet run;
+    - also: the internal notes, the dataset card, G-68's and G-16's status
+      notes, and this log's claims about the rank flag and the used-set.
+  - *Decided with the user, 10-01:*
+    - no pilot. It only measured how far v1.0's published scores move on v1.1,
+      to decide whether to re-run the baseline, and the baseline is not re-run.
+      v1.1 needs its re-screen (about $80 to $160) and its judge's admission
+      (about $230) before any run uses it, best done with the next release's
+      tasks;
+    - the website and leaderboard are not changed: v1.0's limits are for
+      review here and in the issues;
+    - the Entire session owns the collector's queued messages written twice
+      (G-84, fixed on its branch) and the re-sent calls written twice it will
+      measure.
+  - *A review of what no review had read.* The two new scripts, and the changes
+    made after the fresh review, were read by one more reviewer, who
+    reproduced six defects. Each was fixed, and checked by breaking it:
+    - an export stopped part way left a Harbor task that `stale`, and
+      `--check` with it, passed as current: the instruction was written first,
+      and it was all `stale` read. It is written last now, and `stale` also
+      wants every file an export writes, a whole workspace, and records that
+      parse;
+    - an apply stopped after rendering a task again, before recording it, had
+      the next run record the task as kept, its v1 repair gone from the
+      record. Each decision is now taken against the release as screened,
+      which its row records. A task an earlier run rendered is not rendered
+      again, its record says which run rendered it, and a run is on record
+      from its start;
+    - the guard's last tally comes up to ten minutes after a run ends. A run
+      started again in between dropped the failed rows, and their usage,
+      before any tally. `completed` now keeps each row it drops in
+      `<stage>.dropped.jsonl`, and the tally prices it there, once;
+    - a re-render that failed part way (a full disk) left the task half
+      rendered, and recorded it as left as it was. Its files are now written
+      beside the ones they replace and moved in only when all are written,
+      the one that says which repair the task holds last. One moved in only
+      in part is recorded so;
+    - one gate answer that did not parse, late in a row, threw the row away,
+      and the next run asked every gate of it again: up to 18
+      whole-conversation calls. Such an answer is now asked once more; nothing
+      else is. No stored row has failed that way: the one logged case (B-92)
+      was another API's;
+    - the older re-screen scripts said to remove their output to ask failed
+      rows again, which asked every row again. Run again, they now ask only
+      the failed rows, and exit 1 while any failed. Applied twice, they keep
+      the first backup and each row's old verdict.
+    - Not changed, and documented: the apply renders from whatever corpus it
+      is given, so it is run where the re-screen ran.
+  - *Checks.* guards_hold sections 158 and 159 and edits to §79, §157;
+    front_stages_run §1b, §9 and §10. 306 single-rule mutants, one per rule
+    this round added or changed (an agent's list, then the rules added after
+    it), each applied alone to a corpus-free copy with a fresh bytecode cache,
+    run on the Azure VM four at a time, and 21 of `harbor-guard.sh` in
+    containers of their own, since a guard that signals every process must
+    reach only its container's. The first pass caught 227 of 306 and 7 of 21.
+    Each survivor got a check, except three whose code could change nothing and
+    was deleted: the build's filter of put-back rows (a call put back sits at a
+    fraction strictly between stored turns), a control-row condition (only
+    control rows carry trace rules) and the re-judge's failed-probe filter
+    (`completed` drops failed rows first). One survivor was equivalent and is
+    kept as it is: the guard passing `--jobs` with no folders, which the tally
+    accepts. The second pass, on the fixed tree, caught 299 of 304 (the three
+    deleted rules' mutants gone, one added for a rule the fixes made: a
+    set-aside is recorded before its task moves) and 20 of 21. The five it
+    missed were two checks too weak:
+    - a stage's own model name on the rows it writes. A row carried from
+      the stage before already held that name, written under the same
+      model, so dropping it changed nothing the check read (four mutants).
+      The check now reads rows another model wrote;
+    - `--passes` below 1. The check asked for 0, which the rule for an even
+      count refuses as well; it now asks for -1 too.
+
+    Reading this round's own diff once more found a defect it had made. The
+    reference agent imported `llm` at the top of the module, for one pattern.
+    Harbor's own process imports the agent for its version, before
+    `Reference.run` forwards the provider settings set there into the task's
+    container, and importing `llm` reads the repository's `.env`. So `.env`'s
+    key and provider went into the container whether exported or not. The
+    import is back where it is read; a check imports the agent beside a
+    `.env` of its own and finds nothing read, and three mutants more cover it.
+
+    The final pass ran on the code committed here; only documentation
+    changed after it, one docstring among it. It holds 344 mutants: the
+    304, three for the reference agent's import, and 37 for the last
+    review's fixes. It caught 343. The one it missed is the refusal rule
+    of the parse retry: no case was both a refusal and an answer that did
+    not parse. One is now, and that mutant is caught, as are the three
+    others the changed check covers, each run again. `harbor-guard.sh`'s
+    code has changed since the second pass only in a comment, and its
+    checks not at all, so its 20 of 21 stands. The six CI suites pass,
+    corpus-free, on macOS and, for the two the mutants run, on Linux.
