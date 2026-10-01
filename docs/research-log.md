@@ -10650,3 +10650,33 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     - gpt-6-sol's price is corrected. Tallies of its calls made before were
       five times its listed rate.
     Six CI suites pass.
+- **10-01, 01:0x UTC** — **The calibration fails one rule. gpt-5.6-luna calls
+  78.6% of SWE-chat's failure reports pushback, against 85% (#16).**
+  - *Result.* 453 answered; none failed and none was filtered.
+    - Passed: 55 of 55 v1 task moments called pushback, and agreement on
+      pushback or not, reweighted, of 80.0%.
+    - Failed: SWE-chat's failure reports, 77 of 98 called pushback (78.6%).
+    - Also reported: four-class agreement 61.7%. Called pushback, by SWE-chat's
+      label: non_pushback 12%, correction 68%, rejection 70%, takeover 10%.
+    - Cost and speed: $0.33 at list price. Per answer 3,194 tokens in and 78
+      out, 24 of them reasoning. 282 answers a minute at concurrency 8.
+  - **Not a pass, and no rule changes.**
+  - *Diagnosis, after the verdict.* 13 of the 98 failure reports are messages
+    nobody typed. Most are Claude Code's notice that a background task
+    finished (`<task-notification>`), which SWE-chat's labeller called a
+    failure report, often for the word "failed". gpt-5.6-luna called 1 of
+    the 13 pushback, and 76 of the other 85 (89.4%).
+  - *Across SWE-chat,* of the 58,745 messages `to_label` takes:
+    - 2,824 open with `<task-notification>`. Each is the notice and Claude
+      Code's one line after it ("Read the output file to retrieve the
+      result" or "Full transcript available at"), and none has anything typed.
+      SWE-chat's labeller called 612 of them (22%) pushback.
+    - Command output opens 169 more: `<bash-stdout>` (151, always followed by
+      its `<bash-stderr>`), `<local-command-stderr>` (14) and
+      `<local-command-stdout>` (4).
+  - *Next, the user's choice between:*
+    - the registered fallback: gpt-6.1-sol on the same sample, under the same
+      rules;
+    - an amendment: `to_label` skips Claude Code's own notices and output, as
+      it skips interruptions and continuation summaries, and gpt-5.6-luna is
+      calibrated again on a fresh sample, under the same rules.

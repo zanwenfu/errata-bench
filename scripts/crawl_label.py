@@ -131,10 +131,16 @@ def main(argv: list[str]) -> int:
               f"{args.models})")
 
     turns = recovered(load_session_turns(sessions))
+    # What this run will ask, as `label_turns` chooses it: not a message this
+    # model already answered at this effort, then at most `--limit`.
+    answered = {(r["session_id"], r["turn_number"]) for r in (load(args.out) if args.out.exists() else [])
+                if not r.get("error") and (r.get("model"), r.get("effort")) == (args.model, args.effort)}
     todo = [(s, t) for s in sorted(turns) for t in L.to_label(turns[s])
-            if only is None or (s, t["turn_number"]) in only]
+            if (only is None or (s, t["turn_number"]) in only) and (s, t["turn_number"]) not in answered]
     if args.limit:
         todo = todo[:args.limit]
+    if answered:
+        print(f"{len(answered)} messages already answered in {args.out}; the estimate is for the rest")
     price_in, price_out, cost_of = pricing(args.model)
     cost = L.estimate([(L.context_for(turns[s], t["turn_number"]), L.message_for(t)) for s, t in todo],
                       price_in=price_in, price_out=price_out, out_tokens=args.out_tokens)
