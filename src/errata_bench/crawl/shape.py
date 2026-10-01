@@ -111,6 +111,20 @@ def user_kind(entry: dict, text: str) -> str:
     return "system_injected" if INJECTED.match(text) else "user_prompt"
 
 
+_COMMAND_NAME = re.compile(r"<command-name>\s*(.*?)\s*</command-name>", re.DOTALL)
+_COMMAND_ARGS = re.compile(r"<command-args>(.*?)</command-args>", re.DOTALL)
+
+
+def as_typed(text: str) -> str | None:
+    """A slash command as the developer typed it, its name and arguments, from the form Claude Code delivers it in."""
+    name = _COMMAND_NAME.search(text)
+    if not name:
+        return None
+    args = _COMMAND_ARGS.search(text)
+    typed = name.group(1) if name.group(1).startswith("/") else "/" + name.group(1)
+    return " ".join(f"{typed} {args.group(1) if args else ''}".split())
+
+
 def queued_and_delivered(entries: list[dict]) -> set[int]:
     """The queue entries whose message is written again where it was delivered (G-84).
 
@@ -121,6 +135,14 @@ def queued_and_delivered(entries: list[dict]) -> set[int]:
     developer row only for a message written nowhere else. Each delivered copy
     is paired with the earliest queue entry of the same text still waiting, one
     to one, so a message queued twice and delivered twice stays two.
+
+    A slash command is queued as typed (``/ship-it merge it``) and delivered
+    as Claude Code's command form, so it is matched by its name and arguments
+    (`as_typed`). An attachment whose prompt is content blocks makes no row of
+    its own: it takes its queue entry out of waiting, and the queue entry stays
+    the row, so a later message of the same text is not paired with it.
+    Pairing goes by text alone, so in a version that writes only the queue, a
+    message typed later with the same text can still take an earlier one's place.
     """
     waiting: dict[str, list[int]] = {}
     paired: set[int] = set()
@@ -133,13 +155,19 @@ def queued_and_delivered(entries: list[dict]) -> set[int]:
             continue
         if kind == "user" and isinstance(entry.get("message"), dict):
             text = " ".join(_text(entry["message"].get("content")).split())
+            texts, a_row = (text, as_typed(text)), True
         elif kind == "attachment" and isinstance(entry.get("attachment"), dict) \
-                and entry["attachment"].get("type") == "queued_command" and isinstance(entry["attachment"].get("prompt"), str):
-            text = " ".join(entry["attachment"]["prompt"].split())
+                and entry["attachment"].get("type") == "queued_command":
+            prompt = entry["attachment"].get("prompt")
+            texts, a_row = (" ".join((prompt if isinstance(prompt, str) else _text(prompt)).split()),), isinstance(prompt, str)
         else:
             continue
-        if waiting.get(text):
-            paired.add(waiting[text].pop(0))
+        for text in texts:
+            if text and waiting.get(text):
+                queued = waiting[text].pop(0)
+                if a_row:
+                    paired.add(queued)
+                break
     return paired
 
 
