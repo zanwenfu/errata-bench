@@ -1,31 +1,31 @@
-"""Which developer messages push back, labelled as SWE-chat labelled its own (#16, step 7).
+"""Which developer messages object to the agent's work, asked as our own triage asks it (#16, step 7).
 
 The pipeline takes its moments from the corpus's `prompt_pushback` label
-(`run.py`, `PUSHBACK_KINDS`). SWE-chat's came from a model, Qwen3.5-9B, reading
-each developer message with the conversation before it, under the codebook
-printed in its paper's Appendix E.2.4 (arXiv 2604.20779). Entire's sessions come
-with no label, so the collected corpus holds no moment until they are labelled.
+(`run.py`, `PUSHBACK_KINDS`). SWE-chat's labels came from its own classifier;
+the pipeline's first stage, triage (`find.triage`), then re-read every moment
+they flagged and kept those where the developer objects to work the agent had
+done, two in five. Entire's sessions come with no label, so the collected
+corpus holds no moment until they are labelled.
 
-Here that codebook, word for word (`CODEBOOK`), is asked of a model about the
-view triage, the next stage, reads of the same moment: the last
-`CONTEXT_CHARS` of the pipeline's own rendering of the conversation, lost calls
-put back as screening puts them back, and the message as the rendering shows
-it. Calibration on SWE-chat's own messages, against SWE-chat's labels, says how
-far the two agree before any Entire message is labelled
-(`scripts/crawl_label.py calibrate`).
+Here triage's own question (`INSTRUCTIONS`) is asked of every developer message
+by a cheaper model, about the view triage reads: the last `TRIAGE_CHARS` of
+the pipeline's rendering of the conversation, ending with the message. Its
+answer, with the kind of objection named in SWE-chat's words (`KINDS`), is the
+label; triage then reads each moment the label passes, with its own model.
 
-The label is only the first filter: triage and the reader read every moment it
-passes, so what matters most is that it misses few pushbacks. SWE-chat's
-codebook has three pushback classes and non_pushback. Its corpus also carries
-`takeover` (435 of 62,544 prompts), which the final codebook does not have;
-nothing here produces it.
+The question was SWE-chat's codebook until 10-01, when the user chose triage's.
+On an Entire pilot the codebook called half of all messages pushback,
+instructions and answers among them. SWE-chat's labels also proved too noisy
+to calibrate against, so triage's verdicts are the answer key
+(`scripts/crawl_label.py calibrate --against triage`).
 
 One row per labelled message, in ``labels.jsonl``, keyed by session and turn
 and carrying the message's digest; `corpus.assemble` puts a label on its row
 only while the digest still matches. A row that errored is asked again. The
 model's explanation is stored as ``why``: the row store takes "error:" in a
-row's ``reason`` for a failure, and a pushback's explanation often says it.
-A file holds one model's labels at one reasoning effort, which each row records.
+row's ``reason`` for a failure, and an objection's explanation often says it.
+A file holds one model's labels at one reasoning effort to one question, each
+recorded on every row.
 """
 
 from __future__ import annotations
@@ -37,76 +37,44 @@ from collections import Counter
 from pathlib import Path
 from typing import Literal
 
-from pydantic import BaseModel, Field
+from pydantic import Field
 
-LABELS = ("correction", "rejection", "failure_report", "non_pushback")
-PUSHBACK = frozenset(LABELS) - {"non_pushback"}
-# What triage reads of the same moment (`find.triage`: the excerpt's last 9,000
-# characters), and of the message itself (`corpus.turns.MESSAGE_CHARS`).
-CONTEXT_CHARS = 9000
+from ..find.triage import INSTRUCTIONS, Triage
+
+KINDS = ("failure_report", "rejection", "correction", "takeover")
+LABELS = KINDS + ("non_pushback",)
+PUSHBACK = frozenset(KINDS)
+# What a row's label answers: `find.triage`'s question.
+QUESTION = "triage"
+# What triage reads of a moment: the rendering's last 9,000 characters (`find.triage.triage`).
+TRIAGE_CHARS = 9000
 INTERRUPTED = "[Request interrupted by user"
 CONTINUED = "This session is being continued"
 # A provider's content filter refusing the request, as `release.reference_agent`
 # reads one: asking again gets the same refusal.
 FILTERED = re.compile(r"content_filter|ResponsibleAIPolicyViolation|content management policy", re.IGNORECASE)
 
-# SWE-chat's user pushback classifier, Appendix E.2.4 of arXiv 2604.20779 (v1),
-# transcribed from the PDF: its extraction spaced apostrophes and hyphens
-# ("agent ' s", "mid - task"), put back here as the prompt wrote them. Its last
-# two lines, the context and the prompt, are the message `classify` sends.
-CODEBOOK = """\
-You are a classifier that determines whether a user prompt in a coding agent session represents pushback \
-against the agent's preceding action, and if so, what kind.
 
-Pushback is any prompt where the user resists, corrects, redirects, or takes over from the agent - rather \
-than simply continuing the workflow. Use the preceding conversation context to understand what the agent just did.
+class Objection(Triage):
+    """Triage's two answers about a developer message, and the kind of objection when it is one."""
 
-Classify the prompt into exactly one of the following categories:
-
-- correction - The user redirects the agent by providing missing context, correcting a misunderstanding, \
-pointing out factual errors, or changing requirements/direction/scope mid-task.
-  Examples: "I said X not Y", "you changed the wrong file", "actually the API uses POST not GET", \
-"actually, let's do X instead", "forget that approach, try Y", "on second thought, skip the tests"
-
-- rejection - The user explicitly rejects, reverts, or refuses the agent's output without providing a \
-specific correction.
-  Examples: "undo that", "revert the last change", "no", "that's wrong", "I don't want that", \
-"put it back the way it was"
-
-- failure_report - The user reports that the agent's output does not work: bugs, errors, test failures, \
-or broken behavior.
-  Examples: "this still doesn't work", "it's still crashing", "same error, try again", \
-"the tests are failing", "I get a 404 now"
-
-- non_pushback - The prompt moves the session forward normally: a new task, building on agent output, \
-asking a question, or routine iteration.
-  Examples: "now add a login page", "good, also add unit tests", "why did you use a list here?", \
-"change the button color to blue"
-
-Disambiguation:
-- correction vs rejection: correction provides a specific fix, missing information, or new direction; \
-rejection just says "no" or "undo" without explaining what was wrong.
-- failure_report vs rejection: failure_report = "it doesn't work" (something is broken); \
-rejection = "I don't want that" (output is unwanted even if functional).
-
-When uncertain:
-- If the prompt contains words like "undo", "revert", "wrong", "broken", "doesn't work", "I said", \
-"you missed", or "never mind", lean toward a pushback category.
-- If the prompt reads like a standalone next step with no negative reaction, lean toward non_pushback.
-
-Respond in valid JSON only:
-{
-"label": "<one of: correction, rejection, failure_report, non_pushback>",
-"reason": "<1-2 sentence explanation>"
-}"""
+    kind: Literal["failure_report", "rejection", "correction", "takeover", "none"] = Field(
+        description=(
+            "When the message objects to the agent's work, which kind: failure_report when it reports "
+            "something broken, correction when it corrects a mistake, rejection when it rejects an "
+            "approach, takeover when it takes the task back. none when it does not object."
+        )
+    )
 
 
-class Pushback(BaseModel):
-    """One developer message, classified under SWE-chat's codebook."""
+def label_of(verdict: Objection) -> str:
+    """The corpus's label for a verdict: its kind when the message objects to work the agent did, else non_pushback.
 
-    label: Literal["correction", "rejection", "failure_report", "non_pushback"] = Field(
-        description="One of: correction, rejection, failure_report, non_pushback.")
-    reason: str = Field(description="1-2 sentence explanation.")
+    An objection given no kind is a correction, the widest of the four.
+    """
+    if not (verdict.agent_has_acted and verdict.objects_to_that_work):
+        return "non_pushback"
+    return verdict.kind if verdict.kind in KINDS else "correction"
 
 
 def digest(text: str | None) -> str:
@@ -137,64 +105,63 @@ def written_by_claude_code(text: str) -> bool:
     return text.startswith(tuple(f"<{tag}>" for tag in OWN)) and not _OWN_BLOCK.sub("", text).strip()
 
 
+# What Claude Code delivers into the developer's turn from elsewhere: a message
+# another Claude session sent, and a skill's instructions as it loads. Nobody
+# typed them here. In the 10-01 Entire pilot 19 of 286 messages were these, and
+# the codebook called 11 of them pushback.
+DELIVERED = ("<cross-session-message", "Another Claude session sent a message:", "Base directory for this skill:")
+
+
 def to_label(turns: list[dict]) -> list[dict]:
-    """A session's developer messages that are labelled: SWE-chat's non-interruption prompts, less Claude Code's own.
+    """A session's developer messages that are labelled: SWE-chat's non-interruption prompts, less what no one typed.
 
     Not an interruption, which SWE-chat left unlabelled, not the summary that
     opens a continued session, not Claude Code's own notice or output
-    (`written_by_claude_code`), and not an empty message. A turn the table
-    holds twice is labelled once: SWE-chat's has 39 developer rows that repeat
-    another's session, turn and text, in 13 sessions.
+    (`written_by_claude_code`), not what it delivers from elsewhere
+    (`DELIVERED`), and not an empty message. A turn the table holds twice is
+    labelled once: SWE-chat's has 39 developer rows that repeat another's
+    session, turn and text, in 13 sessions.
     """
     out, seen = [], set()
     for t in turns:
         text = (t.get("content") or "").strip()
         if (t.get("turn_type") == "user_prompt" and t.get("turn_number") is not None and text
                 and not text.startswith(INTERRUPTED) and not text.startswith(CONTINUED)
-                and not written_by_claude_code(text) and t["turn_number"] not in seen):
+                and not written_by_claude_code(text) and not text.startswith(DELIVERED)
+                and t["turn_number"] not in seen):
             seen.add(t["turn_number"])
             out.append(t)
     return out
 
 
-def context_for(turns: list[dict], turn_number: float) -> str:
-    """What triage reads of the conversation before a message: the tail of the pipeline's own rendering.
+def view_for(turns: list[dict], turn_number: float) -> str:
+    """What triage reads of a moment: the rendering's last `TRIAGE_CHARS`, ending with the message.
 
-    Every turn before the message, put-back ones included (their numbers are
-    fractional), and nothing from the message on.
+    `build_excerpt` keeps every turn up to the message, put-back ones included
+    (their numbers are fractional), as `stages.screening.stage_triage` asks it.
     """
     from ..corpus.turns import build_excerpt
 
-    before = [t for t in turns if t.get("turn_number") is not None and t["turn_number"] < turn_number]
-    return build_excerpt(before, turn_number)[-CONTEXT_CHARS:]
+    return build_excerpt(turns, turn_number)[-TRIAGE_CHARS:]
 
 
-def message_for(turn: dict) -> str:
-    """The message as the rendering shows it to triage: cut where a developer message is cut."""
-    from ..corpus.turns import MESSAGE_CHARS
-
-    text = (turn.get("content") or "").strip()
-    return text if len(text) <= MESSAGE_CHARS else text[:MESSAGE_CHARS] + " [...]"
+def asked(view: str) -> str:
+    """The message a model is sent, as `find.triage.triage` sends it."""
+    return f"The conversation:\n\n{view}"
 
 
-def prompt_for(context: str, message: str) -> str:
-    """The message a model is sent: the codebook's own last two parts."""
-    return f"Preceding conversation context:\n{context}\n\nUser prompt to classify:\n{message}"
-
-
-async def classify(context: str, message: str, *, model: str, effort: str | None = None
-                   ) -> tuple[Pushback, dict | None]:
-    """One message's label under the codebook, and the call's token use; `effort` is the reasoning effort asked."""
+async def classify(view: str, *, model: str, effort: str | None = None) -> tuple[Objection, dict | None]:
+    """Triage's question about one moment, and the call's token use; `effort` is the reasoning effort asked."""
     from agents import Agent, ModelSettings, Runner
     from openai.types.shared import Reasoning
 
     from ..llm import configure_client, resilient, usage_of, with_field_guide
 
     configure_client()
-    agent = Agent(name="pushback", instructions=with_field_guide(CODEBOOK, Pushback), model=model,
-                  output_type=Pushback,
+    agent = Agent(name="triage-label", instructions=with_field_guide(INSTRUCTIONS, Objection), model=model,
+                  output_type=Objection,
                   model_settings=ModelSettings(reasoning=Reasoning(effort=effort)) if effort else ModelSettings())
-    result = await resilient(lambda: Runner.run(agent, prompt_for(context, message), max_turns=2))
+    result = await resilient(lambda: Runner.run(agent, asked(view), max_turns=3))
     return result.final_output, usage_of(result)
 
 
@@ -205,14 +172,15 @@ async def label_turns(turns_by_session: dict[str, list[dict]], out: Path, *, mod
 
     `only` restricts it to those (session, turn) keys, and `extra` adds fields
     to each row by key (calibration's reference label). `ask` is the call that
-    labels one message, `classify` unless another is given. Resumable: a
+    answers about one view, `classify` unless another is given. Resumable: a
     message with a row that did not error is not asked again.
 
-    One file holds one model's labels at one effort: resumed under another, a
-    run would take the first model's labels for its own. With `spend`, which
-    prices a call's usage, no message is asked once the calls this run made
-    reach `max_usd`; a later run asks the rest. A request the provider's content
-    filter refuses is recorded as ``filtered``, with no label, and not asked again.
+    One file holds one model's labels at one effort to one question: resumed
+    under another, a run would take the first one's labels for its own. With
+    `spend`, which prices a call's usage, no message is asked once the calls
+    this run made reach `max_usd`; a later run asks the rest. A request the
+    provider's content filter refuses is recorded as ``filtered``, with no
+    label, and not asked again.
     """
     ask = ask or classify
     from ..llm import ClaudeRefused
@@ -220,10 +188,10 @@ async def label_turns(turns_by_session: dict[str, list[dict]], out: Path, *, mod
     from ..store.rows import append, completed, load
 
     if out.exists():
-        other = {(r.get("model"), r.get("effort")) for r in load(out)} - {(model, effort)}
+        other = {(r.get("model"), r.get("effort"), r.get("question")) for r in load(out)} - {(model, effort, QUESTION)}
         if other:
-            raise ValueError(f"{out} holds labels by {sorted(other, key=str)}, not by {model} at effort {effort}: "
-                             f"one file holds one model's labels")
+            raise ValueError(f"{out} holds labels by {sorted(other, key=str)}, not by {model} at effort {effort} "
+                             f"to the {QUESTION} question: one file holds one model's labels")
     done = {(r["session_id"], r["turn_number"]) for r in completed(out)} if out.exists() else set()
     todo = [(sid, t) for sid, turns in sorted(turns_by_session.items()) for t in to_label(turns)
             if (sid, t["turn_number"]) not in done and (only is None or (sid, t["turn_number"]) in only)]
@@ -240,12 +208,14 @@ async def label_turns(turns_by_session: dict[str, list[dict]], out: Path, *, mod
                 counts["not asked: the spend cap was reached"] += 1
                 return
             row = {"session_id": sid, "turn_number": turn["turn_number"], "digest": digest(turn.get("content")),
-                   "model": model, "effort": effort, "code_version": version,
+                   "model": model, "effort": effort, "question": QUESTION, "code_version": version,
                    **((extra or {}).get((sid, turn["turn_number"])) or {})}
             try:
-                verdict, usage = await ask(context_for(turns_by_session[sid], turn["turn_number"]),
-                                           message_for(turn), model=model, effort=effort)
-                row.update(label=verdict.label, why=verdict.reason, usage=usage)
+                verdict, usage = await ask(view_for(turns_by_session[sid], turn["turn_number"]),
+                                           model=model, effort=effort)
+                row.update(label=label_of(verdict), agent_has_acted=verdict.agent_has_acted,
+                           objects_to_that_work=verdict.objects_to_that_work, kind=verdict.kind,
+                           why=verdict.reason, usage=usage)
                 if spend is not None:
                     spent += spend(usage)
             except ClaudeRefused:
@@ -264,16 +234,16 @@ async def label_turns(turns_by_session: dict[str, list[dict]], out: Path, *, mod
     return counts
 
 
-def estimate(pairs: list[tuple[str, str]], *, price_in: float, price_out: float,
-             out_tokens: int = 90, chars_per_token: float = 3.5) -> dict:
-    """What labelling these (context, message) pairs costs, before any call: an upper bound, no cache."""
+def estimate(views: list[str], *, price_in: float, price_out: float, out_tokens: int = 90,
+             chars_per_token: float = 3.5) -> dict:
+    """What asking about these views costs, before any call: an upper bound, no cache."""
     from ..llm import with_field_guide
 
-    fixed = len(with_field_guide(CODEBOOK, Pushback))
-    chars = sum(fixed + len(prompt_for(c, m)) for c, m in pairs)
+    fixed = len(with_field_guide(INSTRUCTIONS, Objection))
+    chars = sum(fixed + len(asked(v)) for v in views)
     tokens_in = chars / chars_per_token
-    cost = tokens_in / 1e6 * price_in + len(pairs) * out_tokens / 1e6 * price_out
-    return {"messages": len(pairs), "input_tokens": round(tokens_in), "output_tokens": len(pairs) * out_tokens,
+    cost = tokens_in / 1e6 * price_in + len(views) * out_tokens / 1e6 * price_out
+    return {"messages": len(views), "input_tokens": round(tokens_in), "output_tokens": len(views) * out_tokens,
             "usd": round(cost, 2)}
 
 
@@ -464,7 +434,7 @@ def calibration_report(rows: list[dict], frequency: Counter, expected: int | Non
               for ref in REFERENCE}
     weight = sum(frequency[ref] for ref in REFERENCE if agrees[ref] is not None)
     binary = sum(frequency[ref] * agrees[ref] for ref in REFERENCE if agrees[ref] is not None) / weight if weight else None
-    four = [r for r in sample if r.get("swechat") in LABELS]
+    classed = [r for r in sample if r.get("swechat") in LABELS]
     rule_v1, rule_failure, rule_agree = PASS.values()
     passes = {"no row failed": errors == 0,
               "every message answered": expected is None or len(rows) + filtered == expected,
@@ -474,6 +444,6 @@ def calibration_report(rows: list[dict], frequency: Counter, expected: int | Non
     return {"labelled": len(rows), "filtered": filtered, "errors": errors, "expected": expected,
             "by_swechat_label": {k: dict(v) for k, v in by_ref.items()},
             "called_pushback": called, "binary_agreement_reweighted": binary,
-            "four_class_agreement": sum(r["label"] == r["swechat"] for r in four) / len(four) if four else None,
+            "class_agreement": sum(r["label"] == r["swechat"] for r in classed) / len(classed) if classed else None,
             "v1_task_moments_called_pushback": [v1_called, v1_answered],
             "rules": PASS, "passes": passes, "passed": all(passes.values())}

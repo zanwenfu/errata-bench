@@ -1,31 +1,31 @@
-"""Label which developer messages push back, as SWE-chat labelled its own (#16, step 7; `crawl/label.py`).
+"""Label which developer messages object to the agent's work, as our own triage asks it (#16, step 7; `crawl/label.py`).
 
     # what a run would cost, calling no model
-    .venv/bin/python scripts/crawl_label.py calibrate --model gpt-5.6-luna --effort low --out-tokens 500 --estimate
-    .venv/bin/python scripts/crawl_label.py label --corpus data/entire/corpus --model gpt-5.6-luna --effort low \\
-        --out-tokens 500 --estimate
+    .venv/bin/python scripts/crawl_label.py calibrate --against triage --model gpt-5.6-luna --effort low \\
+        --out-tokens 100 --estimate
+    .venv/bin/python scripts/crawl_label.py label --corpus data/entire/corpus --digests data/swechat-digests.json \\
+        --model gpt-5.6-luna --effort low --out-tokens 100 --estimate
 
-    # paid: the calibration on SWE-chat's own messages, then its report
-    ERRATA_PROVIDER=azure .venv/bin/python scripts/crawl_label.py calibrate --model gpt-5.6-luna --effort low \\
-        --out-tokens 500 --max-usd 1
-    .venv/bin/python scripts/crawl_label.py report data/entire/label-calibration-gpt-5.6-luna-low.jsonl
-
-    # paid: the check against our own triage's verdicts on SWE-chat's moments (the answer key since 10-01)
+    # paid: the check against triage's verdicts on SWE-chat's moments (the answer key since 10-01), then its report
     ERRATA_PROVIDER=azure .venv/bin/python scripts/crawl_label.py calibrate --against triage \\
         --model gpt-5.6-luna --effort low --out-tokens 100 --max-usd 1
+    .venv/bin/python scripts/crawl_label.py report data/entire/label-triage-check-gpt-5.6-luna-low.jsonl
 
-    # paid: the collected corpus's messages, Claude 5 sessions first
+    # paid: a pilot of a few Entire sessions, then the collected corpus's Claude 5 sessions
     ERRATA_PROVIDER=azure .venv/bin/python scripts/crawl_label.py label --corpus data/entire/corpus \\
-        --model gpt-5.6-luna --effort low --out-tokens <the calibration's mean> --max-usd 35
+        --digests data/swechat-digests.json --model gpt-5.6-luna --effort low --sessions 20 --max-usd 1
+    ERRATA_PROVIDER=azure .venv/bin/python scripts/crawl_label.py label --corpus data/entire/corpus \\
+        --digests data/swechat-digests.json --model gpt-5.6-luna --effort low --out-tokens <measured> --max-usd <cap>
 
-`calibrate` reads SWE-chat (the default corpus) and refuses any other; `label`
-reads the collected corpus and refuses SWE-chat. A paid run first prices what it
-will ask and refuses to start above `--max-usd`, and stops asking once what it
-has spent reaches it; run again, it asks the rest. The estimate assumes
-`--out-tokens` written per message: a reasoning model writes more than the 90 a
-label and its reason take, so give it the calibration's measured mean. Every
-row records its token use, so the spend can be reconciled after. Labels go on
-the corpus's rows when it is next assembled (`crawl_entire.py assemble`).
+`calibrate` reads SWE-chat (the default corpus) and refuses any other: against
+triage's verdicts on the moments it read (the answer key), or against SWE-chat's
+own labels. `label` reads the collected corpus and refuses SWE-chat. A paid run
+first prices what it will ask and refuses to start above `--max-usd`, and stops
+asking once what it has spent reaches it; run again, it asks the rest. The
+estimate assumes `--out-tokens` written per message: a reasoning model writes
+more than a label and its reason take, so give it a measured mean. Every row
+records its token use, so the spend can be reconciled after. Labels go on the
+corpus's rows when it is next assembled (`crawl_entire.py assemble`).
 """
 
 from __future__ import annotations
@@ -167,9 +167,10 @@ def main(argv: list[str]) -> int:
     # megabytes as Python objects, and 402 of SWE-chat's took 4.4 GB at once.
     batches = [sorted(sessions)[i:i + args.batch] for i in range(0, len(sessions), args.batch)]
     # What this run will ask, as `label_turns` chooses it: not a message this
-    # model already answered at this effort, then at most `--limit`.
+    # model already answered at this effort to this question, then at most `--limit`.
     answered = {(r["session_id"], r["turn_number"]) for r in (load(args.out) if args.out.exists() else [])
-                if not r.get("error") and (r.get("model"), r.get("effort")) == (args.model, args.effort)}
+                if not r.get("error")
+                and (r.get("model"), r.get("effort"), r.get("question")) == (args.model, args.effort, L.QUESTION)}
 
     def pending(batch: list[str]) -> tuple[dict, list]:
         turns = recovered(load_session_turns(set(batch)))
@@ -184,7 +185,7 @@ def main(argv: list[str]) -> int:
         turns, todo = pending(batch)
         todo = todo[:int(min(left, len(todo)))]
         left -= len(todo)
-        cost.update(L.estimate([(L.context_for(turns[s], t["turn_number"]), L.message_for(t)) for s, t in todo],
+        cost.update(L.estimate([L.view_for(turns[s], t["turn_number"]) for s, t in todo],
                                price_in=price_in, price_out=price_out, out_tokens=args.out_tokens))
         if left <= 0:
             break
