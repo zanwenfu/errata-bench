@@ -10838,3 +10838,39 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
       texts, as Claude Code's own notices are left;
     - the user's choice whether the labeller asks SWE-chat's codebook or
       triage's own question.
+- **10-01, 02:4x UTC** — **The labeller asks our own triage's question (the
+  user's choice); the triage check is registered again for it. G-84 fixed and
+  the corpus re-assembling (#16).**
+  - *The question.* The user's reasoning: with SWE-chat, its labels flagged
+    candidates and our own filter decided which were real pushbacks, so here
+    too the reference is our own filter.
+    - The labeller asks `find.triage`'s instructions, imported so the two
+      cannot drift, about triage's view: the rendering's last 9,000
+      characters, ending with the message.
+    - It also names the kind of objection in SWE-chat's words, so `run.py`'s
+      kinds still find the moments.
+    - Label: the kind when the agent had acted and the message objects to
+      that work, else non_pushback.
+    - It no longer asks about what another Claude session sent, or a skill's
+      text as it loads.
+  - *The check.* The same 497 moments as the 02:0x check (seed 0) and the same
+    rules, so the two questions are compared on the same moments:
+    1. no row failed;
+    2. at least 90% of triage's sampled pushbacks called pushback, a skipped
+       one counting as missed;
+    3. at least 50 of the 55 v1 moments.
+    - Reported: triage's non-pushbacks called pushback (the codebook: 41%).
+    - 483 are asked. Estimate $0.35, capped at $1, into a file of its own.
+  - *A difference the key cannot remove.* Triage gave its verdicts from 09-17
+    to 09-24, on renderings made before G-79's agent text was put back. The
+    labeller reads today's rendering of the same moments.
+  - *G-84 fixed* (`crawl/shape.py`).
+    - A queued message is paired with its delivered copy, one to one, and the
+      delivered copy is its row.
+    - Against SWE-chat's own rows (300 sessions), messages held more times in
+      ours fell from 191 to 2, and none of SWE-chat's went missing.
+    - `crawl_holds` section 5 holds the rule. Each of its 5 pieces, broken
+      alone, fails it.
+    - The corpus is re-assembling on the VM from 02:49 UTC. The old one is
+      kept as `corpus.pre-g84`, and the codebook pilot's labels as
+      `labels.codebook-pilot-1001.jsonl`.
