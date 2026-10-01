@@ -10763,3 +10763,16 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
   - *Then* a pilot on part of the Entire corpus. Every message labelled
     pushback is read by hand for any that is not one.
   - *Cost.* Estimate $0.38 at list price, capped at $1.
+- **10-01, 02:0x UTC** — **The triage check passes: gpt-5.6-luna calls 95.2% of
+  triage's pushbacks pushback (#16).**
+  - *Result.* 487 answered; none failed and none was filtered.
+    - Triage's sampled pushbacks: 278 of 292 called pushback, 95.2% (rule:
+      90%). The 14 missed include the 4 Claude Code notices `to_label` skips.
+    - v1 task moments: 55 of 55.
+    - Triage's non-pushbacks called pushback: 62 of 150 (41%). These are
+      moments SWE-chat flagged and triage turned away; in the full run each
+      costs one triage call more.
+    - Cost and speed: $0.35 at list price. Per answer 3,328 tokens in and 73
+      out. 260 answers a minute at concurrency 8, read in three batches.
+  - **Passed.** Next is the pilot on the Entire corpus, its pushbacks read by
+    hand.
