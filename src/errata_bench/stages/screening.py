@@ -393,15 +393,31 @@ async def _agree(ask, passes: int, keep_on: bool, reading) -> tuple[bool, str, o
             deciding)
 
 
+def gate_view(session_id: str, turns: list[dict]) -> list[dict]:
+    """The conversation a task built from this session shows its candidate, before any redaction (G-81).
+
+    ``turns`` with their lost calls already put back (`recovered`); here the
+    agent's lost text, without thinking (G-79), and each result whole under
+    record 3 -- what `attempt.candidate_turns` shows a task built with them.
+    Every gate that reads the conversation reads this, `rescreen_scope` too.
+    """
+    from ..corpus.recover import whole_results, with_text
+    from ..corpus.turns import RECORD
+
+    view = with_text(session_id, turns)
+    return whole_results(session_id, view) if RECORD >= 3 else view
+
+
 async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int = 1) -> Progress:
     """Check each conversation is answerable, and repair it if it leaks."""
     from ..find.answerable import ANSWERABLE_GATE, agent_message_before, asks_for_something
     from ..construct.build import last_user_message
     from ..find.leakage import signals_trouble
     from ..corpus.turns import RECORD, RECORD_CHARS, build_excerpt, load_session_turns
-    from ..corpus.recover import has_transcript, recovered, restore_text, whole_results
-    from ..find.redact import apply, carried_by, survey
+    from ..corpus.recover import has_transcript, recovered
+    from ..find.redact import apply, carried_by, carrying, survey
     from ..find.scope import SCOPE_GATE, in_scope
+    from ..score.trace import too_long
 
     p = Progress("screen")
     t0 = time.monotonic()
@@ -411,8 +427,10 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
     # "51 already done" and changed nothing, while the user believed the
     # stricter unanimity rule had been applied. A row screened at fewer passes
     # than asked for is re-screened; one screened at more is left alone.
+    # And a row screened before the gates read the candidate's view (G-81), which
+    # carries no `text_recovered`, is screened again: the build refuses it.
     done = {
-        key_of(r): r.get("screen_passes", 1) for r in completed(paths.screened)
+        key_of(r): r.get("screen_passes", 1) for r in completed(paths.screened) if "text_recovered" in r
     }
     todo = p.cap([r for r in rows if done.get(key_of(r), 0) < passes], limit, len(rows))
 
@@ -462,14 +480,30 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
         out = dict(r)
         try:
             ts = turns[r["session_id"]]
+            # The conversation as its candidate will be shown it (G-81): the calls
+            # and the agent's text the table lost put back (G-76, G-79), no
+            # thinking, each result whole. Every gate below reads this: they read
+            # record 1 -- 60,000 characters, each message cut at 4,000 -- while
+            # v1's candidates read record 3 whole, so on 25 of its 55 tasks part
+            # of what a candidate saw was never screened for a leak.
+            # `candidate_turns` builds the same view.
+            view = gate_view(r["session_id"], ts)
+            # Whether these gates read the record with SWE-chat's lost calls and
+            # the agent's lost text put back (G-76, G-79). The build shows them
+            # to a candidate only if so, so the candidate never sees a call or a
+            # word the leak gate did not. On every row, one a gate could not
+            # finish included: its absence marks a row screened before (G-81).
+            out["calls_recovered"] = has_transcript(r["session_id"])
+            out["text_recovered"] = has_transcript(r["session_id"])
             message = last_user_message(ts, r["cut"])
+            before = ""
             if message is None:
                 out["asks_for_something"] = False
                 out["request_reason"] = "no user message before the cut"
             else:
-                # Read after the agent's last message: a bare "yes" answers it
-                # (B-253).
-                before = agent_message_before(ts, message)
+                # Read after the agent's last message, as the candidate sees it:
+                # a bare "yes" answers it (B-253).
+                before = agent_message_before(view, message)
                 verdict, tally, a = await _agree(
                     lambda: asks_for_something(message.get("content") or "", before=before),
                     passes, keep_on=True,
@@ -486,13 +520,6 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
             request = (message or {}).get("content") or ""
             # The conversation the agent had, which both gates below read: a
             # bare "yes" asks for whatever the agent had just proposed (B-252).
-            # Read as its candidate will be shown it (G-81): the calls and the
-            # agent's text the table lost put back (G-76, G-79), each result
-            # whole, nothing cut. The gates read record 1 -- 60,000 characters,
-            # each message cut at 4,000 -- while v1's candidates read record 3
-            # whole, so on 25 of its 55 tasks part of what a candidate saw was
-            # never screened for a leak. `candidate_turns` builds the same view.
-            view = whole_results(r["session_id"], restore_text(r["session_id"], ts))
             excerpt = build_excerpt(view, r["cut"], max_chars=RECORD_CHARS, record=RECORD)
             if request:
                 verdict, tally, scope = await _agree(
@@ -517,12 +544,6 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
             out["redacted_turns"] = []
             out["rewritten_turns"] = {}
             out["redaction_worked"] = False
-            # Whether these gates read the record with SWE-chat's lost calls and
-            # the agent's lost text put back (G-76, G-79). The build shows them
-            # to a candidate only if so, so the candidate never sees a call or a
-            # word the leak gate did not.
-            out["calls_recovered"] = has_transcript(r["session_id"])
-            out["text_recovered"] = has_transcript(r["session_id"])
 
             # `verdict`, not `leak.signals_trouble`: the row is repaired when the
             # gate as a whole says it leaks, which with more than one reading is
@@ -538,7 +559,12 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
                     "result or the agent's thinking, which removing prose cannot reach"
                 )
             elif verdict:
-                red = await survey(ts, r["cut"])
+                # The surveyor reads the same view, so it can name a text put back
+                # from the transcript (a fractional turn), and is always shown the
+                # turns that carry the gate's quote, however far back they are.
+                asked = (message or {}).get("turn_number")
+                red = await survey(view, r["cut"], must_show=carrying(view, r["cut"], leak.quote),
+                                   request_turn=asked)
                 out["diffuse"] = red.diffuse
                 out["redaction_reason"] = red.reason
                 out["redaction_touched"] = red.touched
@@ -548,7 +574,13 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
                     "not repairable: the surveyor found no turn to edit"
                     if not red.touched else "attempted"
                 )
-                if red.repairable:
+                if red.repairable and asked is not None and asked in red.removed_turns:
+                    # A repair that drops the request leaves the candidate nothing to
+                    # answer: in 5 of v1's 7 redactions the turn dropped was the
+                    # request itself, and its reference answers answer it (09-30).
+                    out["redaction_outcome"] = (
+                        "not repairable: the leak is the developer's request itself, which the candidate must answer")
+                elif red.repairable:
                     # Checked again on the view the candidate would be shown.
                     kept = apply(view, red.removed_turns, red.rewritten)
                     again = await signals_trouble(build_excerpt(kept, r["cut"], max_chars=RECORD_CHARS,
@@ -563,10 +595,41 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
                             str(k): v for k, v in red.rewritten.items()
                         }
                         out["redaction_worked"] = True
+                        # And the request and its scope, as the repaired conversation
+                        # shows them: a rewrite of the request, or a removed message a
+                        # bare "yes" answered, changes what the candidate is asked, and
+                        # the scope gate reads a conversation the repair changed.
+                        asked_now = last_user_message(kept, r["cut"])
+                        request_now = (asked_now or {}).get("content") or ""
+                        before_now = agent_message_before(kept, asked_now) if asked_now else ""
+                        if (request_now, before_now) != (request, before):
+                            verdict, tally, a = await _agree(
+                                lambda: asks_for_something(request_now, before=before_now), passes, keep_on=True,
+                                reading=lambda x: x.asks_for_something)
+                            out["asks_for_something"] = verdict
+                            out["asks_for_something_held"] = tally
+                            out["request_reason"] = a.request or a.reasoning
+                        if request_now:
+                            conversation_now = build_excerpt(kept, r["cut"], max_chars=RECORD_CHARS, record=RECORD)
+                            verdict, tally, scope = await _agree(
+                                lambda: in_scope(request_now, r.get("defect", ""), conversation=conversation_now),
+                                passes, keep_on=True, reading=lambda x: x.within_scope)
+                            out["within_scope"] = verdict
+                            out["within_scope_held"] = tally
+                            out["scope_reason"] = scope.reason
+                        out["gated_after_repair"] = True
             out["screen_passes"] = passes
             append(paths.screened, out)
             return True
         except Exception as e:
+            # A conversation longer than the gate's model reads: recorded, not an
+            # error retried on every run. The gates read it whole (G-81) and cannot
+            # be shown less than the candidate, so the build sets it aside.
+            if too_long(e):
+                out["too_long"] = f"{type(e).__name__}: {e}"[:300]
+                out["screen_passes"] = passes
+                append(paths.screened, out)
+                return True
             out["error"] = f"{type(e).__name__}: {e}"
             out["screen_passes"] = passes
             append(paths.screened, out)

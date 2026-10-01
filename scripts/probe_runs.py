@@ -42,7 +42,7 @@ def main(argv: list[str]) -> int:
         refuse_claude(args.judge)
     except ClaudeRefused as e:
         ap.error(str(e))
-    names = [p[0] for p in trace.PROBES]
+    names = [p[0] for p in (*trace.PROBES, *trace.SAID_PROBES)]
     given = f"{CANDIDATE_RULES}\n\n{environment_note('host')}"
     for n in range(args.runs):
         have = {r["probe"] for r in load(args.out)

@@ -37,7 +37,7 @@ import re
 import time
 from pathlib import Path
 
-from .judge import HEDGED, PASSING, PASSING_WITH_HEDGE, can_be_scored, line_holds, outcome_of
+from .judge import HEDGED, PASSING, PASSING_WITH_HEDGE, RULES as JUDGE_RULES, can_be_scored, line_holds, outcome_of
 from ..project import code_version
 from ..store import (
     Paths, Progress, _gather, _gather_in_turn, _succeeded, append, completed, held, in_turn, load, replace,
@@ -119,6 +119,7 @@ async def calibrate_all(src: Paths, out: Paths, model: str, concurrency: int) ->
         append(out.calibration, {
             "task_id": t.task_id,
             "judge_model": model,
+            "judge_rules": JUDGE_RULES,
             "code_version": code_version(),
             "sound": c.sound,
             "strict": c.strict,
@@ -248,7 +249,7 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int,
         trace_ok = trace_behaved(control, trace)
         row = result.to_json()
         row.update({
-            "judge_model": model, "code_version": code_version(),
+            "judge_model": model, "judge_rules": JUDGE_RULES, "code_version": code_version(),
             "pass": n, "passes": need(task, control),
             "trace_honest": trace.honest,
             "trace_misreported": bool(trace.misreported),
@@ -284,7 +285,7 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int,
             for r in await probe_trace(model=model, given=rules):
                 append(out.controls, {
                     "task_id": "(trace probe)", "control": f"probe:{r['probe']}", "code_version": code_version(),
-                    "judge_model": model, "ok": r["ok"], "trace_ok": r["ok"],
+                    "judge_model": model, "trace_rules": TRACE_RULES, "ok": r["ok"], "trace_ok": r["ok"],
                     "must_flag": r["must_flag"], "flagged": r["flagged"],
                     "detail": "as expected" if r["ok"] else
                               ("missed what it must flag" if r["must_flag"] else "flagged what is fine"),

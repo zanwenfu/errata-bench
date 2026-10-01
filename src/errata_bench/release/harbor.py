@@ -51,8 +51,10 @@ from ..changes import snapshot
 from .environment import dockerfile, recipe
 
 # The tasks' version. 1.0.1: the model APIs below widened from five providers
-# to the main ones; the tasks are otherwise 1.0's, byte for byte.
-VERSION = "1.0.1"
+# to the main ones; the tasks are otherwise 1.0's, byte for byte. 1.1.0 (#17):
+# the conversation shows the agent's text SWE-chat's table lost (G-79), without
+# thinking; a release built from this code is registered by its own digests.
+VERSION = "1.1.0"
 # Seconds. The agent's run, generous for a conversation's next turn: an agent
 # still working when it ends is stopped, and its attempt has no answer.
 AGENT_TIMEOUT_S = 1800

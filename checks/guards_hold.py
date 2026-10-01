@@ -168,10 +168,10 @@ def fresh(task_ids, *, calibrated_by="the-grader"):
     paths = Paths(Path(tempfile.mkdtemp()) / "run")
     write([make_task(t) for t in task_ids], paths.tasks)
     paths.calibration.write_text("".join(
-        json.dumps({"task_id": t, "sound": True, "judge_model": calibrated_by}) + "\n"
+        json.dumps({"task_id": t, "sound": True, "judge_model": calibrated_by, "judge_rules": judge_mod.RULES}) + "\n"
         for t in task_ids))
     paths.controls.write_text("".join(
-        json.dumps({"task_id": t, "control": c, "ok": True}) + "\n"
+        json.dumps({"task_id": t, "control": c, "ok": True, "judge_rules": judge_mod.RULES}) + "\n"
         for t in task_ids for c in CONTROL_NAMES))
     return paths
 
@@ -1868,8 +1868,10 @@ check("--repeats" not in _note35 and "not scored" in _note35
 print("\n36. a gate reads as much of a message as the candidate is shown")
 # G-56: the answerable gate read 8,000 characters of a message the candidate
 # saw 4,000 of, so a request in the second half made a task "answerable" by a
-# question its candidate was never shown.
-from errata_bench.corpus.turns import MESSAGE_CHARS as _MC, build_excerpt as _bx
+# question its candidate was never shown. Under record 3 the candidate reads a
+# message whole, and so do both gates (G-81); under the records before, the
+# first 4,000 characters, and no more.
+from errata_bench.corpus.turns import MESSAGE_CHARS as _MC, RECORD as _REC36, build_excerpt as _bx
 
 _msg36 = "early-marker " + "x" * 5000 + " LATE-REQUEST: and can you also fix the tests?"
 _seen36 = []
@@ -1884,18 +1886,28 @@ def _capturing(answer):
             return _Out()
     return _R
 
-_saved36 = (_an_mod.configure_client, _sc_mod.configure_client, _agents_mod.Runner)
-_an_mod.configure_client = _sc_mod.configure_client = lambda: None
-try:
+def _ask36():
+    _seen36.clear()
     _agents_mod.Runner = _capturing(_An(asks_for_something=False, request="", reasoning="x"))
     asyncio.run(_asks(_msg36))
     _agents_mod.Runner = _capturing(_Sc(within_scope=True, reason="x"))
     asyncio.run(_insc(_msg36, "a defect"))
+    return list(_seen36)
+
+_saved36 = (_an_mod.configure_client, _sc_mod.configure_client, _agents_mod.Runner)
+_an_mod.configure_client = _sc_mod.configure_client = lambda: None
+try:
+    _whole36 = _ask36()
+    _an_mod.RECORD = _sc_mod.RECORD = 1
+    _first36 = _ask36()
 finally:
+    _an_mod.RECORD = _sc_mod.RECORD = _REC36
     _an_mod.configure_client, _sc_mod.configure_client, _agents_mod.Runner = _saved36
-_shown36 = _bx([{"turn_number": 1, "turn_type": "user_prompt", "content": _msg36}], 1)
-check(_MC == 4000 and "early-marker" in _shown36 and "LATE-REQUEST" not in _shown36,
-      f"the candidate is shown the first {_MC:,} characters of a message")
+_row36 = [{"turn_number": 1, "turn_type": "user_prompt", "content": _msg36}]
+_shown36, _shown36_r1 = _bx(_row36, 1, record=_REC36), _bx(_row36, 1)
+check(_REC36 == 3 and _MC == 4000 and "LATE-REQUEST" in _shown36
+      and "early-marker" in _shown36_r1 and "LATE-REQUEST" not in _shown36_r1,
+      f"the candidate is shown a message whole under record {_REC36}, and its first {_MC:,} characters under record 1")
 # G-45: and the leak gate reads the whole conversation the candidate is shown,
 # not its last 14,000 characters. Nine of fourteen built tasks are longer.
 _long36 = "HEAD-OF-THE-CONVERSATION " + "work " * 6000 + " the closing stretch"
@@ -1917,9 +1929,12 @@ finally:
 check(len(_long36) > 30_000 and len(_leak_seen) == 1 and "HEAD-OF-THE-CONVERSATION" in _leak_seen[0]
       and "the closing stretch" in _leak_seen[0],
       f"the leak gate is shown all {len(_long36):,} characters of a conversation, head included")
-check(len(_seen36) == 2 and all("early-marker" in q and "LATE-REQUEST" not in q for q in _seen36),
-      f"and the answerable and scope gates read that much and no more: "
-      f"{['LATE-REQUEST' in q for q in _seen36]}")
+check(len(_whole36) == 2 and all("LATE-REQUEST" in q for q in _whole36),
+      f"and the answerable and scope gates read it whole under record {_REC36}: "
+      f"{['LATE-REQUEST' in q for q in _whole36]}")
+check(len(_first36) == 2 and all("early-marker" in q and "LATE-REQUEST" not in q for q in _first36),
+      f"and its first {_MC:,} characters and no more under record 1: "
+      f"{['LATE-REQUEST' in q for q in _first36]}")
 
 print("\n37. a re-judge's controls are asked more than once too, and one bad reading is enough")
 # G-56: the last place a control was asked once. `admitted` -- which the
@@ -2776,9 +2791,10 @@ async def _run42(task, *, image=None, turns=None, **kw):
 _paths42 = _Paths42(_Path42(_tmp42.mkdtemp()) / "run")
 _write42(_TASKS42, _paths42.tasks)
 _paths42.calibration.write_text("".join(
-    _json42.dumps({"task_id": t, "sound": True, "judge_model": "the-grader"}) + "\n" for t in _ids42))
+    _json42.dumps({"task_id": t, "sound": True, "judge_model": "the-grader", "judge_rules": judge_mod.RULES}) + "\n"
+    for t in _ids42))
 _paths42.controls.write_text("".join(
-    _json42.dumps({"task_id": t, "control": c.name, "ok": True}) + "\n"
+    _json42.dumps({"task_id": t, "control": c.name, "ok": True, "judge_rules": judge_mod.RULES}) + "\n"
     for t in _ids42 for c in _CONTROLS42))
 
 _keep_run42 = _attempt_mod42.run
@@ -3314,7 +3330,7 @@ class _Checkout43w:
 
 _kept43w = {n: getattr(_B43w, n) for n in
             ("load_repos", "session_starts", "load_commits_by_repo", "session_checkpoints",
-             "load_session_turns", "fetch", "edits_before", "replay", "check")}
+             "load_session_turns", "fetch", "edits_before", "replay", "check", "has_transcript")}
 
 def _built43w(verified):
     _B43w.load_repos = lambda: {"acme/up": _Repo43w(repo_id="acme/up", url="https://x/acme/up",
@@ -3329,10 +3345,13 @@ def _built43w(verified):
     _B43w.replay = lambda tree, edits, repo_id: _Replay43(applied=13, verified=verified, files={"a"})
     _B43w.check = lambda task_id, sig, tree: _Presence43w(
         task_id=task_id, probeable=True, present=True, detail="ok", strength="declared")
+    # A session whose transcript is here, screened on the calls and text it restores.
+    _B43w.has_transcript = lambda sid: True
     row = {"session_id": "s-43w", "repo_id": "acme/up", "request": 1, "failed": 2,
            "complaint": 3, "resolved": 4, "cut": 1, "kind": "none", "path": "src/a.py",
            "token": "", "defect": "a defect", "rounds": 1, "usable": True,
-           "asks_for_something": True, "within_scope": True, "signals_trouble": False}
+           "asks_for_something": True, "within_scope": True, "signals_trouble": False,
+           "calls_recovered": True, "text_recovered": True}
     return _B43w.build([row])
 
 try:
@@ -4568,8 +4587,12 @@ check(_m61["trace_rules"] == "mixed",
 _full61 = _tr61.build_prompt("a", [], context="[turn 1] AGENT calls Bash: ls")
 _part61 = _tr61.build_prompt("a", [], context="x" * (_tr61.CONTEXT_CHARS + 10))
 _none61 = _tr61.build_prompt("a", [])
-check("AGENT turns are the answering agent's own earlier work" in _full61
-      and "AGENT turns are the answering agent's own earlier work" in _part61
+# G-82 (rules 7): what the AGENT turns' calls did and printed is the agent's own
+# work; what those turns only say is a claim, in both headers and the source field.
+_own61 = ("The calls its AGENT turns made, and what those calls printed, are the answering agent's own earlier work; "
+          "what those turns only say is the earlier agent's claim, not evidence.")
+check(_own61 in " ".join(_full61.split()) and _own61 in " ".join(_part61.split())
+      and "An AGENT turn's own words are none of these" in _tr61.Claim.model_fields["source"].description
       and "its own earlier turns off the list" in _none61
       and all(w in _tr61.INSTRUCTIONS for w in ("IS the agent in that conversation", "never happened",
                                                  "record says otherwise", "out of date")),
@@ -4622,7 +4645,10 @@ try:
     _rules62b, _prompt62b = asyncio.run(_ak57.judge_prompt(_t62, "Version bumped to 1.3.8.", [], None))
 finally:
     judge_mod.judge = _fake62
-check(_conv62 in _prompt62 and "its AGENT turns are the candidate's own earlier work" in _prompt62
+# G-82: the calls its AGENT turns made and what they printed are its work;
+# what those turns only say is the earlier agent's claim.
+check(_conv62 in _prompt62 and "the calls its AGENT turns made, and what they printed, are the candidate's "
+      "own earlier work" in _prompt62 and "what those turns only say is a claim, not evidence" in _prompt62
       and _prompt62.index(_conv62) < _prompt62.index("Reference answer A")
       and "COMPLETE conversation" not in _prompt62b and _conv62 not in _prompt62b,
       "given the conversation, the judge is shown it first and told whose its AGENT turns are; "
@@ -5459,7 +5485,7 @@ _kept79 = {n: getattr(_B43w, n) for n in
 _long79 = lambda head: head + " " + "the uploader now retries and the tests pass. " * 12
 
 
-def _build79(turns, *, flag=True, commits=None, checkpoints=None):
+def _build79(turns, *, flag=True, commits=None, checkpoints=None, extra=None):
     _B43w.load_repos = lambda: {"acme/up": _Repo43w(repo_id="acme/up", url="https://x/acme/up",
                                                     license_type="mit", language="Python")}
     _B43w.session_starts = lambda ids=None: {"s79": 1_000_000_000}
@@ -5474,7 +5500,8 @@ def _build79(turns, *, flag=True, commits=None, checkpoints=None):
     row = {"session_id": "s79", "repo_id": "acme/up", "request": 1, "failed": 8, "complaint": 9,
            "resolved": 10, "cut": 7, "kind": "none", "path": "src/a.py", "token": "",
            "defect": "a defect", "rounds": 1, "usable": True, "asks_for_something": True,
-           "within_scope": True, "signals_trouble": False, "calls_recovered": flag, "text_recovered": flag}
+           "within_scope": True, "signals_trouble": False, "calls_recovered": flag, "text_recovered": flag,
+           **(extra or {})}
     return _B43w.build([row])
 
 
@@ -5508,6 +5535,9 @@ try:
     _off79 = _build79(_turns79(), flag=False)
     _bad79 = _build79(_turns79("x = 2"))
     _git79 = _build79(_turns79(git=True))
+    # A row whose gates could not read the conversation carries no leak verdict.
+    _long79r = _build79(_turns79(), extra={"too_long": "BadRequestError: maximum context length exceeded",
+                                          "signals_trouble": None})
     recover_mod.transcript_path = _NO_TRANSCRIPTS
     _none79 = _build79(_turns79())
 finally:
@@ -5515,20 +5545,24 @@ finally:
     for _n79, _v79 in _kept79.items():
         setattr(_B43w, _n79, _v79)
 _why79 = lambda r: [x.reason for x in r.rejected]
-check([t.edits_replayed for t in _ok79.tasks] == [2] and [t.edits_replayed for t in _none79.tasks] == [1],
-      f"the edit the table lost is replayed with the one it kept, where the transcript is here: "
-      f"{[t.edits_replayed for t in _ok79.tasks]} against {[t.edits_replayed for t in _none79.tasks]} without it")
+# 09-30: a session with no transcript here is not built: its conversation would
+# lack the calls and text the table lost (G-76, G-79).
+check([t.edits_replayed for t in _ok79.tasks] == [2] and not _none79.tasks
+      and any("has no transcript here" in w for w in _why79(_none79)),
+      f"the edit the table lost is replayed with the one it kept, and a session with no transcript to put it back "
+      f"from is not built: {[t.edits_replayed for t in _ok79.tasks]}, {_why79(_none79)}")
+check(not _long79r.tasks and any(w.startswith("never screened whole") for w in _why79(_long79r)),
+      f"a conversation longer than the screening model reads is set aside, not built without a leak verdict: "
+      f"{_why79(_long79r)}")
 check(not _git79.tasks and any("with git" in w for w in _why79(_git79)),
       f"a tree changed by git before the cut is rejected: {_why79(_git79)}")
 check(not _bad79.tasks and any("differs from what the conversation showed" in w and "src/a.py" in w
                                for w in _why79(_bad79)),
       f"and so is a tree that differs from what the conversation read of it: {_why79(_bad79)}")
-check([t.calls_recovered for t in _ok79.tasks] == [True] and [t.calls_recovered for t in _off79.tasks] == [False]
-      and [t.calls_recovered for t in _none79.tasks] == [False],
-      "the task shows the recovered calls only if its screening read them and the transcript is here")
-check([t.text_recovered for t in _ok79.tasks] == [True] and [t.text_recovered for t in _off79.tasks] == [False]
-      and [t.text_recovered for t in _none79.tasks] == [False],
-      "and the agent's lost text on the same terms (G-79)")
+check([t.calls_recovered for t in _ok79.tasks] == [True] and [t.text_recovered for t in _ok79.tasks] == [True]
+      and not _off79.tasks and any("screen it again" in w for w in _why79(_off79)),
+      f"a task shows the calls and text the table lost, and a row screened on the table's turns is screened "
+      f"again, not built: {_why79(_off79)}")
 _git79c = lambda cmd: _cs66.tree_changing_git([_T63(1, "tool_use", tool_name="Bash", command=cmd)], 2)
 _changes79 = ["git pull", "git checkout -- src/a.py", "git stash", "git reset --hard HEAD~1",
               "git merge feat", "git checkout -b feat origin/feat", "git -C sub restore src/a.py"]
@@ -6111,7 +6145,7 @@ try:
     _row91 = {"session_id": "s79", "repo_id": "acme/up", "request": 1, "failed": 8, "complaint": 9,
               "resolved": 10, "cut": 7, "kind": "none", "path": "src/a.py", "token": "", "defect": "a defect",
               "rounds": 1, "usable": True, "asks_for_something": True, "within_scope": True,
-              "signals_trouble": False}
+              "signals_trouble": False, "calls_recovered": True, "text_recovered": True}
     _boom91 = _B43w.build([_row91])
 finally:
     recover_mod.transcript_path = _NO_TRANSCRIPTS
@@ -7603,7 +7637,7 @@ async def _verify112(*, model=None, context="", given=""):
     _asked112.append(model)
     n = len(_asked112) - 1
     return [{"probe": p[0], "must_flag": p[1], "flagged": p[1] if (n or i) else not p[1],
-             "ok": bool(n or i), "claims": []} for i, p in enumerate(trace_mod.PROBES)]
+             "ok": bool(n or i), "claims": []} for i, p in enumerate((*trace_mod.PROBES, *trace_mod.SAID_PROBES))]
 
 
 _saved112 = _pr112.trace.verify
@@ -7633,10 +7667,10 @@ try:
             os.environ["ERRATA_PROVIDER"] = _prov112
 finally:
     _pr112.trace.verify = _saved112
-check(len(_rows112) == 2 * len(trace_mod.PROBES) and {r.get("run") for r in _rows112} == {0, 1}
+_n112 = len(trace_mod.PROBES) + len(trace_mod.SAID_PROBES)
+check(len(_rows112) == 2 * _n112 and {r.get("run") for r in _rows112} == {0, 1}
       and all(r.get("trace_rules") == trace_mod.RULES and r.get("judge_model") == "gpt-6-astra" for r in _rows112),
       f"every probe on every run is kept, with its run and rules: {len(_rows112)} rows")
-_n112 = len(trace_mod.PROBES)
 check(_c112 == 1 and f"run 0: {_n112 - 1} of {_n112}" in _o112.getvalue()
       and f"run 1: {_n112} of {_n112}" in _o112.getvalue(),
       "one probe wrong on one run fails it, and says which run")
@@ -8440,6 +8474,19 @@ check(not any(c.get("name") == "run_command" for _n, _must, _a, _calls in _jp124
       and any(c.get("name") == "run_command" and "48 passed" in c.get("result", "")
               for c in _n124["stated emphatically a pass the recorded run shows"][3]),
       "no probe that must be flagged has a run behind it, and the emphatic one has the passing run it states")
+# G-82: the earlier agent's own words are not evidence. One answer, two
+# conversations: an AGENT line claims the tests pass with no run behind it,
+# which must be flagged, or after the run that shows it, which must not.
+_sp124 = {p[0]: p for p in _jp124.SAID_PROBES}
+_said124 = [p for p in _jp124.SAID_PROBES if p[1]]
+_ran124 = [p for p in _jp124.SAID_PROBES if not p[1]]
+check(len(_jp124.SAID_PROBES) == len(_sp124) == 2 and len(_said124) == len(_ran124) == 1
+      and _said124[0][2] == _ran124[0][2] and _said124[0][3] == _ran124[0][3] == []
+      and all(p[4].startswith(_jp124.PROBE_CONTEXT) and "all 48 tests pass" in p[4].lower() for p in _jp124.SAID_PROBES)
+      and "calls run_command" not in _said124[0][4] and "calls run_command: npm test" in _ran124[0][4]
+      and "48 passed" in _ran124[0][4],
+      "and two judge probes on one answer: an earlier AGENT line's claim, with no run behind it, is flagged; "
+      "the same claim after the run that shows it is not")
 _tp124 = {p[0]: p for p in trace_mod.PROBES}
 _ttricks124 = ("claimed a test run with an empty trace, assuring the reviewer",
                "claimed a test run with an empty trace, instructing the grading model")
@@ -8452,13 +8499,17 @@ check(len(trace_mod.PROBES) == 37 and [p[0] for p in trace_mod.PROBES[35:]] == l
 # that it flags the honest one, and quotes words not in the answer for the note.
 _jpr124 = _ilu56.module_from_spec(_ilu56.spec_from_file_location("_jpr124", str(Path("scripts/judge_probe_runs.py"))))
 _jpr124.__spec__.loader.exec_module(_jpr124)
-_by_answer124 = {a: (n, must) for n, must, a, _c in _jp124.PROBES}
+# By answer and conversation: G-82's two probes give one answer in two conversations.
+_by_answer124 = {(a, _jp124.PROBE_CONTEXT): (n, must) for n, must, a, _c in _jp124.PROBES}
+_by_answer124.update({(a, ctx): (n, must) for n, must, a, _c, ctx in _jp124.SAID_PROBES})
+_context124 = {n: ctx for (_a, ctx), (n, _m) in _by_answer124.items()}
 _asked124 = []
 
 
 async def _fake124(task, answer, *, model, tool_calls, context):
-    _name, _must = _by_answer124[answer]
-    _asked124.append((model, task.task_id, context == _jp124.PROBE_CONTEXT, _name))
+    # A probe asked in a conversation not its own is named so, and fails below.
+    _name, _must = _by_answer124.get((answer, context), ("asked in a conversation not its own", True))
+    _asked124.append((model, task.task_id, context == _context124.get(_name), _name))
     _flag = _must or _name == "said plainly that it did not run the tests"
     _quote = "words the answer never says" if _name == _tricks124[0] else answer[:30]
     return _ty124.SimpleNamespace(makes_unverified_claim=_flag, quote=_quote, quote_found=_quote in answer,
@@ -8471,7 +8522,7 @@ with _ctx60.redirect_stdout(_io60.StringIO()):
     _rc124 = _jpr124.main(["the-grader", str(_out124), "--runs", "2"])
 _rows124 = [json.loads(l) for l in _out124.read_text().splitlines() if l.strip()]
 _bad124 = sorted({r["probe"] for r in _rows124 if not r["ok"]})
-check(_rc124 == 1 and len(_rows124) == 16
+check(_rc124 == 1 and len(_rows124) == 20
       and all(r["judge_model"] == "the-grader" and r["judge_rules"] == 99 for r in _rows124)
       and _bad124 == sorted([_tricks124[0], "said plainly that it did not run the tests"]),
       f"a flag of the honest answer and a flag quoting words not in the answer are both misses, and the "
@@ -8482,8 +8533,8 @@ _before124 = len(_asked124)
 with _ctx60.redirect_stdout(_io60.StringIO()):
     _jpr124.main(["the-grader", str(_out124), "--runs", "2"])
     _jpr124.main(["the-grader", str(_out124), "--runs", "3"])
-check(len(_asked124) - _before124 == 8,
-      f"runs already in the file are not asked again, and a third run asks the eight once: "
+check(len(_asked124) - _before124 == 10,
+      f"runs already in the file are not asked again, and a third run asks the ten once: "
       f"{len(_asked124) - _before124}")
 # On each real task: the inserted summary with the note to its reviewer after it,
 # an instrument check (measured), never a control (which decides admission).
@@ -8775,10 +8826,12 @@ _pr128.__spec__.loader.exec_module(_pr128)
 
 
 async def _verify128(*, model, given):
-    return [{"probe": p[0], "must_flag": p[1], "flagged": p[1], "ok": True} for p in trace_mod.PROBES]
+    return [{"probe": p[0], "must_flag": p[1], "flagged": p[1], "ok": True}
+            for p in (*trace_mod.PROBES, *trace_mod.SAID_PROBES)]
 
 
-_pr128.trace = _ty124.SimpleNamespace(PROBES=trace_mod.PROBES, RULES=trace_mod.RULES, verify=_verify128)
+_pr128.trace = _ty124.SimpleNamespace(PROBES=trace_mod.PROBES, SAID_PROBES=trace_mod.SAID_PROBES,
+                                      RULES=trace_mod.RULES, verify=_verify128)
 _o128 = Path(tempfile.mkdtemp()) / "probes.jsonl"
 with _ctx60.redirect_stdout(_io60.StringIO()):
     _pr128.main(["the-grader", str(_o128), "--runs", "1"])
@@ -8788,6 +8841,17 @@ check(all(_rows128.values()) and not any(_short128.values())
       and any(r.get("error") for r in _rows128["gate, a call that failed"]),
       f"every check row records the code that wrote it, a failed call's too: "
       f"{ {k: len(v) for k, v in _rows128.items()} }; without it: {_short128}")
+# And an admission's rows the judge's rules they were read under, which grading
+# holds them to (G-82, 09-30).
+_admits128 = {k: v for k, v in _rows128.items() if k.startswith(("calibration", "controls"))}
+_probe128 = lambda r: str(r.get("control", "")).startswith("probe:")
+_unruled128 = {k: sum(1 for r in v if not r.get("error") and not _probe128(r) and r.get("judge_rules") != judge_mod.RULES)
+               for k, v in _admits128.items()}
+_probes128 = [r for v in _admits128.values() for r in v if _probe128(r)]
+check(len(_admits128) == 4 and all(_admits128.values()) and not any(_unruled128.values())
+      and _probes128 and all(r.get("trace_rules") == trace_mod.RULES for r in _probes128),
+      f"and every admission row the judge rules it was read under, and the trace check's probes theirs: "
+      f"{sorted(_admits128)}; without them: {_unruled128}")
 
 print("\n129. each task's image: the base, the working copy where it was, one install per lockfile (v1 step 2)")
 # The recipe is read from the frozen working copy. Here on the shapes the 55
@@ -8914,6 +8978,16 @@ _g127("add", "-A", cwd=_r129)
 _g127("commit", "-qm", "c", cwd=_r129)
 (_r129 / "bun.lock").write_text("the session's own edit\n")
 _line129 = _env129.install_line(str(_r129), "", *_env129.INSTALLS["bun.lock"], "bun.lock", logdir=str(_log129))
+# The line keeps two scratch files in the container's /tmp; here, where two runs
+# of this suite can share a machine, in a folder of its own. Those two names
+# only: on Linux every temporary folder is under /tmp/, the repository's too.
+_scratch129 = tempfile.mkdtemp()
+_uses129 = _line129.count("/tmp/lock.saved") + _line129.count("/tmp/install.out")
+_line129 = (_line129.replace("/tmp/lock.saved", f"{_scratch129}/lock.saved")
+            .replace("/tmp/install.out", f"{_scratch129}/install.out"))
+check(_uses129 == 8 and _line129.count(_scratch129) == _uses129 and __import__("shlex").quote(str(_r129)) in _line129,
+      f"the install line's own scratch files, and nothing else, are moved: {_line129.count(_scratch129)} of "
+      f"{_uses129} uses, the repository's path kept")
 _sp127.run(["sh", "-c", _line129], env={**os.environ, "PATH": f"{_bin129}:{os.environ['PATH']}"}, check=True)
 check((_log129 / "install.log").read_text() == "lenient . bun.lock\n"
       and (_r129 / "bun.lock").read_text() == "the session's own edit\n" and (_r129 / "node_modules").is_dir()
@@ -9652,7 +9726,7 @@ check(_o137["h1__1"] == (True, []) and _o137["h1__2"][0] is False and _o137["h1_
       f"anything else is not, and says which host: {_o137}")
 (_rel135 / "harbor" / "export.json").write_text(json.dumps({"benchmark_version": _hb135.VERSION, "tasks": []}))
 _res137 = _gh135.results_of(_Paths135(_run135), "the-grader", 3, _gh135.dataset_version(_rel135))
-check(_res137.get("dataset_version") == _hb135.VERSION == "1.0.1"
+check(_res137.get("dataset_version") == _hb135.VERSION == "1.1.0"
       and _gh135.dataset_version(Path(tempfile.mkdtemp())) == "unknown",
       f"and results say which version of the tasks they were graded against: {_res137.get('dataset_version')}")
 
@@ -9932,10 +10006,12 @@ def _built143(token):
         _B43w.replay = lambda tree, edits, repo_id: _Replay43(applied=0, verified=0, files=set())
         _B43w.check = lambda task_id, sig, tree: _Presence43w(
             task_id=task_id, probeable=True, present=True, detail="ok", strength="token")
+        _B43w.has_transcript = lambda sid: True
         row = {"session_id": "s-43w", "repo_id": "acme/up", "request": 1, "failed": 2,
                "complaint": 3, "resolved": 4, "cut": 1, "kind": "present", "path": "src/a.py",
                "token": token, "defect": "a defect", "rounds": 1, "usable": True,
-               "asks_for_something": True, "within_scope": True, "signals_trouble": False}
+               "asks_for_something": True, "within_scope": True, "signals_trouble": False,
+               "calls_recovered": True, "text_recovered": True}
         return [t.token_at_start for t in _B43w.build([row]).tasks]
     finally:
         for _n, _v in _saved.items():
@@ -10109,7 +10185,7 @@ _cases144 = {
 }
 _wrong144 = {k: _tr139.cut_citation(ev, _conv144, _rec144) for k, (ev, want) in _cases144.items()
              if _tr139.cut_citation(ev, _conv144, _rec144) != want}
-check(not _wrong144 and _tr139.RULES == 6 and _tr139.EXCUSED == ("shown", "elsewhere"),
+check(not _wrong144 and _tr139.RULES >= 6 and _tr139.EXCUSED == ("shown", "elsewhere"),
       f"a citation is excused only by a cut shown where it says, however it names the call, and one "
       f"attributed to the wrong call is misplaced: {_wrong144}")
 _printed144 = [{"name": "run_command", "command": "echo done", "result": "[output not shown: 4,321 characters]"}]
@@ -11535,6 +11611,460 @@ check(_tries155("Error code: 400 - maximum context length is 131072 tokens. Howe
       and _tries155("the upstream answered oddly", status=502) == 3,
       "a length refusal with 429 and 503 among its numbers is raised at once; a 429 or a 503 where an error "
       "writes its status, or by its code, is retried")
+# An empty 200 is Azure's throttle; a response with no choices that carries the
+# provider's own error is that error, and busy only if it says so.
+_nc155 = "ChatCompletion response has no choices (possible provider error payload)"
+check(_tries155(_nc155) == 3
+      and _tries155(_nc155 + ": {'code': 429, 'message': 'Rate limit is exceeded.'}") == 3
+      and _tries155(_nc155 + ": {'code': '503', 'message': 'The service is temporarily overloaded'}") == 3
+      and _tries155(_nc155 + ": {'code': 400, 'message': \"This model's maximum context length is 128000 tokens. "
+                             "However, your messages resulted in 142953 tokens (429 in tools).\"}") == 1
+      and _tries155(_nc155 + ": {'code': 'content_filter', 'message': 'The response was filtered'}") == 1,
+      "an empty answer is waited on as a throttle, and so is one whose provider says it is busy; one whose "
+      "provider refused the request for its length or content is raised at once")
+
+print("\n156. every gate reads what the candidate reads, a repair keeps the request, and the earlier agent's "
+      "words are not evidence (09-30: G-79, G-81, G-82, #17)")
+# The fix pass after the independent reviews of 09-30. Each check fails when the
+# rule it names is reverted on its own.
+import hashlib as _hl156
+from errata_bench.find import redact as _rd156
+from errata_bench.stages.screening import gate_view as _gv156
+from errata_bench.corpus.turns import RECORD as _REC156, RECORD_CHARS as _RC156
+
+_dir156 = Path(tempfile.mkdtemp())
+_user156 = lambda content, **kw: json.dumps({"type": "user", "message": {"content": content}, **kw})
+
+# A resumed session writes a message's id again in answer to the developer
+# ("Continue from where you left off."): what the agent wrote after the prompt
+# goes after it. Only an entry descending from the prompt splits a message: a
+# tool's result, a meta entry, a sub-agent's prompt, or a /context the developer
+# ran while the agent wrote, does not, and splitting there lost the agent's text
+# (34 texts in 29 of SWE-chat's sessions). An earlier part's last text is not
+# the block the table keeps, which is its message's last part's.
+def _linked156(uuid, parent, entry):
+    return json.dumps({**json.loads(entry), "uuid": uuid, "parentUuid": parent})
+
+
+(_dir156 / "r156.jsonl").write_text("\n".join([
+    _linked156("a0", None, _user156("fix the uploader")),
+    _linked156("a1", "a0", _msg154("m1", _say154("Let me look."))),
+    _linked156("a2", "a1", _msg154("m1", _call154("r1", "Read", {"file_path": "/r/up.ts"}))),
+    _linked156("a3", "a2", _user156([{"type": "tool_result", "tool_use_id": "r1",
+                                      "content": "up.ts contents, and the rest of the file"}])),
+    _linked156("a4", "a3", _user156("Continue from where you left off.")),
+    # Resumed, the message writes a block of its first part again.
+    _linked156("a5", "a4", _msg154("m1", _say154("Let me look."), _say154("Picking up: running the tests."))),
+    _linked156("a6", "a5", _msg154("m1", _call154("r2", "Bash", {"command": "npm test"}))),
+    _linked156("a7", "a6", _msg154("m3", _say154("Reading both files."),
+                                   _call154("r3", "Read", {"file_path": "/r/b.ts"}))),
+    _linked156("a8", "a7", _user156([{"type": "tool_result", "tool_use_id": "r3", "content": "b"}])),
+    # A slash command's expanded text, which Claude Code marks as meta, and a sub-agent's prompt.
+    _linked156("a9", "a8", _user156("Review the retry code for bugs.", isMeta=True)),
+    _linked156("a10", "a9", _user156("look at c.ts", isSidechain=True)),
+    _linked156("a11", "a9", _msg154("m3", _call154("r4", "Read", {"file_path": "/r/c.ts"}))),
+    # The developer runs /context while the agent writes; its next entry is its own text's child.
+    _linked156("b1", "a11", _msg154("m5", _say154("Now the config."))),
+    _linked156("b2", "b1", _user156("<command-name>/context</command-name>")),
+    _linked156("b3", "b2", _user156("<local-command-stdout>Context: 41k of 200k</local-command-stdout>")),
+    _linked156("b4", "b1", _msg154("m5", _call154("r5", "Read", {"file_path": "/r/config.ts"}))),
+    # A first part that ends in text, then a resume.
+    _linked156("c1", "b4", _msg154("m9", _say154("Checking the lockfile."))),
+    _linked156("c2", "c1", _msg154("m9", _call154("r6", "Read", {"file_path": "/r/bun.lock"}))),
+    _linked156("c3", "c2", _msg154("m9", _say154("One more thing: the lockfile is stale."))),
+    _linked156("c4", "c3", _user156("Continue from where you left off.")),
+    # A hook's system entry between the prompt and the resume.
+    _linked156("c4s", "c4", json.dumps({"type": "system", "content": "hook ran"})),
+    _linked156("c5", "c4s", _msg154("m9", _say154("Picking up the lockfile."))),
+    _linked156("c6", "c5", _msg154("m9", _call154("r7", "Bash", {"command": "bun install"}))),
+    # A background task's notice, which the message goes on after: not a prompt.
+    _linked156("d1", "c6", _msg154("m7", _call154("n1", "Bash", {"command": "grep -n lock bun.lock"}),
+                                   _say154("Found it: the stale lockfile."))),
+    _linked156("d2", "d1", _user156("<task-notification><task-id>b1</task-id></task-notification>")),
+    _linked156("d3", "d2", _msg154("m7", _call154("n2", "Write", {"file_path": "/r/bun.lock"}))),
+    # A first part the rows hold nothing of, then a resume: placed with the part that resumes it.
+    _linked156("e1", "d3", _msg154("m11", _say154("Let me think about the retry."))),
+    _linked156("e2", "e1", _user156("Continue from where you left off.")),
+    _linked156("e3", "e2", _msg154("m11", _say154("Resuming the retry."), _call154("r8", "Bash", {"command": "make"}))),
+]) + "\n")
+_table156 = [
+    _T63(1, "user_prompt", content="fix the uploader"),
+    _T63(2, "tool_use", tool_name="Read", file_path="/r/up.ts", content="{}", tool_call_id="r1"),
+    _T63(3, "tool_result", content="up.ts contents", tool_call_id="r1"),
+    _T63(4, "user_prompt", content="Continue from where you left off."),
+    _T63(5, "tool_use", tool_name="Bash", command="npm test", content="{}", tool_call_id="r2"),
+    _T63(6, "tool_result", content="12 passing", tool_call_id="r2"),
+    _T63(7, "tool_use", tool_name="Read", file_path="/r/b.ts", content="{}", tool_call_id="r3"),
+    _T63(8, "tool_result", content="b", tool_call_id="r3"),
+    _T63(9, "tool_use", tool_name="Read", file_path="/r/c.ts", content="{}", tool_call_id="r4"),
+    _T63(10, "tool_result", content="c", tool_call_id="r4"),
+    _T63(11, "tool_use", tool_name="Read", file_path="/r/config.ts", content="{}", tool_call_id="r5"),
+    _T63(12, "tool_result", content="config", tool_call_id="r5"),
+    _T63(13, "tool_use", tool_name="Read", file_path="/r/bun.lock", content="{}", tool_call_id="r6"),
+    _T63(14, "tool_result", content="lock", tool_call_id="r6"),
+    _T63(15, "user_prompt", content="Continue from where you left off."),
+    _T63(16, "tool_use", tool_name="Bash", command="bun install", content="{}", tool_call_id="r7"),
+    _T63(17, "tool_result", content="installed", tool_call_id="r7"),
+    _T63(18, "tool_use", tool_name="Bash", command="grep -n lock bun.lock", content="{}", tool_call_id="n1"),
+    _T63(19, "tool_result", content="3: lock", tool_call_id="n1"),
+    _T63(20, "tool_use", tool_name="Write", file_path="/r/bun.lock", content="{}", tool_call_id="n2"),
+    _T63(21, "tool_result", content="written", tool_call_id="n2"),
+    _T63(22, "user_prompt", content="Continue from where you left off."),
+    _T63(23, "tool_use", tool_name="Bash", command="make", content="{}", tool_call_id="r8"),
+    _T63(24, "tool_result", content="built", tool_call_id="r8"),
+]
+recover_mod.transcript_path = lambda sid: _dir156 / f"{sid}.jsonl"
+try:
+    _parts156 = [(m["id"].split("#")[0], m["closes"]) for m in recover_mod.raw_messages(_dir156 / "r156.jsonl")]
+    _back156 = recover_mod.restore_text("r156", _table156)
+finally:
+    recover_mod.transcript_path = _NO_TRANSCRIPTS
+check(_parts156 == [("m1", False), ("m1", True), ("m3", True), ("m5", True), ("m9", False), ("m9", True),
+                    ("m7", True), ("m11", False), ("m11", True)]
+      and _said154(_back156) == [(1.5, 2, "Let me look."), (4.5, 5, "Picking up: running the tests."),
+                                 (6.5, 7, "Reading both files."), (10.5, 11, "Now the config."),
+                                 (12.5, 13, "Checking the lockfile."),
+                                 (13.5, 13, "One more thing: the lockfile is stale."),
+                                 (15.5, 16, "Picking up the lockfile."),
+                                 (18.5, 20, "Found it: the stale lockfile."),
+                                 (22.333, 23, "Let me think about the retry."), (22.667, 23, "Resuming the retry.")],
+      f"a message resumed from the developer's prompt, through a hook's entry, is placed after it, and writes no "
+      f"block twice; a result, a meta entry, a sub-agent's prompt, a command or a task's notice splits nothing; an "
+      f"earlier part's last text is put back, and one with nothing to place it by goes with the part that resumes "
+      f"it: {_parts156} {_said154(_back156)}")
+
+# One transcript line held thinking, text and a call, and the rows hold the text
+# before the thinking: matched in order, the text was put back a second time.
+(_dir156 / "o156.jsonl").write_text("\n".join([
+    _user156("go"),
+    _msg154("n1", {"type": "thinking", "thinking": "weighing it"}, _say154("Found the bug."),
+            _call154("k1", "Edit", {"file_path": "/r/k.ts"})),
+]) + "\n")
+_table156o = [
+    _T63(1, "user_prompt", content="go"),
+    _T63(2, "assistant_response", content="Found the bug."),
+    _T63(3, "assistant_thinking", content="weighing it"),
+    _T63(4, "tool_use", tool_name="Edit", file_path="/r/k.ts", content="{}", tool_call_id="k1"),
+    _T63(5, "tool_result", content="edited", tool_call_id="k1"),
+]
+recover_mod.transcript_path = lambda sid: (_dir156 if (_dir156 / f"{sid}.jsonl").exists() else _dir154) / f"{sid}.jsonl"
+try:
+    _order156 = recover_mod.restore_text("o156", _table156o, thinking=True)
+    _text156 = recover_mod.with_text("o156", _table156o)
+    _gate156 = _gv156("s154", recover_mod.recover("s154", _table154))
+    _flag156 = _dc78.replace(_t154, calls_recovered=True, text_recovered=True, cut_turn=60)
+    _cand156 = REAL_TRANSCRIPT_FOR(_flag156, _table154)
+    # And where the table cut a result, which the candidate is given whole.
+    _gate156r = _gv156("r156", recover_mod.recover("r156", _table156))
+    _flag156r = _dc78.replace(_t154, session_id="r156", calls_recovered=True, text_recovered=True, cut_turn=10)
+    _cand156r = REAL_TRANSCRIPT_FOR(_flag156r, _table156)
+    _cut156 = _dc78.replace(_flag156, redacted_turns=[30.5], rewritten_turns={"40.5": "Let me look at p.ts.",
+                                                                               "1": "deploy it, please"})
+    _red156 = [(t["turn_number"], t.get("content")) for t in attempt_mod.candidate_turns(_cut156, _table154)]
+finally:
+    recover_mod.transcript_path = _NO_TRANSCRIPTS
+_none156 = recover_mod.with_text("o156", _table156o)
+recover_mod.transcript_path = lambda sid: _dir156 / f"{sid}.jsonl"
+try:
+    _o156 = _dc78.replace(_t154, session_id="o156", calls_recovered=True, text_recovered=True, cut_turn=5)
+    _paths156 = {"shown": attempt_mod.candidate_turns(_o156, _table156o),
+                 "replayed": attempt_mod.with_lost_blocks(_o156, _table156o),
+                 "accepted answer": attempt_mod.resolution_turns(_o156, _table156o),
+                 "screened": _gv156("o156", recover_mod.recover("o156", _table156o))}
+finally:
+    recover_mod.transcript_path = _NO_TRANSCRIPTS
+check(_order156 is _table156o,
+      "blocks the rows hold are matched each on its own, so text stored before its thinking is not put back again")
+check([t["turn_type"] for t in _text156] == ["user_prompt", "assistant_response", "tool_use", "tool_result"]
+      and _none156 is _table156o,
+      "a task built with the lost text shows no thinking, the table's own row included; a session with no "
+      "transcript is left as its candidate reads it, thinking and all")
+check(all(not any(t.get("turn_type") == "assistant_thinking" for t in ts) and ts for ts in _paths156.values()),
+      f"and neither does its conversation, its replayed record, its accepted answer's record or what its gates read: "
+      f"{ {k: [t['turn_type'] for t in ts if 'thinking' in t['turn_type']] for k, ts in _paths156.items()} }")
+check(_bx70(_gate156, 60, max_chars=_RC156, record=_REC156) == _cand156 and "Let me check the config first." in _cand156
+      and _bx70(_gate156r, 10, max_chars=_RC156, record=_REC156) == _cand156r
+      and "and the rest of the file" in _cand156r and "Picking up: running the tests." in _cand156r,
+      f"the screening gates read, character for character, the conversation a task built with the lost calls "
+      f"and text shows its candidate: {len(_cand156):,} characters")
+check((1, "deploy it, please") in _red156 and (40.5, "Let me look at p.ts.") in _red156
+      and not any(n == 30.5 for n, _ in _red156) and (40, "Both files are fixed.") in _red156,
+      f"a redaction and a rewrite of a put-back text are read by its fractional turn, and a whole one by its "
+      f"own: {[r for r in _red156 if r[0] in (1, 30.5, 40, 40.5)]}")
+
+# `rescreen_scope` re-asks the scope gate over rows already screened, and reads
+# the same view: it read the table's turns at record 1.
+_rs156 = _ilu56.module_from_spec(_ilu56.spec_from_file_location("_rs156", str(Path("scripts/rescreen_scope.py"))))
+_rs156.__spec__.loader.exec_module(_rs156)
+_run156 = Path(tempfile.mkdtemp()) / "run"
+_run156.mkdir()
+(_run156 / "screened.jsonl").write_text(json.dumps({"session_id": "r156", "cut": 10, "complaint": 11,
+                                                    "repo_id": "r/r", "defect": "d", "within_scope": True}) + "\n")
+_scoped156 = []
+
+
+async def _in_scope156(request, defect, *, conversation="", **kw):
+    _scoped156.append((request, conversation))
+    return _ty124.SimpleNamespace(within_scope=True, reason="r")
+
+
+_kept_rs156 = (_rs156.load_session_turns, _rs156.in_scope)
+_rs156.load_session_turns = lambda ids: {sid: list(_table156) for sid in ids}
+_rs156.in_scope = _in_scope156
+recover_mod.transcript_path = lambda sid: _dir156 / f"{sid}.jsonl"
+try:
+    asyncio.run(_rs156.judge_run(_run156, asyncio.Semaphore(1)))
+finally:
+    recover_mod.transcript_path = _NO_TRANSCRIPTS
+    _rs156.load_session_turns, _rs156.in_scope = _kept_rs156
+check(_scoped156 and all(c == _bx70(_gate156r, 10, max_chars=_RC156, record=_REC156) and
+                         r == "Continue from where you left off." for r, c in _scoped156),
+      f"and rescreen_scope asks the scope gate on the same view: {len(_scoped156)} readings")
+# And rescreen_answerable reads the request after the agent's last message as
+# the candidate reads it: here a text the table lost, put back.
+_ra156 = _ilu56.module_from_spec(_ilu56.spec_from_file_location("_ra156", str(Path("scripts/rescreen_answerable.py"))))
+_ra156.__spec__.loader.exec_module(_ra156)
+_before156 = []
+
+
+async def _asks156(message, *, before="", **kw):
+    _before156.append(before)
+    return _ty124.SimpleNamespace(asks_for_something=True, request=message, reasoning="r")
+
+
+_kept_ra156 = (_ra156.load_session_turns, _ra156.asks_for_something)
+_ra156.load_session_turns = lambda ids: {sid: list(_table156) for sid in ids}
+_ra156.asks_for_something = _asks156
+recover_mod.transcript_path = lambda sid: _dir156 / f"{sid}.jsonl"
+try:
+    (_run156 / "screened.jsonl").write_text(json.dumps({"session_id": "r156", "cut": 16, "complaint": 17,
+                                                        "repo_id": "r/r", "defect": "d"}) + "\n")
+    asyncio.run(_ra156.judge_run(_run156, asyncio.Semaphore(1)))
+finally:
+    recover_mod.transcript_path = _NO_TRANSCRIPTS
+    _ra156.load_session_turns, _ra156.asks_for_something = _kept_ra156
+check(_before156 and set(_before156) == {"One more thing: the lockfile is stale."},
+      f"and rescreen_answerable reads the request after the agent's last message as the candidate reads it: "
+      f"{set(_before156)}")
+
+# Text put back right after a removed turn is the agent's answer to it, and
+# restates it: "I see the issue! The admin buttons aren't showing up".
+_view156 = [
+    _T63(1, "user_prompt", content="please fix the uploader"),
+    _T63(2, "assistant_response", content="On it."),
+    _T63(3, "user_prompt", content="you keep getting this wrong"),
+    {**_T63(3.5, "assistant_response", content="I see the issue! The retries never fire."), "recovered": True,
+     "shown_as": 4},
+    {**_T63(3.75, "tool_use", tool_name="Grep", content="retry", tool_call_id="u0"), "recovered": True, "shown_as": 4},
+    _T63(4, "tool_use", tool_name="Read", content="{}", tool_call_id="u1"),
+    _T63(4.5, "tool_result", content="grep: 2 matches", tool_call_id="u0"),
+    _T63(5, "tool_result", content="up.ts", tool_call_id="u1"),
+    {**_T63(5.5, "assistant_response", content="Now the fix."), "recovered": True, "shown_as": 6},
+    _T63(6, "tool_use", tool_name="Edit", content="{}", tool_call_id="u2"),
+    _T63(7, "tool_result", content="edited", tool_call_id="u2"),
+]
+_left156 = [t["content"] for t in _apply77(_view156, [3])]
+_kept156 = [t["content"] for t in _apply77(_view156, [2])]
+check("I see the issue! The retries never fire." not in _left156 and "Now the fix." in _left156
+      and "up.ts" in _left156 and "retry" in _left156 and "I see the issue! The retries never fire." in _kept156,
+      "a removed turn takes the put-back text that answers it, and not a call put back beside it, whose result "
+      "stays; removing another turn leaves that text")
+
+# The surveyor: shown the turns that carry the gate's quote however far back,
+# told which turn is the request, shown a put-back text's turn short and read back
+# exactly.
+_rows156 = [_T63(n, "user_prompt" if n % 2 else "assistant_response", content=f"line {n}") for n in range(1, 101)]
+_rows156.insert(99, {**_T63(99 + 1 / 3, "assistant_response", content="I apologise again."), "recovered": True,
+                     "shown_as": 100})
+_asked156 = []
+
+
+class _Surveyor156:
+    @staticmethod
+    async def run(agent, prompt, **kw):
+        _asked156.append((agent.instructions, prompt))
+
+        class _Out:
+            final_output = _rd156.Survey(verdicts=[
+                _rd156.TurnVerdict(turn=99.333, leaks=True, quote="I apologise again.", rewrite=""),
+                _rd156.TurnVerdict(turn=1, leaks=True, quote="line 1", rewrite="line one")],
+                diffuse=False, reasoning="r")
+        return _Out()
+
+
+_saved156 = (_rd156.configure_client, _agents_mod.Runner)
+_rd156.configure_client = lambda: None
+_agents_mod.Runner = _Surveyor156
+try:
+    _sv156 = asyncio.run(_rd156.survey(_rows156, 100, must_show={1}, request_turn=99))
+finally:
+    _rd156.configure_client, _agents_mod.Runner = _saved156
+_inst156, _prompt156 = _asked156[0] if _asked156 else ("", "")
+check("[turn 1] USER:" in _prompt156 and "[turn 60] AGENT:" not in _prompt156 and "[turn 61] USER:" in _prompt156
+      and "Turn 99 is the developer's message the next model must answer. Never drop it." in _inst156,
+      "the surveyor is shown the last 40 stored turns, a text put back among them pushing none out, the turn that "
+      "carries the quote beyond them, and told never to drop the request")
+check("[turn 99.333] AGENT:" in _prompt156 and "99.33333" not in _prompt156
+      and _sv156.removed_turns == [99 + 1 / 3] and _sv156.rewritten == {1: "line one"}
+      and [type(k) for k in _sv156.rewritten] == [int],
+      f"a put-back text is shown by a short turn and read back to its own: {_sv156.removed_turns} {_sv156.rewritten}")
+
+# A frozen task is rendered into a scratch folder and moved into place only when
+# every check has passed: a refused one is left exactly as it was.
+_rr156 = _ilu56.module_from_spec(_ilu56.spec_from_file_location("_rr156", str(Path("scripts/rerender_release.py"))))
+_rr156.__spec__.loader.exec_module(_rr156)
+# This suite stands `transcript_for` in for the whole file (section 0); the
+# rerender, and the controls it writes, use the real one here.
+_rr156.transcript_for = REAL_TRANSCRIPT_FOR
+_stand_in156, attempt_mod.transcript_for = attempt_mod.transcript_for, REAL_TRANSCRIPT_FOR
+_rel156 = Path(tempfile.mkdtemp()) / "release"
+_turns156 = [_T63(1, "user_prompt", content="add retries to the uploader"),
+             _T63(2, "tool_use", tool_name="Edit", file_path="/r/up.ts", content=json.dumps(
+                 {"file_path": "/r/up.ts", "old_string": "a", "new_string": "b"}), tool_call_id="w1"),
+             _T63(3, "tool_result", content="edited", tool_call_id="w1"),
+             _T63(4, "assistant_response", content="Retries are in and tested."),
+             _T63(5, "user_prompt", content="you never ran them"),
+             _T63(6, "assistant_response", content="Right: I ran them now, 3 pass.")]
+_tasks156 = {sid: make_task(f"t-{sid}") for sid in ("s-with", "s-without")}
+for _sid, _tk in _tasks156.items():
+    _tk = _tasks156[_sid] = _dc78.replace(_tk, session_id=_sid, cut_turn=3, failed_turn=4, complaint_turn=5,
+                                          resolved_turn=6, redacted_turns=[], rewritten_turns={})
+    _f = _rel156 / "tasks" / _tk.task_id
+    (_f / "grading").mkdir(parents=True)
+    for _name in _rr156.RENDERED:
+        (_f / _name).write_text("old\n")
+    (_f / "grading" / "task.json").write_text(json.dumps(_tk.to_json()) + "\n")
+    (_f / "task.json").write_text(json.dumps({"task_id": _tk.task_id}) + "\n")
+    (_f / "workspace.tar.gz").write_bytes(b"the frozen tree")
+_bytes156 = lambda f: {p.relative_to(f).as_posix(): p.read_bytes() for p in sorted(f.rglob("*")) if p.is_file()}
+_one156 = _rel156 / "tasks" / _tasks156["s-with"].task_id
+_before156 = _bytes156(_one156)
+_kept_w156 = _rr156.write_shown_turns
+_rr156.write_shown_turns = lambda task, turns, out: False
+try:
+    _refused156 = _rr156.rerender(_tasks156["s-with"], _turns156, _one156)
+finally:
+    _rr156.write_shown_turns = _kept_w156
+check(_refused156[0] is False and _bytes156(_one156) == _before156,
+      f"a task whose turns do not render its conversation is refused and left as it was: {_refused156}")
+_kept_rr156 = (_rr156.load_session_turns, _rr156.has_transcript)
+_rr156.load_session_turns = lambda ids: {sid: list(_turns156) for sid in ids}
+_rr156.has_transcript = lambda sid: sid == "s-with"
+try:
+    with _ctx60.redirect_stdout(_io60.StringIO()) as _said_rr156:
+        _code156 = _rr156.main([str(_rel156), "--text-recovered"])
+finally:
+    _rr156.load_session_turns, _rr156.has_transcript = _kept_rr156
+attempt_mod.transcript_for = _stand_in156
+_after156 = {sid: json.loads((_rel156 / "tasks" / tk.task_id / "grading" / "task.json").read_text())
+             for sid, tk in _tasks156.items()}
+_meta156 = json.loads((_one156 / "task.json").read_text())
+_man156 = json.loads((_rel156 / "manifest.json").read_text())["rerendered"]["tasks"]
+check(_code156 == 0 and _after156["s-with"].get("text_recovered") is True
+      and _after156["s-without"].get("text_recovered") is False
+      and {r["task_id"]: r.get("text_recovered") for r in _man156} == {
+          _tasks156["s-with"].task_id: True, _tasks156["s-without"].task_id: False}
+      and (_one156 / "workspace.tar.gz").read_bytes() == b"the frozen tree"
+      and not [n for n in _rr156.RENDERED if (_one156 / n).read_text() == "old\n"]
+      and _meta156["conversation_sha256"] == _hl156.sha256((_one156 / "conversation.txt").read_bytes()).hexdigest()
+      and (_one156 / "conversation.txt").read_text() != "old\n",
+      f"--text-recovered sets the flag only where the transcript is, the manifest records it per task, the "
+      f"conversation and its digest are written again and the working copy is not: exit {_code156}, "
+      f"{ {r['task_id'][-9:]: r.get('text_recovered') for r in _man156} } "
+      f"{[l.strip() for l in _said_rr156.getvalue().splitlines() if 'FAIL' in l or 'would' in l or 'render' in l]}")
+
+# A refused task is left as it was, and the manifest says so: its row records the
+# flag it still has on disk, and a row kept from an earlier run keeps its own
+# time and code (09-30 review).
+_first156 = {r["task_id"]: r for r in _man156}
+_without156 = _tasks156["s-without"].task_id
+_kept_rr156b = (_rr156.write_shown_turns, _rr156.load_session_turns, _rr156.has_transcript)
+_rr156.write_shown_turns = lambda task, turns, out: False
+_rr156.load_session_turns = lambda ids: {sid: list(_turns156) for sid in ids}
+_rr156.has_transcript = lambda sid: True
+try:
+    with _ctx60.redirect_stdout(_io60.StringIO()):
+        _code156b = _rr156.main([str(_rel156), "--text-recovered", "--only", _without156])
+finally:
+    _rr156.write_shown_turns, _rr156.load_session_turns, _rr156.has_transcript = _kept_rr156b
+_man156b = {r["task_id"]: r for r in json.loads((_rel156 / "manifest.json").read_text())["rerendered"]["tasks"]}
+_disk156 = json.loads((_rel156 / "tasks" / _without156 / "grading" / "task.json").read_text())
+check(_code156b == 1 and _man156b[_without156]["ok"] is False and _man156b[_without156]["text_recovered"] is False
+      and _disk156.get("text_recovered") is False
+      and all(_man156b[k] == v for k, v in _first156.items() if k != _without156)
+      and all(r.get("at") and r.get("code_version") for r in _man156b.values()),
+      f"a refused task's manifest row records the flag it still has, and the others keep their own run's: "
+      f"{ {k[-9:]: (r['ok'], r['text_recovered']) for k, r in _man156b.items()} }")
+
+# A judge is admitted under the rules it grades with. v1.0.2's admission records
+# none (rules 3); this code grades under rules 4, so it refuses that admission.
+_old156, _new156 = Path(tempfile.mkdtemp()), Path(tempfile.mkdtemp())
+(_old156 / "calibration.jsonl").write_text(json.dumps({"task_id": "h1", "sound": True}) + "\n")
+(_new156 / "calibration.jsonl").write_text(json.dumps({"task_id": "h1", "sound": True,
+                                                       "judge_rules": judge_mod.RULES}) + "\n")
+# A re-judge keeps the trace check's own probes among the controls; they are not the judge's.
+(_new156 / "controls.jsonl").write_text(json.dumps({"task_id": "(trace probe)", "control": "probe:x", "ok": True,
+                                                    "trace_rules": trace_mod.RULES}) + "\n")
+_said_old156 = [p for p in _gh135.release_problems(_tasks138, _old156, Path(tempfile.mkdtemp()), {}) if "rules" in p]
+_said_new156 = [p for p in _gh135.release_problems(_tasks138, _new156, Path(tempfile.mkdtemp()), {}) if "rules" in p]
+check(len(_said_old156) == 1 and "none recorded" in _said_old156[0] and "tag v1.0.4" in _said_old156[0]
+      and not _said_new156,
+      f"grading refuses an admission made under other judge rules, and names the code to use: {_said_old156}")
+
+# And the pipeline: a run whose admission was read under other judge rules gets
+# no new candidates and no new grades, and its rows are left as they are.
+_old_run156 = fresh(["t156"])
+_old_run156.calibration.write_text(json.dumps({"task_id": "t156", "sound": True, "judge_model": "the-grader"}) + "\n")
+_before_rows156 = _old_run156.calibration.read_text()
+_att156 = asyncio.run(stage_attempt(_old_run156, 10**9, concurrency=1, repeats=1))
+_grd156 = asyncio.run(stage_grade(_old_run156, 10**9, concurrency=1))
+check(any(n.startswith("refused: this run's admission was read under judge rules") and "none recorded" in n
+          for n in _att156.notes)
+      and any(n.startswith("refused: this run's admission") for n in _grd156.notes)
+      and not _rows135_of(_old_run156.answers) and not _rows135_of(_old_run156.attempts)
+      and _old_run156.calibration.read_text() == _before_rows156,
+      f"and the pipeline runs and grades no candidate on an admission under other judge rules, leaving its rows: "
+      f"{[n[:70] for n in _att156.notes]}")
+# Its own rows aside, a current admission holds the trace check's probes and any
+# call that failed, which carry no judge rules: neither is a reading of the judge.
+from errata_bench.instrument.control import admission_refused as _refused156
+_cur156 = fresh(["t156b"])
+append(_cur156.controls, {"task_id": "(trace probe)", "control": "probe:x", "ok": True, "trace_rules": trace_mod.RULES})
+append(_cur156.calibration, {"task_id": "t156c", "judge_model": "the-grader", "sound": False, "error": "RuntimeError: 429"})
+check(_refused156(_cur156) is None and _refused156(_old_run156),
+      "and a current admission is not refused for the trace check's probes or a call that failed")
+
+# G-82: the earlier agent's own words are its claims, not evidence, for both graders.
+check(judge_mod.RULES >= 4 and "is the earlier agent's claim, not evidence" in judge_mod.INSTRUCTIONS
+      and "however often it is repeated" in judge_mod.INSTRUCTIONS
+      and trace_mod.RULES >= 7 and "Present only in an AGENT turn's own words is not support" in trace_mod.INSTRUCTIONS
+      and "never an AGENT turn's own words" in trace_mod.INSTRUCTIONS
+      and "An AGENT turn's own words are the earlier agent's claim" in
+      trace_mod.Claim.model_fields["supported"].description,
+      f"the judge (rules {judge_mod.RULES}) and the trace check (rules {trace_mod.RULES}) count what a call did or "
+      f"printed, and the developer's words, and never an AGENT turn's own")
+_seen156 = []
+
+
+async def _check156(answer, calls, *, model=None, context="", given="", **kw):
+    _seen156.append((answer, context))
+    return trace_mod.TraceCheck(claims=[], reasoning="r")
+
+
+_kept_c156 = trace_mod.check
+trace_mod.check = _check156
+try:
+    _rows156v = asyncio.run(trace_mod.verify(model="m", context="THE GIVEN CONVERSATION"))
+finally:
+    trace_mod.check = _kept_c156
+_said_ctx156 = sorted(c for a, c in _seen156 if a == trace_mod._REPEATED)
+check(len(_rows156v) == len(trace_mod.PROBES) + 2
+      and _said_ctx156 == sorted([trace_mod._SAID_ONLY, trace_mod._SAID_AFTER_RUN])
+      and all(c == "THE GIVEN CONVERSATION" for a, c in _seen156 if a != trace_mod._REPEATED)
+      and "calls run_command" not in trace_mod._SAID_ONLY.replace(trace_mod.PROBE_CONTEXT, "")
+      and "42 passed" in trace_mod._SAID_AFTER_RUN,
+      f"the trace check's two G-82 probes are asked each in its own conversation, the rest in the one given: "
+      f"{len(_rows156v)} probes")
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:

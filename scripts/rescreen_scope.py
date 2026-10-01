@@ -26,9 +26,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from errata_bench import llm  # noqa: E402
 from errata_bench.construct.build import last_user_message  # noqa: E402
 from errata_bench.corpus.recover import recovered  # noqa: E402
-from errata_bench.corpus.turns import build_excerpt, load_session_turns  # noqa: E402
+from errata_bench.corpus.turns import RECORD, RECORD_CHARS, build_excerpt, load_session_turns  # noqa: E402
 from errata_bench.find.scope import SCOPE_GATE, in_scope  # noqa: E402
-from errata_bench.stages.screening import _agree  # noqa: E402
+from errata_bench.stages.screening import _agree, gate_view  # noqa: E402
 from errata_bench.store import load, replace  # noqa: E402
 
 
@@ -44,7 +44,8 @@ async def judge_run(run: Path, sem: asyncio.Semaphore) -> list[dict]:
                "repo_id": r["repo_id"], "old": r.get("within_scope"), "old_held": r.get("within_scope_held")}
         if not request:
             return {**out, "new": r.get("within_scope"), "new_held": None, "new_reason": "no request: unchanged"}
-        excerpt = build_excerpt(ts, r["cut"])
+        # The candidate's view, as the screen stage reads it (G-81).
+        excerpt = build_excerpt(gate_view(r["session_id"], ts), r["cut"], max_chars=RECORD_CHARS, record=RECORD)
         async with sem:
             verdict, tally, scope = await _agree(
                 lambda: in_scope(request, r.get("defect", ""), conversation=excerpt), 3, keep_on=True,

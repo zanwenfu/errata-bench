@@ -491,6 +491,28 @@ async def check(task, control: Control, *, model: str | None = None, context: st
     )
 
 
+def admission_refused(paths: Paths) -> str | None:
+    """Why a run's candidates may not be run or graded under this code's judge, or None.
+
+    A judge is admitted under the rules it reads with. The rows record them
+    since 30 September (`judge_rules`); a row without the field was read under
+    rules 3 or earlier, and G-82 made them 4. Rows are left as they are, since
+    earlier runs are read under their own rules: the pipeline only refuses to
+    add candidates or grades to an admission this judge never made.
+    """
+    from ..score.judge import RULES
+    from ..store import load
+
+    rules = {r.get("judge_rules") for path in (paths.calibration, paths.controls)
+             for r in (load(path) if path.exists() else [])
+             if not r.get("error") and not str(r.get("control", "")).startswith("probe:")}
+    if not rules or rules == {RULES}:
+        return None
+    told = ", ".join("none recorded (rules 3 or earlier)" if x is None else str(x) for x in sorted(rules, key=str))
+    return (f"refused: this run's admission was read under judge rules {told}, and this code's judge reads "
+            f"under rules {RULES}: admit it again, in a new run directory, before running or grading candidates")
+
+
 def controlled(paths: Paths) -> set[str]:
     """Tasks whose full control set ran and behaved.
 

@@ -40,6 +40,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from errata_bench.project import code_version  # noqa: E402
 from errata_bench.release import harbor as harbor_mod  # noqa: E402
 from errata_bench.release.grading import answer_row, official, read_trials  # noqa: E402
+from errata_bench.score import judge as judge_mod  # noqa: E402
 from errata_bench.spec import Task  # noqa: E402
 from errata_bench.store import Paths, append, load, only_one  # noqa: E402
 
@@ -120,6 +121,19 @@ def release_problems(tasks: dict[str, tuple[Task, Path]], admission: Path, out: 
                 problems.append(f"{r['task_id']}: --admission was made on another version of this task "
                                 f"({name}: fingerprint {stamp}, the release's {stamps[r['task_id']]})")
                 break
+    # The judge's rules the admission was made under. v1.0.2's admission records
+    # none (rules 3); G-82's rules 4 read an answer differently, and a judge is
+    # admitted under the rules it grades with, not others.
+    # The trace check's own probes, kept among the controls, are not the judge's readings.
+    made_under = {r.get("judge_rules") for name in ("calibration.jsonl", "controls.jsonl")
+                  for r in (load(admission / name) if (admission / name).is_file() else [])
+                  if not r.get("error") and not str(r.get("control", "")).startswith("probe:")}
+    if made_under and made_under != {judge_mod.RULES}:
+        told = ", ".join("none recorded (before 30 September: rules 3)" if x is None else str(x)
+                         for x in sorted(made_under, key=str))
+        problems.append(f"--admission was made under judge rules {told}, and this code grades under rules "
+                        f"{judge_mod.RULES}: admit the judge under these rules, or grade with the code the "
+                        f"admission was made with (for v1.0.2's tasks, tag v1.0.4)")
     # Read without `Paths`, which makes the folder: a refused run leaves nothing behind (09-28 review).
     stale = sorted({r["task_id"] for r in (load(out / "answers.jsonl") if (out / "answers.jsonl").is_file() else [])
                     if not r.get("error") and r.get("task_id") in graded

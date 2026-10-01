@@ -12,7 +12,7 @@ import json
 import os
 import time
 
-from ..instrument.control import controlled
+from ..instrument.control import admission_refused, controlled
 from ..store import (
     Paths, Progress, _gather, _gather_in_turn, append, completed, finished, held, in_turn, key_of,
     load, replace, sort_answers,
@@ -48,6 +48,11 @@ async def stage_attempt(
 
     p = Progress("attempt")
     t0 = time.monotonic()
+    refused = admission_refused(paths)
+    if refused:
+        p.notes.append(refused)
+        p.took_s = time.monotonic() - t0
+        return p
     sweep()
     sound = {r["task_id"] for r in load(paths.calibration) if can_be_scored(r)}
     # A task a control passed is satisfiable without doing the work, so running
@@ -365,6 +370,11 @@ async def stage_grade(paths: Paths, limit: int, concurrency: int,
 
     p = Progress("grade")
     t0 = time.monotonic()
+    refused = admission_refused(paths)
+    if refused:
+        p.notes.append(refused)
+        p.took_s = time.monotonic() - t0
+        return p
     grader = judge_model()
     tasks = {t.task_id: t for t in read(paths.tasks)}
     prints = {tid: fingerprint(t) for tid, t in tasks.items()}

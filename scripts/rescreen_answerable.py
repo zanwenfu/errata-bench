@@ -29,7 +29,7 @@ from errata_bench.construct.build import last_user_message  # noqa: E402
 from errata_bench.corpus.recover import recovered  # noqa: E402
 from errata_bench.corpus.turns import load_session_turns  # noqa: E402
 from errata_bench.find.answerable import ANSWERABLE_GATE, agent_message_before, asks_for_something  # noqa: E402
-from errata_bench.stages.screening import _agree  # noqa: E402
+from errata_bench.stages.screening import _agree, gate_view  # noqa: E402
 from errata_bench.store import load, replace  # noqa: E402
 
 
@@ -47,7 +47,9 @@ async def judge_run(run: Path, sem: asyncio.Semaphore) -> list[dict]:
         if message is None:
             return {**out, "new": r.get("asks_for_something"), "new_held": None,
                     "new_reason": "no user message: unchanged"}
-        before = agent_message_before(ts, message)
+        # After the agent's last message as the candidate reads it (G-81): one the
+        # table lost, put back, can be the question a bare "yes" answers.
+        before = agent_message_before(gate_view(r["session_id"], ts), message)
         async with sem:
             verdict, tally, a = await _agree(
                 lambda: asks_for_something(request, before=before), 3, keep_on=True,

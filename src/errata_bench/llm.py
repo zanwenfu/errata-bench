@@ -467,6 +467,9 @@ _DROPPED = frozenset({"APITimeoutError", "APIConnectionError", "InternalServerEr
 # (09-28 review), and `resilient` read errors the same way until 09-30.
 STATUS_429 = re.compile(r"(?:error code|status(?: code)?|http)\W{0,3}429\b|\b429 too many requests", re.IGNORECASE)
 STATUS_50X = re.compile(r"(?:error code|status(?: code)?|http)\W{0,3}50[234]\b", re.IGNORECASE)
+# What in a provider's error payload says it is busy, as opposed to refusing the request.
+PAYLOAD_BUSY = re.compile(r"rate.?limit|too many requests|throttl|overloaded|capacity"
+                          r"|['\"]?code['\"]?\W{0,3}(?:429|50[234])\b", re.IGNORECASE)
 
 
 async def resilient(make_call, *, attempts: int = 4, pause: float = 60.0):
@@ -506,8 +509,13 @@ async def resilient(make_call, *, attempts: int = 4, pause: float = 60.0):
             # A status by its code, or where an error writes one: a 429 or a 503
             # inside a token count is neither.
             status, head = getattr(e, "status_code", None), str(e)[:200]
-            throttled = ("no choices" in message or "rate limit" in message or status == 429
-                         or STATUS_429.search(head) is not None)
+            # An empty 200 is Azure's throttle. One that carries the provider's own
+            # error ("... has no choices (possible provider error payload): {...}")
+            # is that error, busy only if it says so: a length refusal or a content
+            # filter sent that way was waited on as a throttle, four times.
+            payload = message.split("no choices", 1)[1].partition(":")[2] if "no choices" in message else ""
+            throttled = (("no choices" in message and (not payload.strip() or PAYLOAD_BUSY.search(payload) is not None))
+                         or "rate limit" in message or status == 429 or STATUS_429.search(head) is not None)
             dropped = (type(e).__name__ in _DROPPED or status in (502, 503, 504)
                        or STATUS_50X.search(head) is not None
                        or re.search(r"timed out|connection (?:error|reset|refused)"

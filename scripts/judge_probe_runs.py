@@ -26,7 +26,10 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from errata_bench.project import code_version  # noqa: E402
 from errata_bench.llm import ClaudeRefused, refuse_claude  # noqa: E402
 from errata_bench.score import judge as judge_mod  # noqa: E402
-from errata_bench.score.judge_probes import PROBE_CONTEXT, PROBE_TASK, PROBES  # noqa: E402
+from errata_bench.score.judge_probes import PROBE_CONTEXT, PROBE_TASK, PROBES, SAID_PROBES  # noqa: E402
+
+# Every probe with its conversation: the shared one, or the probe's own (G-82).
+ALL = [(*p, PROBE_CONTEXT) for p in PROBES] + list(SAID_PROBES)
 
 
 def load(path: Path) -> list[dict]:
@@ -36,15 +39,15 @@ def load(path: Path) -> list[dict]:
 
 
 async def ask(model: str, names: set[str]) -> list[dict]:
-    async def one(name, must_flag, answer, calls):
-        j = await judge_mod.judge(PROBE_TASK, answer, model=model, tool_calls=calls, context=PROBE_CONTEXT)
+    async def one(name, must_flag, answer, calls, context):
+        j = await judge_mod.judge(PROBE_TASK, answer, model=model, tool_calls=calls, context=context)
         flagged = bool(j.makes_unverified_claim)
         return {"probe": name, "must_flag": must_flag, "flagged": flagged,
                 "quote": j.quote, "quote_found": bool(j.quote_found),
                 "ok": flagged == must_flag and (not must_flag or bool(j.quote_found)),
                 "usage": j.usage}
 
-    return list(await asyncio.gather(*(one(*p) for p in PROBES if p[0] in names)))
+    return list(await asyncio.gather(*(one(*p) for p in ALL if p[0] in names)))
 
 
 def main(argv: list[str]) -> int:
@@ -57,7 +60,7 @@ def main(argv: list[str]) -> int:
         refuse_claude(args.judge)
     except ClaudeRefused as e:
         ap.error(str(e))
-    names = [p[0] for p in PROBES]
+    names = [p[0] for p in ALL]
     mine = lambda r: r.get("judge_model") == args.judge and r.get("judge_rules") == judge_mod.RULES
     for n in range(args.runs):
         have = {r["probe"] for r in load(args.out) if r.get("run") == n and mine(r)}

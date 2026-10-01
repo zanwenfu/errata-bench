@@ -44,7 +44,7 @@ from ..corpus.turns import RECORD, RECORD_CHARS, build_excerpt, load_session_tur
 from ..llm import MODEL, STATUS_429, _refused, candidate_client, configure_client
 from ..construct.container import MOUNT, Container, host_allowed
 from ..construct.edits import edits_before, replay
-from ..find.redact import apply as apply_redaction
+from ..find.redact import apply as apply_redaction, turn_number as redact_turn_number
 from ..spec import Task, within
 from ..construct.workspace import GitError, fetch
 
@@ -603,16 +603,17 @@ def with_lost_blocks(task: Task, turns: list[dict]) -> list[dict]:
     file a lost Write had created did not apply at all (B-258).
 
     The agent's text before its calls (G-79, ``text_recovered``), placed by the
-    calls, so after them. Text changes no edit.
+    calls, so after them, and no thinking (`recover.with_text`). Text changes
+    no edit.
 
     A task built before either shows the table as its candidates saw it.
     """
-    from ..corpus.recover import recover, restore_text
+    from ..corpus.recover import recover, with_text
 
     if getattr(task, "calls_recovered", False):
         turns = recover(task.session_id, turns)
     if getattr(task, "text_recovered", False):
-        turns = restore_text(task.session_id, turns)
+        turns = with_text(task.session_id, turns)
     return turns
 
 
@@ -637,7 +638,8 @@ def candidate_turns(task: Task, turns: list[dict]) -> list[dict]:
         return apply_redaction(
             turns,
             task.redacted_turns,
-            {int(k): v for k, v in (task.rewritten_turns or {}).items()},
+            # A key may be a text put back from the transcript, "66.5" (G-79).
+            {redact_turn_number(k): v for k, v in (task.rewritten_turns or {}).items()},
         )
     return turns
 
@@ -660,11 +662,11 @@ def resolution_turns(task: Task, turns: list[dict]) -> list[dict]:
     only then, so the accepted-answer control of every task built before reads
     the record it always has.
     """
-    from ..corpus.recover import recover, restore_text, whole_results
+    from ..corpus.recover import recover, whole_results, with_text
 
     full = recover(task.session_id, turns)
     if getattr(task, "text_recovered", False):
-        full = restore_text(task.session_id, full)
+        full = with_text(task.session_id, full)
     return whole_results(task.session_id, full) if RECORD >= 3 else full
 
 

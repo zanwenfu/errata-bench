@@ -94,17 +94,25 @@ SESSION = [
 ]
 
 
-# Two more, for section 5: one where the words that leak sit in a tool result,
-# and one where the developer says them.
+# More for section 5: one where the words that leak sit in a tool result, one
+# where the developer says them before making the request, and one where they
+# are the request itself.
 SESSION_TOOL = SESSION[:3] + [
     {"turn_number": 5, "turn_type": "tool_result",
      "content": "File has not been read yet. Read it first before writing to it."},
 ] + SESSION[3:]
-SESSION_PROSE = SESSION[:2] + [
+SESSION_PROSE = [
+    {"turn_number": 1, "turn_type": "user_prompt",
+     "content": "you keep getting this wrong — it still drops on 503"},
+    {"turn_number": 2, "turn_type": "assistant_response", "content": "Sorry. Starting again."},
+    {"turn_number": 3, "turn_type": "user_prompt",
+     "content": "Add retry with backoff to the uploader — it drops on 503."},
+] + SESSION[2:]
+SESSION_ASKED = SESSION[:2] + [
     {"turn_number": 3, "turn_type": "user_prompt",
      "content": "you keep getting this wrong — it still drops on 503"},
 ] + SESSION[2:]
-SESSIONS = {"s-tool": SESSION_TOOL, "s-prose": SESSION_PROSE, "s-stuck": SESSION_PROSE}
+SESSIONS = {"s-tool": SESSION_TOOL, "s-prose": SESSION_PROSE, "s-stuck": SESSION_PROSE, "s-asked": SESSION_ASKED}
 
 
 def fake_load_session_turns(ids):
@@ -112,8 +120,13 @@ def fake_load_session_turns(ids):
     return {sid: list(SESSIONS.get(sid, SESSION)) for sid in ids}
 
 
+# How each excerpt was asked for, so a gate read at the wrong record is seen.
+EXCERPT_KW: list = []
+
+
 def fake_build_excerpt(turns, cut, **kw):
     records("build_excerpt")
+    EXCERPT_KW.append(kw)
     return "\n".join(f"[turn {t['turn_number']}] {t.get('content','')}"
                      for t in turns if t["turn_number"] <= cut)
 
@@ -244,7 +257,7 @@ def main() -> int:
     row = screened[0]
     for field in ("session_id", "cut", "kind", "defect", "resolution",
                   "asks_for_something", "within_scope", "signals_trouble",
-                  "redaction_worked", "screen_passes", "calls_recovered"):
+                  "redaction_worked", "screen_passes", "calls_recovered", "text_recovered"):
         check(field in row, f"{field} is on the row -> {row.get(field)!r}")
     check(row["calls_recovered"] is False,
           "and a session with no raw transcript here says its lost calls were not put back")
@@ -336,8 +349,10 @@ def main() -> int:
 
     async def fake_survey(turns, cut, **kw):
         records("survey")
-        surveyed.append(cut)
-        return Redaction(removed_turns=[3], reason="turn 3 is a complaint", quotes={3: "you keep getting this wrong"})
+        surveyed.append((cut, kw))
+        at = next((t["turn_number"] for t in turns if "you keep getting this wrong" in (t.get("content") or "")), 3)
+        return Redaction(removed_turns=[at], reason=f"turn {at} is a complaint",
+                         quotes={at: "you keep getting this wrong"})
 
     async def leaks_where_it_says(excerpt, **kw):
         records("signals_trouble")
@@ -359,38 +374,113 @@ def main() -> int:
     got = {}
     try:
         for sid, gate in (("s-tool", leaks_where_it_says), ("s-prose", leaks_where_it_says),
-                          ("s-stuck", always_leaks)):
+                          ("s-stuck", always_leaks), ("s-asked", leaks_where_it_says)):
             d = Paths(Path(tempfile.mkdtemp()) / "run")
             append(d.moments, {"session_id": sid, "turn_number": 7, "repo_id": "acme/up",
                                "kind": "correction", "agent_turns_before": 4})
             for stage in (stage_triage, stage_read, stage_locate, stage_signature):
                 asyncio.run(stage(d, 10**9, concurrency=1))
             leakage_mod.signals_trouble = gate
-            before = len(surveyed)
+            before, gated = len(surveyed), CALLED.get("signals_trouble", 0)
             asyncio.run(stage_screen(d, 10**9, concurrency=1))
             rows = load(d.screened)
-            got[sid] = (rows[0] if rows else {}, len(surveyed) - before)
+            got[sid] = (rows[0] if rows else {}, len(surveyed) - before, surveyed[before:],
+                        CALLED.get("signals_trouble", 0) - gated)
     except Exception as e:
         check(False, f"a stage raised before the rows could be read: {type(e).__name__}: {e}")
         got = {}
     finally:
         leakage_mod.signals_trouble = fake_signals_trouble
     if got:
-        row, asked = got["s-tool"]
+        row, asked, _, _ = got["s-tool"]
         check(row.get("signals_trouble") is True and row.get("leak_carried_by") == "elsewhere" and asked == 0
               and str(row.get("redaction_outcome", "")).startswith("not attempted") and not row.get("error"),
               f"a leak in a tool result is named as one, and no surveyor is paid to miss it: "
               f"{row.get('leak_carried_by')!r}, surveyed {asked}x, {str(row.get('redaction_outcome'))[:40]!r} {row.get('error') or ''}")
-        row, asked = got["s-prose"]
+        row, asked, calls, _ = got["s-prose"]
         check(row.get("leak_carried_by") == "prose" and asked == 1 and row.get("redaction_worked") is True
-              and row.get("redacted_turns") == [3] and row.get("redaction_outcome") == "repaired",
+              and row.get("redacted_turns") == [1] and row.get("redaction_outcome") == "repaired",
               f"a leak the developer typed is repaired, and the row says so: "
               f"{row.get('leak_carried_by')!r}, turns {row.get('redacted_turns')}, {row.get('redaction_outcome')!r} {row.get('error') or ''}")
-        row, asked = got["s-stuck"]
+        told = calls[0][1] if calls else {}
+        check(told.get("request_turn") == 3 and set(told.get("must_show") or ()) == {1},
+              f"and the surveyor is told which turn is the request, and shown the turn that carries the quote: "
+              f"request_turn {told.get('request_turn')!r}, must_show {sorted(told.get('must_show') or ())}")
+        row, asked, _, _ = got["s-stuck"]
         check(row.get("redaction_worked") is False and asked == 1
-              and str(row.get("redaction_outcome", "")).startswith("still leaks after editing turns [3]")
-              and row.get("redaction_touched") == [3] and row.get("redaction_reason") == "turn 3 is a complaint",
+              and str(row.get("redaction_outcome", "")).startswith("still leaks after editing turns [1]")
+              and row.get("redaction_touched") == [1] and row.get("redaction_reason") == "turn 1 is a complaint",
               f"and one that still leaks afterwards says what was tried: {str(row.get('redaction_outcome'))[:60]!r}")
+        # 09-30: in 5 of v1's 7 redactions the turn removed was the developer's
+        # request itself, which the task's reference answers answer. A repair
+        # that removes the request is refused, and nothing is paid to re-check it.
+        row, asked, _, gated = got["s-asked"]
+        check(row.get("redaction_worked") is False and asked == 1 and not row.get("redacted_turns")
+              and str(row.get("redaction_outcome", "")).startswith(
+                  "not repairable: the leak is the developer's request itself")
+              and gated == got["s-prose"][3] - 1 and not row.get("error"),
+              f"and a repair that would remove the developer's request is refused, not taken or re-checked: "
+              f"{str(row.get('redaction_outcome'))[:70]!r}, turns {row.get('redacted_turns')}, leak gate asked "
+              f"{gated}x against {got['s-prose'][3]}x for a repair {row.get('error') or ''}")
+
+    # A row screened before the gates read the candidate's view carries no
+    # `text_recovered`, and the build refuses it: the next run screens it again,
+    # and its new reading replaces the old (09-30 review: "screen it again" was a
+    # dead end, since a completed row at the same passes counted as done).
+    d = Paths(Path(tempfile.mkdtemp()) / "run")
+    append(d.moments, {"session_id": "s-1", "turn_number": 7, "repo_id": "acme/up",
+                       "kind": "correction", "agent_turns_before": 4})
+    for stage in (stage_triage, stage_read, stage_locate, stage_signature, stage_screen):
+        asyncio.run(stage(d, 10**9, concurrency=1))
+    old = [{k: v for k, v in r.items() if k != "text_recovered"} for r in load(d.screened)]
+    d.screened.write_text("".join(json.dumps(r) + "\n" for r in old))
+    asked_before = CALLED.get("signals_trouble", 0)
+    asyncio.run(stage_screen(d, 10**9, concurrency=1))
+    again_rows = load(d.screened)
+    asked_again = CALLED.get("signals_trouble", 0) - asked_before
+    asyncio.run(stage_screen(d, 10**9, concurrency=1))
+    check(len(old) == 1 and asked_again == 1 and len(again_rows) == 1 and "text_recovered" in again_rows[0]
+          and CALLED.get("signals_trouble", 0) - asked_before == 1,
+          f"a row screened before the gates read the candidate's view is screened again, once, and replaced: "
+          f"gates asked {asked_again}x, {len(again_rows)} row(s), flag {'text_recovered' in (again_rows or [{}])[0]}")
+
+    # A repair that rewrites the request changes what the candidate is asked: the
+    # request and scope gates are asked again on the repaired conversation, not
+    # left with their reading of the words the repair took out (09-30 review).
+    async def rewrites_request(turns, cut, **kw):
+        records("survey")
+        return Redaction(rewritten={3: "it still drops on 503"}, reason="the complaint, taken out of the request",
+                         quotes={3: "you keep getting this wrong"})
+
+    async def asks_if_it_complains(message, **kw):
+        records("asks_for_something")
+        return Answerable(asks_for_something="wrong" in message, request=message[:40], reasoning="stand-in")
+
+    kept_gates = (redact_mod.survey, answerable_mod.asks_for_something)
+    redact_mod.survey, answerable_mod.asks_for_something = rewrites_request, asks_if_it_complains
+    rewritten = {}
+    try:
+        d = Paths(Path(tempfile.mkdtemp()) / "run")
+        append(d.moments, {"session_id": "s-asked", "turn_number": 7, "repo_id": "acme/up",
+                           "kind": "correction", "agent_turns_before": 4})
+        for stage in (stage_triage, stage_read, stage_locate, stage_signature):
+            asyncio.run(stage(d, 10**9, concurrency=1))
+        leakage_mod.signals_trouble = leaks_where_it_says
+        SEEN.pop("scope_conversation", None)
+        asyncio.run(stage_screen(d, 10**9, concurrency=1))
+        rewritten = (load(d.screened) or [{}])[0]
+    except Exception as e:
+        check(False, f"a stage raised: {type(e).__name__}: {e}")
+    finally:
+        redact_mod.survey, answerable_mod.asks_for_something = kept_gates
+        leakage_mod.signals_trouble = fake_signals_trouble
+    scoped = SEEN.get("scope_conversation") or ""
+    check(rewritten.get("redaction_outcome") == "repaired" and rewritten.get("rewritten_turns") == {"3": "it still drops on 503"}
+          and rewritten.get("asks_for_something") is False and rewritten.get("gated_after_repair") is True
+          and "it still drops on 503" in scoped and "you keep getting this wrong" not in scoped,
+          f"a repair that rewrites the request is followed by the request and scope gates, asked again on the "
+          f"repaired conversation: {rewritten.get('redaction_outcome')!r}, asks {rewritten.get('asks_for_something')}, "
+          f"scope read the rewrite: {'it still drops on 503' in scoped}")
 
     # G-81. A leak in the agent's text the table lost (G-79) is found where the
     # candidate reads it, and a repair is checked again on that view: removing
@@ -409,8 +499,11 @@ def main() -> int:
         {"turn_number": 5, "turn_type": "tool_result", "tool_call_id": "said1", "content": "def retry(): pass"},
     ] + SESSION[3:]
 
+    read5 = []
+
     async def leaks_in_its_text(excerpt, **kw):
         records("signals_trouble")
+        read5.append(excerpt)
         if "I got this wrong again" in excerpt:
             return Leakage(signals_trouble=True, quote="Sorry, I got this wrong again.",
                            reasoning="the agent apologises for failing again")
@@ -426,13 +519,129 @@ def main() -> int:
         for stage in (stage_triage, stage_read, stage_locate, stage_signature):
             asyncio.run(stage(d, 10**9, concurrency=1))
         leakage_mod.signals_trouble = leaks_in_its_text
+        EXCERPT_KW.clear()
         asyncio.run(stage_screen(d, 10**9, concurrency=1))
+        asked_for5 = list(EXCERPT_KW)
         said5 = (load(d.screened) or [{}])[0]
+        # What a task built from this row shows its candidate, with the flags the
+        # row carries: the leak gate must have read exactly that. Rendered by this
+        # suite's stand-in, as the gate's excerpt was, so the rows are compared.
+        from errata_bench.score.attempt import candidate_turns
+        from errata_bench.spec import Task
+        built5 = Task("t5", "acme/up", "u", "sha", "s-said", said5.get("cut"), 6, 7, 9, "o" * 50, "c" * 50,
+                      "d", "present", calls_recovered=bool(said5.get("calls_recovered")),
+                      text_recovered=bool(said5.get("text_recovered")))
+        shown5 = fake_build_excerpt(candidate_turns(built5, recover5.recover("s-said", SESSIONS["s-said"])),
+                                    built5.cut_turn)
     except Exception as e:
         check(False, f"a stage raised before the row could be read: {type(e).__name__}: {e}")
+        shown5 = None
     finally:
         recover5.transcript_path = kept5
         leakage_mod.signals_trouble = fake_signals_trouble
+    check(said5.get("calls_recovered") is True and said5.get("text_recovered") is True and read5
+          and read5[0] == shown5 and "Sorry, I got this wrong again." in (shown5 or ""),
+          f"the leak gate reads the rows a task built from its row shows the candidate, and no others: "
+          f"{len(read5[0]) if read5 else None} and {len(shown5 or '')} characters as this suite renders them")
+    from errata_bench.corpus.turns import RECORD, RECORD_CHARS
+    check(len(asked_for5) >= 2 and all(k.get("record") == RECORD and k.get("max_chars") == RECORD_CHARS
+                                       for k in asked_for5),
+          f"and at the candidate's record and length, the re-check after a repair too: "
+          f"{[(k.get('record'), k.get('max_chars')) for k in asked_for5]}")
+
+    # And the surveyor reads that view, so it can name a text put back, and the
+    # repair holds where the candidate reads.
+    shown5 = {}
+
+    async def finds_the_quote(turns, cut, **kw):
+        records("survey")
+        shown5["must_show"] = set(kw.get("must_show") or ())
+        at = next((t["turn_number"] for t in turns if "I got this wrong again" in (t.get("content") or "")), None)
+        return Redaction(removed_turns=[] if at is None else [at], reason="the agent's apology")
+
+    kept5b = (recover5.transcript_path, redact_mod.survey)
+    recover5.transcript_path = lambda sid: dir5 / f"{sid}.jsonl"
+    redact_mod.survey = finds_the_quote
+    found5 = {}
+    try:
+        d = Paths(Path(tempfile.mkdtemp()) / "run")
+        append(d.moments, {"session_id": "s-said", "turn_number": 7, "repo_id": "acme/up",
+                           "kind": "correction", "agent_turns_before": 4})
+        for stage in (stage_triage, stage_read, stage_locate, stage_signature):
+            asyncio.run(stage(d, 10**9, concurrency=1))
+        leakage_mod.signals_trouble = leaks_in_its_text
+        asyncio.run(stage_screen(d, 10**9, concurrency=1))
+        found5 = (load(d.screened) or [{}])[0]
+    except Exception as e:
+        check(False, f"a stage raised before the row could be read: {type(e).__name__}: {e}")
+    finally:
+        recover5.transcript_path, redact_mod.survey = kept5b
+        leakage_mod.signals_trouble = fake_signals_trouble
+    check(found5.get("redaction_outcome") == "repaired" and found5.get("redacted_turns") == [2.5]
+          and found5.get("redaction_worked") is True and shown5.get("must_show") == {2.5},
+          f"the surveyor is shown the text put back, names it by its own turn, and removing it repairs the row: "
+          f"{found5.get('redaction_outcome')!r}, turns {found5.get('redacted_turns')} {found5.get('error') or ''}")
+
+    # The answerable gate reads the developer's request after the agent's last
+    # message, and that message can be a text put back: here the agent asked,
+    # made a call in the same message, and the developer answered "yes".
+    (dir5 / "s-yes.jsonl").write_text(json.dumps(
+        {"type": "assistant", "isSidechain": False, "message": {"id": "m1", "content": [
+            {"type": "text", "text": "Should I also raise the retry limit to 5?"},
+            {"type": "tool_use", "id": "yes1", "name": "Read",
+             "input": {"file_path": "/Users/d/code/up/src/retry.py"}}]}}) + "\n")
+    SESSIONS["s-yes"] = SESSION[:1] + [
+        {"turn_number": 2, "turn_type": "tool_use", "tool_name": "Read", "tool_call_id": "yes1",
+         "content": json.dumps({"file_path": "/Users/d/code/up/src/retry.py"})},
+        {"turn_number": 3, "turn_type": "tool_result", "tool_call_id": "yes1", "content": "def retry(): pass"},
+        {"turn_number": 4, "turn_type": "user_prompt", "content": "yes, do that"},
+    ] + SESSION[3:]
+    kept5c = recover5.transcript_path
+    recover5.transcript_path = lambda sid: dir5 / f"{sid}.jsonl"
+    SEEN_ASKS.clear()
+    try:
+        d = Paths(Path(tempfile.mkdtemp()) / "run")
+        append(d.moments, {"session_id": "s-yes", "turn_number": 7, "repo_id": "acme/up",
+                           "kind": "correction", "agent_turns_before": 4})
+        for stage in (stage_triage, stage_read, stage_locate, stage_signature, stage_screen):
+            asyncio.run(stage(d, 10**9, concurrency=1))
+    except Exception as e:
+        check(False, f"a stage raised before the gate could be read: {type(e).__name__}: {e}")
+    finally:
+        recover5.transcript_path = kept5c
+    check((SEEN_ASKS.get("kwargs") or {}).get("before") == "Should I also raise the retry limit to 5?",
+          f"a bare \"yes\" is read after the agent's question, though the table lost it: "
+          f"{(SEEN_ASKS.get('kwargs') or {}).get('before')!r}")
+
+    # A conversation longer than the gate's model reads: the gates read it whole
+    # and cannot be shown less than the candidate, so the row says so and is not
+    # asked again on every run.
+    async def refuses_for_length(excerpt, **kw):
+        records("signals_trouble")
+        raise RuntimeError("Error code: 400 - This model's maximum context length is 128000 tokens.")
+
+    long5 = []
+    try:
+        d = Paths(Path(tempfile.mkdtemp()) / "run")
+        append(d.moments, {"session_id": "s-1", "turn_number": 7, "repo_id": "acme/up",
+                           "kind": "correction", "agent_turns_before": 4})
+        for stage in (stage_triage, stage_read, stage_locate, stage_signature):
+            asyncio.run(stage(d, 10**9, concurrency=1))
+        leakage_mod.signals_trouble = refuses_for_length
+        before5 = CALLED.get("signals_trouble", 0)
+        asyncio.run(stage_screen(d, 10**9, concurrency=1))
+        asyncio.run(stage_screen(d, 10**9, concurrency=1))
+        long5 = load(d.screened)
+        asked5 = CALLED.get("signals_trouble", 0) - before5
+    except Exception as e:
+        check(False, f"a stage raised: {type(e).__name__}: {e}")
+        asked5 = None
+    finally:
+        leakage_mod.signals_trouble = fake_signals_trouble
+    check(len(long5) == 1 and str(long5[0].get("too_long", "")).startswith("RuntimeError: Error code: 400")
+          and not long5[0].get("error") and asked5 == 1,
+          f"a conversation too long for the gate is recorded as such, once, not retried on every run: "
+          f"{[(r.get('too_long', '')[:30], r.get('error')) for r in long5]}, asked {asked5}x")
     check(said5.get("signals_trouble") is True and said5.get("leak_carried_by") == "prose"
           and said5.get("redaction_worked") is False
           and str(said5.get("redaction_outcome", "")).startswith("still leaks after editing turns [3]"),

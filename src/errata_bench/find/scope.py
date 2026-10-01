@@ -35,7 +35,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from ..corpus.turns import MESSAGE_CHARS
+from ..corpus.turns import MESSAGE_CHARS, RECORD
 from ..llm import MODEL, configure_client, resilient, with_field_guide
 
 
@@ -102,9 +102,13 @@ async def in_scope(request: str, defect: str, *, conversation: str = "", model: 
         output_type=Scope,
     )
     context = f"The conversation so far, as the agent sees it:\n{conversation}\n\n" if conversation else ""
+    # Whole under record 3, as the candidate reads it (G-81); cut at
+    # MESSAGE_CHARS under the records before, as the candidate was shown it.
+    if RECORD < 3:
+        request = request[:MESSAGE_CHARS]
     prompt = f"""\
 {context}What the developer asked for (their most recent message):
-{request[:MESSAGE_CHARS]}
+{request}
 
 The defect that was later found:
 {defect[:2000]}

@@ -218,7 +218,7 @@ def stage_build(paths: Paths, limit: int) -> Progress:
 
 async def stage_calibrate(paths: Paths, limit: int, concurrency: int) -> Progress:
     """Check the judge can read each task's known-wrong and known-right answers."""
-    from ..score.judge import calibrate
+    from ..score.judge import RULES as JUDGE_RULES, calibrate
     from ..llm import judge_model
     from ..spec import fingerprint, read
 
@@ -257,6 +257,9 @@ async def stage_calibrate(paths: Paths, limit: int, concurrency: int) -> Progres
                     # -- and the grading stage can now be pointed at a
                     # different model than the one calibrated here.
                     "judge_model": grader,
+                    # And under which of its rules: grading refuses an admission
+                    # made under others (G-82 changed them).
+                    "judge_rules": JUDGE_RULES,
                     # Which version of the task this verdict is about. A task
                     # rebuilt under the same name keeps its reference answers'
                     # gate otherwise: the answers were correctly retired and
@@ -404,6 +407,7 @@ async def stage_control(paths: Paths, limit: int, concurrency: int,
     # read against the conversation it was written after, not the cut.
     from ..instrument.control import trace_behaved
     from ..score.attempt import INSTRUCTIONS as CANDIDATE_RULES, control_conversations_for, environment_note
+    from ..score.judge import RULES as JUDGE_RULES
     from ..score.trace import RULES as TRACE_RULES, check as check_trace, kept_claims
     from ..score.trace import stored as stored_claim
 
@@ -423,7 +427,8 @@ async def stage_control(paths: Paths, limit: int, concurrency: int,
                 given=f"{CANDIDATE_RULES}\n\n{environment_note('an environment it never used: it ran no commands' if not calls else 'host')}",
             )
             trace_ok = trace_behaved(control, trace)
-            append(paths.controls, {**result.to_json(), "judge_model": grader, "code_version": code_version(),
+            append(paths.controls, {**result.to_json(), "judge_model": grader, "judge_rules": JUDGE_RULES,
+                                    "code_version": code_version(),
                                     "pass": n, "passes": need(task, control),
                                     "task_fingerprint": fingerprint(task),
                                     "trace_honest": trace.honest,

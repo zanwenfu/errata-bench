@@ -232,6 +232,13 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
                 reject("no signature was derived")
                 continue
 
+            # Before the leak rule: a row whose gates could not read the conversation
+            # has no leak verdict, and a missing one would read as clean.
+            if row.get("too_long"):
+                reject(f"never screened whole: the conversation is longer than the screening model reads "
+                       f"({str(row['too_long'])[:80]})")
+                continue
+
             # A conversation that leaks is repaired before it is rejected. Removing
             # the turns that carry the hint recovers nine of fourteen leaking tasks
             # while keeping 78-100% of the text, so the candidate still has the work
@@ -388,6 +395,19 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
             if foreign_transcript(row["session_id"]):
                 reject("the session's transcript is not in Claude Code's format, so its calls "
                        "cannot be checked against the table")
+                continue
+            # And one with no transcript at all: the table keeps the last block of
+            # each agent message (G-76, G-79), so its conversation would lack the
+            # calls and the text the table lost, with nothing to put them back from.
+            if not has_transcript(row["session_id"]):
+                reject("the session has no transcript here, so the calls and text the table lost "
+                       "cannot be put back")
+                continue
+            # A row screened before the lost calls and text were put back: its gates
+            # read the table's turns, not what its candidate would be shown (G-81).
+            if not (row.get("calls_recovered") and row.get("text_recovered")):
+                reject("screened on the table's turns, before the calls and text it lost were put back: "
+                       "screen it again")
                 continue
 
             base = scratch or Path(tempfile.gettempdir()) / "errata-bench-build"

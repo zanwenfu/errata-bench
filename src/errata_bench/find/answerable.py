@@ -36,7 +36,7 @@ from __future__ import annotations
 
 from pydantic import BaseModel, Field
 
-from ..corpus.turns import MESSAGE_CHARS
+from ..corpus.turns import MESSAGE_CHARS, RECORD
 from ..llm import MODEL, configure_client, resilient, with_field_guide
 
 
@@ -103,8 +103,12 @@ async def asks_for_something(message: str, *, before: str = "", model: str = MOD
         model=model,
         output_type=Answerable,
     )
-    shown = (f"The agent's message just before it:\n\n{before[:MESSAGE_CHARS]}\n\n" if before else "")
-    shown += f"The developer's message:\n\n{message[:MESSAGE_CHARS]}"
+    # Whole under record 3, as the candidate reads both messages (G-81); cut at
+    # MESSAGE_CHARS under the records before, as the candidate was shown them.
+    if RECORD < 3:
+        before, message = before[:MESSAGE_CHARS], message[:MESSAGE_CHARS]
+    shown = (f"The agent's message just before it:\n\n{before}\n\n" if before else "")
+    shown += f"The developer's message:\n\n{message}"
     result = await resilient(lambda: Runner.run(agent, shown, max_turns=3))
     return result.final_output
 
