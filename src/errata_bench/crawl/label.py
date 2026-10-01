@@ -374,6 +374,71 @@ def calibration_sample(corpus: Path, per_class: dict[str, int], seed: int = 0,
     return picked, frequency
 
 
+def triage_key(triaged: list[Path]) -> dict[tuple[str, float], str]:
+    """Our own triage's verdict on each moment it read, the answer key since 10-01 (the user's choice).
+
+    Triage (`find.triage`, gpt-6-astra) read moments SWE-chat flagged. Each
+    verdict is "pushback" when the agent had acted and the developer objects
+    to that work, or "not pushback" when the agent had acted and they do not.
+    Left out: errored rows, moments where the agent had not acted, and a
+    moment two runs judged differently.
+    """
+    from ..store.rows import load
+
+    seen: dict[tuple[str, float], set[str]] = {}
+    for path in triaged:
+        for r in load(path):
+            if r.get("error") or "objects_to_that_work" not in r or not r.get("agent_has_acted"):
+                continue
+            verdict = "pushback" if r["objects_to_that_work"] else "not pushback"
+            seen.setdefault((r["session_id"], r["turn_number"]), set()).add(verdict)
+    return {k: next(iter(v)) for k, v in seen.items() if len(v) == 1}
+
+
+def triage_sample(key: dict[tuple[str, float], str], counts: dict[str, int], seed: int = 0,
+                  also: list[tuple[str, float]] = ()) -> dict[tuple[str, float], dict]:
+    """A fixed number of moments per triage verdict, drawn with `seed`, and `also` (v1's task moments)."""
+    import random
+
+    rng, picked = random.Random(seed), {}
+    for verdict, n in counts.items():
+        pool = sorted(k for k, v in key.items() if v == verdict)
+        for k in rng.sample(pool, min(n, len(pool))):
+            picked[k] = {"triage": verdict, "source": "sample"}
+    for k in also:
+        picked[k] = {"triage": key.get(k), "source": "v1 task"}
+    return picked
+
+
+# The triage check's pass rules, registered in the research log (10-01) before any model was asked.
+TRIAGE_PASS = {"triage pushbacks called pushback, at least": 0.90, "v1 task moments called pushback, at least": 50}
+
+
+def triage_report(rows: list[dict], picked: dict[tuple[str, float], dict]) -> dict:
+    """How many of triage's pushbacks the labels catch, and how many of its non-pushbacks they flag.
+
+    A sampled moment with no row was not labelled: `to_label` skipped it, as
+    the full run would, so a triage pushback without one counts as missed.
+    """
+    answered = {(r["session_id"], r["turn_number"]): r for r in rows if not r.get("error")}
+    errors = sum(1 for r in rows if r.get("error"))
+    out: dict = {"errors": errors}
+    for verdict in ("pushback", "not pushback"):
+        keys = [k for k, v in picked.items() if v["source"] == "sample" and v["triage"] == verdict]
+        called = sum(1 for k in keys if answered.get(k, {}).get("label") in PUSHBACK)
+        out[f"triage {verdict}"] = {"moments": len(keys), "not labelled": sum(1 for k in keys if k not in answered),
+                                    "filtered": sum(1 for k in keys if answered.get(k, {}).get("filtered")),
+                                    "called pushback": called, "share": called / len(keys) if keys else None}
+    v1 = [k for k, v in picked.items() if v["source"] == "v1 task"]
+    v1_called = sum(1 for k in v1 if answered.get(k, {}).get("label") in PUSHBACK)
+    recall = out["triage pushback"]["share"]
+    rule_recall, rule_v1 = TRIAGE_PASS.values()
+    passes = {"no row failed": errors == 0, "pushbacks caught": recall is not None and recall >= rule_recall,
+              "v1 task moments": v1_called >= rule_v1}
+    return {**out, "v1_task_moments_called_pushback": [v1_called, len(v1)], "rules": TRIAGE_PASS,
+            "passes": passes, "passed": all(passes.values())}
+
+
 def calibration_report(rows: list[dict], frequency: Counter, expected: int | None = None) -> dict:
     """How far the labels agree with SWE-chat's, on SWE-chat's own messages, and whether that passes `PASS`.
 

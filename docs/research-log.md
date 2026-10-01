@@ -10732,3 +10732,34 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     - the registered fallback, gpt-6.1-sol on this sample under the same rules;
     - a cleaner answer key;
     - proceeding with gpt-5.6-luna as a recorded deviation.
+- **10-01, 02:0x UTC** — **The answer key becomes our own triage (the user's
+  choice), and the triage check is registered before it runs (#16).**
+  - *Why.* Two calibrations found SWE-chat's labels too noisy to be the
+    answer key. The pipeline's first filter, triage, already re-read every
+    moment SWE-chat flagged and decided whether the developer objects to work
+    the agent did: gpt-6-astra, its instructions unchanged since 09-17.
+  - *The key.* 3,943 moments from the `triaged.jsonl` of 12 runs, copies left
+    out.
+    - 1,581 are pushback: the agent had acted and the developer objects to
+      that work.
+    - 2,362 are not pushback.
+    - Left out: 89 moments where the agent had not acted, and 1 that two runs
+      judged differently. All 55 v1 moments are pushback.
+  - *The sample,* seed 0: 300 pushback and 150 not pushback, plus the 55 v1
+    moments, which take in 8 of the 300.
+    - That is 497 moments, of which 487 are labelled. The other 10 are Claude
+      Code's notices, which `to_label` now skips.
+    - 4 of those 10 are triage pushbacks, and they count as missed.
+  - *The rules.*
+    1. no row failed;
+    2. at least 90% of triage's sampled pushbacks are called pushback, a
+       skipped one counting as missed;
+    3. at least 50 of the 55 v1 moments are called pushback.
+    - Reported but not a rule: the share of triage's non-pushbacks called
+      pushback. Each costs one more triage call in the full run.
+  - *What a result changes.* The model stays gpt-5.6-luna at low effort
+    whatever this shows (the user's choice). A fail means reading the misses
+    for a pattern before the full run.
+  - *Then* a pilot on part of the Entire corpus. Every message labelled
+    pushback is read by hand for any that is not one.
+  - *Cost.* Estimate $0.38 at list price, capped at $1.

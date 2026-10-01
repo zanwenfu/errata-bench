@@ -10,6 +10,10 @@
         --out-tokens 500 --max-usd 1
     .venv/bin/python scripts/crawl_label.py report data/entire/label-calibration-gpt-5.6-luna-low.jsonl
 
+    # paid: the check against our own triage's verdicts on SWE-chat's moments (the answer key since 10-01)
+    ERRATA_PROVIDER=azure .venv/bin/python scripts/crawl_label.py calibrate --against triage \\
+        --model gpt-5.6-luna --effort low --out-tokens 100 --max-usd 1
+
     # paid: the collected corpus's messages, Claude 5 sessions first
     ERRATA_PROVIDER=azure .venv/bin/python scripts/crawl_label.py label --corpus data/entire/corpus \\
         --model gpt-5.6-luna --effort low --out-tokens <the calibration's mean> --max-usd 35
@@ -37,7 +41,9 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TASKS = ROOT.parent / "errata-bench" / "release" / "v1.0.2-dataset" / "tasks"
+RUNS = ROOT.parent / "errata-bench" / "runs"
 PER_CLASS = {"non_pushback": 100, "correction": 100, "failure_report": 100, "rejection": 60, "takeover": 40}
+TRIAGE_COUNTS = {"pushback": 300, "not pushback": 150}
 
 
 def pricing(model: str):
@@ -73,10 +79,14 @@ def main(argv: list[str]) -> int:
                        help="refuse to start when the estimate is above this, and stop asking when the spend reaches it")
         s.add_argument("--concurrency", type=int, default=4)
         s.add_argument("--limit", type=int, default=0, help="label at most this many messages")
+        s.add_argument("--batch", type=int, default=200, help="sessions read into memory at a time")
     c = sub.choices["calibrate"]
+    c.add_argument("--against", choices=("swechat", "triage"), default="swechat",
+                   help="the answer key: SWE-chat's labels, or our triage's verdicts on the moments it read")
     c.add_argument("--out", type=Path, default=None,
-                   help="default data/entire/label-calibration-<model>[-<effort>][-seed<seed>].jsonl")
+                   help="default data/entire/label-{calibration,triage-check}-<model>[-<effort>][-seed<seed>].jsonl")
     c.add_argument("--tasks", type=Path, default=TASKS, help="v1's frozen tasks, for the moments they were built from")
+    c.add_argument("--runs", type=Path, default=RUNS, help="the pipeline's runs, whose triaged.jsonl hold triage's verdicts")
     c.add_argument("--seed", type=int, default=0)
     lab = sub.choices["label"]
     lab.add_argument("--corpus", type=Path, required=True, help="the collected corpus (data/entire/corpus)")
@@ -103,22 +113,37 @@ def main(argv: list[str]) -> int:
 
     if args.command == "report":
         rows = load(args.rows)
+        sample = args.rows.with_suffix(".sample.json")
+        if sample.exists():  # a triage check's
+            picked = {(s, t): info for s, t, info in json.loads(sample.read_text())}
+            print(json.dumps(L.triage_report(rows, picked), indent=1))
+            return 0
         frequency = json.loads((args.rows.with_suffix(".frequency.json")).read_text())
         print(json.dumps(L.calibration_report(rows, L.Counter(frequency)), indent=1))
         return 0
 
+    frequency = None
     if args.command == "calibrate":
         if CORPUS.resolve() != (ROOT / "data" / "swe-chat").resolve():
             raise SystemExit(f"calibration reads SWE-chat, not {CORPUS}")
         if args.out is None:
-            args.out = Path("data/entire") / (f"label-calibration-{args.model}{'-' + args.effort if args.effort else ''}"
+            name = "label-triage-check" if args.against == "triage" else "label-calibration"
+            args.out = Path("data/entire") / (f"{name}-{args.model}{'-' + args.effort if args.effort else ''}"
                                               f"{f'-seed{args.seed}' if args.seed else ''}.jsonl")
-        picked, frequency = L.calibration_sample(CORPUS, PER_CLASS, args.seed, also=v1_moments(args.tasks))
         args.out.parent.mkdir(parents=True, exist_ok=True)
-        args.out.with_suffix(".frequency.json").write_text(json.dumps(frequency) + "\n")
+        if args.against == "triage":
+            triaged = sorted(p for p in args.runs.glob("*/triaged.jsonl") if ".pre-" not in p.parent.name)
+            key = L.triage_key(triaged)
+            picked = L.triage_sample(key, TRIAGE_COUNTS, args.seed, also=v1_moments(args.tasks))
+            args.out.with_suffix(".sample.json").write_text(
+                json.dumps([[s, t, info] for (s, t), info in sorted(picked.items())]) + "\n")
+            print(f"triage check: {len(picked)} moments, {dict(L.Counter(v['triage'] for v in picked.values()))}, "
+                  f"from {len(key)} verdicts in {len(triaged)} runs, into {args.out}")
+        else:
+            picked, frequency = L.calibration_sample(CORPUS, PER_CLASS, args.seed, also=v1_moments(args.tasks))
+            args.out.with_suffix(".frequency.json").write_text(json.dumps(frequency) + "\n")
+            print(f"calibration: {len(picked)} messages, into {args.out}; SWE-chat's labels occur {dict(frequency)}")
         sessions, only, extra = {s for s, _ in picked}, set(picked), picked
-        print(f"calibration: {len(picked)} messages from {len(sessions)} sessions, into {args.out}; "
-              f"SWE-chat's labels occur {dict(frequency)}")
     else:
         if (args.corpus / "conversations.parquet").resolve() == (ROOT / "data" / "swe-chat" / "conversations.parquet").resolve():
             raise SystemExit("label reads the collected corpus, not SWE-chat")
@@ -131,31 +156,66 @@ def main(argv: list[str]) -> int:
         print(f"label: {len(chosen)} sessions (since {args.since}, not in SWE-chat, sandboxable, models "
               f"{args.models})")
 
-    turns = recovered(load_session_turns(sessions))
+    # Sessions are read a batch at a time: a session's turns can run to tens of
+    # megabytes as Python objects, and 402 of SWE-chat's took 4.4 GB at once.
+    batches = [sorted(sessions)[i:i + args.batch] for i in range(0, len(sessions), args.batch)]
     # What this run will ask, as `label_turns` chooses it: not a message this
     # model already answered at this effort, then at most `--limit`.
     answered = {(r["session_id"], r["turn_number"]) for r in (load(args.out) if args.out.exists() else [])
                 if not r.get("error") and (r.get("model"), r.get("effort")) == (args.model, args.effort)}
-    todo = [(s, t) for s in sorted(turns) for t in L.to_label(turns[s])
-            if (only is None or (s, t["turn_number"]) in only) and (s, t["turn_number"]) not in answered]
-    if args.limit:
-        todo = todo[:args.limit]
+
+    def pending(batch: list[str]) -> tuple[dict, list]:
+        turns = recovered(load_session_turns(set(batch)))
+        return turns, [(s, t) for s in sorted(turns) for t in L.to_label(turns[s])
+                       if (only is None or (s, t["turn_number"]) in only) and (s, t["turn_number"]) not in answered]
+
     if answered:
         print(f"{len(answered)} messages already answered in {args.out}; the estimate is for the rest")
     price_in, price_out, cost_of = pricing(args.model)
-    cost = L.estimate([(L.context_for(turns[s], t["turn_number"]), L.message_for(t)) for s, t in todo],
-                      price_in=price_in, price_out=price_out, out_tokens=args.out_tokens)
+    cost, left = L.Counter(), args.limit or float("inf")
+    for batch in batches:
+        turns, todo = pending(batch)
+        todo = todo[:int(min(left, len(todo)))]
+        left -= len(todo)
+        cost.update(L.estimate([(L.context_for(turns[s], t["turn_number"]), L.message_for(t)) for s, t in todo],
+                               price_in=price_in, price_out=price_out, out_tokens=args.out_tokens))
+        if left <= 0:
+            break
+    cost["usd"] = round(cost["usd"], 2)
     print(f"estimate at {args.model}'s list price (${price_in}/${price_out} per 1M, no cache, "
-          f"{args.out_tokens} tokens written per message): {cost}")
+          f"{args.out_tokens} tokens written per message): {dict(cost)}")
     if args.estimate:
         return 0
     if cost["usd"] > args.max_usd:
         raise SystemExit(f"estimated ${cost['usd']} is above --max-usd {args.max_usd}: nothing was asked")
     os.environ.setdefault("ERRATA_MODEL", args.model)
+    spent = [0.0]
+
+    def priced(usage) -> float:
+        spent[0] += cost_of(usage)
+        return cost_of(usage)
+
+    async def every_batch() -> L.Counter:
+        # One event loop for the whole run: the API client is made once and
+        # holds its connections to the loop it first ran in.
+        counts, left = L.Counter(), args.limit or float("inf")
+        for batch in batches:
+            if spent[0] >= args.max_usd or left <= 0:
+                break
+            turns, todo = pending(batch)
+            if not todo:
+                continue
+            got = await L.label_turns(turns, args.out, model=args.model, effort=args.effort,
+                                      concurrency=args.concurrency, limit=int(min(left, len(todo))), only=only,
+                                      extra=extra, spend=priced, max_usd=args.max_usd - spent[0])
+            counts.update(got)
+            left -= sum(v for k, v in got.items() if not k.startswith("not asked"))
+        return counts
+
     began = time.monotonic()
-    counts = asyncio.run(L.label_turns(turns, args.out, model=args.model, effort=args.effort,
-                                       concurrency=args.concurrency, limit=args.limit, only=only, extra=extra,
-                                       spend=cost_of, max_usd=args.max_usd))
+    counts = asyncio.run(every_batch())
+    if spent[0] >= args.max_usd:
+        print(f"stopped at the spend cap: ${spent[0]:.2f} of --max-usd {args.max_usd}; run again to ask the rest")
     minutes = (time.monotonic() - began) / 60
     rows = load(args.out)
     asked = [r for r in rows if r.get("usage")]
@@ -168,7 +228,9 @@ def main(argv: list[str]) -> int:
           f"per answer {used_in / max(len(asked), 1):.0f} in, {used_out / max(len(asked), 1):.0f} out; "
           f"${sum(cost_of(r['usage']) for r in asked):.2f} at list price")
     if args.command == "calibrate":
-        print(json.dumps(L.calibration_report(rows, frequency, expected=len(picked)), indent=1))
+        report = (L.triage_report(rows, picked) if args.against == "triage"
+                  else L.calibration_report(rows, frequency, expected=len(picked)))
+        print(json.dumps(report, indent=1))
     return 0
 
 
