@@ -10704,3 +10704,31 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
       sessions, in a file of its own.
     - The first run's file is kept, and its fail stands.
     - Estimate $0.34 at list price, capped at $1.
+- **10-01, 01:5x UTC** — **The amended calibration fails the same rule: 82 of
+  SWE-chat's 100 sampled failure reports called pushback, against 85% (#16).**
+  - *Result.* 455 answered; none failed and none was filtered.
+    - Passed: 55 of 55 v1 task moments, and 74.6% agreement on pushback or
+      not, reweighted.
+    - Failed: failure reports, 82%.
+    - Also reported: four-class agreement 61.1%. Called pushback, by SWE-chat's
+      label: non_pushback 19%, correction 64%, rejection 68%, takeover 10%.
+    - Cost and speed: $0.33 at list price, 283 answers a minute.
+  - **Not a pass, and no rule changes.**
+  - *The 18 failure reports called non_pushback, as read after the verdict:*
+    - 5 were not typed by a developer: skill text Claude Code loaded, a
+      sub-agent's review delivered as the user's turn, an app's attachment
+      wrapper, and a harness's "summarize and continue";
+    - 5 are new requests about problems the agent did not cause, such as an
+      account's free-tier limit;
+    - 6 are questions, such as "what's the accuracy so far?";
+    - about 2 read as complaints missed: "are we caught in a loop or will the
+      next release candidate actually work?", and one saying the developer
+      had just hit problems.
+  - So SWE-chat's failure-report label is often not a failure report by its
+    own codebook, and rule 3 measures agreement with that noise as much as
+    recall. The rule nearest what the pipeline needs, v1's verified complaint
+    moments, passed 55 of 55 in both runs.
+  - *Next, the user's choice* between:
+    - the registered fallback, gpt-6.1-sol on this sample under the same rules;
+    - a cleaner answer key;
+    - proceeding with gpt-5.6-luna as a recorded deviation.
