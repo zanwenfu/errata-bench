@@ -129,6 +129,7 @@ def assemble(out: Path, *, log=print) -> dict:
     labels = {(r["session_id"], r["turn_number"]): (r["label"], r["digest"])
               for r in load(out / "labels.jsonl") if r.get("label") and not r.get("error")}
     labelled: Counter = Counter()
+    developer_turns: set[tuple[str, int]] = set()
 
     # Commits, and which checkpoint each links to: from `link` when it ran,
     # else from discovery's trailer commits (default branches only, no patch).
@@ -192,6 +193,8 @@ def assemble(out: Path, *, log=print) -> dict:
             pk = f"{repo}#{s['checkpoint_id']}"
             rows = claude_code_rows(sid, repo, pk, entries, strategy=s.get("strategy"))
             for r in rows:
+                if r["turn_type"] == "user_prompt":
+                    developer_turns.add((sid, r["turn_number"]))
                 got = labels.get((sid, r["turn_number"])) if r["turn_type"] == "user_prompt" else None
                 if got and got[1] == digest(r["content"]):
                     r["prompt_pushback"] = got[0]
@@ -314,6 +317,11 @@ def assemble(out: Path, *, log=print) -> dict:
     _write(corpus / "checkpoints.parquet", checkpoints, CHECKPOINTS)
     _write(corpus / "commits.parquet", commit_rows, COMMITS)
     _write(corpus / "repositories.parquet", repositories, REPOSITORIES)
+    # A label whose turn holds no developer message now -- the corpus re-assembled
+    # with turns moved, or the session left out -- is counted, not dropped unseen.
+    unplaced = sum(1 for key in labels if key not in developer_turns)
+    if unplaced:
+        labelled["not put: no developer message at that turn"] = unplaced
     summary = {"sessions": len(sessions), "repositories": len(repositories), "checkpoints": len(checkpoints),
                "commit_rows": len(commit_rows), "left_out": dict(left_out), "agents_left_for_later": dict(agents_left),
                "labels": dict(labelled)}

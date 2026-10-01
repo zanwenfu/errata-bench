@@ -2,11 +2,11 @@
 
     .venv/bin/python d40_spend.py [--prefix d40] [--stop 1600] [--code <sha>]
 
-An upper bound, on purpose: gpt-6-sol is not on Azure's price list, so it is
-priced as gpt-6-astra, and gpt-6-sol's own tests (calibration, controls,
-probes), whose rows record no tokens, are priced at a first reading's cost
-each, and counted once, in d40-soltests, where they are asked. Exits 3 when
-the total reaches --stop.
+An upper bound, on purpose. gpt-6-sol, missing from Azure's price list until
+09-30 and priced as gpt-6-astra before then, is now at its listed price. Its
+own tests (calibration, controls, probes), whose rows record no tokens, are
+priced at a first reading's cost each, and counted once, in d40-soltests,
+where they are asked. Exits 3 when the total reaches --stop.
 
 --code counts only the rows written at that commit: D-45 copies D-44's
 answers and its readings of the answers it does not re-grade, and those were

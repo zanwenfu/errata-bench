@@ -224,7 +224,9 @@ async def label_turns(turns_by_session: dict[str, list[dict]], out: Path, *, mod
     `only` restricts it to those (session, turn) keys, and `extra` adds fields
     to each row by key (calibration's reference label). `ask` is the call that
     labels one message, `classify` unless another is given. Resumable: a
-    message with a row that did not error is not asked again.
+    message with a row that did not error, for the text it has now (its digest),
+    is not asked again; one whose row is for another text is, and assembly
+    reads the newer row.
 
     One file holds one model's labels at one effort to one question: resumed
     under another, a run would take the first one's labels for its own. With
@@ -243,9 +245,12 @@ async def label_turns(turns_by_session: dict[str, list[dict]], out: Path, *, mod
         if other:
             raise ValueError(f"{out} holds labels by {sorted(other, key=str)}, not by {model} at effort {effort} "
                              f"to the {QUESTION} question: one file holds one model's labels")
-    done = {(r["session_id"], r["turn_number"]) for r in completed(out)} if out.exists() else set()
+    # Done means answered for this text: after a re-assembly that moved turns,
+    # a row for another message at the same turn is asked again (the review, 10-01).
+    done = {(r["session_id"], r["turn_number"]): r.get("digest") for r in completed(out)} if out.exists() else {}
     todo = [(sid, t) for sid, turns in sorted(turns_by_session.items()) for t in to_label(turns)
-            if (sid, t["turn_number"]) not in done and (only is None or (sid, t["turn_number"]) in only)]
+            if done.get((sid, t["turn_number"])) != digest(t.get("content"))
+            and (only is None or (sid, t["turn_number"]) in only)]
     if limit:
         todo = todo[:limit]
     log(f"{len(todo)} messages to label ({len(done)} already labelled)")
@@ -285,7 +290,11 @@ async def label_turns(turns_by_session: dict[str, list[dict]], out: Path, *, mod
 
 def estimate(pairs: list[tuple[str, str]], *, price_in: float, price_out: float,
              out_tokens: int = 90, chars_per_token: float = 3.5) -> dict:
-    """What labelling these (context, message) pairs costs, before any call: an upper bound, no cache."""
+    """What labelling these (context, message) pairs costs, before any call, with no cache.
+
+    At 3.5 characters a token: Chinese, Japanese or Korean text takes more
+    tokens than that, so for them it is low, and the spend cap is what holds.
+    """
     from ..llm import with_field_guide
 
     fixed = len(with_field_guide(CODEBOOK, Pushback))

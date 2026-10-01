@@ -3,7 +3,7 @@
     # what a run would cost, calling no model
     .venv/bin/python scripts/crawl_label.py calibrate --against triage --model gpt-5.6-luna --effort low \\
         --out-tokens 100 --estimate
-    .venv/bin/python scripts/crawl_label.py label --corpus data/entire/corpus --digests data/swechat-digests.json \\
+    .venv/bin/python scripts/crawl_label.py label --corpus data/entire/corpus \\
         --model gpt-5.6-luna --effort low --out-tokens 100 --estimate
 
     # paid: the check against triage's verdicts on SWE-chat's moments (the answer key since 10-01), then its report
@@ -13,9 +13,9 @@
 
     # paid: a pilot of a few Entire sessions, then the collected corpus's Claude 5 sessions
     ERRATA_PROVIDER=azure .venv/bin/python scripts/crawl_label.py label --corpus data/entire/corpus \\
-        --digests data/swechat-digests.json --model gpt-5.6-luna --effort low --sessions 20 --max-usd 1
+        --model gpt-5.6-luna --effort low --sessions 20 --max-usd 1
     ERRATA_PROVIDER=azure .venv/bin/python scripts/crawl_label.py label --corpus data/entire/corpus \\
-        --digests data/swechat-digests.json --model gpt-5.6-luna --effort low --out-tokens <measured> --max-usd <cap>
+        --model gpt-5.6-luna --effort low --out-tokens <measured> --max-usd <cap>
 
 `calibrate` reads SWE-chat (the default corpus) and refuses any other: against
 triage's verdicts on the moments it read (the answer key), or against SWE-chat's
@@ -25,7 +25,9 @@ asking once what it has spent reaches it; run again, it asks the rest. The
 estimate assumes `--out-tokens` written per message: a reasoning model writes
 more than a label and its reason take, so give it a measured mean. Every row
 records its token use, so the spend can be reconciled after. Labels go on the
-corpus's rows when it is next assembled (`crawl_entire.py assemble`).
+corpus's rows when it is next assembled (`crawl_entire.py assemble`). Run it
+from the repository's root: `--out`, `--digests` and `--corpus` are relative,
+and `--digests` names SWE-chat's session ids wherever the crawl keeps them.
 """
 
 from __future__ import annotations
@@ -111,7 +113,7 @@ def main(argv: list[str]) -> int:
     from errata_bench.corpus.sessions import CORPUS
     from errata_bench.corpus.turns import load_session_turns
     from errata_bench.crawl import label as L
-    from errata_bench.store.rows import load
+    from errata_bench.store.rows import load, only_one
 
     if args.command == "report":
         rows = load(args.rows)
@@ -167,15 +169,17 @@ def main(argv: list[str]) -> int:
     # megabytes as Python objects, and 402 of SWE-chat's took 4.4 GB at once.
     batches = [sorted(sessions)[i:i + args.batch] for i in range(0, len(sessions), args.batch)]
     # What this run will ask, as `label_turns` chooses it: not a message this
-    # model already answered at this effort to this question, then at most `--limit`.
-    answered = {(r["session_id"], r["turn_number"]) for r in (load(args.out) if args.out.exists() else [])
-                if not r.get("error")
+    # model already answered at this effort to this question, for this text, then at
+    # most `--limit`.
+    answered = {(r["session_id"], r["turn_number"]): r.get("digest")
+                for r in (load(args.out) if args.out.exists() else []) if not r.get("error")
                 and (r.get("model"), r.get("effort"), r.get("question")) == (args.model, args.effort, L.QUESTION)}
 
     def pending(batch: list[str]) -> tuple[dict, list]:
         turns = recovered(load_session_turns(set(batch)))
         return turns, [(s, t) for s in sorted(turns) for t in L.to_label(turns[s])
-                       if (only is None or (s, t["turn_number"]) in only) and (s, t["turn_number"]) not in answered]
+                       if (only is None or (s, t["turn_number"]) in only)
+                       and answered.get((s, t["turn_number"])) != L.digest(t.get("content"))]
 
     if answered:
         print(f"{len(answered)} messages already answered in {args.out}; the estimate is for the rest")
@@ -221,7 +225,11 @@ def main(argv: list[str]) -> int:
         return counts
 
     began = time.monotonic()
-    counts = asyncio.run(every_batch())
+    # One run at a time over one file: a second, started because the first
+    # looked stuck, would ask everything still left again and pay for it twice.
+    # Its own lock, since the row store holds `<file>.lock` while it rewrites.
+    with only_one(args.out.parent, f"labelling into {args.out.name}", name=f"{args.out.name}.run.lock"):
+        counts = asyncio.run(every_batch())
     if spent[0] >= args.max_usd:
         print(f"stopped at the spend cap: ${spent[0]:.2f} of --max-usd {args.max_usd}; run again to ask the rest")
     minutes = (time.monotonic() - began) / 60
