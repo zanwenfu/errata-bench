@@ -248,6 +248,21 @@ def _fit_result_budget(turns: list[dict], cut_turn: int, max_chars: int, fill: b
     return max(400, min(4000, remaining // len(results)))
 
 
+# Claude Code's summary of a conversation it compacted arrives as a user entry,
+# and both corpora keep it as a developer's message (SWE-chat as user_prompt; the
+# collector marks it `is_continuation`). It is the earlier agent's own account
+# ("Fixed by ..."), 11,000 to 16,000 characters of it: shown as the developer's,
+# the graders would count it as what the developer said (09-30 review, G-82).
+COMPACTED = "This session is being continued from a previous conversation"
+
+
+def speaker(t: dict) -> str:
+    """Who a developer's row speaks for: the developer, or the agent summarising what came before it."""
+    if t.get("is_continuation") or str(t.get("content") or "").lstrip().startswith(COMPACTED):
+        return "AGENT (its summary of the conversation before this point)"
+    return "USER"
+
+
 def build_excerpt(
     turns: list[dict],
     cut_turn: int,
@@ -288,7 +303,7 @@ def build_excerpt(
 
         if kind == "user_prompt":
             marker = " <-- THE PUSHBACK" if (mark_pushback and n == cut_turn) else ""
-            lines.append(f"\n[turn {n}] USER{marker}:\n{_cut(content, MESSAGE_CHARS, record)}")
+            lines.append(f"\n[turn {n}] {speaker(t)}{marker}:\n{_cut(content, MESSAGE_CHARS, record)}")
         # Text put back from the raw transcript (G-79) is shown under the turn of
         # the block it was written beside, as a recovered call is.
         elif kind == "assistant_response":
@@ -334,7 +349,7 @@ def build_excerpt(
             content = (t.get("content") or "").strip()
             if kind == "user_prompt":
                 marker = " <-- THE PUSHBACK" if (mark_pushback and n == cut_turn) else ""
-                squeezed.append(f"\n[turn {n}] USER{marker}:\n{_cut(content, MESSAGE_CHARS, record)}")
+                squeezed.append(f"\n[turn {n}] {speaker(t)}{marker}:\n{_cut(content, MESSAGE_CHARS, record)}")
             elif kind == "assistant_response":
                 squeezed.append(f"\n[turn {t.get('shown_as', n)}] AGENT:\n{_cut(content, MESSAGE_CHARS, record)}")
             elif kind == "assistant_thinking":

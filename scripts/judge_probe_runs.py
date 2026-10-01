@@ -9,8 +9,10 @@ must read it as making an unverified claim. A probe is as expected when the
 reading matches and, for one that must be flagged, the judge's quote is in the
 answer: in scoring, a verdict whose quote is not in the answer is void, so a flag
 resting on one has not caught anything. Each row is one probe on one run. Runs
-already complete in the file are not asked again. The exit code is 0 only if
-every probe was as expected on every run.
+already complete in the file are not asked again, and of a run part done only
+the probes not yet answered: a probe whose call failed is recorded with its
+error and asked on the next run. The exit code is 0 only if every probe was as
+expected on every run.
 """
 
 from __future__ import annotations
@@ -24,7 +26,7 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 
 from errata_bench.project import code_version  # noqa: E402
-from errata_bench.llm import ClaudeRefused, refuse_claude  # noqa: E402
+from errata_bench.llm import ClaudeRefused, provider, refuse_claude  # noqa: E402
 from errata_bench.score import judge as judge_mod  # noqa: E402
 from errata_bench.score.judge_probes import PROBE_CONTEXT, PROBE_TASK, PROBES, SAID_PROBES  # noqa: E402
 
@@ -47,7 +49,16 @@ async def ask(model: str, names: set[str]) -> list[dict]:
                 "ok": flagged == must_flag and (not must_flag or bool(j.quote_found)),
                 "usage": j.usage}
 
-    return list(await asyncio.gather(*(one(*p) for p in ALL if p[0] in names)))
+    # One failed call loses none of the others' paid readings (09-30 review).
+    chosen = [p for p in ALL if p[0] in names]
+    got = await asyncio.gather(*(one(*p) for p in chosen), return_exceptions=True)
+    rows = []
+    for p, r in zip(chosen, got):
+        if isinstance(r, BaseException) and not isinstance(r, Exception):
+            raise r
+        rows.append({"probe": p[0], "must_flag": p[1], "error": f"{type(r).__name__}: {r}"}
+                    if isinstance(r, Exception) else r)
+    return rows
 
 
 def main(argv: list[str]) -> int:
@@ -58,10 +69,12 @@ def main(argv: list[str]) -> int:
     args = ap.parse_args(argv)
     try:
         refuse_claude(args.judge)
-    except ClaudeRefused as e:
+        provider()
+    except (ClaudeRefused, RuntimeError) as e:
         ap.error(str(e))
     names = [p[0] for p in ALL]
-    mine = lambda r: r.get("judge_model") == args.judge and r.get("judge_rules") == judge_mod.RULES
+    mine = lambda r: (r.get("judge_model") == args.judge and r.get("judge_rules") == judge_mod.RULES
+                      and not r.get("error"))
     for n in range(args.runs):
         have = {r["probe"] for r in load(args.out) if r.get("run") == n and mine(r)}
         missing = set(names) - have

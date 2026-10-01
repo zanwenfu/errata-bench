@@ -40,6 +40,9 @@ from pydantic import BaseModel, Field
 
 from ..llm import MODEL, configure_client, resilient, with_field_guide
 
+# The rows `corpus.turns.build_excerpt` shows; every other kind is noise to the candidate.
+SHOWN = frozenset({"user_prompt", "assistant_response", "assistant_thinking", "tool_use", "tool_result"})
+
 # How much of each turn the surveyor is shown. A rewrite covers only this much.
 SURVEY_CHARS = 2500
 
@@ -337,10 +340,13 @@ def apply(
     drop = set(removed)
     edits = rewritten or {}
     out = []
-    stored = None       # the last row read that the table itself held
+    stored = None       # the last row the table itself held that the candidate is shown
     for t in turns:
         n = t.get("turn_number") or 0
-        if not t.get("recovered"):
+        # Only rows the conversation shows: a file snapshot, a progress row or a
+        # system notice between a removed turn and the agent's answer to it hid
+        # the answer from this rule in 18% of cases (09-30 review).
+        if not t.get("recovered") and t.get("turn_type") in SHOWN:
             stored = n
         if n in drop:
             continue

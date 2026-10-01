@@ -148,6 +148,14 @@ def append(path: Path, row: dict) -> None:
             fh.write(line)
 
 
+
+def append_used(path: Path, row: dict) -> None:
+    """`append`, with the token use of the row's model calls (`llm.metered`): screening, calibration, the
+    controls and the gate recorded none, so the steps before a pilot could not be priced (09-30 review)."""
+    from ..llm import current_usage
+
+    append(path, {**row, "usage": current_usage()})
+
 def key_of(row: dict) -> tuple:
     """What makes a row unique: one pushback moment in one session.
 
@@ -178,6 +186,13 @@ def completed(path: Path) -> list[dict]:
 
     Dropping them from the file is what makes the retry happen -- the stage
     recomputes `done` from what is left, so the failed rows come back as work.
+
+    They are kept beside it (`dropped_rows`), each before it leaves: a failed
+    row's usage is spend, and `scripts/harbor_spend.py` prices it there too.
+    Deleted with the row, a run started again before the spend guard's next
+    tally lost it from the ledger and the stop line (10-01 review). Stopped
+    between the two writes, a row is in both files, and priced once: the tally
+    keys each row by its stage's file and its content.
     """
     rows = load(path)
     if all(_succeeded(r) for r in rows):
@@ -186,9 +201,18 @@ def completed(path: Path) -> list[dict]:
     # be out of date by now, and writing that stale list back would delete
     # whatever another process appended in between.
     with held(path):
-        kept = [r for r in load(path) if _succeeded(r)]
+        rows = load(path)
+        for r in rows:
+            if not _succeeded(r):
+                append(dropped_rows(path), r)
+        kept = [r for r in rows if _succeeded(r)]
         replace(path, kept)
     return kept
+
+
+def dropped_rows(path: Path) -> Path:
+    """Where `completed` keeps the rows it drops from ``path``: ``<name>.dropped.jsonl`` beside it."""
+    return path.with_name(path.name.removesuffix(".jsonl") + ".dropped.jsonl")
 
 
 

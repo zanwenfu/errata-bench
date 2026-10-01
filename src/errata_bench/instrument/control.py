@@ -491,26 +491,67 @@ async def check(task, control: Control, *, model: str | None = None, context: st
     )
 
 
+def admission_problems(calibration: list[dict], controls: list[dict], judge: str | None, *,
+                       setup: bool = True) -> list[str]:
+    """Why an admission's readings were not taken the way this code grades, one line each; empty when they were.
+
+    A judge is admitted under the rules it reads with (`judge_rules`; a row
+    without them was read under rules 3 or earlier, and G-82 made them 4), the
+    trace half of the controls under the trace check's (`trace_rules`, which
+    `controlled` reads), and both through the provider, API and field guide this
+    run reads through (`llm.reading_setup`): a judge admitted one way and graded
+    another reads a different prompt. Another judge's rows, rows that failed, and
+    the trace check's own probes are not this judge's readings (09-30 review).
+    """
+    import json
+
+    from ..llm import reading_setup
+    from ..score.judge import RULES
+    from ..score.trace import RULES as TRACE_RULES
+
+    mine = [r for r in calibration + controls
+            if not r.get("error") and not str(r.get("control", "")).startswith("probe:")
+            and (judge is None or r.get("judge_model", judge) == judge)]
+    if not mine:
+        return []
+    problems = []
+    judged = {r.get("judge_rules") for r in mine}
+    if judged != {RULES}:
+        told = ", ".join("none recorded (rules 3 or earlier)" if x is None else str(x)
+                         for x in sorted(judged, key=str))
+        problems.append(f"read under judge rules {told}, and this code's judge reads under rules {RULES}")
+    # Only the controls' rows carry them: calibration reads with the judge alone.
+    traced = {r["trace_rules"] for r in mine if "trace_rules" in r}
+    if traced and traced != {TRACE_RULES}:
+        problems.append(f"its controls' trace half read under trace rules "
+                        f"{', '.join(str(x) for x in sorted(traced, key=str))}, and this code's under {TRACE_RULES}")
+    setups = {json.dumps(r["reading_setup"], sort_keys=True) for r in mine if r.get("reading_setup")}
+    if setups and setup:
+        try:
+            now = json.dumps(reading_setup(), sort_keys=True)
+        except RuntimeError as e:
+            now = f"no provider ({e})"
+        if setups != {now}:
+            problems.append(f"read through {', '.join(sorted(setups))}, and this run reads through {now}")
+    return problems
+
+
 def admission_refused(paths: Paths) -> str | None:
     """Why a run's candidates may not be run or graded under this code's judge, or None.
 
-    A judge is admitted under the rules it reads with. The rows record them
-    since 30 September (`judge_rules`); a row without the field was read under
-    rules 3 or earlier, and G-82 made them 4. Rows are left as they are, since
-    earlier runs are read under their own rules: the pipeline only refuses to
-    add candidates or grades to an admission this judge never made.
+    The admission's rows are left as they are, since earlier runs are read under
+    their own rules: the pipeline only refuses to add candidates or grades to an
+    admission this judge never made (`admission_problems`).
     """
-    from ..score.judge import RULES
+    from ..llm import judge_model
     from ..store import load
 
-    rules = {r.get("judge_rules") for path in (paths.calibration, paths.controls)
-             for r in (load(path) if path.exists() else [])
-             if not r.get("error") and not str(r.get("control", "")).startswith("probe:")}
-    if not rules or rules == {RULES}:
+    problems = admission_problems(load(paths.calibration) if paths.calibration.exists() else [],
+                                  load(paths.controls) if paths.controls.exists() else [], judge_model())
+    if not problems:
         return None
-    told = ", ".join("none recorded (rules 3 or earlier)" if x is None else str(x) for x in sorted(rules, key=str))
-    return (f"refused: this run's admission was read under judge rules {told}, and this code's judge reads "
-            f"under rules {RULES}: admit it again, in a new run directory, before running or grading candidates")
+    return (f"refused: this run's admission was {'; '.join(problems)}: admit it again, in a new run directory, "
+            f"before running or grading candidates")
 
 
 def controlled(paths: Paths) -> set[str]:

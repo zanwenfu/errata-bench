@@ -50,6 +50,7 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, Field
 
+from ..corpus.turns import speaker
 from ..llm import MODEL, configure_client, resilient, with_field_guide
 
 
@@ -249,15 +250,19 @@ def render(turns: list[dict], start: int, end: int, *, budget: int = 900) -> str
         if kind in ("progress", "file_snapshot", "system_event", "queue_operation"):
             continue
         body = (turn.get("content") or "").strip()
+        # A row put back from the transcript is labelled with the turn it is shown
+        # under, as `build_excerpt` labels it: the reader names boundaries by whole
+        # turns, and a "[turn 180.33333333333334]" invited a fractional one.
+        label = turn.get("shown_as", n)
         if kind == "user_prompt":
-            lines.append(f"\n[turn {n}] USER:\n{body[:3000]}")
+            lines.append(f"\n[turn {n}] {speaker(turn)}:\n{body[:3000]}")
         elif kind == "assistant_response":
-            lines.append(f"\n[turn {n}] AGENT:\n{body[:3000]}")
+            lines.append(f"\n[turn {label}] AGENT:\n{body[:3000]}")
         elif kind == "tool_use":
             detail = turn.get("command") or turn.get("file_path") or body[:120]
-            lines.append(f"[turn {n}] calls {turn.get('tool_name')}: {str(detail)[:200]}")
+            lines.append(f"[turn {label}] calls {turn.get('tool_name')}: {str(detail)[:200]}")
         elif kind == "tool_result" and body:
-            lines.append(f"[turn {n}] -> {body[:budget]}")
+            lines.append(f"[turn {label}] -> {body[:budget]}")
     return "\n".join(lines)
 
 

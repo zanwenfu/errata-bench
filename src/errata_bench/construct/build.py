@@ -233,10 +233,11 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
                 continue
 
             # Before the leak rule: a row whose gates could not read the conversation
-            # has no leak verdict, and a missing one would read as clean.
-            if row.get("too_long"):
-                reject(f"never screened whole: the conversation is longer than the screening model reads "
-                       f"({str(row['too_long'])[:80]})")
+            # has no leak verdict, and a missing one would read as clean. `too_long`
+            # is the same refusal as 30afcc7be wrote it (10-01 review).
+            refused = row.get("provider_refused") or (row.get("too_long") and f"too long: {row['too_long']}")
+            if refused:
+                reject(f"never screened whole: the screening model's provider refused it ({str(refused)[:80]})")
                 continue
 
             # A conversation that leaks is repaired before it is rejected. Removing
@@ -262,6 +263,14 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
 
             turns = turns_by_session.get(row["session_id"]) or []
             by_turn = {t.get("turn_number"): t for t in turns}
+            # A session whose rows the corpus holds twice, under the same turn
+            # numbers, would show its candidate each message twice (09-30 review).
+            # A call put back sits at a fraction strictly between two stored turns
+            # (`recover`), so it never repeats one, nor another put back.
+            stored = [t.get("turn_number") for t in turns]
+            if len(stored) != len(set(stored)):
+                reject("the corpus holds rows of this session twice, under the same turn numbers")
+                continue
 
             # A missing verdict is not a pass. Screened rows written before the scope
             # gate existed carry no `within_scope` at all, and testing only for False

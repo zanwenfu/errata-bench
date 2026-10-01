@@ -11,6 +11,7 @@ screened.pre-answerable2.jsonl and its rows take the new verdict, keeping the
 old one as `asks_for_something_v1`, `asks_for_something_held_v1` and
 `request_reason_v1`. Only this verdict moves: the other gates' readings are left
 as they were, so their noise is not re-drawn.
+Run again with OUT there, only the rows whose calls failed are asked again.
 """
 
 from __future__ import annotations
@@ -29,17 +30,22 @@ from errata_bench.construct.build import last_user_message  # noqa: E402
 from errata_bench.corpus.recover import recovered  # noqa: E402
 from errata_bench.corpus.turns import load_session_turns  # noqa: E402
 from errata_bench.find.answerable import ANSWERABLE_GATE, agent_message_before, asks_for_something  # noqa: E402
-from errata_bench.stages.screening import _agree, gate_view  # noqa: E402
+from errata_bench.stages.screening import _agree, screened_view  # noqa: E402
 from errata_bench.store import load, replace  # noqa: E402
 
 
-async def judge_run(run: Path, sem: asyncio.Semaphore) -> list[dict]:
-    rows = [r for r in load(run / "screened.jsonl") if not r.get("error")]
+async def judge_run(run: Path, sem: asyncio.Semaphore, sessions: set[str] | None = None,
+                    only: set[tuple] | None = None) -> list[dict]:
+    rows = [r for r in load(run / "screened.jsonl")
+            if not r.get("error") and (not sessions or r["session_id"] in sessions)
+            and (only is None or (r["session_id"], str(r["complaint"])) in only)]
     turns = recovered(load_session_turns({r["session_id"] for r in rows}))
 
     async def one(r):
-        ts = turns.get(r["session_id"]) or []
-        message = last_user_message(ts, r["cut"])
+        # The conversation the row's task shows, its own repair applied: the
+        # request is read there, as the candidate reads it (09-30 review).
+        view = screened_view(r, turns.get(r["session_id"]) or [])
+        message = last_user_message(view, r["cut"])
         request = (message or {}).get("content") or ""
         out = {"run": run.name, "session_id": r["session_id"], "complaint": r["complaint"],
                "repo_id": r["repo_id"], "old": r.get("asks_for_something"),
@@ -49,24 +55,40 @@ async def judge_run(run: Path, sem: asyncio.Semaphore) -> list[dict]:
                     "new_reason": "no user message: unchanged"}
         # After the agent's last message as the candidate reads it (G-81): one the
         # table lost, put back, can be the question a bare "yes" answers.
-        before = agent_message_before(gate_view(r["session_id"], ts), message)
+        before = agent_message_before(view, message)
         async with sem:
             verdict, tally, a = await _agree(
                 lambda: asks_for_something(request, before=before), 3, keep_on=True,
                 reading=lambda x: x.asks_for_something)
         return {**out, "new": verdict, "new_held": tally, "new_reason": a.request or a.reasoning}
 
-    return await asyncio.gather(*(one(r) for r in rows))
+    # Each row with its own calls' token use, and a row whose calls failed kept
+    # as an error, not lost with every other paid row of the run (10-01 review).
+    async def metered_one(r):
+        try:
+            x = await one(r)
+        except Exception as e:  # noqa: BLE001 - recorded on its row, the others kept
+            x = {"run": run.name, "session_id": r["session_id"], "complaint": r["complaint"],
+                 "repo_id": r.get("repo_id"), "old": r.get("asks_for_something"), "new": r.get("asks_for_something"),
+                 "new_held": None, "new_reason": "not asked again: the gate's call failed",
+                 "error": f"{type(e).__name__}: {e}"}
+        return {**x, "usage": llm.current_usage(), "screen_model": llm.model_name()}
+
+    return await asyncio.gather(*(llm.metering(metered_one(r)) for r in rows))
 
 
 def apply(run: Path, results: list[dict]) -> int:
     new = {(x["session_id"], str(x["complaint"])): x for x in results if x["run"] == run.name}
     path = run / "screened.jsonl"
-    shutil.copy2(path, run / "screened.pre-answerable2.jsonl")
+    # Applied again, after the rows whose calls failed were asked, the backup and
+    # each row's old verdict would have been overwritten with this one's: the
+    # first backup is kept, and a row already moved is left (10-01 review).
+    if not (run / "screened.pre-answerable2.jsonl").exists():
+        shutil.copy2(path, run / "screened.pre-answerable2.jsonl")
     rows, moved = load(path), 0
     for r in rows:
         x = new.get((r["session_id"], str(r["complaint"])))
-        if r.get("error") or x is None or x["new_held"] is None:
+        if r.get("error") or x is None or x["new_held"] is None or "asks_for_something_v1" in r:
             continue
         r.update({"asks_for_something_v1": r.get("asks_for_something"),
                   "asks_for_something_held_v1": r.get("asks_for_something_held"),
@@ -84,22 +106,40 @@ async def main(argv: list[str]) -> int:
     ap.add_argument("runs", nargs="+", type=Path)
     ap.add_argument("--apply", action="store_true")
     ap.add_argument("--concurrency", type=int, default=3)
+    ap.add_argument("--session", nargs="*", default=[], help="only these sessions' rows")
     args = ap.parse_args(argv)
     llm.configure_client()
     sem = asyncio.Semaphore(args.concurrency)
     if args.out.exists():
+        # Only the rows whose calls failed are asked again, each in its run: the
+        # rest are kept. Asked to remove OUT instead, a user paid for every row
+        # again (10-01 review).
         results = load(args.out)
+        again = {(x["run"], x["session_id"], str(x["complaint"])) for x in results if x.get("error")}
+        if again:
+            fresh = [x for run in args.runs
+                     for x in await judge_run(run, sem, set(args.session),
+                                              only={(s, c) for r, s, c in again if r == run.name})]
+            asked = {(x["run"], x["session_id"], str(x["complaint"])) for x in fresh}
+            results = [x for x in results
+                       if (x["run"], x["session_id"], str(x["complaint"])) not in asked] + fresh
+            replace(args.out, results)
     else:
-        results = [x for run in args.runs for x in await judge_run(run, sem)]
+        results = [x for run in args.runs for x in await judge_run(run, sem, set(args.session))]
         args.out.write_text("".join(json.dumps(x) + "\n" for x in results))
+    failed = 0
     for run in args.runs:
         mine = [x for x in results if x["run"] == run.name]
         into = sum(1 for x in mine if x["old"] is False and x["new"] is True)
         out_ = sum(1 for x in mine if x["old"] is True and x["new"] is False)
         print(f"{run.name}: {len(mine)} rows, now answerable {into}, no longer answerable {out_}")
+        failed += (lost := sum(1 for x in mine if x.get("error")))
+        if lost:
+            print(f"  {lost} rows not asked again (their calls failed): left as they were; run this again to "
+                  f"ask only them")
         if args.apply:
             print(f"  applied: {apply(run, results)} verdicts changed; backup screened.pre-answerable2.jsonl")
-    return 0
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":

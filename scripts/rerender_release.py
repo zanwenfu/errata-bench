@@ -5,7 +5,7 @@
 
 Run it on a copy of a release, never the release itself:
 
-    cp -Rc release/v1 release/v1.1
+    cp -R release/v1 release/v1.1
     scripts/rerender_release.py release/v1.1 --text-recovered
 
 A frozen task's working copy is the repository with the session's edits
@@ -27,7 +27,9 @@ directory's -- and set to show the agent's text SWE-chat's table lost when
 workspace.tar.gz and grading/references.json are not touched. Each task is
 rendered into a scratch folder and moved into place only once every check has
 passed, so a task refused -- its replayed edits would change, or its turns do
-not render its conversation -- is left exactly as it was. Stopped part way, run
+not render its conversation -- is left exactly as it was; and its files are
+written beside the ones they replace before any is moved, so one whose files
+cannot be written is left as it was too. Stopped part way, run
 it again: each task is rendered again from its row. --text-recovered sets
 the flag only for a session whose transcript is in Claude Code's format, as the
 build does; without it, each task keeps the flag it has. The manifest records,
@@ -42,6 +44,7 @@ import argparse
 import dataclasses
 import hashlib
 import json
+import os
 import shutil
 import sys
 import tempfile
@@ -61,6 +64,12 @@ from errata_bench.spec import Task, fingerprint  # noqa: E402
 
 RENDERED = ("conversation.txt", "shown_turns.json", "task.json", "grading/controls.json", "grading/task.json",
             "grading/turns.json")
+# A rendered file's name while it is written beside the one it replaces.
+STAGED = ".rerender-new"
+
+
+class PartlyRendered(RuntimeError):
+    """Some of a task's rendered files were moved into place and the rest were not: it is neither version."""
 
 
 def rerender(task: Task, turns: list[dict], folder: Path) -> tuple[bool, str]:
@@ -89,8 +98,25 @@ def rerender(task: Task, turns: list[dict], folder: Path) -> tuple[bool, str]:
         meta["conversation_sha256"] = hashlib.sha256((scratch / "conversation.txt").read_bytes()).hexdigest()
         meta["shown_turns_sha256"] = hashlib.sha256((scratch / "shown_turns.json").read_bytes()).hexdigest()
         (scratch / "task.json").write_text(json.dumps(meta, indent=1) + "\n")
-        for name in RENDERED:
-            shutil.copyfile(scratch / name, folder / name)
+        # Each written beside the file it replaces, then all moved into place, so a
+        # write that fails (a full disk) leaves the task exactly as it was: copied
+        # in one by one, a failure left it half rendered, recorded as untouched
+        # (10-01 review). grading/task.json, which says which repair the task
+        # holds, is moved last.
+        try:
+            for name in RENDERED:
+                shutil.copyfile(scratch / name, folder / (name + STAGED))
+        except BaseException:
+            for name in RENDERED:
+                (folder / (name + STAGED)).unlink(missing_ok=True)
+            raise
+        moved = []
+        try:
+            for name in sorted(RENDERED, key=lambda n: n == "grading/task.json"):
+                os.replace(folder / (name + STAGED), folder / name)
+                moved.append(name)
+        except OSError as e:
+            raise PartlyRendered(f"{moved} moved into place and the rest not: {type(e).__name__}: {e}") from e
     return True, ""
 
 

@@ -33,6 +33,7 @@ Two rules it follows, both learned the hard way here:
 
 import asyncio
 import json
+import os
 import sys
 import tempfile
 from pathlib import Path
@@ -61,6 +62,8 @@ from errata_bench.store import Paths, append, load
 
 FAIL = []
 CALLED = {}
+# Kept for section 9, whose releases are rendered again for real.
+REAL_BUILD_EXCERPT = turns_mod.build_excerpt
 
 
 def check(ok, message):
@@ -239,6 +242,58 @@ def main() -> int:
             check(rows[0].get("usable") is True,
                   f"locate produced a usable trajectory: {rows[0].get('reason', '')[:50]!r}")
 
+    print("\n1b. each stage's row says which model read it, and what its calls used, a failed one's too")
+    # A build from a new corpus is paid at these stages first; their rows were
+    # priced nowhere (10-01 review). Metered, a row's usage is a dict, filled by
+    # what its calls used (none: the readers here are fakes), where a row written
+    # outside a meter says None.
+    from errata_bench.llm import model_name as model_name1b
+
+    field1b = lambda label: "screen_model" if label == "screen" else "find_model"
+    named1b = {label: load(out) for label, out in (("triage", p.triaged), ("read", p.readings),
+                                                    ("locate", p.trajectories), ("signature", p.signatures),
+                                                    ("screen", p.screened))}
+    check(all(rows and all(r.get(field1b(label)) == model_name1b() and isinstance(r.get("usage"), dict)
+                           for r in rows) for label, rows in named1b.items()),
+          f"every stage's row names the model that read it and is metered: "
+          f"{ {k: [(r.get(field1b(k)), type(r.get('usage')).__name__) for r in v] for k, v in named1b.items()} }")
+
+    async def broken1b(*a, **k):
+        raise RuntimeError("the reader failed")
+
+    # Each stage reads rows an earlier stage wrote, under another model and with
+    # its own usage, as a run resumed under another ERRATA_MODEL leaves them: a
+    # row carried forward kept the earlier model's name, and was priced by it
+    # (10-01: a mutant dropping a stage's own name survived, the carried one in
+    # its place). A row's model and usage are its own, a failed one's too.
+    own1b = {}
+    for label, module1b, attr1b, stage1b, source1b, out1b in (
+            ("triage", triage_mod, "triage", stage_triage, "moments", "triaged"),
+            ("read", reading_mod, "read_pushback", stage_read, "triaged", "readings"),
+            ("locate", trajectory_mod, "locate", stage_locate, "readings", "trajectories"),
+            ("signature", signature_mod, "derive", stage_signature, "trajectories", "signatures"),
+            ("screen", leakage_mod, "signals_trouble", stage_screen, "signatures", "screened")):
+        for outcome in ("read", "failed"):
+            q1b = Paths(Path(tempfile.mkdtemp()) / "run")
+            carried1b = [dict(r, find_model="another-model", screen_model="another-model", usage={"requests": 7})
+                         for r in load(getattr(p, source1b))]
+            getattr(q1b, source1b).write_text("".join(json.dumps(r) + "\n" for r in carried1b))
+            kept1b = getattr(module1b, attr1b)
+            if outcome == "failed":
+                setattr(module1b, attr1b, broken1b)
+            try:
+                asyncio.run(stage1b(q1b, 10**9, concurrency=1))
+            finally:
+                setattr(module1b, attr1b, kept1b)
+            rows1b = load(getattr(q1b, out1b))
+            own1b[(label, outcome)] = (
+                len(rows1b) == 1 and rows1b[0].get(field1b(label)) == model_name1b()
+                and rows1b[0].get("usage") == {}
+                and ("the reader failed" in json.dumps(rows1b[0])) == (outcome == "failed"))
+    check(all(own1b.values()),
+          f"and a row says its own model and usage, read after rows another model wrote, a failed one's too: "
+          f"{[k for k, v in own1b.items() if not v]}")
+
     print("\n2. every fake was actually reached")
     # Without this the stages could be skipping the work entirely and each
     # assertion above would still hold.
@@ -257,7 +312,8 @@ def main() -> int:
     row = screened[0]
     for field in ("session_id", "cut", "kind", "defect", "resolution",
                   "asks_for_something", "within_scope", "signals_trouble",
-                  "redaction_worked", "screen_passes", "calls_recovered", "text_recovered"):
+                  "redaction_worked", "screen_passes", "calls_recovered", "text_recovered", "usage",
+                  "screen_model"):
         check(field in row, f"{field} is on the row -> {row.get(field)!r}")
     check(row["calls_recovered"] is False,
           "and a session with no raw transcript here says its lost calls were not put back")
@@ -434,6 +490,13 @@ def main() -> int:
         asyncio.run(stage(d, 10**9, concurrency=1))
     old = [{k: v for k, v in r.items() if k != "text_recovered"} for r in load(d.screened)]
     d.screened.write_text("".join(json.dumps(r) + "\n" for r in old))
+    # Not without being asked: each reads its whole conversation again.
+    unasked_before = CALLED.get("signals_trouble", 0)
+    unasked = asyncio.run(stage_screen(d, 10**9, concurrency=1))
+    check(CALLED.get("signals_trouble", 0) == unasked_before and load(d.screened) == old
+          and any("wait for --rescreen-old" in n or "waits for --rescreen-old" in n for n in unasked.notes),
+          f"an old row is not screened again unasked, and the stage says why: {[n[:70] for n in unasked.notes]}")
+    os.environ["ERRATA_RESCREEN_OLD"] = "1"
     asked_before = CALLED.get("signals_trouble", 0)
     asyncio.run(stage_screen(d, 10**9, concurrency=1))
     again_rows = load(d.screened)
@@ -443,6 +506,21 @@ def main() -> int:
           and CALLED.get("signals_trouble", 0) - asked_before == 1,
           f"a row screened before the gates read the candidate's view is screened again, once, and replaced: "
           f"gates asked {asked_again}x, {len(again_rows)} row(s), flag {'text_recovered' in (again_rows or [{}])[0]}")
+    # And when the old row was screened more times than the new one is: three
+    # passes before, the default one now. Ranked on passes alone, the old row
+    # won, the new one was dropped, and every run paid for it again.
+    old3 = [{**r, "screen_passes": 3} for r in old]
+    d.screened.write_text("".join(json.dumps(r) + "\n" for r in old3))
+    asked_before3 = CALLED.get("signals_trouble", 0)
+    asyncio.run(stage_screen(d, 10**9, concurrency=1))
+    asyncio.run(stage_screen(d, 10**9, concurrency=1))
+    kept3 = load(d.screened)
+    check(len(kept3) == 1 and "text_recovered" in kept3[0] and kept3[0].get("screen_passes") == 1
+          and CALLED.get("signals_trouble", 0) - asked_before3 == 1,
+          f"and when the old row had more passes than the new: replaced, and asked once, not every run: "
+          f"{[(r.get('screen_passes'), 'text_recovered' in r) for r in kept3]}, gates asked "
+          f"{CALLED.get('signals_trouble', 0) - asked_before3}x")
+    os.environ.pop("ERRATA_RESCREEN_OLD", None)
 
     # A repair that rewrites the request changes what the candidate is asked: the
     # request and scope gates are asked again on the repaired conversation, not
@@ -638,10 +716,10 @@ def main() -> int:
         asked5 = None
     finally:
         leakage_mod.signals_trouble = fake_signals_trouble
-    check(len(long5) == 1 and str(long5[0].get("too_long", "")).startswith("RuntimeError: Error code: 400")
+    check(len(long5) == 1 and str(long5[0].get("provider_refused", "")).startswith("too long: RuntimeError")
           and not long5[0].get("error") and asked5 == 1,
           f"a conversation too long for the gate is recorded as such, once, not retried on every run: "
-          f"{[(r.get('too_long', '')[:30], r.get('error')) for r in long5]}, asked {asked5}x")
+          f"{[(r.get('provider_refused', '')[:30], r.get('error')) for r in long5]}, asked {asked5}x")
     check(said5.get("signals_trouble") is True and said5.get("leak_carried_by") == "prose"
           and said5.get("redaction_worked") is False
           and str(said5.get("redaction_outcome", "")).startswith("still leaks after editing turns [3]"),
@@ -805,6 +883,571 @@ def main() -> int:
           f"nothing cut (G-81), while the stages that pick turns read the table's: {said8}, {gates8.get('kw')}")
     check(bool(screened8) and screened8[0].get("text_recovered") is True,
           "and the screened row says the text was put back, for the build to pass on")
+
+    print("\n9. a frozen release screened again on what its candidates are shown, and the verdicts applied")
+    # v1.0's leak gate read 60,000 characters of conversations its candidates read
+    # whole, and 5 of its 7 repairs removed the request (G-81, G-83). The re-screen
+    # asks the gates again of each frozen task, from before its repair; applying
+    # it keeps, repairs again, undoes or sets aside each, and says why (09-30).
+    import importlib.util
+    import shutil
+    import errata_bench.score.attempt as attempt_mod9
+    from errata_bench.find.redact import apply as redact_apply9
+    from errata_bench.spec import Task
+
+    def script9(name):
+        spec = importlib.util.spec_from_file_location(f"{name}9", f"scripts/{name}.py")
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+
+    rescreen9, apply9 = script9("rescreen_release"), script9("apply_rescreen")
+    release9 = Path(tempfile.mkdtemp()) / "release"
+    # A clean task; a leak typed before the request; v1's repair that removed the
+    # request; and a v1 repair of a conversation that no longer leaks.
+    fixtures9 = {"t-clean": ("s-1", []), "t-prose": ("s-prose", []), "t-asked": ("s-asked", [3]),
+                 "t-undo": ("s-undo", [2])}
+    for tid, (sid, removed) in fixtures9.items():
+        task = Task(tid, "acme/up", "https://github.com/acme/up", "0" * 40, sid, 5, 6, 7, 9,
+                    "Done — retries are in and the tests pass.", "You're right. I added the sleep and verified it.",
+                    "the backoff is never exercised", "present", redacted_turns=list(removed))
+        d = release9 / "tasks" / tid
+        (d / "grading").mkdir(parents=True)
+        (d / "grading" / "task.json").write_text(json.dumps(task.to_json()))
+        (d / "task.json").write_text(json.dumps({"task_id": tid}))
+        turns9 = list(SESSIONS.get(sid, SESSION))
+        view9 = redact_apply9(turns9, removed, {}) if removed else turns9
+        (d / "conversation.txt").write_bytes(fake_build_excerpt(view9, 5).encode("utf-8"))
+    out9 = Path(tempfile.mkdtemp()) / "rescreen"
+    saved9 = {k: os.environ.get(k) for k in ("ERRATA_MODEL", "ERRATA_PROVIDER", "AZURE_OPENAI_BASE_URL",
+                                              "ERRATA_TIMEOUT", "ERRATA_MAX_RETRIES")}
+    kept9 = (leakage_mod.signals_trouble, redact_mod.survey)
+    env_seen9 = set()
+
+    async def recording9(excerpt, **kw):
+        # Each gate's call is given the long timeout and the retries grading has.
+        env_seen9.add((os.environ.get("ERRATA_TIMEOUT"), os.environ.get("ERRATA_MAX_RETRIES")))
+        return await leaks_where_it_says(excerpt, **kw)
+
+    leakage_mod.signals_trouble, redact_mod.survey = recording9, fake_survey
+    try:
+        os.environ.pop("ERRATA_TIMEOUT", None)
+        os.environ.pop("ERRATA_MAX_RETRIES", None)
+        os.environ.pop("AZURE_OPENAI_BASE_URL", None)
+        os.environ["ERRATA_PROVIDER"] = "openai"
+        os.environ.pop("ERRATA_MODEL", None)
+        unnamed9 = rescreen9.main([str(release9), "--out", str(out9)])
+        # Refused before anything is read: an unnamed provider beside Azure's
+        # settings, a Claude model on Azure, an even or no number of passes.
+        before_refusals9 = CALLED.get("signals_trouble", 0)
+        os.environ.update({"ERRATA_MODEL": "gpt-6-astra", "AZURE_OPENAI_BASE_URL": "https://example.invalid/v1"})
+        os.environ.pop("ERRATA_PROVIDER", None)
+        refusals9 = {"unnamed provider": rescreen9.main([str(release9), "--out", str(out9)])}
+        os.environ.pop("AZURE_OPENAI_BASE_URL", None)
+        os.environ.update({"ERRATA_PROVIDER": "azure", "ERRATA_MODEL": "claude-opus-5"})
+        refusals9["a Claude model on Azure"] = rescreen9.main([str(release9), "--out", str(out9)])
+        os.environ.update({"ERRATA_PROVIDER": "openai", "ERRATA_MODEL": "gpt-6-astra"})
+        refusals9["two passes"] = rescreen9.main([str(release9), "--out", str(out9), "--passes", "2"])
+        refusals9["no passes"] = rescreen9.main([str(release9), "--out", str(out9), "--passes", "0"])
+        # Odd, so only the rule against fewer than one refuses it.
+        refusals9["minus one pass"] = rescreen9.main([str(release9), "--out", str(out9), "--passes", "-1"])
+        empty9 = Path(tempfile.mkdtemp()) / "release"
+        (empty9 / "tasks").mkdir(parents=True)
+        refusals9["no frozen task"] = rescreen9.main([str(empty9), "--out", str(Path(tempfile.mkdtemp()) / "e")])
+        # A task whose session the corpus here lacks cannot be shown to render.
+        kept_load9 = turns_mod.load_session_turns
+        turns_mod.load_session_turns = lambda ids: {}
+        try:
+            with __import__("contextlib").redirect_stderr(__import__("io").StringIO()) as said9:
+                refusals9["no session in the corpus"] = rescreen9.main(
+                    [str(release9), "--out", str(Path(tempfile.mkdtemp()) / "c")])
+        finally:
+            turns_mod.load_session_turns = kept_load9
+        refusals9["no session in the corpus"] = (refusals9["no session in the corpus"]
+                                                 if "its session is not in the corpus" in said9.getvalue() else -1)
+        refused_asked9 = CALLED.get("signals_trouble", 0) - before_refusals9
+        out9_made = out9.exists()
+        os.environ["ERRATA_MODEL"] = "gpt-6-astra"
+        bad9 = Path(tempfile.mkdtemp()) / "release"
+        shutil.copytree(release9, bad9)
+        (bad9 / "tasks" / "t-clean" / "conversation.txt").write_bytes(b"[turn 1] something else")
+        before9 = CALLED.get("signals_trouble", 0)
+        refused9 = rescreen9.main([str(bad9), "--out", str(Path(tempfile.mkdtemp()) / "r")])
+        asked_refused9 = CALLED.get("signals_trouble", 0) - before9
+        ran9 = rescreen9.main([str(release9), "--out", str(out9)])
+        stale9 = rescreen9.main([str(release9), "--out", str(out9), "--only", "t-clean"])
+        # One re-screen per folder: a second into it would pay for every row again.
+        from errata_bench.store import only_one as only_one9
+        with only_one9(out9, "a test holding it"):
+            try:
+                rescreen9.main([str(release9), "--out", str(out9)])
+                locked9 = "ran"
+            except SystemExit as e:
+                locked9 = "refused" if "another process" in str(e.code) else f"exit {e.code}"
+    finally:
+        leakage_mod.signals_trouble, redact_mod.survey = kept9
+        for k, v in saved9.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+    rows9 = {r["task_id"]: r for r in load(out9 / "screened.jsonl")}
+    check(unnamed9 == 2 and set(refusals9.values()) == {2} and refused_asked9 == 0 and not out9_made
+          and refused9 == 2 and asked_refused9 == 0 and stale9 == 2 and locked9 == "refused",
+          f"the re-screen is refused without its model named, before asking anything when a task's view does not "
+          f"render the conversation its candidate is shown, into a folder of other tasks, and into one another "
+          f"re-screen holds, as it is for an unnamed provider, a Claude model on Azure and an even or no number of "
+          f"passes: {unnamed9}, {refusals9}, {refused9} (gates asked {asked_refused9}x), {stale9}, {locked9}")
+    seen9 = {t: (r.get('signals_trouble'), r.get('redacted_turns'), str(r.get('redaction_outcome'))[:30])
+             for t, r in rows9.items()}
+    check(ran9 == 0 and set(rows9) == set(fixtures9)
+          and not rows9["t-clean"].get("signals_trouble") and not rows9["t-undo"].get("signals_trouble")
+          and rows9["t-prose"].get("redaction_worked") is True and rows9["t-prose"].get("redacted_turns") == [1]
+          # The repair checked again as often as the leak was asked (09-30 review).
+          and rows9["t-prose"].get("redaction_recheck_held") == "3/3"
+          and str(rows9["t-asked"].get("redaction_outcome", "")).startswith(
+              "not repairable: the leak is the developer's request itself")
+          and rows9["t-asked"].get("released_redacted_turns") == [3] and env_seen9 == {("900", "5")}
+          and all(r.get("screen_model") == "gpt-6-astra" and "usage" in r and r.get("screen_passes") == 3
+                  and r.get("task_fingerprint") and r.get("conversation_sha256") for r in rows9.values()),
+          f"each frozen task is screened from before its repair, three times over, its rows priced by their model: "
+          f"{seen9}")
+    # Each decision, and its reason, read off its row (10-01: a mutant setting a
+    # refused conversation aside for "no request" survived, the decision alike).
+    asked9 = {"asks_for_something": True, "within_scope": True}
+    decided9 = {
+        "refused": apply9.decide({"provider_refused": "too long: the context window"}),
+        "no request": apply9.decide({"asks_for_something": False, "within_scope": True,
+                                     "request_reason": "a bare yes"}),
+        "out of scope": apply9.decide({"asks_for_something": True, "within_scope": False, "scope_reason": "CI"}),
+        "leaks": apply9.decide({**asked9, "signals_trouble": True, "redaction_worked": False,
+                                "redaction_outcome": "not repairable"}),
+        "repaired": apply9.decide({**asked9, "signals_trouble": True, "redaction_worked": True}),
+        "clean": apply9.decide({**asked9, "signals_trouble": False}),
+    }
+    wanted9 = {"refused": ("set aside", "the screening model would not read"),
+               "no request": ("set aside", "no request for the candidate"),
+               "out of scope": ("set aside", "the defect is outside what was asked"),
+               "leaks": ("set aside", "its conversation already signals the trouble"),
+               "repaired": ("kept", "its leak repaired"), "clean": ("kept", "no leak")}
+    repairs9 = (apply9.repair_of({"redaction_worked": False, "redacted_turns": [1], "rewritten_turns": {"2": "x"}}),
+                apply9.repair_of({"redaction_worked": True, "redacted_turns": [1], "rewritten_turns": {"2": "x"}}))
+    check(all(decided9[k][0] == d and decided9[k][1].startswith(w) for k, (d, w) in wanted9.items())
+          and repairs9 == (([], {}), ([1], {"2": "x"})),
+          f"each row decides its task for its own reason, and only a repaired leak brings its repair: "
+          f"{ {k: (v[0], v[1][:30]) for k, v in decided9.items()} }, {repairs9}")
+    # A re-screen whose gate calls failed exits 1, its rows kept as errors to ask again.
+    out9e = Path(tempfile.mkdtemp()) / "rescreen"
+
+    async def failing9(excerpt, **kw):
+        raise RuntimeError("Connection reset by peer")
+
+    kept9e = leakage_mod.signals_trouble
+    leakage_mod.signals_trouble = failing9
+    saved9e = {k: os.environ.get(k) for k in ("ERRATA_MODEL", "ERRATA_PROVIDER", "AZURE_OPENAI_BASE_URL")}
+    try:
+        os.environ.pop("AZURE_OPENAI_BASE_URL", None)
+        os.environ["ERRATA_PROVIDER"], os.environ["ERRATA_MODEL"] = "openai", "gpt-6-astra"
+        failed9e = rescreen9.main([str(release9), "--out", str(out9e), "--only", "t-clean"])
+    finally:
+        leakage_mod.signals_trouble = kept9e
+        for k, v in saved9e.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+    check(failed9e == 1 and all(r.get("error") for r in load(out9e / "screened.jsonl")),
+          f"and a re-screen whose gate calls failed exits 1, the row kept as an error to ask again: {failed9e}")
+    # Applied for real: the tasks whose repair changes are rendered again.
+    kept9b = (turns_mod.build_excerpt, attempt_mod9.build_excerpt)
+    turns_mod.build_excerpt = attempt_mod9.build_excerpt = REAL_BUILD_EXCERPT
+    try:
+        shown9 = {t: (release9 / "tasks" / t / "conversation.txt").read_bytes() for t in fixtures9}
+        dry9 = apply9.main([str(release9), str(out9), "--dry-run"])
+        dry_same9 = ({t: (release9 / "tasks" / t / "conversation.txt").read_bytes() for t in fixtures9} == shown9
+                     and not (release9 / "manifest.json").exists())
+        unscreened9 = Path(tempfile.mkdtemp()) / "release"
+        shutil.copytree(release9, unscreened9)
+        shutil.copytree(release9 / "tasks" / "t-clean", unscreened9 / "tasks" / "t-new")
+        none9 = apply9.main([str(unscreened9), str(out9)])
+        applied9 = apply9.main([str(release9), str(out9)])
+        files9 = lambda: {f.relative_to(release9 / "tasks").as_posix(): f.read_bytes()
+                          for f in sorted((release9 / "tasks").rglob("*")) if f.is_file()}
+        first9 = files9()
+        again9 = apply9.main([str(release9), str(out9)])
+        same9 = files9() == first9
+    finally:
+        turns_mod.build_excerpt, attempt_mod9.build_excerpt = kept9b
+    grading9 = {t: json.loads((release9 / "tasks" / t / "grading" / "task.json").read_text())
+                for t in ("t-clean", "t-prose", "t-undo") if (release9 / "tasks" / t).exists()}
+    runs9 = (json.loads((release9 / "manifest.json").read_text())["rescreened"]["runs"]
+             if (release9 / "manifest.json").exists() else [])
+    said9 = {p["task_id"]: p["decision"] for p in (runs9[0]["tasks"] if runs9 else [])}
+    # What each decision rests on is kept with it, and a task set aside keeps the
+    # repair it has, not one it never took (10-01: mutants of both survived).
+    entry9 = {p["task_id"]: p for p in (runs9[0]["tasks"] if runs9 else [])}
+    recorded9 = (entry9.get("t-asked", {}).get("redacted_turns") == [3]
+                 and all(p.get("verdicts", {}).get("screen_model") == "gpt-6-astra"
+                         and "signals_trouble" in p.get("verdicts", {}) for p in entry9.values()))
+    prose9 = (release9 / "tasks" / "t-prose" / "conversation.txt").read_bytes().decode("utf-8")
+    undo9 = (release9 / "tasks" / "t-undo" / "conversation.txt").read_bytes().decode("utf-8")
+    check(dry9 == 0 and dry_same9 and none9 == 2 and applied9 == 0 and recorded9
+          and said9 == {"t-clean": "kept", "t-prose": "repaired again", "t-asked": "set aside",
+                        "t-undo": "repair undone"}
+          and (release9 / "set-aside" / "t-asked" / "grading" / "task.json").is_file()
+          and not (release9 / "tasks" / "t-asked").exists()
+          and grading9["t-prose"]["redacted_turns"] == [1] and "you keep getting this wrong" not in prose9
+          and "Add retry with backoff" in prose9
+          and grading9["t-undo"]["redacted_turns"] == [] and "I'll add it." in undo9
+          and (release9 / "tasks" / "t-clean" / "conversation.txt").read_bytes() == shown9["t-clean"],
+          f"applied, a task is kept, repaired again, its old repair undone, or set aside with its request's leak "
+          f"-- after a dry run that changed nothing, and never with a task left unscreened: dry {dry9}, unscreened "
+          f"{none9}, applied {applied9}: {said9}")
+    # Every reason a re-screen cannot be applied, each on its own row (10-01: a
+    # mutant of each survived): screened twice, failed, before the gates read the
+    # candidate's view, fewer passes than asked, another version of the task, or
+    # another conversation -- the last only while the task's repair is the one
+    # it was screened with, since applying a repair changes its conversation.
+    tasks9 = {t: (Task.from_json(json.loads((release9 / "tasks" / t / "grading" / "task.json").read_text())),
+                  release9 / "tasks" / t) for t in ("t-clean", "t-prose")}
+    good9 = rows9["t-clean"]
+    prose9 = rows9["t-prose"]
+    said9p = {
+        "twice": apply9.problems_of({"t-clean": tasks9["t-clean"]}, [good9, good9], 3),
+        "failed": apply9.problems_of({"t-clean": tasks9["t-clean"]}, [dict(good9, error="reset")], 3),
+        "before G-81": apply9.problems_of({"t-clean": tasks9["t-clean"]},
+                                          [{k: v for k, v in good9.items() if k != "text_recovered"}], 3),
+        "one pass": apply9.problems_of({"t-clean": tasks9["t-clean"]}, [dict(good9, screen_passes=1)], 3),
+        "another version": apply9.problems_of({"t-clean": tasks9["t-clean"]},
+                                              [dict(good9, task_fingerprint="0" * 16)], 3),
+        "another conversation": apply9.problems_of({"t-clean": tasks9["t-clean"]},
+                                                   [dict(good9, conversation_sha256="0" * 64)], 3),
+        "repaired since": apply9.problems_of({"t-prose": tasks9["t-prose"]},
+                                             [dict(prose9, conversation_sha256="0" * 64)], 3),
+        "fine": apply9.problems_of({"t-clean": tasks9["t-clean"]}, [good9], 3),
+    }
+    wanted9p = {"twice": "screened 2 times over", "failed": "its screening failed",
+                "before G-81": "screened before the gates read", "one pass": "fewer than --passes 3",
+                "another version": "screened as another version", "another conversation": "another conversation"}
+    check(all(len(said9p[k]) == 1 and w in said9p[k][0] for k, w in wanted9p.items())
+          and said9p["repaired since"] == [] and said9p["fine"] == [],
+          f"a re-screen is applied only to the task as it was screened, each reason named: "
+          f"{ {k: (v[0][:40] if v else None) for k, v in said9p.items()} }")
+    # Each decision is recorded against the release as screened, the run that
+    # rendered it named by `rendered` (10-01 review: read off the task as an
+    # earlier run left it, a repair undone was recorded as kept).
+    said9 = [{p["task_id"]: (p["decision"], p.get("rendered")) for p in r["tasks"]} for r in runs9] + [{}, {}]
+    first_said9, again_said9 = said9[0], said9[1]
+    check(again9 == 0 and same9 and len(runs9) == 2
+          and again_said9 == {"t-clean": ("kept", None), "t-prose": ("repaired again", False),
+                              "t-undo": ("repair undone", False)}
+          and {k: v for k, v in first_said9.items() if k != "t-asked"}
+          == {"t-clean": ("kept", None), "t-prose": ("repaired again", True),
+              "t-undo": ("repair undone", True)},
+          f"and applied again it changes no file, records each decision against the release as screened, "
+          f"rendered by the first run, and keeps the record of what the first run set aside: {again9}, {same9}, "
+          f"{first_said9}, {again_said9}")
+
+    print("\n10. applying a re-screen writes again each Harbor task that no longer gives this code's instruction")
+    # v1.1's 17 long tasks were exported before the note on cut conversations was
+    # reworded, and an apply stopped before writing a task left it stale: every
+    # trial of such a task is an error row once paid for (10-01 review). Export
+    # is stood in for: what matters here is which tasks are written, and when.
+    import errata_bench.release.harbor as harbor10
+
+    release10 = Path(tempfile.mkdtemp()) / "release"
+    fixtures10 = dict(fixtures9, **{"t-fresh": ("s-fresh", [])})
+    for tid, (sid, removed) in fixtures10.items():
+        task = Task(tid, "acme/up", "https://github.com/acme/up", "0" * 40, sid, 5, 6, 7, 9,
+                    "Done — retries are in and the tests pass.", "You're right. I added the sleep and verified it.",
+                    "the backoff is never exercised", "present", redacted_turns=list(removed))
+        d = release10 / "tasks" / tid
+        (d / "grading").mkdir(parents=True)
+        (d / "grading" / "task.json").write_text(json.dumps(task.to_json()))
+        (d / "task.json").write_text(json.dumps({"task_id": tid}))
+        turns10 = list(SESSIONS.get(sid, SESSION))
+        view10 = redact_apply9(turns10, removed, {}) if removed else turns10
+        (d / "conversation.txt").write_bytes(fake_build_excerpt(view10, 5).encode("utf-8"))
+        (release10 / "harbor" / tid).mkdir(parents=True)
+        (release10 / "harbor" / tid / "instruction.md").write_text("fresh" if tid == "t-fresh" else "old")
+    (release10 / "harbor" / "export.json").write_text(json.dumps({"tasks": [{"task_id": t} for t in fixtures10]}))
+    (release10 / "harbor" / "digests.json").write_text(json.dumps({t: "sha256:x" for t in fixtures10}))
+    out10 = Path(tempfile.mkdtemp()) / "rescreen"
+    saved10 = {k: os.environ.get(k) for k in ("ERRATA_MODEL", "ERRATA_PROVIDER", "AZURE_OPENAI_BASE_URL")}
+    kept10 = (leakage_mod.signals_trouble, redact_mod.survey)
+    leakage_mod.signals_trouble, redact_mod.survey = leaks_where_it_says, fake_survey
+    try:
+        os.environ.pop("AZURE_OPENAI_BASE_URL", None)
+        os.environ["ERRATA_PROVIDER"], os.environ["ERRATA_MODEL"] = "openai", "gpt-6-astra"
+        screened10 = rescreen9.main([str(release10), "--out", str(out10)])
+    finally:
+        leakage_mod.signals_trouble, redact_mod.survey = kept10
+        for k, v in saved10.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+    written10, how10 = [], {"t-clean": KeyboardInterrupt}
+
+    def export10(folder, out, *rest):
+        if how10.get(folder.name):
+            raise how10[folder.name]("stopped here")
+        written10.append(folder.name)
+        out.mkdir(parents=True, exist_ok=True)
+        (out / "instruction.md").write_text("fresh")
+        return {"task_id": folder.name, "written": True}
+
+    def stale10(folder, out):
+        return not (out / "instruction.md").is_file() or (out / "instruction.md").read_text() != "fresh"
+
+    import errata_bench.release.environment as environment10
+
+    kept10b = (turns_mod.build_excerpt, attempt_mod9.build_excerpt, harbor10.export, apply9.stale,
+               environment10.workspace_contents)
+    turns_mod.build_excerpt = attempt_mod9.build_excerpt = REAL_BUILD_EXCERPT
+    harbor10.export, apply9.stale = export10, stale10
+    environment10.workspace_contents = lambda path: ([], {}, {})
+    runs10 = {}
+    try:
+        try:
+            apply9.main([str(release10), str(out10)])
+            runs10["killed"] = "ran on"
+        except KeyboardInterrupt:
+            runs10["killed"] = "stopped"
+        stale_after_kill10 = stale10(release10 / "tasks" / "t-clean", release10 / "harbor" / "t-clean")
+        digests_after_kill10 = (release10 / "harbor" / "digests.json").exists()
+        how10.clear()
+        runs10["again"] = apply9.main([str(release10), str(out10)])
+        written_again10 = sorted(written10)
+        written10.clear()
+        runs10["third"] = apply9.main([str(release10), str(out10)])
+        written_third10 = sorted(written10)
+        (release10 / "harbor" / "t-fresh" / "instruction.md").write_text("old")
+        how10["t-fresh"] = RuntimeError
+        runs10["failing"] = apply9.main([str(release10), str(out10)])
+    finally:
+        (turns_mod.build_excerpt, attempt_mod9.build_excerpt, harbor10.export, apply9.stale,
+         environment10.workspace_contents) = kept10b
+    record10 = json.loads((release10 / "manifest.json").read_text())["rescreened"]["runs"]
+    listing10 = json.loads((release10 / "harbor" / "export.json").read_text())
+    check(screened10 == 0 and runs10["killed"] == "stopped" and stale_after_kill10 and not digests_after_kill10
+          and [(r["complete"], [p["task_id"] for p in r["tasks"]]) for r in record10[:2]]
+          == [(False, ["t-asked"]), (True, ["t-clean", "t-fresh", "t-prose", "t-undo"])]
+          and runs10["again"] == 0 and written_again10 == ["t-clean", "t-prose", "t-undo"]
+          and not (release10 / "harbor" / "digests.json").exists()
+          and [r["task_id"] for r in listing10["tasks"]] == ["t-clean", "t-fresh", "t-prose", "t-undo"]
+          and not (release10 / "harbor" / "t-asked").exists()
+          and listing10.get("rescreened_at") and listing10.get("rescreened_code_version")
+          and runs10["third"] == 0 and written_third10 == [],
+          f"a Harbor task out of date is written again, a kept one whose instruction is current is not, a run "
+          f"stopped part way keeps the record of what it did and the next run finishes it: {runs10}, "
+          f"written {written_again10} then {written_third10}")
+    # A run whose only change is a task set aside drops the digests as well; and a
+    # task whose render fails, or raises, is refused and left as it was.
+    import shutil as shutil10
+    import types as types10
+
+    def pristine10(dest, tids, harbor):
+        for tid in tids:
+            sid, removed = fixtures10[tid]
+            task = Task(tid, "acme/up", "https://github.com/acme/up", "0" * 40, sid, 5, 6, 7, 9,
+                        "Done — retries are in and the tests pass.",
+                        "You're right. I added the sleep and verified it.",
+                        "the backoff is never exercised", "present", redacted_turns=list(removed))
+            d = dest / "tasks" / tid
+            (d / "grading").mkdir(parents=True)
+            (d / "grading" / "task.json").write_text(json.dumps(task.to_json()))
+            (d / "task.json").write_text(json.dumps({"task_id": tid}))
+            turns = list(SESSIONS.get(sid, SESSION))
+            view = redact_apply9(turns, removed, {}) if removed else turns
+            (d / "conversation.txt").write_bytes(fake_build_excerpt(view, 5).encode("utf-8"))
+            if harbor:
+                (dest / "harbor" / tid).mkdir(parents=True)
+                (dest / "harbor" / tid / "instruction.md").write_text("fresh")
+        if harbor:
+            (dest / "harbor" / "digests.json").write_text("{}")
+
+    release10b, release10c = (Path(tempfile.mkdtemp()) / "release" for _ in range(2))
+    pristine10(release10b, ("t-asked", "t-fresh"), harbor=True)
+    pristine10(release10c, ("t-prose", "t-undo"), harbor=False)
+    kept10c = (apply9._rerender_module, apply9.stale)
+    apply9.stale = stale10
+
+    def failing10(task, turns, folder):
+        if task.task_id == "t-prose":
+            return False, "its replayed edits would change"
+        raise RuntimeError("the render broke")
+
+    try:
+        alone10 = apply9.main([str(release10b), str(out10)])
+        apply9._rerender_module = lambda: types10.SimpleNamespace(rerender=failing10)
+        bad10 = apply9.main([str(release10c), str(out10)])
+    finally:
+        apply9._rerender_module, apply9.stale = kept10c
+    said10c = {p["task_id"]: (p["decision"], p["why"], p.get("rendered"))
+               for p in json.loads((release10c / "manifest.json").read_text())["rescreened"]["runs"][-1]["tasks"]}
+    check(alone10 == 0 and not (release10b / "harbor" / "digests.json").exists()
+          and (release10b / "set-aside" / "t-asked").is_dir()
+          and bad10 == 1 and {k: v[0] for k, v in said10c.items()} == {"t-prose": "refused", "t-undo": "refused"}
+          and said10c["t-prose"][1].endswith("its replayed edits would change")
+          and said10c["t-undo"][1].endswith("RuntimeError: the render broke")
+          and said10c["t-undo"][1].startswith("not rendered again, left as it was: ")
+          and {v[2] for v in said10c.values()} == {False}
+          and json.loads((release10c / "tasks" / "t-undo" / "grading" / "task.json").read_text())["redacted_turns"]
+          == [2],
+          f"a run that only sets a task aside drops the digests too, and a task whose render fails or raises is "
+          f"refused, left as it was, and the run exits 1: {alone10}, {bad10}, {said10c}")
+    # A render whose files were moved into place only in part is recorded as
+    # neither version, to be copied again (10-01 review).
+    release10i = Path(tempfile.mkdtemp()) / "release"
+    pristine10(release10i, ("t-undo",), harbor=False)
+
+    class Partly10(RuntimeError):
+        pass
+
+    def partly10(task, turns, folder):
+        raise Partly10("['conversation.txt'] moved into place and the rest not: OSError: [Errno 5] I/O error")
+
+    kept10i = apply9._rerender_module
+    apply9._rerender_module = lambda: types10.SimpleNamespace(rerender=partly10, PartlyRendered=Partly10)
+    try:
+        partly_rc10 = apply9.main([str(release10i), str(out10)])
+    finally:
+        apply9._rerender_module = kept10i
+    said10i = json.loads((release10i / "manifest.json").read_text())["rescreened"]["runs"][-1]["tasks"][0]
+    check(partly_rc10 == 1 and said10i["decision"] == "refused" and said10i["rendered"] is False
+          and said10i["why"].startswith("rendered only in part, so make the copy again: ['conversation.txt']"),
+          f"a task rendered only in part is refused and recorded so: {partly_rc10}, {said10i['why'][:70]}")
+    # A set-aside stopped between its record and its move keeps the record, and the
+    # next run, finding the task still there, finishes it.
+    release10d = Path(tempfile.mkdtemp()) / "release"
+    pristine10(release10d, ("t-asked",), harbor=False)
+
+    def stopped10(src, dst):
+        raise KeyboardInterrupt
+
+    kept10d = apply9.shutil
+    apply9.shutil = types10.SimpleNamespace(move=stopped10, rmtree=shutil10.rmtree)
+    try:
+        try:
+            apply9.main([str(release10d), str(out10)])
+            moved10 = "ran on"
+        except KeyboardInterrupt:
+            moved10 = "stopped"
+    finally:
+        apply9.shutil = kept10d
+    first10 = json.loads((release10d / "manifest.json").read_text())["rescreened"]["runs"]
+    again10 = apply9.main([str(release10d), str(out10)])
+    both10 = json.loads((release10d / "manifest.json").read_text())["rescreened"]["runs"]
+    check(moved10 == "stopped" and [p["decision"] for p in first10[0]["tasks"]] == ["set aside"]
+          and again10 == 0 and (release10d / "set-aside" / "t-asked").is_dir()
+          and not (release10d / "tasks" / "t-asked").exists() and len(both10) == 2,
+          f"a set-aside stopped before its task was moved keeps its record, and the next run moves it: {moved10}, "
+          f"{[(r['complete'], [p['decision'] for p in r['tasks']]) for r in both10]}")
+    # The digests go at the first change of any kind: a run whose only change is a
+    # render, and one whose only change is a Harbor task written again (10-01: a
+    # mutant of each survived, a set-aside in every run hiding it).
+    release10e, release10f = (Path(tempfile.mkdtemp()) / "release" for _ in range(2))
+    pristine10(release10e, ("t-prose", "t-undo"), harbor=True)
+    pristine10(release10f, ("t-clean",), harbor=True)
+    (release10f / "harbor" / "t-clean" / "instruction.md").write_text("old")
+    kept10e = (turns_mod.build_excerpt, attempt_mod9.build_excerpt, harbor10.export, apply9.stale,
+               environment10.workspace_contents)
+    turns_mod.build_excerpt = attempt_mod9.build_excerpt = REAL_BUILD_EXCERPT
+    harbor10.export, apply9.stale = export10, stale10
+    environment10.workspace_contents = lambda path: ([], {}, {})
+    how10.clear()
+    try:
+        render_only10 = apply9.main([str(release10e), str(out10)])
+        export_only10 = apply9.main([str(release10f), str(out10)])
+    finally:
+        (turns_mod.build_excerpt, attempt_mod9.build_excerpt, harbor10.export, apply9.stale,
+         environment10.workspace_contents) = kept10e
+    check(render_only10 == 0 and not (release10e / "harbor" / "digests.json").exists()
+          and export_only10 == 0 and not (release10f / "harbor" / "digests.json").exists(),
+          f"the digests go when a task is only rendered again, and when a Harbor task is only written again: "
+          f"{render_only10}, {export_only10}")
+    check(runs10["failing"] == 1 and str(record10[-1]["tasks"][1].get("exported", "")).startswith("failed:")
+          and record10[-1]["complete"] is True,
+          f"and a Harbor task that cannot be written is recorded as such, and the run exits 1: {runs10['failing']}, "
+          f"{record10[-1]['tasks'][1].get('exported')}")
+    # Stopped after a task was rendered again and before it was recorded, the
+    # next run records the change against the release as screened, and does not
+    # render it again: read off the task as the stopped run left it, the undone
+    # repair was recorded as kept, v1's repair gone from the record (10-01 review).
+    release10g = Path(tempfile.mkdtemp()) / "release"
+    pristine10(release10g, ("t-undo",), harbor=True)
+    (release10g / "harbor" / "t-undo" / "instruction.md").write_text("old")
+    real_rr10 = apply9._rerender_module()
+    rendered10 = []
+
+    def counting10(task, turns, folder):
+        rendered10.append(task.task_id)
+        return real_rr10.rerender(task, turns, folder)
+
+    kept10g = (turns_mod.build_excerpt, attempt_mod9.build_excerpt, harbor10.export, apply9.stale,
+               environment10.workspace_contents, apply9._rerender_module)
+    turns_mod.build_excerpt = attempt_mod9.build_excerpt = REAL_BUILD_EXCERPT
+    harbor10.export, apply9.stale = export10, stale10
+    environment10.workspace_contents = lambda path: ([], {}, {})
+    apply9._rerender_module = lambda: types10.SimpleNamespace(rerender=counting10,
+                                                              PartlyRendered=real_rr10.PartlyRendered)
+    how10.clear()
+    how10["t-undo"] = KeyboardInterrupt
+    try:
+        try:
+            apply9.main([str(release10g), str(out10)])
+            stopped10g = "ran on"
+        except KeyboardInterrupt:
+            stopped10g = "stopped"
+        how10.clear()
+        again10g = apply9.main([str(release10g), str(out10)])
+    finally:
+        (turns_mod.build_excerpt, attempt_mod9.build_excerpt, harbor10.export, apply9.stale,
+         environment10.workspace_contents, apply9._rerender_module) = kept10g
+    runs10g = json.loads((release10g / "manifest.json").read_text())["rescreened"]["runs"]
+    undone10 = {p["task_id"]: p for r in runs10g for p in r["tasks"]}.get("t-undo") or {}
+    check(stopped10g == "stopped" and again10g == 0 and rendered10 == ["t-undo"]
+          and [r["tasks"] for r in runs10g[:1]] == [[]]
+          and (undone10.get("decision"), undone10.get("released_redacted_turns"), undone10.get("redacted_turns"),
+               undone10.get("exported")) == ("repair undone", [2], [], True),
+          f"a run stopped after rendering a task again, before recording it, is finished by the next, which records "
+          f"the change against the release as screened and does not render it twice: {stopped10g}, {again10g}, "
+          f"rendered {rendered10}, recorded {[(undone10.get('decision'), undone10.get('released_redacted_turns'))]}")
+    # A surveyor's answer that did not parse is asked once more, and the row is
+    # finished, where it failed and the next run asked every gate again (10-01).
+    import contextlib as contextlib10
+    import io as io10
+
+    release10h = Path(tempfile.mkdtemp()) / "release"
+    pristine10(release10h, ("t-prose",), harbor=False)
+    out10h = Path(tempfile.mkdtemp()) / "rescreen"
+    surveyed10 = []
+
+    async def unparsed_once10(*a, **k):
+        surveyed10.append(1)
+        if len(surveyed10) == 1:
+            from agents.exceptions import ModelBehaviorError
+            raise ModelBehaviorError("Invalid JSON when parsing {\"removed_turns\": [ for type Redaction")
+        return await fake_survey(*a, **k)
+
+    kept10h = (leakage_mod.signals_trouble, redact_mod.survey)
+    saved10h = {k: os.environ.get(k) for k in ("ERRATA_MODEL", "ERRATA_PROVIDER", "AZURE_OPENAI_BASE_URL")}
+    leakage_mod.signals_trouble, redact_mod.survey = leaks_where_it_says, unparsed_once10
+    try:
+        os.environ.pop("AZURE_OPENAI_BASE_URL", None)
+        os.environ["ERRATA_PROVIDER"], os.environ["ERRATA_MODEL"] = "openai", "gpt-6-astra"
+        with contextlib10.redirect_stdout(io10.StringIO()):
+            screened10h = rescreen9.main([str(release10h), "--out", str(out10h)])
+    finally:
+        leakage_mod.signals_trouble, redact_mod.survey = kept10h
+        for k, v in saved10h.items():
+            os.environ.pop(k, None)
+            if v is not None:
+                os.environ[k] = v
+    rows10h = load(out10h / "screened.jsonl")
+    check(screened10h == 0 and len(surveyed10) == 2 and len(rows10h) == 1 and not rows10h[0].get("error")
+          and rows10h[0].get("redaction_outcome"),
+          f"a surveyor's answer that did not parse is asked once more and the row finished: {screened10h}, "
+          f"surveyed {len(surveyed10)} times, {[(r.get('error') or r.get('redaction_outcome'))[:50] for r in rows10h]}")
 
     print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
     for f in FAIL:

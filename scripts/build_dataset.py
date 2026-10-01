@@ -35,6 +35,8 @@ import shutil
 import sys
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
+
 JUDGE = "gpt-6-astra"
 ADMISSION = ("tasks.jsonl", "calibration.jsonl", "controls.jsonl")
 TASK_FILES = ("task.json", "conversation.txt", "shown_turns.json")
@@ -58,6 +60,29 @@ def main(argv: list[str]) -> int:
     missing = [t for t in tasks if t not in digests]
     if missing:
         ap.error(f"tasks with no digest: {missing[:5]}")
+    # The admission published with the tasks is one grading accepts: this judge's
+    # rows, under this code's rules, on these versions of the tasks. One of
+    # another task version and other rules was published unchecked (09-30
+    # review). The provider is compared when grading, which calls the model.
+    from errata_bench.instrument.control import admission_problems
+    from errata_bench.spec import Task, fingerprint
+
+    rows_of = lambda name: ([json.loads(l) for l in (args.admission / name).read_text().splitlines() if l.strip()]
+                            if (args.admission / name).is_file() else [])
+    problems = [f"the admission was {p}" for p in admission_problems(
+        rows_of("calibration.jsonl"), rows_of("controls.jsonl"), JUDGE, setup=False)]
+    prints = {t: fingerprint(Task.from_json(json.loads((args.release / "tasks" / t / "grading" / "task.json")
+                                                       .read_text()))) for t in tasks}
+    # The published judge's rows only, as the rules above: another judge's rows of
+    # an older version are not what is published (10-01 review).
+    stale = sorted({r["task_id"] for name in ("calibration.jsonl", "controls.jsonl") for r in rows_of(name)
+                    if r.get("judge_model", JUDGE) == JUDGE
+                    and r.get("task_id") in prints and r.get("task_fingerprint")
+                    and r["task_fingerprint"] != prints[r["task_id"]]})
+    if stale:
+        problems.append(f"the admission was made on other versions of {len(stale)} task(s): {', '.join(stale[:3])}")
+    if problems:
+        ap.error("; ".join(problems) + "; nothing was built")
     out = args.out
     shutil.copytree(harbor, out / "harbor", ignore=shutil.ignore_patterns("__pycache__"))
     for t in tasks:

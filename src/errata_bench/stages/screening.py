@@ -7,10 +7,11 @@ cheap gate never reaches an expensive one.
 
 from __future__ import annotations
 
+import os
 import time
 
 from ..store import (
-    Paths, Progress, _gather, already_done, append, completed, held, key_of, load,
+    Paths, Progress, _gather, already_done, append, append_used, completed, held, key_of, load,
     replace,
 )
 
@@ -84,6 +85,7 @@ async def stage_triage(paths: Paths, limit: int, concurrency: int) -> Progress:
     from ..corpus.turns import load_session_turns
     from ..corpus.recover import recovered
     from ..find.triage import triage
+    from ..llm import metering, model_name
 
     p = Progress("triage")
     t0 = time.monotonic()
@@ -107,7 +109,7 @@ async def stage_triage(paths: Paths, limit: int, concurrency: int) -> Progress:
         try:
             excerpt = build_excerpt(turns[m["session_id"]], m["turn_number"])
             verdict = await triage(excerpt)
-            append(
+            append_used(
                 paths.triaged,
                 {
                     **m,
@@ -115,6 +117,7 @@ async def stage_triage(paths: Paths, limit: int, concurrency: int) -> Progress:
                     "agent_has_acted": verdict.agent_has_acted,
                     "objects_to_that_work": verdict.objects_to_that_work,
                     "triage_reason": verdict.reason,
+                    "find_model": model_name(),
                 },
             )
             return verdict.worth_reading
@@ -133,12 +136,14 @@ async def stage_triage(paths: Paths, limit: int, concurrency: int) -> Progress:
             # the reader at about eight calls each; a resumed run would step
             # straight over the other 45. Under `error` the row is work again
             # (G-19).
-            append(paths.triaged, {**m, "worth_reading": True,
-                                   "error": f"{type(e).__name__}: {e}",
-                                   "triage_reason": f"error: {e}"})
+            append_used(paths.triaged, {**m, "worth_reading": True,
+                                        "error": f"{type(e).__name__}: {e}",
+                                        "triage_reason": f"error: {e}", "find_model": model_name()})
             return e
 
-    results = await _gather([one(m) for m in todo], concurrency)
+    # Each row with its own calls' token use, as screening's (09-30 review): a
+    # build from a new corpus is paid here first, and was priced nowhere.
+    results = await _gather([metering(one(m)) for m in todo], concurrency)
     # Three outcomes, counted apart, because two of them were one number
     # before: a moment kept for the reader, one this stage decided against, and
     # one it could not read at all. Folding the third into "discarded before
@@ -170,6 +175,7 @@ async def stage_read(paths: Paths, limit: int, concurrency: int) -> Progress:
     from ..corpus.turns import load_session_turns
     from ..corpus.recover import recovered
     from ..find.reading import read_pushback
+    from ..llm import metering, model_name
 
     p = Progress("read")
     t0 = time.monotonic()
@@ -193,13 +199,15 @@ async def stage_read(paths: Paths, limit: int, concurrency: int) -> Progress:
     async def one(m):
         try:
             reading = await read_pushback(turns[m["session_id"]], m["turn_number"])
-            append(paths.readings, {**carried_forward(m), "reading": reading.model_dump()})
+            append_used(paths.readings, {**carried_forward(m), "reading": reading.model_dump(),
+                                         "find_model": model_name()})
             return True
         except Exception as e:
-            append(paths.readings, {**carried_forward(m), "error": f"{type(e).__name__}: {e}"})
+            append_used(paths.readings, {**carried_forward(m), "error": f"{type(e).__name__}: {e}",
+                                         "find_model": model_name()})
             return False
 
-    results = await _gather([one(m) for m in todo], concurrency)
+    results = await _gather([metering(one(m)) for m in todo], concurrency)
     p.produced = sum(1 for r in results if r)
     p.failed = sum(1 for r in results if not r)
     p.took_s = time.monotonic() - t0
@@ -211,6 +219,7 @@ async def stage_locate(paths: Paths, limit: int, concurrency: int) -> Progress:
     from ..corpus.turns import load_session_turns
     from ..corpus.recover import recovered
     from ..find.trajectory import boundaries, locate
+    from ..llm import metering, model_name
 
     p = Progress("locate")
     t0 = time.monotonic()
@@ -231,7 +240,7 @@ async def stage_locate(paths: Paths, limit: int, concurrency: int) -> Progress:
         try:
             t = await locate(turns[r["session_id"]], r["turn_number"])
             b = boundaries(t)
-            append(
+            append_used(
                 paths.trajectories,
                 {
                     "session_id": r["session_id"],
@@ -246,11 +255,12 @@ async def stage_locate(paths: Paths, limit: int, concurrency: int) -> Progress:
                     "defect": t.defect,
                     "resolution": t.resolution,
                     "rounds": t.rounds,
+                    "find_model": model_name(),
                 },
             )
             return True
         except Exception as e:
-            append(
+            append_used(
                 paths.trajectories,
                 {
                     "session_id": r["session_id"],
@@ -258,11 +268,12 @@ async def stage_locate(paths: Paths, limit: int, concurrency: int) -> Progress:
                     "complaint": r["turn_number"],
                     "usable": False,
                     "reason": f"error: {type(e).__name__}: {e}",
+                    "find_model": model_name(),
                 },
             )
             return False
 
-    results = await _gather([one(r) for r in todo], concurrency)
+    results = await _gather([metering(one(r)) for r in todo], concurrency)
     p.produced = sum(1 for r in results if r)
     p.failed = sum(1 for r in results if not r)
     p.took_s = time.monotonic() - t0
@@ -272,6 +283,7 @@ async def stage_locate(paths: Paths, limit: int, concurrency: int) -> Progress:
 async def stage_signature(paths: Paths, limit: int, concurrency: int) -> Progress:
     """Work out what each defect looks like in a repository."""
     from ..find.signature import derive
+    from ..llm import metering, model_name
 
     p = Progress("signature")
     t0 = time.monotonic()
@@ -284,18 +296,44 @@ async def stage_signature(paths: Paths, limit: int, concurrency: int) -> Progres
             s = await derive(
                 r.get("defect", ""), r.get("resolution", ""), repo_id=r.get("repo_id", "")
             )
-            append(paths.signatures, {**r, **s.model_dump()})
+            append_used(paths.signatures, {**r, **s.model_dump(), "find_model": model_name()})
             return True
         except Exception as e:
-            append(paths.signatures, {**r, "error": f"{type(e).__name__}: {e}"})
+            append_used(paths.signatures, {**r, "error": f"{type(e).__name__}: {e}", "find_model": model_name()})
             return False
 
     if todo:
-        results = await _gather([one(r) for r in todo], concurrency)
+        results = await _gather([metering(one(r)) for r in todo], concurrency)
         p.produced = sum(1 for r in results if r)
         p.failed = sum(1 for r in results if not r)
     p.took_s = time.monotonic() - t0
     return p
+
+
+async def _once_more(ask):
+    """One reading, asked once more if the model's answer did not parse.
+
+    A row is what a run saves. One call failing late in it -- an answer that
+    did not parse as the gate's form, after the request, scope and leak gates
+    were all read -- threw the row away, and the next run paid for each of them
+    again: up to 18 whole-conversation calls at three passes (10-01 review).
+    Asked again, such an answer usually parses. Nothing else is asked again
+    here: a refusal (`llm.refusal`) answers the same, and a throttle or a
+    dropped connection has had its retries (`llm.resilient`). An answer that
+    fails to parse twice fails the row.
+    """
+    import re
+
+    from ..llm import refusal
+
+    try:
+        return await ask()
+    except Exception as e:  # noqa: BLE001 - raised again unless it is an answer that did not parse
+        said = f"{type(e).__name__}: {e}"
+        if (refusal(said) or "no choices" in said.lower()
+                or not re.search(r"ModelBehaviorError|ValidationError|JSONDecodeError|Invalid JSON", said)):
+            raise
+    return await ask()
 
 
 async def _agree(ask, passes: int, keep_on: bool, reading) -> tuple[bool, str, object]:
@@ -340,7 +378,7 @@ async def _agree(ask, passes: int, keep_on: bool, reading) -> tuple[bool, str, o
             "resolved by refusing is the rejection bias D-34 removed. Ask an odd "
             "number of times."
         )
-    answers = [await ask() for _ in range(max(1, passes))]
+    answers = [await _once_more(ask) for _ in range(max(1, passes))]
     values = [reading(a) for a in answers]
     # Collected, not sought with a default: written `next(..., None)` this let
     # through the one wrong answer most worth catching. `None` is what a
@@ -408,6 +446,22 @@ def gate_view(session_id: str, turns: list[dict]) -> list[dict]:
     return whole_results(session_id, view) if RECORD >= 3 else view
 
 
+def screened_view(row: dict, turns: list[dict]) -> list[dict]:
+    """What a screened row's task shows its candidate: `gate_view`, with the row's own repair applied.
+
+    The re-screen scripts read a repaired row on this: on the conversation
+    before its repair, the request they sent was the removed turn itself in 4
+    of the 6 repaired rows of one run (09-30 review).
+    """
+    from ..find.redact import apply, turn_number
+
+    view = gate_view(row["session_id"], turns)
+    if row.get("redacted_turns") or row.get("rewritten_turns"):
+        view = apply(view, row.get("redacted_turns") or [],
+                     {turn_number(k): v for k, v in (row.get("rewritten_turns") or {}).items()})
+    return view
+
+
 async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int = 1) -> Progress:
     """Check each conversation is answerable, and repair it if it leaks."""
     from ..find.answerable import ANSWERABLE_GATE, agent_message_before, asks_for_something
@@ -417,7 +471,7 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
     from ..corpus.recover import has_transcript, recovered
     from ..find.redact import apply, carried_by, carrying, survey
     from ..find.scope import SCOPE_GATE, in_scope
-    from ..score.trace import too_long
+    from ..llm import metering, model_name, refusal
 
     p = Progress("screen")
     t0 = time.monotonic()
@@ -432,7 +486,18 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
     done = {
         key_of(r): r.get("screen_passes", 1) for r in completed(paths.screened) if "text_recovered" in r
     }
-    todo = p.cap([r for r in rows if done.get(key_of(r), 0) < passes], limit, len(rows))
+    due = [r for r in rows if done.get(key_of(r), 0) < passes]
+    # Only when asked: each such row is read again whole, at the gates' price,
+    # and resuming an old run with this code re-screened all of them without a
+    # word (51 of 51 and 43 of 43 rows on two copies, 09-30 review).
+    old = {key_of(r) for r in completed(paths.screened) if "text_recovered" not in r}
+    stale = [r for r in due if key_of(r) in old]
+    if stale and os.environ.get("ERRATA_RESCREEN_OLD") != "1":
+        p.notes.append(f"{len(stale)} rows screened before the gates read the candidate's view (G-81) are left as "
+                       f"they are: screening them again reads each whole conversation, so it waits for "
+                       f"--rescreen-old, and the build refuses them until then")
+        due = [r for r in due if key_of(r) not in old]
+    todo = p.cap(due, limit, len(rows))
 
     def prune() -> None:
         """Keep one reading per row: the best one.
@@ -455,7 +520,12 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
         conversation twice, at one pass and at five, for ever.
         """
         def rank(row: dict) -> tuple:
-            return (0 if row.get("error") else 1, row.get("screen_passes", 1))
+            # A reading of the candidate's view (G-81) outranks one of the table's,
+            # whatever the pass counts: a row screened 3 times before outranked a
+            # new one screened once, so a re-screen paid for every row and kept
+            # none of it, run after run (09-30 review, after this was removed as
+            # unreachable on reasoning about equal pass counts only).
+            return (0 if row.get("error") else 1, "text_recovered" in row, row.get("screen_passes", 1))
 
         with held(paths.screened):
             rows_now = load(paths.screened)
@@ -478,6 +548,8 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
 
     async def one(r):
         out = dict(r)
+        # Which model screened, for the price of what it read.
+        out["screen_model"] = model_name()
         try:
             ts = turns[r["session_id"]]
             # The conversation as its candidate will be shown it (G-81): the calls
@@ -563,8 +635,8 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
                 # from the transcript (a fractional turn), and is always shown the
                 # turns that carry the gate's quote, however far back they are.
                 asked = (message or {}).get("turn_number")
-                red = await survey(view, r["cut"], must_show=carrying(view, r["cut"], leak.quote),
-                                   request_turn=asked)
+                red = await _once_more(lambda: survey(view, r["cut"], must_show=carrying(view, r["cut"], leak.quote),
+                                                      request_turn=asked))
                 out["diffuse"] = red.diffuse
                 out["redaction_reason"] = red.reason
                 out["redaction_touched"] = red.touched
@@ -583,13 +655,18 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
                 elif red.repairable:
                     # Checked again on the view the candidate would be shown.
                     kept = apply(view, red.removed_turns, red.rewritten)
-                    again = await signals_trouble(build_excerpt(kept, r["cut"], max_chars=RECORD_CHARS,
-                                                                record=RECORD))
+                    # As often as the leak was asked: a repair accepted on one reading
+                    # while the leak took three was the weaker test (09-30 review).
+                    repaired_view = build_excerpt(kept, r["cut"], max_chars=RECORD_CHARS, record=RECORD)
+                    leaks, recheck_held, again = await _agree(
+                        lambda: signals_trouble(repaired_view), passes, keep_on=False,
+                        reading=lambda x: x.signals_trouble)
+                    out["redaction_recheck_held"] = recheck_held
                     out["redaction_outcome"] = (
-                        "repaired" if not again.signals_trouble
+                        "repaired" if not leaks
                         else f"still leaks after editing turns {red.touched}: {again.reasoning}"
                     )
-                    if not again.signals_trouble:
+                    if not leaks:
                         out["redacted_turns"] = red.removed_turns
                         out["rewritten_turns"] = {
                             str(k): v for k, v in red.rewritten.items()
@@ -619,23 +696,25 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
                             out["scope_reason"] = scope.reason
                         out["gated_after_repair"] = True
             out["screen_passes"] = passes
-            append(paths.screened, out)
+            append_used(paths.screened, out)
             return True
         except Exception as e:
-            # A conversation longer than the gate's model reads: recorded, not an
-            # error retried on every run. The gates read it whole (G-81) and cannot
-            # be shown less than the candidate, so the build sets it aside.
-            if too_long(e):
-                out["too_long"] = f"{type(e).__name__}: {e}"[:300]
+            # A conversation the gate's model refuses for good -- longer than it
+            # reads, or caught by its content filter: recorded, not an error retried
+            # on every run. The gates read it whole (G-81) and cannot be shown less
+            # than the candidate, so the build sets it aside.
+            refused = refusal(f"{type(e).__name__}: {e}")
+            if refused:
+                out["provider_refused"] = f"{refused}: {type(e).__name__}: {e}"[:300]
                 out["screen_passes"] = passes
-                append(paths.screened, out)
+                append_used(paths.screened, out)
                 return True
             out["error"] = f"{type(e).__name__}: {e}"
             out["screen_passes"] = passes
-            append(paths.screened, out)
+            append_used(paths.screened, out)
             return False
 
-    results = await _gather([one(r) for r in todo], concurrency)
+    results = await _gather([metering(one(r)) for r in todo], concurrency)
     p.produced = sum(1 for r in results if r)
     p.failed = sum(1 for r in results if not r)
     prune()

@@ -37,10 +37,11 @@ import re
 import time
 from pathlib import Path
 
+from ..llm import metering, reading_setup
 from .judge import HEDGED, PASSING, PASSING_WITH_HEDGE, RULES as JUDGE_RULES, can_be_scored, line_holds, outcome_of
 from ..project import code_version
 from ..store import (
-    Paths, Progress, _gather, _gather_in_turn, _succeeded, append, completed, held, in_turn, load, replace,
+    Paths, Progress, _gather, _gather_in_turn, _succeeded, append, append_used, completed, held, in_turn, load, replace,
 )
 
 # Attempts written before the reply was stored whole kept only its first 4,000
@@ -111,15 +112,16 @@ async def calibrate_all(src: Paths, out: Paths, model: str, concurrency: int) ->
         try:
             c = await calibrate(t, model=model, conversations=conversations.get(t.task_id))
         except Exception as e:
-            append(out.calibration, {
+            append_used(out.calibration, {
                 "task_id": t.task_id, "judge_model": model, "sound": False, "code_version": code_version(),
                 "error": f"{type(e).__name__}: {e}",
             })
             return False
-        append(out.calibration, {
+        append_used(out.calibration, {
             "task_id": t.task_id,
             "judge_model": model,
             "judge_rules": JUDGE_RULES,
+            "reading_setup": reading_setup(),
             "code_version": code_version(),
             "sound": c.sound,
             "strict": c.strict,
@@ -139,7 +141,7 @@ async def calibrate_all(src: Paths, out: Paths, model: str, concurrency: int) ->
         return c.sound
 
     if todo:
-        results = await _gather([one(t) for t in todo], concurrency)
+        results = await _gather([metering(one(t)) for t in todo], concurrency)
         p.produced = sum(1 for r in results if r)
         p.failed = sum(1 for r in results if not r)
     p.took_s = time.monotonic() - t0
@@ -225,7 +227,7 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int,
                 given=f"{CANDIDATE_RULES}\n\n{environment_note('an environment it never used: it ran no commands' if not calls else 'host')}",
             )
         except Exception as e:
-            append(out.controls, {
+            append_used(out.controls, {
                 "task_id": task.task_id, "control": control.name, "judge_model": model,
                 "pass": n, "passes": need(task, control), "code_version": code_version(),
                 "ok": False, "error": f"{type(e).__name__}: {e}",
@@ -249,7 +251,8 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int,
         trace_ok = trace_behaved(control, trace)
         row = result.to_json()
         row.update({
-            "judge_model": model, "judge_rules": JUDGE_RULES, "code_version": code_version(),
+            "judge_model": model, "judge_rules": JUDGE_RULES, "reading_setup": reading_setup(),
+            "code_version": code_version(),
             "pass": n, "passes": need(task, control),
             "trace_honest": trace.honest,
             "trace_misreported": bool(trace.misreported),
@@ -261,14 +264,14 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int,
             # without these a flagged control could not be read afterwards.
             "trace_claims": kept_claims([stored_claim(c) for c in trace.claims]),
         })
-        append(out.controls, row)
+        append_used(out.controls, row)
         return result.ok and trace_ok
 
     if jobs:
         # One control's readings one after another, so the later ones find its
         # prompt cached (B-256).
         results = await _gather_in_turn(
-            [[lambda t=t, c=c, n=n: one(t, c, n) for t, c, n in g]
+            [[lambda t=t, c=c, n=n: metering(one(t, c, n)) for t, c, n in g]
              for g in in_turn(jobs, lambda j: (j[0].task_id, j[1].name))], concurrency)
         p.produced = sum(1 for r in results if r)
         p.failed = sum(1 for r in results if not r)
@@ -277,16 +280,28 @@ async def controls_all(src: Paths, out: Paths, model: str, concurrency: int,
     # controls above test it through a task; these test it directly, and they
     # exist because every prompt change to it was verified against the same
     # eighteen attempts it was derived from.
-    if tasks and not any(r.get("control", "").startswith("probe:") for r in load(out.controls)):
+    # Asked again under new trace rules: probes read under older ones test another prompt.
+    # Each probe on its own: one whose call failed is asked again, the others not.
+    from .trace import PROBES as TRACE_PROBES, SAID_PROBES as TRACE_SAID_PROBES
+
+    # A failed call's row is not on record here: `completed` above dropped it.
+    answered = {r["control"][len("probe:"):] for r in load(out.controls)
+                if r.get("control", "").startswith("probe:") and r.get("trace_rules") == TRACE_RULES}
+    unasked = {q[0] for q in (*TRACE_PROBES, *TRACE_SAID_PROBES)} - answered
+    if tasks and unasked:
         rules = f"{CANDIDATE_RULES}\n\n{environment_note('host')}"
         try:
             # No run's transcript: the probes carry their own, so they mean the
             # same thing for every judge and every run.
-            for r in await probe_trace(model=model, given=rules):
+            for r in await probe_trace(model=model, given=rules, names=unasked):
+                if r.get("error"):
+                    append(out.controls, {"task_id": "(trace probe)", "control": f"probe:{r['probe']}", "ok": False,
+                                          "code_version": code_version(), "judge_model": model, "error": r["error"]})
+                    continue
                 append(out.controls, {
                     "task_id": "(trace probe)", "control": f"probe:{r['probe']}", "code_version": code_version(),
                     "judge_model": model, "trace_rules": TRACE_RULES, "ok": r["ok"], "trace_ok": r["ok"],
-                    "must_flag": r["must_flag"], "flagged": r["flagged"],
+                    "must_flag": r["must_flag"], "flagged": r["flagged"], "usage": r.get("usage"),
                     "detail": "as expected" if r["ok"] else
                               ("missed what it must flag" if r["must_flag"] else "flagged what is fine"),
                 })
@@ -348,10 +363,10 @@ async def instrument_all(src: Paths, out: Paths, model: str, concurrency: int,
             trace = await check_trace(reply, [], model=model, context=conv.get("cut") or "",
                                       given=rules)
         except Exception as e:
-            append(out.instrument, {**base, "ok": False, "error": f"{type(e).__name__}: {e}"})
+            append_used(out.instrument, {**base, "ok": False, "error": f"{type(e).__name__}: {e}"})
             return False
         trace_ok = trace_behaved(control, trace)
-        append(out.instrument, {
+        append_used(out.instrument, {
             **base, **result.to_json(), "reply": reply, "action": action,
             "trace_honest": trace.honest, "trace_misreported": bool(trace.misreported),
             "trace_out_of_date": bool(trace.out_of_date), "trace_rules": TRACE_RULES,
@@ -363,7 +378,7 @@ async def instrument_all(src: Paths, out: Paths, model: str, concurrency: int,
 
     if jobs:
         results = await _gather_in_turn(
-            [[lambda t=t, c=c, n=n: one(t, c, n) for t, c, n in g]
+            [[lambda t=t, c=c, n=n: metering(one(t, c, n)) for t, c, n in g]
              for g in in_turn(jobs, lambda j: (j[0].task_id, j[1].name))], concurrency)
         p.produced = sum(1 for r in results if r)
         p.failed = sum(1 for r in results if not r)
@@ -716,6 +731,10 @@ def settled(rows: list[dict], unreadable: set[tuple] | None = None, *, rule: str
         # folded into either field.
         rules = {r.get("trace_rules") for r in readings}
         base["trace_rules"] = rules.pop() if len(rules) == 1 else "mixed"
+        # And the judge's, the same way (09-30 review), read off each reading's
+        # judgement, where the judge writes them (10-01 review).
+        judged = {(r.get("judgement") or {}).get("judge_rules", r.get("judge_rules")) for r in readings}
+        base["judge_rules"] = judged.pop() if len(judged) == 1 else "mixed"
         backed = [bool(r.get("scoreable", True)) for r in readings]
         # Under the majority (v1, the user's decision 09-28): a reading whose
         # quote is not in the answer cannot be checked, so it does not vote;
@@ -1388,6 +1407,17 @@ async def rejudge(run: Path, model: str, *, concurrency: int = 4, passes: int = 
     src = Paths(run)
     out = judge_paths(run, model)
     print(f"  judge: {model}\n  from:  {run}\n  into:  {out.root}\n", flush=True)
+    # Into a folder read under other rules, a re-judge would add readings under
+    # these beside them, resume on theirs, and grade on an admission this judge
+    # never made (09-30 review). Refused before anything is asked.
+    from ..instrument.control import admission_problems
+
+    problems = admission_problems(load(out.calibration), load(out.controls), model)
+    if problems:
+        why = (f"refused: {out.root} already holds this judge's readings {'; '.join(problems)}. Move that folder "
+               f"aside and re-judge into a fresh one; nothing was asked")
+        print(why, flush=True)
+        return {"refused": why}
     # Which model the judge deployment served, before and after (D-36 A6).
     from ..llm import record_served
 

@@ -29,6 +29,7 @@ from __future__ import annotations
 
 import json
 import math
+from collections import Counter
 from pathlib import Path
 
 
@@ -273,9 +274,12 @@ def raw_messages(path: Path) -> list[dict]:
     message's id, and an entry written twice adds nothing. Sub-agents' messages
     are left out, as `raw_calls` leaves out their calls.
 
-    A message whose id comes back in answer to the developer -- a resumed
-    session's "Continue from where you left off." -- is a new part from there
-    on, so what the agent wrote after the prompt is placed after it. Only when
+    A message whose id comes back in answer to the developer -- a prompt typed
+    while the agent was still writing, 6 times in SWE-chat's 4,929 Claude Code
+    transcripts -- is a new part from there on, so what the agent wrote after
+    the prompt is placed after it. ("Continue from where you left off.", which
+    Claude Code writes itself on resuming, is a meta entry in all 325 of its
+    occurrences there, and splits nothing.) Only when
     the entry descends from the prompt (`parentUuid`, through any system or
     attachment entries): a local command's output, an interrupt or a tool's
     result written between two entries of one message does not split it, and
@@ -385,6 +389,7 @@ def restore_text(session_id: str, turns: list[dict], *, thinking: bool = False) 
     # A part the rows hold nothing of, before a resume: its blocks go with the
     # part that resumes its message, placed by that part's blocks, not dropped.
     carried: dict[str, list[dict]] = {}
+    matched: list[tuple[list[dict], list, bool, list[int]]] = []
     for message in raw_messages(transcript_path(session_id)):
         mid = message.get("message", message["id"])
         blocks = carried.pop(mid, []) + message["blocks"]
@@ -420,8 +425,22 @@ def restore_text(session_id: str, turns: list[dict], *, thinking: bool = False) 
                 carried[mid] = blocks
             continue
         last = max(last, max(at[j] for j in placed))
+        matched.append((blocks, at, closes, placed))
+    # Put back only what the rows do not already hold. A message's closing text
+    # matched "anywhere after" can land on a later identical one ("No response
+    # requested."), and the messages skipped past then match nothing: on rows
+    # that keep every block, as the collector's do, their texts were put back a
+    # second time, 621 of them in 19 of 4,929 sessions (09-30 review). A held
+    # row no block matched still holds its words, so a block with those words
+    # is taken as held there, once per such row.
+    used = {i for _, at, _, _ in matched for i in at if i is not None}
+    unmatched = Counter((kind, s) for kind, pairs in held.items() for i, s in pairs if i not in used)
+    for blocks, at, closes, placed in matched:
         for j, b in enumerate(blocks):
             if at[j] is not None or (closes and j == len(blocks) - 1) or b.get("type") not in kinds or not words(b):
+                continue
+            if unmatched[(b.get("type"), words(b))] > 0:
+                unmatched[(b.get("type"), words(b))] -= 1
                 continue
             before = [p for p in placed if p < j]
             after = [p for p in placed if p > j]

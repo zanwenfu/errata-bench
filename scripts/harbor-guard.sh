@@ -8,23 +8,29 @@
 #     LEDGER=runs/b1-spend.ledger LOG=runs/b1-spend.log scripts/harbor-guard.sh   # while the Harbor jobs run
 #   STOP=2200 JOBS="jobs/b1-grok jobs/b1-dsp" GRADED=runs/b1-grade PIDS=runs/b1-grade.pid \
 #     LEDGER=runs/b1-spend.ledger LOG=runs/b1-spend.log scripts/harbor-guard.sh   # again, while grading runs
+#   STOP=300 ADMITTED=runs/v11-admit PIDS=runs/v11-admit.pid \
+#     LEDGER=runs/v11-spend.ledger LOG=runs/v11-spend.log scripts/harbor-guard.sh  # finding, screening, admission
 #
 # Each guarded process is started with `scripts/guarded.sh`, which writes its
 # pid file. One LEDGER for every phase keeps the whole run's spend in one
 # total: the agents' and the grading's, whatever folders a later phase names.
-# Every word of JOBS, PIDS and GRADED is read once, when the guard starts, and
-# a pattern must match: start the guard after every job has made its folder,
-# or name each one. The guard refuses to start (exit 2) unless the stop line is
-# a number, every pid file names a live process group, every JOBS word is a
-# Harbor job folder, every GRADED folder is a grading run that has begun (it
-# waits up to 2 minutes for one), and a first tally runs: a guard that priced
-# nothing used to say it was guarding (09-28 reviews). Once running, a tally
-# that fails twice in a row stops the run as the stop line does. Ends when
-# every group has exited.
+# Every word of JOBS, PIDS, GRADED and ADMITTED is read once, when the guard
+# starts, and a pattern must match: start the guard after every job has made
+# its folder, or name each one. One of JOBS, GRADED and ADMITTED is needed: the
+# stages before Harbor (finding tasks, screening, the judge's admission and its
+# gate) are paid with no job, and ADMITTED names their run folders; a
+# re-judge's folder goes in both GRADED and ADMITTED. The guard refuses to
+# start (exit 2) unless the stop line is a number, every pid file names a live
+# process group, every JOBS word is a Harbor job folder, every GRADED folder is
+# a grading run that has begun (or a re-judge's folder), every ADMITTED folder
+# is a run folder (it waits up to 2 minutes for each), and a first tally runs:
+# a guard that priced nothing used to say it was guarding (09-28 reviews).
+# Once running, a tally that fails twice in a row stops the run as the stop
+# line does. Ends when every group has exited.
 cd "$(dirname "$0")/.." || exit 1
 STOP="${STOP:?set STOP, the dollar line}"; LOG="${LOG:?set LOG}"; PIDS="${PIDS:?set PIDS, the pid files}"
-JOBS="${JOBS:?set JOBS, the job folders}"; LEDGER="${LEDGER:?set LEDGER, the spend ledger}"
-GRADED="${GRADED:-}"; PY="${PY:-.venv/bin/python}"
+JOBS="${JOBS:-}"; LEDGER="${LEDGER:?set LEDGER, the spend ledger}"
+GRADED="${GRADED:-}"; ADMITTED="${ADMITTED:-}"; PY="${PY:-.venv/bin/python}"
 WAIT_S="${WAIT_S:-900}"; KILL_AFTER_S="${KILL_AFTER_S:-60}"; EVERY_S="${EVERY_S:-600}"; APPEAR_S="${APPEAR_S:-120}"
 say() { echo "$*" | tee -a "$LOG"; }
 refuse() { say "refused: $*"; exit 2; }
@@ -41,19 +47,42 @@ words() {
 words "$PIDS" > /dev/null || refuse "a pid file pattern matches nothing: $PIDS"
 mapfile -t pidfiles < <(words "$PIDS")
 [ "${#pidfiles[@]}" -gt 0 ] || refuse "no pid file given: $PIDS"
+# Screening and an admission are paid without a Harbor job: ADMITTED names their
+# folders, and one of JOBS, GRADED and ADMITTED is enough (09-30 review).
+[ -n "$JOBS$GRADED$ADMITTED" ] || refuse "set JOBS, GRADED or ADMITTED: nothing to price"
 words "$JOBS" > /dev/null || refuse "a job folder pattern matches nothing: $JOBS"
 mapfile -t jobs < <(words "$JOBS")
+words "$ADMITTED" > /dev/null || refuse "an admission folder pattern matches nothing: $ADMITTED"
+mapfile -t admitted < <(words "$ADMITTED")
 for j in "${jobs[@]}"; do [ -f "$j/config.json" ] || refuse "not a Harbor job folder (no config.json): $j"; done
 graded=()
-begun() {   # every grading folder named, each with the tasks.jsonl a grading run writes first
+begun() {   # every grading folder named, each with the tasks.jsonl a grading run writes first, or a re-judge's
   local g; words "$GRADED" > /dev/null || return 1
   mapfile -t graded < <(words "$GRADED"); [ "${#graded[@]}" -gt 0 ] || return 1
-  for g in "${graded[@]}"; do [ -f "$g/tasks.jsonl" ] || return 1; done
+  for g in "${graded[@]}"; do
+    [ -f "$g/tasks.jsonl" ] || { [ -d "$g" ] && [ "$(basename "$(dirname "$g")")" = rejudge ]; } || return 1
+  done
 }
 if [ -n "$GRADED" ]; then
   waited=0
   until begun; do
     [ "$waited" -ge "$APPEAR_S" ] && refuse "no grading run begun at $GRADED after ${APPEAR_S}s (no tasks.jsonl)"
+    sleep 5; waited=$((waited + 5))
+  done
+fi
+started() {   # every admission folder named is a run folder: its input, or a model-calling stage's rows
+  local a f ok; for a in "${admitted[@]}"; do
+    ok=0
+    for f in moments tasks served triaged readings trajectories signatures screened calibration controls gate instrument; do
+      [ -f "$a/$f.jsonl" ] && ok=1
+    done
+    [ "$ok" -eq 1 ] || return 1
+  done
+}
+if [ "${#admitted[@]}" -gt 0 ]; then
+  waited=0
+  until started; do
+    [ "$waited" -ge "$APPEAR_S" ] && refuse "no run folder at $ADMITTED after ${APPEAR_S}s (no input or stage rows)"
     sleep 5; waited=$((waited + 5))
   done
 fi
@@ -65,8 +94,10 @@ for f in "${pidfiles[@]}"; do
   groups+=("$g")
 done
 tally() {
-  local args=(--jobs "${jobs[@]}" --ledger "$LEDGER" --stop "$STOP")
+  local args=(--ledger "$LEDGER" --stop "$STOP")
+  [ "${#jobs[@]}" -gt 0 ] && args+=(--jobs "${jobs[@]}")
   [ "${#graded[@]}" -gt 0 ] && args+=(--graded "${graded[@]}")
+  [ "${#admitted[@]}" -gt 0 ] && args+=(--admitted "${admitted[@]}")
   "$PY" scripts/harbor_spend.py "${args[@]}" >> "$LOG" 2>&1
 }
 tally; rc=$?
@@ -100,11 +131,15 @@ stop_run() {
   say "=== stopped $(date -u +%FT%TZ)"
   exit 0
 }
-say "=== guarding ${#groups[@]} process group(s) (${groups[*]}), ${#jobs[@]} job folder(s), ${#graded[@]} grading folder(s), stop line \$$STOP $(date -u +%FT%TZ)"
+say "=== guarding ${#groups[@]} process group(s) (${groups[*]}), ${#jobs[@]} job folder(s), ${#graded[@]} grading folder(s), ${#admitted[@]} admission folder(s), stop line \$$STOP $(date -u +%FT%TZ)"
 [ "$rc" -eq 3 ] && stop_run "STOP LINE \$$STOP REACHED"
 failed=0
 while true; do
-  alive || { say "=== every guarded process has ended; guard ends $(date -u +%FT%TZ)"; exit 0; }
+  # A last tally when the run ends, so the ledger holds the run's spend to its
+  # end (10-01 review). It may come up to EVERY_S late: the failed rows a stage
+  # drops when it runs again are kept beside its file and priced there, so a
+  # run started again in between loses none of their usage.
+  alive || { tally; say "=== every guarded process has ended (final tally, exit $?); guard ends $(date -u +%FT%TZ)"; exit 0; }
   sleep "$EVERY_S"
   tally; rc=$?
   [ "$rc" -eq 3 ] && stop_run "STOP LINE \$$STOP REACHED"

@@ -50,7 +50,9 @@ async def stage_attempt(
     t0 = time.monotonic()
     refused = admission_refused(paths)
     if refused:
+        # A failure, so a script that runs stages in turn stops here (09-30 review).
         p.notes.append(refused)
+        p.failed = 1
         p.took_s = time.monotonic() - t0
         return p
     sweep()
@@ -373,6 +375,7 @@ async def stage_grade(paths: Paths, limit: int, concurrency: int,
     refused = admission_refused(paths)
     if refused:
         p.notes.append(refused)
+        p.failed = 1
         p.took_s = time.monotonic() - t0
         return p
     grader = judge_model()

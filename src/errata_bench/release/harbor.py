@@ -132,9 +132,12 @@ HERE = ("The repository is your current directory, at the path the developer had
 MOVED = ("The repository is your current directory, {workdir}, with its git history and its dependencies "
          "installed. The developer had it at {session}, so the paths in the conversation that begin there begin "
          "at {workdir} here.")
-FITTED = ("The conversation below is long, so each tool call's input and each tool result in it that is longer "
-          "than {cap:,} characters is cut to that length, marked where it is cut. The whole conversation is in "
-          "{path}.")
+# As `corpus.turns.call_shown` cuts: an edit's old and new text get half the cap
+# each, and a multi-edit's edits share it, so "cut to that length" understated
+# the cuts on 17 calls in 7 of v1.1's 17 fitted tasks (09-30 review).
+FITTED = ("The conversation below is long, so each tool result and each tool call's input in it is cut to "
+          "{cap:,} characters -- an edit's old and new text to half that each, a multi-edit's edits sharing "
+          "it -- marked where it is cut. The whole conversation is in {path}.")
 WHOLE_PATH = "/errata/conversation.txt"
 RULE = "=" * 70
 CLOSING = "(Respond to the developer's most recent message above.)"
@@ -156,6 +159,10 @@ PYTHONPATH=/tests/lib exec python3 -S -m errata_bench.release.verify after /test
 # standard library alone (`release.verify`).
 BUNDLE = ("errata_bench/__init__.py", "errata_bench/changes.py", "errata_bench/release/__init__.py",
           "errata_bench/release/atif.py", "errata_bench/release/verify.py")
+# Every file `export` writes, beside the instruction, the bundles and a cut
+# conversation's copy: what `stale` finds missing in a task written only in part.
+EXPORTED = ("task.toml", "environment/Dockerfile", "environment/workspace.tar.gz", "tests/test.sh",
+            "tests/instruction.md", "tests/conversation.txt", "tests/task.json", "tests/workspace.json")
 
 
 def instruction(meta: dict, conversation: str, cap: int | None = None) -> str:
@@ -195,6 +202,44 @@ def fitted(meta: dict, whole: str, turns: list[dict], cut_turn: int) -> tuple[st
     if best is None:
         raise ValueError(f"{meta['task_id']}: its messages alone are too long to pass to an agent")
     return instruction(meta, best[0], best[1]), best[0], best[1]
+
+
+def stale(task_dir: Path, out: Path) -> bool:
+    """Whether the Harbor task at ``out`` no longer gives the instruction this code builds for ``task_dir``.
+
+    Grading builds each task's instruction again (`grade_harbor.graded_for`) and
+    takes a trial given any other for an error, after the trial is paid for: on
+    v1.1's 17 long tasks, after the note on cut conversations was reworded, every
+    trial would have been (10-01 review). A task never written is stale too.
+
+    So is one written only in part. `export` writes the instruction last, so an
+    export that stopped part way leaves none; a folder an earlier export left
+    part written -- it wrote the instruction first -- is known by a file it
+    lacks, a workspace shorter than the task's, or a record that does not parse.
+    Read by the instruction alone, such a task passed as current, and its
+    digests were then recorded over it (10-01 review).
+    """
+    target = out / "instruction.md"
+    if not target.is_file():
+        return True
+    meta = json.loads((task_dir / "task.json").read_text())
+    cut = json.loads((task_dir / "grading" / "task.json").read_text())["cut_turn"]
+    text, _, cap = fitted(meta, (task_dir / "conversation.txt").read_bytes().decode("utf-8"),
+                          json.loads((task_dir / "shown_turns.json").read_text()), cut)
+    if target.read_bytes() != text.encode("utf-8"):
+        return True
+    needed = list(EXPORTED) + (["environment/conversation.txt"] if cap is not None else [])
+    needed += [f"{bundle}/{rel}" for bundle in ("environment/errata", "tests/lib") for rel in BUNDLE]
+    if not all((out / rel).is_file() for rel in needed):
+        return True
+    if (out / "environment" / "workspace.tar.gz").stat().st_size != (task_dir / "workspace.tar.gz").stat().st_size:
+        return True
+    try:
+        for rel in ("tests/task.json", "tests/workspace.json"):
+            json.loads((out / rel).read_text())
+    except ValueError:
+        return True
+    return False
 
 
 def _toml(value) -> str:
@@ -273,14 +318,15 @@ def export(task_dir: Path, out: Path, files: list[str], packages: dict[str, str]
     whole = (task_dir / "conversation.txt").read_bytes().decode("utf-8")
     turns = json.loads((task_dir / "shown_turns.json").read_text())
     source = Path(__file__).resolve().parents[2]
+    # The instruction is written last: an export stopped part way leaves a task
+    # with none, which `stale` reads as one to write again, where written first
+    # it passed a half-written task as current (10-01 review).
     if out.exists():
         shutil.rmtree(out)
     (out / "environment").mkdir(parents=True)
     (out / "tests" / "lib").mkdir(parents=True)
 
     text, shown, cap = fitted(meta, whole, turns, grading["cut_turn"])
-    # As bytes, as the freeze wrote the conversation: its carriage returns are kept.
-    (out / "instruction.md").write_bytes(text.encode("utf-8"))
     (out / "task.toml").write_text(task_toml(meta))
 
     r = recipe(meta, files, packages, pyprojects)
@@ -301,6 +347,8 @@ def export(task_dir: Path, out: Path, files: list[str], packages: dict[str, str]
         "signature_token": grading.get("signature_token") or ""}, ensure_ascii=False, indent=1) + "\n")
     shot = workspace_snapshot(task_dir / "workspace.tar.gz")
     (out / "tests" / "workspace.json").write_text(json.dumps(shot, sort_keys=True))
+    # Last: as bytes, as the freeze wrote the conversation, its carriage returns kept.
+    (out / "instruction.md").write_bytes(text.encode("utf-8"))
     return {"task_id": meta["task_id"], "instruction_chars": len(text), "argument_bytes": argument_bytes(text),
             "conversation_chars": len(whole), "shown_chars": len(shown), "tool_cap": cap,
             "workspace_files": len(shot), "installs": [f"{folder or '.'} {lock}" for folder, _, _, lock in r.installs]}

@@ -102,7 +102,9 @@ def controls(tests: Path) -> tuple[list[str], bool]:
 def probes(path: Path, judge: str, rules: int | None = None, expect_runs: int = 3,
            expect_probes: int = 23) -> tuple[list[str], bool]:
     """Each run of the probes, and whether there were `expect_runs` runs, each with all of them as expected."""
-    rows = [r for r in load(path) if r.get("judge_model") == judge and (rules is None or r.get("trace_rules") == rules)]
+    # A failed call is recorded and asked again (`probe_runs`), not a reading (10-01 review).
+    rows = [r for r in load(path) if r.get("judge_model") == judge and not r.get("error")
+            and (rules is None or r.get("trace_rules") == rules)]
     runs = defaultdict(list)
     for r in rows:
         runs[r["run"]].append(r)

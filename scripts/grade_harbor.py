@@ -18,7 +18,11 @@ The judge is ERRATA_JUDGE_MODEL, called with your own key (ERRATA_PROVIDER=azure
 with AZURE_OPENAI_BASE_URL and AZURE_OPENAI_API_KEY, or OPENAI_API_KEY). Grading
 calls that model three times per answer and is paid. With --rows-only nothing
 is graded: the rows are written and counted, to check a job before paying.
-Running again adds trials not yet on record and grades what is left.
+Grading is refused while any answer on record is not official -- its task not
+the published one, no digests recorded for the release, Harbor's settings
+changed -- because each is paid for and none can count; --unofficial grades
+them anyway, for a pilot whose results are not official. Running again adds
+trials not yet on record and grades what is left.
 --attempts is how many attempts each task was run for (3 officially): each
 model's `coverage` counts what is missing against it, and a run of another
 number is not official.
@@ -88,7 +92,7 @@ def admitted_elsewhere(tasks: dict[str, tuple[Task, Path]]) -> list[str]:
 
 
 def release_problems(tasks: dict[str, tuple[Task, Path]], admission: Path, out: Path,
-                     graded: dict[str, tuple[str, str]]) -> list[str]:
+                     graded: dict[str, tuple[str, str]], *, setup: bool = True) -> list[str]:
     """Whatever would make this run's grades not what they claim to be, found before anything is read or paid.
 
     A task the release holds incompletely; one whose admission read another
@@ -97,6 +101,8 @@ def release_problems(tasks: dict[str, tuple[Task, Path]], admission: Path, out: 
     record in ``out`` that were graded on another conversation -- a folder
     resumed across the fix of #7 would mix the two (09-27 review). ``graded``
     is filled with each task's instruction and conversation on the way.
+    ``setup`` compares how the admission's judge was asked with how this shell
+    would ask it; recording rows asks nothing, so `--rows-only` leaves it out.
     """
     from errata_bench.spec import fingerprint
 
@@ -113,6 +119,15 @@ def release_problems(tasks: dict[str, tuple[Task, Path]], admission: Path, out: 
                             f"(grading/controls.json)")
         elif admitted != graded[task_id][1]:
             problems.append(f"{task_id}: the judge's admission read another conversation than grading reads")
+        # The instruction its trials were given, as the release exported it: one
+        # exported by other code than grades it makes every trial of the task an
+        # error row, after the trial is paid for (10-01 review: v1.1's 17 cut
+        # tasks, after the note on cut conversations was reworded).
+        exported = folder.parent.parent / "harbor" / task_id / "instruction.md"
+        if exported.is_file() and exported.read_bytes().decode("utf-8") != graded[task_id][0]:
+            problems.append(f"{task_id}: the release's Harbor task gives another instruction than this code builds: "
+                            f"export the release again (scripts/export_harbor.py), record its digests, and run "
+                            f"the trials on that")
     stamps = {task_id: fingerprint(task) for task_id, (task, _) in tasks.items()}
     for name in ("calibration.jsonl", "controls.jsonl"):
         for r in load(admission / name) if (admission / name).is_file() else []:
@@ -121,19 +136,27 @@ def release_problems(tasks: dict[str, tuple[Task, Path]], admission: Path, out: 
                 problems.append(f"{r['task_id']}: --admission was made on another version of this task "
                                 f"({name}: fingerprint {stamp}, the release's {stamps[r['task_id']]})")
                 break
-    # The judge's rules the admission was made under. v1.0.2's admission records
-    # none (rules 3); G-82's rules 4 read an answer differently, and a judge is
-    # admitted under the rules it grades with, not others.
-    # The trace check's own probes, kept among the controls, are not the judge's readings.
-    made_under = {r.get("judge_rules") for name in ("calibration.jsonl", "controls.jsonl")
-                  for r in (load(admission / name) if (admission / name).is_file() else [])
-                  if not r.get("error") and not str(r.get("control", "")).startswith("probe:")}
-    if made_under and made_under != {judge_mod.RULES}:
-        told = ", ".join("none recorded (before 30 September: rules 3)" if x is None else str(x)
-                         for x in sorted(made_under, key=str))
-        problems.append(f"--admission was made under judge rules {told}, and this code grades under rules "
-                        f"{judge_mod.RULES}: admit the judge under these rules, or grade with the code the "
+    # The rules, provider, API and field guide the admission was read under:
+    # the judge must be admitted as it grades (`control.admission_problems`).
+    # v1.0.2's admission records no rules (rules 3), and G-82 made them 4.
+    from errata_bench.instrument.control import admission_problems
+
+    for p in admission_problems(*(load(admission / name) if (admission / name).is_file() else []
+                                  for name in ("calibration.jsonl", "controls.jsonl")),
+                                os.environ.get("ERRATA_JUDGE_MODEL") or None, setup=setup):
+        problems.append(f"--admission was {p}: admit the judge as this code grades, or grade with the code the "
                         f"admission was made with (for v1.0.2's tasks, tag v1.0.4)")
+    # And what grading will read from --out: it writes its copies of the tasks and
+    # the admission once, so a folder kept from another release or admission would
+    # be graded from those (09-30 review).
+    wanted_tasks = "".join(json.dumps(t.to_json()) + "\n" for t, _ in tasks.values())
+    if (out / "tasks.jsonl").is_file() and (out / "tasks.jsonl").read_text() != wanted_tasks:
+        problems.append(f"{out} holds another release's tasks: grade into a new --out")
+    for name in ADMISSION:
+        source, target = admission / name, out / name
+        if source.is_file() and target.is_file() and target.read_text() != "".join(
+                json.dumps(r) + "\n" for r in load(source) if r.get("task_id") in tasks):
+            problems.append(f"{out}/{name} is another admission than --admission's: grade into a new --out")
     # Read without `Paths`, which makes the folder: a refused run leaves nothing behind (09-28 review).
     stale = sorted({r["task_id"] for r in (load(out / "answers.jsonl") if (out / "answers.jsonl").is_file() else [])
                     if not r.get("error") and r.get("task_id") in graded
@@ -205,8 +228,12 @@ def grading_data_of(release: Path) -> str | None:
 
 def manifest_of(release: Path, run: Path) -> dict:
     """What a run's results were made with, named exactly and with no credential in it (#6)."""
-    provider = ("azure" if os.environ.get("ERRATA_PROVIDER", "").lower() == "azure"
-                else "openai-compatible" if os.environ.get("OPENAI_BASE_URL") else "openai")
+    from errata_bench.llm import reading_setup
+
+    try:
+        setup = reading_setup()
+    except RuntimeError:
+        setup = {"provider": "unknown", "api": "unknown"}
     return {"grading_client": {"timeout_s": os.environ.get("ERRATA_TIMEOUT"),
                                "max_retries": os.environ.get("ERRATA_MAX_RETRIES")},
             "code_version": code_version(), "dataset_version": dataset_version(release),
@@ -218,8 +245,7 @@ def manifest_of(release: Path, run: Path) -> dict:
             "grading_data": grading_data_of(release),
             "admission": sha256_of(*(run / name for name in ADMISSION)),
             "requirements_lock": sha256_of(Path(__file__).resolve().parent.parent / "requirements-lock.txt"),
-            "provider": provider,
-            "api": os.environ.get("ERRATA_API") or ("chat_completions" if provider == "azure" else "responses")}
+            "provider": setup["provider"], "api": setup["api"]}
 
 
 def _grading_code() -> str:
@@ -334,7 +360,11 @@ def results_of(paths: Paths, judge: str, passes: int, version: str = "unknown", 
     common = ({f"the models' trials ran {len(codes)} versions of the agent's code"} if len(codes) > 1 else set()) | (
         {f"the judge is {judge}, not {OFFICIAL_JUDGE}"} if judge != OFFICIAL_JUDGE else set()) | (
         {f"{passes} readings per answer, not 3"} if passes != 3 else set()) | (
-        {f"{attempts} attempts per task, not 3"} if attempts != 3 else set())
+        {f"{attempts} attempts per task, not 3"} if attempts != 3 else set()) | (
+        # A pilot on tasks not yet released is not a result on the dataset, however
+        # its trials ran (09-30 review): the release names itself (release.json).
+        {"its tasks are no published release of the dataset (unrecognised)"}
+        if (manifest or {}).get("dataset_release", "unrecognised") == "unrecognised" else set())
     models = {}
     # Every model that ran, a model none of whose trials could be graded included:
     # it was left out of the results altogether (09-28 review).
@@ -390,6 +420,8 @@ def main(argv: list[str]) -> int:
     ap.add_argument("--attempts", type=int, default=3, help="attempts per task each model was run for")
     ap.add_argument("--limit", type=int, default=10**9)
     ap.add_argument("--rows-only", action="store_true")
+    ap.add_argument("--unofficial", action="store_true",
+                    help="grade answers that are not official too (a pilot): refused without it")
     args = ap.parse_args(argv)
     # The settings file first, before anything reads the environment: it was
     # loaded only when a new trial was recorded, so a second run into the same
@@ -405,7 +437,7 @@ def main(argv: list[str]) -> int:
     # (#7), and the same holds for an admission of another task version, or a
     # folder already holding rows graded on another conversation.
     graded_cache: dict[str, tuple[str, str]] = {}
-    problems = release_problems(tasks, args.admission, args.out, graded_cache)
+    problems = release_problems(tasks, args.admission, args.out, graded_cache, setup=not args.rows_only)
     # A folder of job folders holds no trial of its own: given one, grading
     # used to find nothing, write nothing and succeed (09-28 review).
     empty = [str(j) for j in args.jobs if not read_trials([j])]
@@ -470,12 +502,28 @@ def main(argv: list[str]) -> int:
                   file=sys.stderr)
         if args.rows_only:
             return 0
-        if os.environ.get("AZURE_OPENAI_BASE_URL") and os.environ.get("ERRATA_PROVIDER", "").lower() != "azure":
-            # Azure is opt-in (`llm.configure_client`): without ERRATA_PROVIDER=azure
-            # the judge would go to api.openai.com with OPENAI_API_KEY, billed there.
-            print("refused: AZURE_OPENAI_BASE_URL is set but ERRATA_PROVIDER is not azure; export "
-                  "ERRATA_PROVIDER=azure to grade on Azure, or unset AZURE_OPENAI_BASE_URL; nothing was graded",
-                  file=sys.stderr)
+        # Each paid for, and none can count: a release whose digests were never
+        # recorded made every trial unofficial, and grading said so only after
+        # paying for every reading (09-30 review).
+        unofficial = [r for r in rows if not r.get("error") and not (r.get("harbor") or {}).get("official")]
+        if unofficial and not args.unofficial:
+            why = Counter(w.split(":")[0][:90] for r in unofficial
+                          for w in ((r.get("harbor") or {}).get("why_not_official") or ["no reason recorded"]))
+            print(f"refused: {len(unofficial)} of {sum(1 for r in rows if not r.get('error'))} answers on record are "
+                  f"not official; grading them is paid and their results could not count. Why:"
+                  + "".join(f"\n  - {w} ({n})" for w, n in why.most_common(6))
+                  + f"\nFix the cause (no digests: python -m errata_harbor.digests {args.release / 'harbor'}, in "
+                  f"Harbor's environment, then grade into a new --out), or pass --unofficial to grade a pilot; "
+                  f"nothing was graded", file=sys.stderr)
+            return 2
+        # The account named before any call, by the rule every entry point uses
+        # (`llm.provider`): Azure's settings with no ERRATA_PROVIDER are refused,
+        # and an explicit choice is taken (10-01 review: this check refused
+        # ERRATA_PROVIDER=openai beside Azure's settings, which admission accepts).
+        try:
+            llm_mod.provider()
+        except RuntimeError as e:
+            print(f"refused: {e} Nothing was graded.", file=sys.stderr)
             return 2
         # Long prompts, read whole: the subset's slowest reading took 228 s, and the
         # official tasks' prompts are about 3.6 times as long. A request cut off at
