@@ -1,4 +1,4 @@
-"""Label which developer messages object to the agent's work, as our own triage asks it (#16, step 7; `crawl/label.py`).
+"""Label which developer messages push back, as SWE-chat labelled its own; our own triage then decides (#16, step 7; `crawl/label.py`).
 
     # what a run would cost, calling no model
     .venv/bin/python scripts/crawl_label.py calibrate --against triage --model gpt-5.6-luna --effort low \\
@@ -185,7 +185,7 @@ def main(argv: list[str]) -> int:
         turns, todo = pending(batch)
         todo = todo[:int(min(left, len(todo)))]
         left -= len(todo)
-        cost.update(L.estimate([L.view_for(turns[s], t["turn_number"]) for s, t in todo],
+        cost.update(L.estimate([(L.context_for(turns[s], t["turn_number"]), L.message_for(t)) for s, t in todo],
                                price_in=price_in, price_out=price_out, out_tokens=args.out_tokens))
         if left <= 0:
             break
