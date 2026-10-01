@@ -10953,3 +10953,34 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     - Then an end-to-end check: a scratch assembly with these labels, and
       `run.py`'s `find_moments` reading it.
     - Estimate about $0.20.
+- **10-01, 03:5x UTC** — **The pilot on the re-assembled corpus, read by hand,
+  and the labels carried through to moments (#16).**
+  - *The pilot.* The same 20 sessions. 224 messages, down from 286 with G-84's
+    copies and what no one typed gone; $0.15.
+    - Called pushback: 109 (102 corrections, 5 failure reports, 2 rejections).
+    - Every row records the codebook, and every digest matches its message.
+    - No skill text, other session's message or hook feedback was asked
+      about.
+    - 5 repeats are left, each said again by the developer hundreds of turns
+      later: "ship it" four times, "what about now ?", and a `pwd`.
+  - *By hand.*
+    - All 27 clear objections found in the first pilot were called pushback
+      again.
+    - The other 82 flags are feedback while iterating, or not pushback:
+      instructions, answers, questions. Triage is there for those.
+    - Run to run, 206 of the 224 calls agree on pushback or not. The 18 that
+      changed are all borderline: questions, suggestions, and one command's
+      expanded instructions.
+  - *End to end, on a scratch assembly with these labels* (the real corpus
+    untouched):
+    - all 224 labels were put on their messages;
+    - as stored in `prompt_pushback` they match the labels file, label and
+      digest, on developer rows only and nowhere else;
+    - `run.py moments` drew 12 moments, in both its first and its later mode,
+      each at a labelled pushback of its kind. Counted independently, the 12
+      are the sessions whose first pushback has 3 or more agent rows before
+      it. The other 2 sessions with a pushback have 0 and 2.
+  - *Checks.* The six CI suites pass on the branch.
+  - *The full run, estimated for free.* 16,824 messages beyond the pilot, at
+    $12.75 at list price. That is about 65 minutes at the measured 260
+    answers a minute.
