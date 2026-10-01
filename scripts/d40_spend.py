@@ -24,7 +24,11 @@ PRICE = {  # USD per 1M tokens: input, cached input, output (Global Standard lis
     "grok-4.6": (2.00, 0.50, 6.00), "Kimi-K2.7-Code": (0.95, 0.19, 4.00),
     "DeepSeek-V4-Pro": (1.74, 0.145, 3.48), "DeepSeek-V4-Flash": (0.44, 0.028, 1.32),
     "Mistral-Large-3": (0.50, 0.50, 1.50), "MAI-Thinking-1": (2.00, 0.20, 8.00),
-    "gpt-6-astra": (10.00, 1.00, 50.00), "gpt-6-sol": (10.00, 1.00, 50.00),
+    "gpt-6-astra": (10.00, 1.00, 50.00),
+    # Not listed on 09-24, and held at gpt-6-astra's price until Azure listed it (by 09-30): a tally
+    # made before then priced gpt-6-sol's calls at five times its rate.
+    "gpt-6-sol": (2.00, 0.20, 10.00),
+    "gpt-5.6-luna": (0.20, 0.02, 1.20),  # listed 09-30; the pushback labeller (`crawl/label.py`)
 }
 TEST_ROW_USD = {"calibration": 0.40, "controls": 0.26, "instrument": 0.13, "probes": 0.05}
 

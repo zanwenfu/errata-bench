@@ -46,8 +46,8 @@ _spec.loader.exec_module(_d40)
 PRICE = _d40.PRICE
 # grok reports its reasoning tokens apart from its output; they are billed as output.
 REASONING_APART = {"grok-4.6"}
-# USD per 1M tokens written to gpt-6's prompt cache (Global Standard, 09-28).
-CACHE_WRITE = {"gpt-6-astra": 12.50, "gpt-6-sol": 12.50}
+# USD per 1M tokens written to gpt-6's prompt cache (Global Standard, 09-28; gpt-6-sol's as listed 09-30).
+CACHE_WRITE = {"gpt-6-astra": 12.50, "gpt-6-sol": 2.50}
 # Rows of an answer with nothing to read: no judge was called for them.
 NO_READING = ("no_answer", "gave_up", "no_context")
 
