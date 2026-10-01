@@ -334,6 +334,33 @@ check(read["file_path"] == "/r/p.py" and call["command"] == "pytest" and call["t
 user = [(r["turn_type"], r["content"]) for r in rows if r["role"] == "user"]
 check(("user_prompt", "no, don't touch tests") in user and ("system_injected", "<task-notification>done</task-notification>") in user,
       "a message typed while the agent was busy is the developer's; a queued task notice is not")
+# G-84. Newer versions write a queued message again where it is delivered: as
+# the developer's own entry, or mid-turn as a queued_command attachment.
+queued = [
+    {"type": "user", "timestamp": T.format(0), "message": {"role": "user", "content": "start"}},
+    *[{"type": "queue-operation", "timestamp": T.format(1), "operation": "enqueue", "content": text}
+      for text in ("use the other branch", "keep the tests", "wait", "wait", "again", "again", "not delivered")],
+    {"type": "assistant", "timestamp": T.format(2), "message": {"id": "m9", "model": "x",
+     "content": [{"type": "text", "text": "working"}]}},
+    {"type": "attachment", "timestamp": T.format(3), "attachment": {"type": "queued_command", "prompt": "keep the tests",
+                                                                     "commandMode": "prompt"}},
+    {"type": "queue-operation", "timestamp": T.format(4), "operation": "dequeue"},
+    {"type": "user", "timestamp": T.format(4), "message": {"role": "user", "content": "use  the other branch"}},
+    {"type": "user", "timestamp": T.format(5), "message": {"role": "user", "content": "wait"}},
+    {"type": "user", "timestamp": T.format(6), "message": {"role": "user", "content": "wait"}},
+    {"type": "user", "timestamp": T.format(7), "message": {"role": "user", "content": "again"}},
+]
+qrows = claude_code_rows("q", "o/r", "o/r#q", queued)
+said = {}
+for r in qrows:
+    if r["turn_type"] == "user_prompt":
+        said[" ".join(r["content"].split())] = said.get(" ".join(r["content"].split()), 0) + 1
+working = next(i for i, r in enumerate(qrows) if r["turn_type"] == "assistant_response")
+branch = [i for i, r in enumerate(qrows) if r["turn_type"] == "user_prompt" and "other branch" in r["content"]]
+check(said == {"start": 1, "use the other branch": 1, "keep the tests": 1, "wait": 2, "again": 2, "not delivered": 1}
+      and len(branch) == 1 and branch[0] > working,
+      f"a queued message written again on delivery is one row, where it was delivered; one queued twice is "
+      f"two, delivered once or twice; never delivered, the queue entry is its row (G-84): {said}")
 check(("system_injected", "<command-name>/model</command-name>") in user and ("user_prompt", "Review the diff carefully.") in user,
       "a built-in command is injected; a command's expanded instructions are the developer's request")
 check(("user_prompt", "see this\n[Image: image/png]") in user, "an image is kept as SWE-chat wrote it")

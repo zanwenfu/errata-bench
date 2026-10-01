@@ -111,12 +111,45 @@ def user_kind(entry: dict, text: str) -> str:
     return "system_injected" if INJECTED.match(text) else "user_prompt"
 
 
+def queued_and_delivered(entries: list[dict]) -> set[int]:
+    """The queue entries whose message is written again where it was delivered (G-84).
+
+    A message typed while the agent was busy is written to a queue entry, and
+    newer versions of Claude Code write it again when it is delivered: as the
+    developer's own entry, or mid-turn as a `queued_command` attachment. That
+    copy is where the agent read it, so it is the row, and the queue entry is a
+    developer row only for a message written nowhere else. Each delivered copy
+    is paired with the earliest queue entry of the same text still waiting, one
+    to one, so a message queued twice and delivered twice stays two.
+    """
+    waiting: dict[str, list[int]] = {}
+    paired: set[int] = set()
+    for i, entry in enumerate(entries):
+        kind = entry.get("type")
+        if kind == "queue-operation":
+            text = " ".join(entry["content"].split()) if isinstance(entry.get("content"), str) else ""
+            if entry.get("operation") == "enqueue" and text:
+                waiting.setdefault(text, []).append(i)
+            continue
+        if kind == "user" and isinstance(entry.get("message"), dict):
+            text = " ".join(_text(entry["message"].get("content")).split())
+        elif kind == "attachment" and isinstance(entry.get("attachment"), dict) \
+                and entry["attachment"].get("type") == "queued_command" and isinstance(entry["attachment"].get("prompt"), str):
+            text = " ".join(entry["attachment"]["prompt"].split())
+        else:
+            continue
+        if waiting.get(text):
+            paired.add(waiting[text].pop(0))
+    return paired
+
+
 def claude_code_rows(session_id: str, repo_id: str, checkpoint_pk: str, entries: list[dict],
                      strategy: str | None = None) -> list[dict]:
     """The session's rows in order, numbered from 0."""
     rows: list[dict] = []
     call_names: dict[str, str] = {}
     last_of_message: dict[str, int] = {}  # message id -> index of its last row
+    delivered = queued_and_delivered(entries)
 
     def add(role, turn_type, content, entry, **fields):
         row = {"role": role, "turn_type": turn_type, "content": content,
@@ -124,7 +157,7 @@ def claude_code_rows(session_id: str, repo_id: str, checkpoint_pk: str, entries:
         rows.append(row)
         return len(rows) - 1
 
-    for entry in entries:
+    for n, entry in enumerate(entries):
         kind = entry.get("type")
         msg = entry.get("message") if isinstance(entry.get("message"), dict) else {}
         if kind == "user":
@@ -167,12 +200,13 @@ def claude_code_rows(session_id: str, repo_id: str, checkpoint_pk: str, entries:
         elif kind in METADATA:
             add("metadata", METADATA[kind], json.dumps(entry, ensure_ascii=False), entry,
                 queue_op_subtype=entry.get("operation") if kind == "queue-operation" else None)
-            # A message typed while the agent was busy is queued, and the queue
-            # entry is the only place it is written. It is the developer's --
+            # A message typed while the agent was busy is queued. Where the queue
+            # entry is the only place it is written, it is the developer's --
             # often a correction mid-run -- so it is a row of its own, as
             # SWE-chat made it (194 of 300 sessions' unmatched messages, 09-29).
+            # Where it is written again on delivery, that copy is the row (G-84).
             text = entry.get("content") if kind == "queue-operation" else None
-            if entry.get("operation") == "enqueue" and isinstance(text, str) and text.strip():
+            if entry.get("operation") == "enqueue" and isinstance(text, str) and text.strip() and n not in delivered:
                 add("user", user_kind({}, text), text, entry)
         elif kind == "attachment":
             att = entry.get("attachment") if isinstance(entry.get("attachment"), dict) else {}

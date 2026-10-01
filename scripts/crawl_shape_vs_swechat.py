@@ -133,6 +133,13 @@ def main(argv: list[str]) -> int:
         extra["agent messages"] += sum(1 for r in ours if r["turn_type"] == "assistant_response"
                                        and r["content"] not in matched_text)
         extra["thinking"] += sum(1 for r in ours if r["turn_type"] == "assistant_thinking")
+        # Copies, which matching by text cannot see (G-84): a developer message
+        # SWE-chat holds once and ours twice is a message said twice in ours.
+        mine_n = Counter((r["content"] or "").strip() for r in ours if r["turn_type"] == "user_prompt")
+        theirs_n = Counter((t["content"] or "").strip() for t in theirs[sid] if t["turn_type"] == "user_prompt")
+        for text in mine_n.keys() & theirs_n.keys():
+            c["developer messages held more times in ours"] += mine_n[text] > theirs_n[text]
+            c["developer messages held fewer times in ours"] += mine_n[text] < theirs_n[text]
         c["our rows"] += len(ours)
         c["their rows"] += len(theirs[sid])
 
@@ -140,7 +147,8 @@ def main(argv: list[str]) -> int:
     for k in ("their rows", "our rows", "their calls", "their calls missing from ours", "their results",
               "results identical", "results longer in ours (SWE-chat cut them)", "results differing",
               "their results missing from ours", "their agent messages", "their agent messages missing from ours",
-              "their user rows", "their user rows found only inside a longer row of ours"):
+              "their user rows", "their user rows found only inside a longer row of ours",
+              "developer messages held more times in ours", "developer messages held fewer times in ours"):
         print(f"  {k}: {c[k]}")
     print("  fields differing on matched calls:", dict(field_diffs) or "none")
     print("  ours only (what SWE-chat dropped):", dict(extra))
