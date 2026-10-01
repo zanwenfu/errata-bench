@@ -2,7 +2,8 @@
 
 Written on 28 September 2026, after five independent reviews of v1.0.2, and
 brought up to date the same day, on 29 September with the first official
-results, and on 30 September with a defect in what the tasks show (G-79).
+results, and on 30 September with the defects in what the tasks show and
+their fix (G-79, G-81, G-82, G-83).
 The current release is **code v1.0.4**
 with **dataset v1.0.2** (the tasks did not change). Each item links to its
 issue, and everything still to do is tracked in one place:
@@ -10,13 +11,14 @@ issue, and everything still to do is tracked in one place:
 
 ## In short
 
-- **A known defect in what the tasks show, high priority
-  ([#17](https://github.com/zanwenfu/errata-bench/issues/17)).** The
-  conversations lack most of what the earlier agent wrote between its tool
-  calls: 91% of its messages there, about 1.4% of the text shown. Its calls,
-  their results and the developer's messages are shown. The effect on scores
-  is not yet measured. Details, and the fix, are
-  [below](#known-defects-and-what-v103-and-v104-fixed).
+- **v1.0's conversations are incomplete, and this is a limit of its results
+  ([#17](https://github.com/zanwenfu/errata-bench/issues/17)).** They lack
+  most of what the earlier agent wrote between its tool calls (91% of its
+  messages there, about 1.4% of the text shown), and in 5 of the 55 tasks a
+  repair removed the developer's last request. The code is fixed, so every
+  future build shows the whole conversation. v1.0's tasks and results stay
+  as published and are not re-run for now. Details are
+  [below](#v10s-conversations-what-they-lack-and-what-is-fixed).
 - **You can run it.** v1 runs any coding agent on 55 real tasks, in
   realistic containers with the network closed, and grades the result with
   your own key. This was checked end to end on a fresh download.
@@ -150,33 +152,8 @@ be taken to mean.
 
 ## Known defects, and what v1.0.3 and v1.0.4 fixed
 
-- **Open, high priority: the conversations lack most of the earlier agent's
-  own words (G-79, [#17](https://github.com/zanwenfu/errata-bench/issues/17)).**
-  Measured by `scripts/lost_text_blocks.py`.
-  - *What happens.* Claude Code stores each part of an agent message as its
-    own entry, and SWE-chat's table keeps only the last part of each message.
-    Anything the agent wrote before a tool call in the same message is lost.
-    v1 restores the lost calls (G-76), but not the text.
-  - *How much.* In the part of each session a task shows, 536 of the 587
-    agent messages (91%) are missing, in 50 of the 55 tasks. That is 64,057
-    characters against 4.4 million shown, about 1.4%; per task, the middle
-    half lose between 0.6% and 2.5%. 506 of the 536 are under 300
-    characters. 33 hold a completion word such as "fixed" or "deployed", in
-    16 tasks.
-  - *What it touches.* Candidates and both graders see the earlier agent's
-    calls, their results and the developer's messages, but almost none of
-    what the agent said along the way. So v1's conversations are not "the
-    conversation as it stood". The candidate's own record is complete, and
-    rebuilding the repository does not depend on the lost text.
-  - *What it does to results.* Not yet measured. Every model in the v1
-    baseline was run and graded on the same view, so its comparisons are like
-    for like, but they describe v1's tasks as released, not the full
-    conversations. The judge's admission was measured on this view too.
-  - *The fix, in order:* restore the text from the raw transcripts, as
-    `recover.py` does for calls; rebuild the conversations, a new dataset
-    version; re-run the leak gate and the judge's admission on them; re-run a
-    pilot to measure how far scores move, then decide whether the baseline is
-    re-run.
+- **v1.0's conversations: see the next section.** Four defects in what the
+  tasks show, now fixed in the code (#17).
 
 Use the code at tag `v1.0.4`. The `v1.0.2` code tag has the defects below,
 and writes an outdated label (the exploratory 78%) into `results.json`.
@@ -223,6 +200,90 @@ and writes an outdated label (the exploratory 78%) into `results.json`.
   - a folder of jobs is refused instead of graded as nothing;
   - tests cover the rows grading writes for a long task, re-grading, and
     the dataset's own release record.
+
+## v1.0's conversations: what they lack, and what is fixed
+
+Found on 29 and 30 September, after the first official results
+([#17](https://github.com/zanwenfu/errata-bench/issues/17)). v1.0's tasks and
+results are not changed and not re-run: the budget does not allow a re-run
+now (decided 30 September). Read v1.0's scores with these four limits. The
+code is fixed, so every task built from here on shows the whole conversation.
+
+1. **The earlier agent's narration is missing (G-79).**
+   - *What happens.* Claude Code stores each part of an agent message as its
+     own entry, and SWE-chat's table keeps only the last part of each
+     message. Anything the agent wrote before a tool call in the same message
+     is lost. v1.0 restored the lost calls (G-76), but not the text.
+   - *How much.* In the part of each session a task shows, 536 of the 587
+     agent messages (91%) are missing, in 50 of the 55 tasks. That is 64,057
+     characters against 4.4 million shown, about 1.4%; per task, the middle
+     half lose between 0.6% and 2.5%. 506 of the 536 are under 300
+     characters. 33 hold a completion word such as "fixed" or "deployed", in
+     16 tasks. Measured by `scripts/lost_text_blocks.py`.
+   - *What it touches.* Candidates and both graders see the earlier agent's
+     calls, their results and the developer's messages, but almost none of
+     what the agent said along the way. The candidate's own record is
+     complete, and rebuilding the repository does not depend on the lost
+     text. Every model in the v1 baseline was run and graded on the same
+     view, so its comparisons are like for like. How far the scores would
+     move is not measured.
+2. **The leak screen read less than the candidates see (G-81).** The
+   screening gates read each conversation cut to 60,000 characters, with each
+   message cut at 4,000. Candidates read it whole, and 25 of the 55 run past
+   75,000 characters. So part of what a candidate saw on those tasks was never
+   screened for signs that the agent had failed.
+3. **The graders could accept the earlier agent's word as evidence (G-82).**
+   Both were told that the conversation's AGENT turns are the candidate's own
+   earlier work. That lets a claim rest on an earlier line such as "all tests
+   pass", which nothing recorded backs. v1.0's conversations show 53 agent
+   messages, so the rule had little to act on there; with the narration put
+   back it would have had hundreds.
+4. **In 5 tasks a repair removed the developer's request (G-83).** When a
+   conversation gives away that the agent had failed, a repair removes or
+   rewrites the turns that do. In 5 of the 7 tasks repaired this way, the turn
+   removed was the developer's last request, which the task's reference
+   answers respond to: Nagi-ovo-gemini-voyager-321,
+   Safecast-safecast-new-map-95, cyyeh-duckdb-data-agent-114,
+   osabiohq-osabio-74 and shunkakinoki-dotfiles-49. The candidate sees an
+   earlier message as the developer's last. All five are among the baseline's
+   51 scored tasks. Leaving them out moves each model's honest-report rate by
+   between −1.2 and +2.9 points, well inside every interval. The order of the
+   six is unchanged, except that DeepSeek-V4-Flash and Mistral-Large-3 tie at
+   34.8%. This comparison is exploratory, not the registered rule.
+
+**What the code now does** (`checks/guards_hold.py` §156 and
+`checks/front_stages_run.py` §5 test each rule, and each rule reverted alone
+fails a suite):
+
+- the agent's text is put back from the raw transcript, in its place
+  (`corpus.recover.with_text`). Its thinking is not: it is a summary of the
+  earlier model's reasoning, and it states conclusions such as "All tests
+  pass." just before the cut;
+- every screening gate, the repair and its re-check read the conversation
+  exactly as the candidate will be shown it;
+- the judge (rules 4) and the trace check (rules 7) count what a call did or
+  printed, and what the developer said, never an AGENT turn's own words. Each
+  gains probes for this, on one answer in two conversations: one where the
+  claim rests on an earlier AGENT line alone, one where a call shows it;
+- a repair that would remove the developer's request is refused, and the
+  task is set aside instead. After any other repair, the request and scope
+  gates are asked again, on the repaired conversation;
+- text the agent wrote right after a removed turn, which answers it, is
+  removed with it;
+- the build refuses a session with no transcript to put the lost calls and
+  text back from, a row screened before they were put back, and a
+  conversation longer than the screening model can read whole;
+- admission rows record the judge's rules. Grading, and the pipeline's
+  candidate and grading stages, refuse an admission made under other rules.
+  So this code does not grade v1.0.2's tasks, whose admission was made under
+  rules 3: use the code at tag `v1.0.4` for them.
+
+**v1.1.** The 55 tasks' conversations have been rendered again with the text
+put back; their repositories are unchanged. v1.1 is not released. Before it
+is, each conversation must be screened again for leaks, the five tasks above
+repaired again or set aside, and the judge admitted again on the new
+conversations. Those are paid steps and wait for approval, as does a pilot to
+measure how far scores move.
 
 ## What v1 is not yet
 

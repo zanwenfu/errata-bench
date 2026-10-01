@@ -29,7 +29,9 @@ in [known-issues.md](known-issues.md).
   errata-bench pays for nothing you run.
 - **The code at tag `v1.0.4`**: `git clone --branch v1.0.4
   https://github.com/zanwenfu/errata-bench.git`. The dataset stays at
-  `v1.0.2`.
+  `v1.0.2`. The `main` branch is ahead: its judge reads under new rules
+  (G-82, #17) that the v1.0.2 admission never checked, so its grading refuses
+  that admission.
 
 ## 1. The tasks
 

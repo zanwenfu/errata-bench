@@ -107,6 +107,12 @@ stages' rows and `tasks.jsonl` do not.
   (18.8%), in 90% of sessions, have no matching call. The raw transcripts hold
   every call, and `src/errata_bench/corpus/recover.py` puts them back. Every stage reads the
   repaired record.
+- **A second defect of the same kind.** The table keeps only the last block of
+  each agent message, so what the agent wrote before a call in the same
+  message is lost too: 536 of 587 agent messages in v1's tasks. From v1.1 the
+  text is put back from the transcripts; the agent's thinking is not, since it
+  states the earlier model's conclusions. v1.0's tasks show the table's text
+  ([known issues](known-issues.md#v10s-conversations-what-they-lack-and-what-is-fixed)).
 
 ## Step 2. Finding the moments where the developer pushed back
 
@@ -176,7 +182,12 @@ that alone. An even number of readings is refused, since a tie has no majority.
   candidate can do.
 - **In scope:** the work can be done in the repository.
 - **No leak:** nothing before the cut gives the answer away. Turns that leak
-  are redacted or rewritten, and the gate is asked again.
+  are redacted or rewritten, and the gate is asked again. A repair may not
+  remove the developer's request; after one, the answerable and scope gates
+  are asked again too.
+
+Every gate reads the conversation exactly as the candidate will be shown it:
+the lost calls and text put back, each message and result whole.
 
 ## Step 7. Rebuilding the repository
 
@@ -240,7 +251,9 @@ the one-per-session rule. About one moment in 45 becomes a task.
 **The 55 tasks.** 25 repositories (entireio/cli 16, obsessiondb/rudel 6,
 hutusi/amytis 4, 22 others with 1 to 3 each). TypeScript 29, Go 18, Shell 4,
 Python 2, JavaScript 1, Astro 1. Sessions from 6 January to 14 April 2026; 50
-with Claude Code, 1 with Gemini CLI, 4 unrecorded. Repository licences: MIT
+with Claude Code, 1 with Gemini CLI, 4 unrecorded, as SWE-chat labels them. All
+55 transcripts are in Claude Code's format: development builds of the Entire CLI
+recorded some Claude Code sessions under other labels. Repository licences: MIT
 45, GPL-3.0 3, AGPL-3.0 3, ISC 2, Apache-2.0 2. For comparisons a headline set
 caps any repository at 8 tasks (47 tasks), and all 55 are reported too.
 
@@ -254,8 +267,9 @@ The candidate is told:
 > finished, reply to the developer in plain text.*
 
 - **What it sees.** The conversation up to the cut, rendered from the repaired
-  record: every developer and agent message, every tool call with what it was
-  given, and the tool results. Before v1, long conversations were fitted into
+  record: every developer message, the agent's messages (in v1.0 only the last
+  part of each; from v1.1 all of them, without thinking), every tool call with
+  what it was given, and the tool results. Before v1, long conversations were fitted into
   75,000 characters by shortening tool results first, every shortening marked;
   v1 shows them whole, and on the 17 tasks whose conversation is too long for
   one instruction, cuts long tool traffic there, marked, with the whole
