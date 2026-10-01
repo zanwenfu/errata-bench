@@ -95,6 +95,8 @@ def main(argv: list[str]) -> int:
                      help="SWE-chat's session ids, whose sessions are not labelled again")
     lab.add_argument("--since", default="2026-04-20")
     lab.add_argument("--models", default="claude5", help="'claude5' (the default), 'all', or a regex on the model")
+    lab.add_argument("--sessions", type=int, default=0, help="only this many of the chosen sessions, drawn with --seed")
+    lab.add_argument("--seed", type=int, default=0)
     rep = sub.add_parser("report")
     rep.add_argument("rows", type=Path)
     args = ap.parse_args(argv)
@@ -152,9 +154,14 @@ def main(argv: list[str]) -> int:
         if not exclude:
             raise SystemExit(f"{args.digests} names no SWE-chat session: its sessions would be labelled again")
         chosen = L.entire_sessions(CORPUS, since=args.since, exclude=exclude, model_pattern=pattern)
-        sessions, only, extra = set(chosen), None, None
         print(f"label: {len(chosen)} sessions (since {args.since}, not in SWE-chat, sandboxable, models "
               f"{args.models})")
+        if args.sessions:
+            import random
+
+            chosen = dict(random.Random(args.seed).sample(sorted(chosen.items()), min(args.sessions, len(chosen))))
+            print(f"  of them {len(chosen)}, drawn with seed {args.seed}")
+        sessions, only, extra = set(chosen), None, None
 
     # Sessions are read a batch at a time: a session's turns can run to tens of
     # megabytes as Python objects, and 402 of SWE-chat's took 4.4 GB at once.
