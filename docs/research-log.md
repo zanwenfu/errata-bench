@@ -10874,3 +10874,26 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     - The corpus is re-assembling on the VM from 02:49 UTC. The old one is
       kept as `corpus.pre-g84`, and the codebook pilot's labels as
       `labels.codebook-pilot-1001.jsonl`.
+- **10-01, 02:5x UTC** — **Triage's question, asked by gpt-5.6-luna, fails the
+  triage check: 84.6% of triage's pushbacks caught, against 90% (#16).**
+  - *Result.* 483 answered; none failed and none was filtered.
+    - Triage's pushbacks called pushback: 247 of 292, 84.6%. The 45 missed
+      include the 4 Claude Code notices.
+    - v1 moments: 52 of 55.
+    - Triage's non-pushbacks called pushback: 17 of 150 (11%).
+    - Cost and speed: $0.37 at list price. Per answer 3,201 tokens in and
+      109 out. 227 answers a minute.
+    - **Not a pass.**
+  - *Compared on the same moments with the codebook (02:0x),* which caught
+    278 of the 292 and flagged 62 of the 150:
+    - of the 44 triage pushbacks this question missed, 42 are "does not
+      object". gpt-5.6-luna read requests for more changes and pointed
+      questions as no objection, where gpt-6-astra read them as one;
+    - the codebook caught 38 of the 44. This question caught 4 the codebook
+      missed;
+    - of the 3 v1 moments missed, two were read as a further request and one
+      as a new question.
+  - *So,* as a first filter, triage's own question is stricter than triage
+    itself, and loses one real pushback in seven. The codebook loses one in
+    twenty, and triage turns away its false flags at one call each, as it did
+    SWE-chat's. The choice of question goes back to the user.
