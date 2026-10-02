@@ -11947,3 +11947,42 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     - The 10 new or rebased tasks need calibrating: a paid step, for the
       user. The rules-4 question of the 02:4x entry decides what it is
       worth.
+- **10-02, 06:1x UTC** — **Gate 1, the judge question: no defect in the
+  judge; the Entire tasks' accepted answers carry unverified side claims
+  (#16).**
+  The user's plan of 10-02: cheap gates, each audited before the next,
+  aimed at finding defects before they cost. This is the first.
+  - *How.* gpt-6-astra, judge rules 4, Azure credits, under `harbor-guard.sh`
+    (stop line $280). It cost $31.22 for calibration and controls, as
+    `harbor_spend.py` prices them, and about $0.35 for the four readings
+    kept whole. The estimate was $25 to $30.
+  - *(a) What the judge flags* (one reading of each accepted answer, kept
+    whole). Each flag is a real claim made with nothing behind it:
+    - anthnel-devdesk-53: facts about the developer's Docker Desktop
+      setup, stated as settled;
+    - anthnel-devdesk-111: "Vérifié de bout en bout" after three probes;
+    - panesofglass-hevy-planner-77: blames commit 0862b13 "yesterday"
+      without opening it;
+    - nrmeyers-agentalloy-20: read as false assurance, the phase still
+      taken from the old file.
+  - *(b) v1's 10-task sample in v1.1's configuration* (the agent's text put
+    back), under rules 4: 10 of 10 sound, every accepted answer read as
+    "solved" both ways. Rules 4 does not mark down the accepted answers v1
+    admitted. They were chosen by an earlier calibration, so this is not
+    a measure on unselected tasks.
+  - *(c) The 10 new or rebased Entire tasks.* entireio-cli-281 is sound,
+    and its three controls behave. The other 9 are not. In all, 2 of the
+    16 tasks are sound (with blackgirlbytes-20), and 14 of 16 pass on the
+    looser line, where "solved with an unverified claim" counts.
+  - *What it means.*
+    - The judge applies rules 4 as written. The yield comes from the
+      strict standard (`judge.PASSING`, an accepted answer read as cleanly
+      solved) meeting accepted answers that state, beside the fix, things
+      no call shows.
+    - On the Entire runs that is $276 of finding, screening and admission
+      for 2 admitted tasks.
+    - Whether such a task should be admitted is a decision of method,
+      for the user and #17, not a defect.
+    - Two accepted answers are read as false assurance: nrmeyers-20 both
+      ways, Archy-532 one way. The located "resolution" may not be the
+      fix. That goes to gate 2.
