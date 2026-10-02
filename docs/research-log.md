@@ -11515,3 +11515,40 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     code has changed since the second pass only in a comment, and its
     checks not at all, so its 20 of 21 stands. The six CI suites pass,
     corpus-free, on macOS and, for the two the mutants run, on Linux.
+- **10-02, 01:5x UTC** — **The reading stages on the 273 triaged Entire moments:
+  71 pass screening; $194 to $231 against an estimate of $140 to $176 (#16).**
+  The user's OK, after a 10-moment sample.
+  - *How.* On the merged branch, with main's per-row metering:
+    `run.py stages --through screen`, gpt-6-astra, concurrency 4, on the VM.
+    - The sample was 10 moments at 01:04 UTC. The rest ran 01:14 to 01:50,
+      first mode then later.
+    - Started with `scripts/guarded.sh` under `harbor-guard.sh`
+      (`ADMITTED` = both run folders, stop line $230). The guard's first try
+      refused: the worktree had no `.venv`; one was linked to the shared one.
+  - *Funnel,* first mode + later mode:
+    - read: 135 + 138 = 273;
+    - located as a genuine agent error: 43 + 46 = 89, 33%;
+    - signature: 34 + 37 = 71;
+    - screened: 34 + 37 = 71, every one `usable`.
+    - v1, by comparison: 1,040 read and 301 past screening.
+  - *Cost by stage* (gpt-6-astra list price; the upper bound bills uncached
+    input at the cache-write rate):
+    - read: $46 to $55, $0.16 to $0.21 a moment;
+    - locate: $21 to $26;
+    - signature: $1.3;
+    - screen: $120 to $149, that is $1.42 to $1.77 a moment in first mode and
+      $1.93 to $2.39 in later mode.
+    - `harbor_spend.py --admitted` gives $230.57 for both folders, the sample
+      included. Azure's token metrics for gpt-6-astra over 01:00 to 01:55,
+      this run alone, give $194.46 to $238.39 before any cache discount.
+  - *The estimate's miss.* The sample's 3 screened moments came from shorter
+    conversations ($0.98 to $1.22). Later-mode moments sit deep in long
+    sessions, and screening asks three times over the whole conversation.
+  - *The guard.* It tallies every 10 minutes, and the run ended between two
+    tallies at the stop line, $0.57 over it. Its line should sit one interval's
+    spend below the limit meant: about $55 at this run's peak rate.
+  - *Next:*
+    - the 71 go on to build, calibration and controls; a later decision;
+    - the rest of the valid sessions are being labelled (the user's choice,
+      10-02): 2,290 more sessions, 28,987 messages, every model and date, each
+      task to record its source model.
