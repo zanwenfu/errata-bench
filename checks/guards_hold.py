@@ -2107,7 +2107,8 @@ _turns38 = [(sid, n, kind, push) for sid in _langs38 for n, kind, push in (
 _pq.write_table(_pa.table({
     "session_id": [t[0] for t in _turns38], "turn_number": [t[1] for t in _turns38],
     "turn_type": [t[2] for t in _turns38], "prompt_pushback": [t[3] for t in _turns38],
-    "timestamp": _pa.array([1_700_000_000_000_000 + t[1] for t in _turns38], _pa.timestamp("us", tz="UTC"))}),
+    "timestamp": _pa.array([1_700_000_000_000_000 + t[1] for t in _turns38], _pa.timestamp("us", tz="UTC")),
+    "content": [f"{t[0]} says {t[1]}" for t in _turns38]}),
     _corpus38 / "conversations.parquet")
 import contextlib as _contextlib38, io as _io38
 
@@ -5793,7 +5794,8 @@ _rows82 += [("s-once", n, *kp) for n, kp in enumerate([
 _pq.write_table(_pa.table({"session_id": [r[0] for r in _rows82], "turn_number": [r[1] for r in _rows82],
                            "turn_type": [r[2] for r in _rows82], "prompt_pushback": [r[3] for r in _rows82],
                            "timestamp": _pa.array([1_700_000_000_000_000 + r[1] for r in _rows82],
-                                                  _pa.timestamp("us", tz="UTC"))}),
+                                                  _pa.timestamp("us", tz="UTC")),
+                           "content": [f"{r[0]} says {r[1]}" for r in _rows82]}),
                 _corpus82 / "conversations.parquet")
 _transcribed38(_corpus82, _langs82)
 _keep82 = (_sessions_mod.CORPUS, _sessions_mod.load_repos)
@@ -5952,7 +5954,8 @@ _pq.write_table(_pa.table({
     "session_id": [r[0] for r in _rows86], "turn_number": [r[1] for r in _rows86],
     "turn_type": [r[2] for r in _rows86], "prompt_pushback": [r[3] for r in _rows86],
     "timestamp": _pa.array([1_700_000_000_000_000 + r[1] if r[0] == "s-stamped" else None for r in _rows86],
-                           _pa.timestamp("us", tz="UTC"))}),
+                           _pa.timestamp("us", tz="UTC")),
+    "content": [f"{r[0]} says {r[1]}" for r in _rows86]}),
     _corpus86 / "conversations.parquet")
 _transcribed38(_corpus86, _langs86)
 _keep86 = (_sessions_mod.CORPUS, _sessions_mod.load_repos)
@@ -12627,7 +12630,8 @@ _rows157m = [(sid, n, kind, push) for sid in _langs157 for n, kind, push in (
 _pq.write_table(_pa.table({
     "session_id": [r[0] for r in _rows157m], "turn_number": [r[1] for r in _rows157m],
     "turn_type": [r[2] for r in _rows157m], "prompt_pushback": [r[3] for r in _rows157m],
-    "timestamp": _pa.array([1_700_000_000_000_000 + r[1] for r in _rows157m], _pa.timestamp("us", tz="UTC"))}),
+    "timestamp": _pa.array([1_700_000_000_000_000 + r[1] for r in _rows157m], _pa.timestamp("us", tz="UTC")),
+    "content": [f"{r[0]} says {r[1]}" for r in _rows157m]}),
     _corpus157 / "conversations.parquet")
 _transcribed38(_corpus157, ["s-kept"])
 _keep157m = (_sessions_mod.CORPUS, _sessions_mod.load_repos)
@@ -12659,7 +12663,8 @@ _rows157d = [("s-once", *r) for r in _base157d] + [("s-twice", *r) for r in _bas
 _pq.write_table(_pa.table({
     "session_id": [r[0] for r in _rows157d], "turn_number": [r[1] for r in _rows157d],
     "turn_type": [r[2] for r in _rows157d], "prompt_pushback": [r[3] for r in _rows157d],
-    "timestamp": _pa.array([1_700_000_000_000_000 + r[1] for r in _rows157d], _pa.timestamp("us", tz="UTC"))}),
+    "timestamp": _pa.array([1_700_000_000_000_000 + r[1] for r in _rows157d], _pa.timestamp("us", tz="UTC")),
+    "content": [f"{r[0]} says {r[1]}" for r in _rows157d]}),
     _corpus157d / "conversations.parquet")
 _transcribed38(_corpus157d, _langs157d)
 _keep157d = (_sessions_mod.CORPUS, _sessions_mod.load_repos)
@@ -14548,6 +14553,76 @@ _kept162 = _rd162.apply([_T63(1, "user_prompt", content="add retries"),
 check([t["turn_number"] for t in _kept162] == [1, 3],
       f"a text put back right after another agent's dropped message is its answer, and goes with it: "
       f"{[t['turn_number'] for t in _kept162]}")
+
+print("\n163. one moment in several sessions is collected once, in the copy that holds the most of it (10-02)")
+# G-91: a conversation resumed, forked, carried on after compaction, or recorded
+# twice holds its messages in each session, each copy with the message's text
+# and its time. The first runs on the collected corpus read 9 moments twice, and
+# two of their 16 tasks were one moment. Through the real `find_moments`, over a
+# corpus written for the purpose: three copies of one moment (two snapshots that
+# start together, one carried on later), a copy of one already collected, the
+# same words said at two times, and another message at the same instant.
+_corpus163 = Path(tempfile.mkdtemp())
+_B163, _S163 = 1_700_000_000_000_000, 1_000_000
+_repos163 = {"s-a1": "o/a", "s-a2": "o/a", "s-a3": "o/a", "s-b1": "o/b", "s-b2": "o/b", "s-c1": "o/c1",
+             "s-c2": "o/c2", "s-e": "o/e"}
+_rows163 = []
+
+
+def _session163(sid, start, at, said, after):
+    """Three turns of work from ``start``, the objection ``said`` at ``at``, then ``after`` turns of the agent's."""
+    kinds = [("user_prompt", "non_pushback"), ("assistant_response", None), ("tool_use", None),
+             ("assistant_response", None), ("user_prompt", "correction")] + [("assistant_response", None)] * after
+    times = [start + i * _S163 // 10 for i in range(4)] + [at + i * _S163 for i in range(after + 1)]
+    for n, ((kind, push), ts) in enumerate(zip(kinds, times), start=1):
+        _rows163.append((sid, n, kind, push, ts, said if n == 5 else f"{sid} says {n}"))
+
+
+_session163("s-a1", _B163, _B163 + 5 * _S163, "the retry still loops forever", 1)
+_session163("s-a2", _B163, _B163 + 5 * _S163, "the retry still loops forever", 7)
+_session163("s-a3", _B163 + 3 * _S163, _B163 + 5 * _S163, "the retry still loops forever", 9)
+_session163("s-b1", _B163, _B163 + 6 * _S163, "the cache is never cleared", 2)
+_session163("s-b2", _B163, _B163 + 6 * _S163, "the cache is never cleared", 2)
+_session163("s-c1", _B163, _B163 + 7 * _S163, "wrong file again", 2)
+_session163("s-c2", _B163 + 50 * _S163, _B163 + 57 * _S163, "wrong file again", 2)
+_session163("s-e", _B163 + 2 * _S163, _B163 + 5 * _S163, "that broke the build", 2)
+_pq.write_table(_pa.table({"session_id": list(_repos163), "repo_id": list(_repos163.values())}),
+                _corpus163 / "sessions.parquet")
+_pq.write_table(_pa.table({
+    "repo_id": sorted(set(_repos163.values())), "url": ["u"] * 5, "license_type": ["mit"] * 5,
+    "repo_github_metadata": [json.dumps({"language": "TypeScript"})] * 5}), _corpus163 / "repositories.parquet")
+_pq.write_table(_pa.table({
+    "session_id": [r[0] for r in _rows163], "turn_number": [r[1] for r in _rows163],
+    "turn_type": [r[2] for r in _rows163], "prompt_pushback": [r[3] for r in _rows163],
+    "timestamp": _pa.array([r[4] for r in _rows163], _pa.timestamp("us", tz="UTC")),
+    "content": [r[5] for r in _rows163]}), _corpus163 / "conversations.parquet")
+_transcribed38(_corpus163, _repos163)
+_seen163 = Path(tempfile.mkdtemp()) / "seen.jsonl"
+append(_seen163, {"session_id": "s-b1", "turn_number": 5})
+_keep163 = (_sessions_mod.CORPUS, _sessions_mod.load_repos)
+_sessions_mod.CORPUS, _sessions_mod.load_repos = _corpus163, REAL_LOAD_REPOS
+try:
+    _got163 = []
+    for _skip163 in ([], [_seen163]):
+        _out163, _said163 = Path(tempfile.mkdtemp()) / "m.jsonl", _io38.StringIO()
+        with _contextlib38.redirect_stdout(_said163), _transcripts_at(_corpus163):
+            _run_mod.find_moments(10, _out163, skip_seen=_skip163)
+        _got163.append((sorted((r["session_id"], r["turn_number"]) for r in load(_out163)),
+                        " ".join(_said163.getvalue().split())))
+finally:
+    _sessions_mod.CORPUS, _sessions_mod.load_repos = _keep163
+(_all163, _said_all163), (_after163, _said_after163) = _got163
+check([s for s, _ in _all163] == ["s-a2", "s-b1", "s-c1", "s-c2", "s-e"],
+      f"of three copies of one moment, the one collected is in a session that starts first and holds the most "
+      f"after it; of two the same, the first by id; the same words at another time, and another message at the "
+      f"same instant, are moments of their own: {_all163}")
+check("3 moments left out: a copy of a moment another session holds, the copy kept there" in _said_all163,
+      f"and it says how many copies it left out: {_said_all163[:160]!r}")
+check([s for s, _ in _after163] == ["s-a2", "s-c1", "s-c2", "s-e"]
+      and "1 moments left out: a copy of a moment already collected" in _said_after163
+      and "2 moments left out: a copy of a moment another session holds" in _said_after163,
+      f"a copy of a moment an earlier collection took is left out, in every session: {_after163} "
+      f"{_said_after163[:200]!r}")
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:

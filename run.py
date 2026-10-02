@@ -235,6 +235,19 @@ def find_moments(
             why.append(f"{unknown} whose repository the corpus has no row for")
         print(f"  {len(withheld)} moments left out: " + ", ".join(why), flush=True)
 
+    # One moment in several sessions (G-91): a conversation resumed, forked,
+    # carried on after compaction, or recorded twice, holds its messages in
+    # each session, each copy with the message's text and time. One copy of a
+    # moment is read, and none of one an earlier collection took: the first
+    # runs on the collected corpus read 9 moments twice and built one into two
+    # tasks. After the checks above, so the copy kept is one that can be built.
+    from errata_bench.corpus.copies import identities, keep_one
+
+    found = identities(conv, {(m["session_id"], m["turn_number"]) for m in fresh} | seen)
+    fresh, copies = keep_one(fresh, found, {found[k][0] for k in seen if k in found and found[k][0]})
+    for why, n in sorted(copies.items()):
+        print(f"  {n} moments left out: {why}", flush=True)
+
     # Spread across repositories rather than taking the first N of a sorted list.
     # Sorting by repo_id and slicing gave fifty moments from a single repository,
     # which measures that project rather than anything general. Within a
