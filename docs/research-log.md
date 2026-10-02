@@ -11594,7 +11594,8 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
       the failed rows, and exit 1 while any failed. Applied twice, they keep
       the first backup and each row's old verdict.
     - Not changed, and documented: the apply renders from whatever corpus it
-      is given, so it is run where the re-screen ran.
+      is given, so it is run where the re-screen ran. (Checked from 10-02:
+      see that entry.)
   - *Checks.* guards_hold sections 158 and 159 and edits to §79, §157;
     front_stages_run §1b, §9 and §10. 306 single-rule mutants, one per rule
     this round added or changed (an agent's list, then the rules added after
@@ -11675,6 +11676,53 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     - the rest of the valid sessions are being labelled (the user's choice,
       10-02): 2,290 more sessions, 28,987 messages, every model and date, each
       task to record its source model.
+- **10-02, 02:1x UTC** — **Before testers run v1.0.2: the four unchecked
+  defects read in their trees, the apply tied to its re-screen's session data,
+  the testers' path checked (#8, #17).**
+  - *The four tasks whose defects no check could find* (#8's last item). Each
+    was read in its task's tree, by a Claude model, and found:
+    - entireio-cli-283: the test asserts only that `cli_version` is not
+      empty, never that it is the built CLI's;
+    - femto-mcp-chrome-58: the postinstall script runs its `main` only when
+      run directly, and npm's postinstall loads it with `require`, so a
+      global install never registers the Native Messaging host;
+    - hutusi-amytis-15: each card's link in `PostList.tsx` and
+      `SeriesCatalog.tsx` is an overlay, painted beneath the cover image's
+      positioned wrapper, so a click on the image never reaches it;
+    - hutusi-amytis-349: the prev/next cards walk all posts by date, and the
+      series index counts the sample collection's parts with
+      `getSeriesPosts`, which finds none.
+
+    The evidence is on #8. No person has read them yet (#3).
+  - *The apply and its corpus.* The re-screen now records a digest of each
+    session's data: its turns, its transcript and its subagents' transcripts
+    (`corpus.recover.session_fingerprint`). The apply refuses, changing
+    nothing, to render a task whose data differ. Checks: guards_hold §160,
+    front_stages_run §9 and §10. Its six mutants, and every mutant of the
+    three files it changed, were run again: 70 of 70 are caught.
+  - *What testers run:* the v1.0.2 dataset with the code at tag `v1.0.4`, as
+    the official baseline did. The guide's commands and claims were read
+    against the code at that tag: each holds there, or is marked as main's.
+    The published dataset matches the release folder file for file, but for
+    its card (`README.md`, edited on Hugging Face the day it was released).
+    Its gate approves a request on accepting the terms.
+  - *Why that code is four days old.* `main` builds another instruction for
+    17 of the published tasks (the note on cut conversations was reworded),
+    and grades under the judge's rules 4, where the published admission was
+    made under rules 3. So `main` refuses v1.0.2, and `v1.0.4` is the newest
+    code that runs it. `main`'s fixes reach testers with v1.1.
+  - *A crash of this round's own, found on the published data.* `stale`'s
+    size check looked for the working copy beside each task. A published
+    dataset keeps it only in its Harbor task, so `export_harbor.py --check`
+    crashed on v1.0.2. The size is now compared only where the task keeps
+    its own copy. A check runs it on a task laid out as the dataset lays it
+    out, and harbor.py's 15 mutants are all caught.
+  - *The README's system figure.* The website's three parts, each step with
+    its count. It is drawn by `docs/img/architecture.py` (standard library
+    only) in a light and a dark version, and GitHub shows the one that
+    matches the reader's theme. "How it works" is now seven steps, matching
+    the figure's numbers. The figure's numbers, and the README's results
+    table, match the website's data.
 - **10-02, 02:4x UTC** — **The 71 built: 12 tasks. Under judge rules 4 the
   judge admits 1 of them. A free pre-check before screening would have saved
   55% of the screening (#16).**

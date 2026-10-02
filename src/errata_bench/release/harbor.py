@@ -232,7 +232,10 @@ def stale(task_dir: Path, out: Path) -> bool:
     needed += [f"{bundle}/{rel}" for bundle in ("environment/errata", "tests/lib") for rel in BUNDLE]
     if not all((out / rel).is_file() for rel in needed):
         return True
-    if (out / "environment" / "workspace.tar.gz").stat().st_size != (task_dir / "workspace.tar.gz").stat().st_size:
+    # A release folder keeps each task's working copy beside it; a published
+    # dataset keeps it only in its Harbor task, where the digests guard it.
+    own = task_dir / "workspace.tar.gz"
+    if own.is_file() and (out / "environment" / "workspace.tar.gz").stat().st_size != own.stat().st_size:
         return True
     try:
         for rel in ("tests/task.json", "tests/workspace.json"):

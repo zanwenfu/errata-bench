@@ -14020,6 +14020,52 @@ check(all(all(v) for v in _again159.values()),
       f"a re-screen run again asks only the rows whose calls failed, exits 1 while any did, and applied twice "
       f"keeps the first backup and each row's old verdict: {_again159}")
 
+print("\n160. before shipping (10-01): a release re-screen is applied only on the session data it read")
+# The apply renders a repaired task again from the corpus where it runs. The
+# re-screen records a digest of each session's data, and the digest changes with
+# anything a task is rendered from: the turns, the transcript the calls and text
+# are put back from, and the subagents' transcripts.
+_d160 = Path(tempfile.mkdtemp())
+_kept160 = (recover_mod.transcript_path, recover_mod.subagent_dir)
+recover_mod.transcript_path = lambda sid: _d160 / "transcripts" / f"{sid}.jsonl"
+recover_mod.subagent_dir = lambda sid: _d160 / "subagents" / sid
+try:
+    _turns160 = [{"turn_number": 1, "turn_type": "user_prompt", "content": "add retries to the uploader"}]
+    _seen160 = {"none": recover_mod.session_fingerprint("s160", _turns160),
+                "the same again": recover_mod.session_fingerprint("s160", [dict(t) for t in _turns160]),
+                "a turn changed": recover_mod.session_fingerprint("s160", [dict(_turns160[0], content="add retries")])}
+    (_d160 / "transcripts").mkdir()
+    (_d160 / "transcripts" / "s160.jsonl").write_text('{"type": "user"}\n')
+    _seen160["a transcript"] = recover_mod.session_fingerprint("s160", _turns160)
+    (_d160 / "transcripts" / "s160.jsonl").write_text('{"type": "user"} \n')
+    _seen160["another transcript"] = recover_mod.session_fingerprint("s160", _turns160)
+    (_d160 / "subagents" / "s160").mkdir(parents=True)
+    (_d160 / "subagents" / "s160" / "agent-a.jsonl").write_text("{}\n")
+    _seen160["a subagent's transcript"] = recover_mod.session_fingerprint("s160", _turns160)
+finally:
+    recover_mod.transcript_path, recover_mod.subagent_dir = _kept160
+check(_seen160["none"] == _seen160["the same again"]
+      and len({v for k, v in _seen160.items() if k != "the same again"}) == 5,
+      f"a session's digest is the same for the same data, and changes with its turns, its transcript and its "
+      f"subagents' transcripts: {sorted({k: v[:8] for k, v in _seen160.items()}.items())}")
+# A published dataset keeps a task's working copy only in its Harbor task.
+# `stale` looked for the copy beside the task too, and the export's check
+# crashed on the published v1.0.2 (10-02).
+_ds160 = Path(tempfile.mkdtemp()) / "dataset"
+__import__("shutil").copytree(_short133, _ds160 / "tasks" / _short133.name,
+                              ignore=__import__("shutil").ignore_patterns("workspace.tar.gz"))
+__import__("shutil").copytree(_xr159 / "harbor" / _short133.name, _ds160 / "harbor" / _short133.name)
+try:
+    _ds_stale160 = _hb133.stale(_ds160 / "tasks" / _short133.name, _ds160 / "harbor" / _short133.name)
+except OSError as e:
+    _ds_stale160 = type(e).__name__
+with _ctx60.redirect_stdout(_io60.StringIO()), _ctx60.redirect_stderr(_io60.StringIO()):
+    _ds_check160 = _ex157.main([str(_ds160), "--check"])
+check(_ds_stale160 is False and _ds_check160 == 0
+      and not (_ds160 / "tasks" / _short133.name / "workspace.tar.gz").exists(),
+      f"a task laid out as a published dataset lays it out is read as current, and the export's check passes it: "
+      f"{_ds_stale160}, {_ds_check160}")
+
 print("\n161. the base is the commit the conversation agrees with, from the remote's history; git and HEAD read in "
       "another checkout are not the session's; a session that worked in two checkouts is refused (10-02)")
 # G-86: the corpus holds only the commits a checkpoint recorded, so the build's
@@ -14418,7 +14464,6 @@ check(_moved161([("a", "Bash", "/Users/dev/up/src"), ("b", "Bash", "/tmp/x"), ("
       and _moved161([("a", "Bash", _wt161)], [_T63(12, "tool_use", tool_name="Bash", tool_call_id="a")]) == [],
       "a subfolder of its own checkout, a scratch folder, a folder outside the repository, and anything after "
       "the cut are not another checkout")
-
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:
