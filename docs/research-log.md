@@ -11986,3 +11986,75 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     - Two accepted answers are read as false assurance: nrmeyers-20 both
       ways, Archy-532 one way. The located "resolution" may not be the
       fix. That goes to gate 2.
+- **10-02, 06:3x UTC** — **Gate 2, the earlier stages audited on the Entire
+  runs, for free: four defects of ours and a set of judgement problems
+  (#16).**
+  - *How.*
+    - Every stored decision of moments, triage, read, locate, signature and
+      screening was checked for what cannot be right. None failed: each
+      moment is a pushback-labelled developer row, read once, and each
+      stage's rows match the last's. The `-1` turns are the locate stage's
+      "not found".
+    - Four read-only reviewers then checked samples against the
+      conversations, each by its stage's own instructions: 30 triage, 30
+      read, 25 locate and 24 screening verdicts. The flags they raised
+      were checked against the corpus before being recorded here.
+    - The 16 tasks were frozen, exported to Harbor and checked (16 of 16),
+      and every image built. Three show a failed side install: a
+      `frontend` pnpm lock (nrmeyers-19, -20), and `.opencode` (cli-281).
+  - *Defects of ours* (G-90 to G-93):
+    - G-90. Text that is not the developer's is stored as the developer's
+      (`user_prompt`). `crawl/shape.py`'s `INJECTED` knows only bare tags,
+      and none of the newer ones. Counted over the corpus's 95,496
+      developer rows:
+      - `<teammate-message …>` (1,004) and `<agent-message …>` (580). 74
+        are labelled pushback; 25 of the 681 moments are such messages,
+        and triage kept 7;
+      - skill text the agent loaded itself, Claude Code's resume line
+        ("Continue from where you left off."), stop-hook feedback (2,502),
+        and image notes from tool results (1,480 rows open with
+        "[Image: …");
+      - they are shown to the gates and to candidates as USER. 9 of 24
+        sampled "requests" at the cut were not typed by the developer;
+      - `recover._prompt` leaves `isMeta` entries out and
+        `shape.user_kind` does not, so the two disagree;
+      - none of the 16 tasks' complaints, nor any message before their
+        cuts, is another agent's.
+    - G-91. Sessions share history. 634 sessions hold 3 or more of
+      another's developer messages of 40+ characters (up to 46), from a
+      resumed or forked history. 38 of the 681 moments are such a message.
+      oh-my-posh-231 was read, located, screened and built in two
+      sessions.
+    - G-92. The finding stages read cut views and do not say so.
+      - Locate's `render` cuts each message at 3,000 characters and each
+        result at 900, with no mark. Of 89 trajectories, 17 failed answers
+        and 12 resolutions are longer.
+      - In the sample the cut hid the wrong sentence itself (Omni-Scale-97)
+        and the agent's own offer or warning (4 more).
+      - Triage and read take record 1: 60,000 characters, each message
+        cut at 4,000, an edit shown by its path. Triage's view is cut for
+        89 of 681 moments.
+    - G-93. No rendering shows a notice (a finished task, a CI event), so
+      an agent's reply can answer something no gate or candidate sees.
+      Shared with v1's rendering.
+  - *Judgement problems in the finding stages* (the reviewers' verdicts):
+    - triage: 3 of 15 kept moments are not objections;
+    - read: 6 of 15 "viable" verdicts are wrong, 2 unsure. Its notes often
+      give the reason the moment is not viable (a live server, Azure AD or
+      Vercel no tree can rebuild), but its verdict says viable;
+      `context_sufficient` is true on all 15;
+    - locate: 6 of 15 usable trajectories are wrong, 1 unsure. It builds
+      a defect on whatever complaint it is handed, takes an acknowledgement
+      or a status line (68 to 334 characters) for a resolution, and picks
+      one item of a multi-item review without saying so;
+    - scope: "in scope" on 24 of 24, often by restating the defect;
+    - a defect can need what no candidate has at the cut. nrmeyers-20's
+      phase migration reached the developer's checkout only by a later
+      `git pull`; four more such cases were sampled. No gate asks this.
+  - *What it means for the pilot.*
+    - G-90 and G-91 send moments that are not the developer's, or are a
+      second copy, through every paid stage.
+    - G-92 and the judgement problems let doubtful moments through reading
+      (about $0.20 a moment) and locating (about $0.25), to be refused
+      only at screening (about $2) or calibration.
+    - These are fixed or weighed before gate 3.
