@@ -90,8 +90,9 @@ def view(turns: list[dict], turn_number) -> str:
         between = start - answer - 1
         kept = [rows[answer][1]] + ([f"[... {between} turns between not shown ...]"] if between else []) + kept
         first = answer
-    text = "\n".join(kept)
-    return text if first == 0 else f"{LEFT_OUT}\n{text.lstrip(chr(10))}"
+    # A message's row opens with a blank line; the view does not (pilot audit).
+    text = "\n".join(kept).lstrip("\n")
+    return text if first == 0 else f"{LEFT_OUT}\n{text}"
 
 
 class Triage(BaseModel):

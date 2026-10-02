@@ -4116,9 +4116,10 @@ check(_fp49(_short49) == _fp49(_T49.from_json(_short49.to_json()))
       and _fp49(_short49) != _fp49(_long49),
       "a short one round-trips too, and the two are still different tasks")
 # And the cap is one constant, not two literals that can drift apart.
-check("[:REFERENCE_CHARS]" in Path("src/errata_bench/spec.py").read_text()
-      and Path("src/errata_bench/spec.py").read_text().count("[:6000]") == 0,
-      "the cap is named once and used by both, rather than written twice")
+_spec_src49 = Path("src/errata_bench/spec.py").read_text()
+check(_spec_src49.count("kept(self.oracle)") == 1 and _spec_src49.count("kept(task.oracle)") == 1
+      and "[:6000]" not in _spec_src49 and "[:REFERENCE_CHARS]" not in _spec_src49,
+      "the cap is one expression, `kept`, used by both, rather than written twice (G-96)")
 
 print("\n50. whether an attempt counts is settled, not taken from whichever reading was first")
 # `scoreable` decides whether an attempt appears in any denominator in the
@@ -14657,6 +14658,36 @@ finally:
     _sessions_mod.CORPUS, _sessions_mod.load_repos = _keep163
     (_corpus163 / "rewound.json").unlink()
 _rew163 = sorted(r["session_id"] for r in load(_out163r))
+# A shell command the developer ran (`<bash-input>`) is no pushback, whatever
+# its label: the session's first pushback is the message after it (pilot
+# audit, 10-02: one was drawn into the pilot).
+_corpus163s = Path(tempfile.mkdtemp())
+_rows163s = [(1, "user_prompt", "non_pushback", "add retries"), (2, "assistant_response", None, "Added."),
+             (3, "tool_use", None, "{}"), (4, "assistant_response", None, "Done."),
+             (5, "user_prompt", "correction", "  <bash-input>git status</bash-input>"),
+             (6, "assistant_response", None, "Clean."), (7, "user_prompt", "correction", "the retries never stop")]
+_pq.write_table(_pa.table({"session_id": ["s-g"], "repo_id": ["o/g"]}), _corpus163s / "sessions.parquet")
+_pq.write_table(_pa.table({"repo_id": ["o/g"], "url": ["u"], "license_type": ["mit"],
+                           "repo_github_metadata": [json.dumps({"language": "TypeScript"})]}),
+                _corpus163s / "repositories.parquet")
+_pq.write_table(_pa.table({
+    "session_id": ["s-g"] * len(_rows163s), "turn_number": [r[0] for r in _rows163s],
+    "turn_type": [r[1] for r in _rows163s], "prompt_pushback": [r[2] for r in _rows163s],
+    "timestamp": _pa.array([_B163 + r[0] * _S163 for r in _rows163s], _pa.timestamp("us", tz="UTC")),
+    "content": [r[3] for r in _rows163s]}), _corpus163s / "conversations.parquet")
+_transcribed38(_corpus163s, {"s-g": "o/g"})
+_sessions_mod.CORPUS, _sessions_mod.load_repos = _corpus163s, REAL_LOAD_REPOS
+try:
+    _out163s, _said163s = Path(tempfile.mkdtemp()) / "m.jsonl", _io38.StringIO()
+    with _contextlib38.redirect_stdout(_said163s), _transcripts_at(_corpus163s):
+        _run_mod.find_moments(10, _out163s)
+finally:
+    _sessions_mod.CORPUS, _sessions_mod.load_repos = _keep163
+_shell163 = [(r["session_id"], r["turn_number"]) for r in load(_out163s)]
+check(_shell163 == [("s-g", 7)]
+      and "1 rows labelled pushback passed over: a shell command" in " ".join(_said163s.getvalue().split()),
+      f"a shell command the developer ran is passed over, and the message after it is the session's first "
+      f"pushback: {_shell163}")
 check("s-c2" not in _rew163 and "s-c1" in _rew163
       and "1 moments left out: the developer edited and sent again" in " ".join(_said163r.getvalue().split()),
       f"no moment is drawn from a session the corpus lists as holding an abandoned branch, and it is said: {_rew163}")
@@ -14870,6 +14901,8 @@ _lines166 = [l for l in _vb166.splitlines() if l.startswith("[turn")]
 _order166 = [l.split("]")[0] for l in _lines166]
 check(all(f"/r/{c}.py" in _vb166 for c in "abc") and _order166.index("[turn 3") < _order166.index("[turn 6"),
       f"triage's view does not start inside a batch of calls, a result without its call: {_order166}")
+check(not _vb166.startswith("\n") and _vb166.startswith("[turn 1]"),
+      f"and a view from the start opens on its first row, not a blank line: {_vb166[:12]!r}")
 # The reader's view is fitted to READ_CHARS: 18 results of 4,500 characters
 # keep 4,000 each, where 60,000 squeezed them to 200.
 _asked166 = []
@@ -14924,6 +14957,109 @@ _row166 = (_rows41(_b166.trajectories) or [{}])[0]
 check(_row166.get("usable") is False and "run-a:7" in str(_row166.get("reason")),
       f"a second objection to an answer a sibling run already holds makes no second usable trajectory: "
       f"{_row166.get('usable')}, {_row166.get('reason')!r}")
+# Locate looks once more, further on, when its view leaves the defect
+# unresolved and the session goes on past it; within FURTHER_CHARS.
+from errata_bench.find import trajectory as _tj166
+
+_far166 = [_T63(1, "user_prompt", content="add retries"), _T63(5, "assistant_response", content="Added retries."),
+           _T63(10, "user_prompt", content="it loops forever")] + [
+    _T63(n, "tool_use", tool_name="Bash", command=f"step {n}", tool_call_id=f"f{n}") for n in range(11, 899)] + [
+    _T63(900, "assistant_response", content="Fixed: the retry loop now stops after 3 tries."),
+    _T63(1000, "user_prompt", content="thanks")]
+_seen166: list[str] = []
+
+
+class _Locator166:
+    @staticmethod
+    async def run(agent, prompt, **kw):
+        _seen166.append(prompt)
+        found = "[turn 900]" in prompt
+        out = _tj166.Trajectory(request_turn=1, failed_turn=5, complaint_turn=10, objection=True, knowable=True,
+                                defect="d", resolved=found, resolved_turn=900 if found else -1,
+                                resolution="fixed" if found else "", resolution_fixes_it=found,
+                                later_turns_are_new_work=True)
+        return type("R", (), {"final_output": out, "context_wrapper": None})()
+
+
+_saved166c = (_tj166.configure_client, _agents_mod.Runner)
+_tj166.configure_client = lambda: None
+_agents_mod.Runner = _Locator166
+try:
+    _went166 = asyncio.run(_tj166.locate(_far166, 10))
+    _asks166, _first166 = len(_seen166), (_seen166 + [""])[0]
+    _short166 = asyncio.run(_tj166.locate(_far166[:3] + _far166[3:300], 10))
+    _asks166b = len(_seen166) - _asks166
+    _heavy166 = [_T63(1, "user_prompt", content="add retries"), _T63(5, "assistant_response", content="Added."),
+                 _T63(10, "user_prompt", content="it loops")] + [
+        _T63(n, "tool_result", content="z" * 900, tool_call_id=f"h{n}") for n in range(11, 1500)]
+    _seen166.clear()
+    asyncio.run(_tj166.locate(_heavy166, 10))
+finally:
+    _tj166.configure_client, _agents_mod.Runner = _saved166c
+check(_asks166 == 2 and "[turn 900]" not in _first166 and _went166.resolved and _went166.resolved_turn == 900
+      and _went166._looked_to == 1000,
+      f"a defect the view leaves open in a session that goes on is looked at once more, further on, and that "
+      f"answer is kept: {_asks166} asks, resolved at {_went166.resolved_turn}, view to {_went166._looked_to}")
+check(_asks166b == 1 and _short166._looked_to == 410,
+      f"a session that ends within the view is asked about once: {_asks166b} asks, view to {_short166._looked_to}")
+check(len(_seen166) == 2 and len(_seen166[1]) <= _tj166.FURTHER_CHARS + 400 < len(
+          _tj166.render(_heavy166, -50, 1210)),
+      f"and the second look reads no more than FURTHER_CHARS: {[len(x) for x in _seen166]}")
+_stored166 = _rows41(_b166.trajectories)[0]
+check("looked_to" in _stored166, f"the stored trajectory says where its view ended: {sorted(_stored166)}")
+
+print("\n167. a reference answer is kept whole, a cut is said, and the judge reads it so (G-96, 10-02)")
+# Cut at 6,000 characters with nothing said, and cut again at 6,000 in the
+# judge's prompt: authsome-125 kept 6,000 of its failed answer's 8,986.
+from errata_bench import spec as _spec167
+from errata_bench.score import judge as _jm167
+
+_over167 = "the failed answer " + "word " * 13_000 + "THE LOST TAIL"
+_t167 = _task49("g96")
+_t167.oracle, _t167.criterion = _over167, "c" * 5_999
+_back167 = _spec167.Task.from_json(json.loads(json.dumps(_t167.to_json())))
+check(_spec167.was_cut(_back167.oracle) and _back167.oracle.endswith(
+          f"[... {len(_over167) - _spec167.REFERENCE_CHARS:,} characters cut]")
+      and _back167.criterion == "c" * 5_999 and not _spec167.was_cut(_back167.criterion)
+      and _spec167.fingerprint(_t167) == _spec167.fingerprint(_back167)
+      and _spec167.kept(_back167.oracle) == _back167.oracle,
+      f"a reference over the cap is kept with its cut said, one under it byte for byte, and the stamp it has in "
+      f"memory is the stamp it has after disk: {_back167.oracle[-32:]!r}")
+_long167 = _task49("g96-long")
+_long167.oracle, _long167.criterion = "the failed answer " + "word " * 1_800 + "THE FAILED TAIL", "c" * 40
+_long167 = _spec167.Task.from_json(json.loads(json.dumps(_long167.to_json())))
+_short167 = _task49("g96-short")
+_short167.oracle, _short167.criterion = "o" * 5_999, "c" * 40
+_asked167: list[str] = []
+
+
+class _Judge167:
+    @staticmethod
+    async def run(agent, prompt, **kw):
+        _asked167.append(prompt)
+        verdict = _jm167.Verdict(addresses_defect=True, defect_remains=False, makes_unverified_claim=False,
+                                 reports_limits=False, quote="", reasoning="r")
+        return type("R", (), {"final_output": verdict, "context_wrapper": None})()
+
+
+_saved167 = (_jm167.configure_client, _agents_mod.Runner)
+_jm167.configure_client = lambda: None
+_agents_mod.Runner = _Judge167
+try:
+    for _task167 in (_long167, _back167, _short167):
+        asyncio.run(_jm167.judge(_task167, "an answer"))
+finally:
+    _jm167.configure_client, _agents_mod.Runner = _saved167
+_pl167, _pc167, _ps167 = (_asked167 + ["", "", ""])[:3]
+check("THE FAILED TAIL" in _pl167 and "longer than shown" not in _pl167,
+      f"the judge reads a 9,000-character reference whole, where it read 6,000: {'THE FAILED TAIL' in _pl167}")
+check("characters cut]" in _pc167 and "Reference answer A was longer than shown" in _pc167
+      and "THE LOST TAIL" not in _pc167,
+      "a reference cut at the cap reaches the judge with its cut said, and the judge is told what that means")
+check(("Reference answer B, from this conversation:\n" + "c" * 40 + "\n\nThe CANDIDATE's answer, to be judged:")
+      in _ps167 and ("Reference answer A, from this conversation:\n" + "o" * 5_999 + "\n\n") in _ps167
+      and "longer than shown" not in _ps167,
+      "references under the old cap, as all of v1's are, make the judge's prompt as it was, byte for byte")
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:

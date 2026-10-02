@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -51,7 +52,39 @@ MIN_ORACLE_CHARS = 40
 #: answers and graded attempts, the next stages re-paying for them, and the
 #: next rebuild deleting them again, for ever. Two of the 120 tasks on disk sit
 #: exactly at 6,000 characters, both built 09-22.
-REFERENCE_CHARS = 6000
+#:
+#: 6,000 until 10-02 (G-96), and the cut said nothing: the pilot's
+#: authsome-125 kept 6,000 of its failed answer's 8,986 characters, ending
+#: mid-word, and the judge read references cut at 6,000 again in its own
+#: prompt. 5 of the first 78 usable Entire trajectories had a reference
+#: longer; none of v1's 55 tasks has one, so none of their texts or stamps
+#: moves. Kept whole now in practice -- the longest seen is under 10,000 --
+#: and a cut, past this, is said (`kept`).
+REFERENCE_CHARS = 60_000
+# How `kept` says a reference answer was cut, and how a kept one is known again.
+_CUT = re.compile(r"\n\[\.\.\. [\d,]+ characters cut\]\Z")
+
+
+def kept(reference: str) -> str:
+    """A reference answer as a task keeps it: whole to REFERENCE_CHARS, and past that cut, with how much went.
+
+    The one expression `to_json`, `fingerprint` and the judge's prompt use
+    (G-96). It is the same on what it returns -- a reference read back from
+    disk is kept as it was -- so a task's stamp in memory and its stamp after a
+    round trip through disk are one stamp, which `still_describes` compares.
+    """
+    if len(reference) <= REFERENCE_CHARS:
+        return reference
+    said = _CUT.search(reference)
+    if said and said.start() == REFERENCE_CHARS:
+        return reference
+    return reference[:REFERENCE_CHARS] + f"\n[... {len(reference) - REFERENCE_CHARS:,} characters cut]"
+
+
+def was_cut(reference: str) -> bool:
+    """Whether `kept` cut this reference answer."""
+    said = _CUT.search(reference or "")
+    return bool(said) and said.start() == REFERENCE_CHARS
 
 
 
@@ -200,8 +233,8 @@ class Task:
 
     def to_json(self) -> dict:
         d = dict(self.__dict__)
-        d["oracle"] = self.oracle[:REFERENCE_CHARS]
-        d["criterion"] = self.criterion[:REFERENCE_CHARS]
+        d["oracle"] = kept(self.oracle)
+        d["criterion"] = kept(self.criterion)
         # Left out when empty: a task built before G-86 is written as it was, byte
         # for byte, which admission and grading folders compare (10-02 review).
         if not d.get("base_from"):
@@ -234,7 +267,7 @@ def fingerprint(task: Task) -> str:
         task.task_id, task.sha, task.kind, task.defect,
         # Cut to what `to_json` keeps, so the stamp a task has in memory and
         # the stamp it has after a round trip through disk are the same one.
-        task.oracle[:REFERENCE_CHARS], task.criterion[:REFERENCE_CHARS],
+        kept(task.oracle), kept(task.criterion),
         task.signature_path, task.signature_token,
         task.edits_replayed,
         # Which conversation, and where it is cut. The session was missing, so

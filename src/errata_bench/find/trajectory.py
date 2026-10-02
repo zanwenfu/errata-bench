@@ -48,7 +48,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, PrivateAttr
 
 from ..corpus.turns import PEER_SPEAKER, _cut, speaker
 from ..llm import MODEL, configure_client, resilient, with_field_guide
@@ -128,6 +128,8 @@ class Trajectory(BaseModel):
         ),
     )
 
+    # Where the view that gave this answer ended (`locate`); not asked of the model.
+    _looked_to: int = PrivateAttr(default=-1)
     later_turns_are_new_work: bool = Field(
         description=(
             "Whether user turns after the resolution concern different problems "
@@ -350,14 +352,41 @@ def render(turns: list[dict], start: int, end: int, *, budget: int = 900, calls:
     return "\n".join(lines)
 
 
+# How far past the complaint the second look reaches, and the most it may read.
+FURTHER = 1200
+FURTHER_CHARS = 200_000
+
+
+def reach(turns: list[dict], start: int, near: int, far: int, limit: int = FURTHER_CHARS) -> int:
+    """The furthest end of a view from ``start``, no further than ``far``, whose rendering fits in ``limit``
+    characters; ``near`` when none past it does. A view only grows as its end moves on."""
+    lo, hi = near, far
+    while lo < hi:
+        mid = (lo + hi + 1) // 2
+        if len(render(turns, start, mid)) <= limit:
+            lo = mid
+        else:
+            hi = mid - 1
+    return lo
+
+
 async def locate(
-    turns: list[dict], complaint_turn: int, *, lookback: int = 60, lookahead: int = 400
+    turns: list[dict], complaint_turn: int, *, lookback: int = 60, lookahead: int = 400, further: int = FURTHER
 ) -> Trajectory:
     """Read around a known complaint and locate the four boundary turns.
 
     The window reaches well past the complaint because resolution can take
     several rounds, and well before it because the request that prompted the
     failure may be many turns back.
+
+    A defect the view leaves unresolved, in a session that goes on past it,
+    is looked at once more, as far as ``further`` turns past the complaint or
+    as much as fits in FURTHER_CHARS (pilot audit, 10-02). 15 of the 18
+    trajectories the first Entire runs called never resolved were in sessions
+    that went on past the view, and split-flap-329's fix came 635 turns after
+    its complaint. Turns are rows, tool calls among them, so 400 can be a few
+    minutes of work. The second answer is the one kept; ``looked_to`` says
+    where the view that gave it ended.
     """
     from agents import Agent, Runner
 
@@ -368,11 +397,23 @@ async def locate(
         model=MODEL,
         output_type=Trajectory,
     )
-    excerpt = render(turns, complaint_turn - lookback, complaint_turn + lookahead)
-    prompt = (
-        f"The user complains at turn {complaint_turn}. Locate the request that led "
-        f"to the failure, the failing answer, and where the defect was resolved -- "
-        f"or establish that it never was.\n\n{excerpt}"
-    )
-    result = await resilient(lambda: Runner.run(agent, prompt, max_turns=4))
-    return result.final_output
+
+    async def ask(end: int) -> Trajectory:
+        excerpt = render(turns, complaint_turn - lookback, end)
+        prompt = (
+            f"The user complains at turn {complaint_turn}. Locate the request that led "
+            f"to the failure, the failing answer, and where the defect was resolved -- "
+            f"or establish that it never was.\n\n{excerpt}"
+        )
+        result = await resilient(lambda: Runner.run(agent, prompt, max_turns=4))
+        t = result.final_output
+        t._looked_to = end
+        return t
+
+    near = complaint_turn + lookahead
+    t = await ask(near)
+    last = max((x.get("turn_number") or 0 for x in turns), default=0)
+    if (t.resolved and t.resolved_turn >= 0) or last <= near:
+        return t
+    end = reach(turns, complaint_turn - lookback, near, min(complaint_turn + further, last))
+    return await ask(end) if end > near else t

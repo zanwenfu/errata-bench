@@ -280,6 +280,7 @@ async def stage_locate(paths: Paths, limit: int, concurrency: int) -> Progress:
                     "defect": t.defect,
                     "resolution": t.resolution,
                     "rounds": t.rounds,
+                    "looked_to": getattr(t, "_looked_to", -1),
                     "find_model": model_name(),
                 },
             )
