@@ -11871,3 +11871,31 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     the result against the dry run and the pre-check's replay. Calibration
     of the new and changed tasks is a paid step, for the user, and the
     rules-4 question of the 02:4x entry stands.
+- **10-02, 05:4x UTC** — **The rebuild, on 2e8841943: 16 tasks, the same as
+  the dry run, row for row (#16).**
+  - *How.* The VM's checkout was moved to the commit by a bundle, so the
+    code version matches. Both run folders were copied first
+    (`.pre-g86`), since the rebuild prunes the rows of changed tasks. Then
+    `run.py stages --only build` on each. No model calls.
+  - *Result.* 16 tasks (12 first-mode, 4 later), 55 rejections; all 71
+    outcomes identical to the third dry run.
+  - *The rejections, by reason:*
+    - the conversation gives the answer away: 21;
+    - git changed the files before the cut: 11;
+    - a sub-agent ran before the cut with no record: 8;
+    - the starting commit cannot be established: 4;
+    - the files differ from the conversation on every candidate base: 3;
+    - the session worked in another checkout: 2;
+    - one each: nothing to answer; edits that do not apply; a start the
+      remote does not hold; a sub-agent's edits; a start that is the
+      session's own commit; an answer too short.
+  - *The pre-check's replay* agrees on both folders. None of the 16 tasks
+    is set aside, and none of the 23 refusals visible before screening is
+    missed.
+  - *Paid rows.*
+    - Calibration rows remain for the 6 tasks whose base did not change,
+      blackgirlbytes-20's 3 controls with them. Calibration went 8 to 3 in
+      the first folder and 4 to 3 in the later one.
+    - The 10 new or rebased tasks need calibrating: a paid step, for the
+      user. The rules-4 question of the 02:4x entry decides what it is
+      worth.
