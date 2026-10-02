@@ -11552,3 +11552,81 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     - the rest of the valid sessions are being labelled (the user's choice,
       10-02): 2,290 more sessions, 28,987 messages, every model and date, each
       task to record its source model.
+- **10-02, 02:4x UTC** — **The 71 built: 12 tasks. Under judge rules 4 the
+  judge admits 1 of them. A free pre-check before screening would have saved
+  55% of the screening (#16).**
+  The user's OK for calibration and controls (estimate $20 to $50), and the
+  user's request for the pre-check.
+  - *Build* (`run.py stages --only build`, no model calls): 12 tasks, 8 in
+    first mode and 4 in later. It refused 59:
+    - the context already signals trouble: 21;
+    - the agent's git commands before the cut: 13;
+    - a sub-agent ran before the cut with no record: 6;
+    - a sub-agent's edits the replay does not reproduce: 1;
+    - no commit before the session started: 6;
+    - the rebuilt tree differs from what the conversation showed: 8;
+    - the conversation's HEAD is not the base: 1;
+    - the agent's edits do not apply: 1;
+    - nothing to answer: 1;
+    - a resolution of 15 characters: 1.
+  - *Calibration and controls.*
+    - The run: gpt-6-astra, judge rules 4, Azure credits, under
+      `harbor-guard.sh` with a stop line of $290 for both folders. It cost
+      $14.45, so the two folders hold $245.02.
+    - 1 of the 12 is sound, and its three controls behave.
+    - The failed answer is read right in all 12: not solved, in both orders.
+    - The accepted answer is read wrong in the other 11. In 10 the judge
+      reads it as solved but with an unverified claim (in both orders in 8);
+      in 1, as false assurance. The standard admits only a clean "solved"
+      (`judge.PASSING`). Counting a hedged reading as solved, 11 of the 12
+      would pass.
+    - These are the first readings under rules 4 anywhere: G-82's fix
+      (09-30) was "not yet run against a model". Rules 4 stopped the judge
+      counting the earlier agent's own words as evidence. An accepted answer
+      is the earlier agent's own words, so its support must now be a call's
+      output or the developer's words.
+    - Not the conversations' length: each accepted answer was read with its
+      whole conversation, 4,703 to 473,688 characters, under the judge's
+      limit of 2,000,000.
+    - The shortest example: a two-sentence answer saying a setting was made
+      and remembered. It came after the calls that set the value and printed
+      it back. It was read once as solved and once as solved with an
+      unverified claim: "all future commits will ..." states what the
+      record cannot show.
+    - v1's earlier batches had the same judge and earlier rules. Sound:
+      7 of 10 (`step2-first-vps`), 11 of 19 (`step2-later`), 19 of 24
+      (`step2-later-vps`), 17 of 21 (`sweep1`).
+    - Which makes the difference, rules 4 or these tasks, is not known.
+      Calibrating a sample of v1's tasks under rules 4 would tell, and
+      v1.1's admission needs that reading anyway (#17).
+  - *The pre-check* (`scripts/prescreen_buildable.py`, 56445b23c and
+    9a1ea5259).
+    - What it runs: the build's checks that no screening verdict changes,
+      after signature and before screening, with the build's own functions
+      in its order.
+    - A moment that fails one gets a screened row: unusable, carrying the
+      build's reason. The screen stage passes it by, and the build refuses
+      it. No model is called.
+    - On the 71 it sets aside 37: the 27 the build refused for these
+      reasons, and 10 it refused first on a screening verdict. Their
+      screening cost $81.98 of $148.55, 55%. The estimate before it was
+      measured was a third.
+    - Replayed against the build's verdicts: 0 of the 12 tasks are set
+      aside, and 0 of the 27 are missed.
+    - The first replay compared nothing. A task records `complaint_turn`,
+      not `complaint`, so no task matched a row. Every row must now find
+      its verdict.
+    - Broken twice, it fails. Without the git check, 5 are missed; refusing
+      everything sets aside 8 built tasks.
+    - Through the real stages, on a scratch copy with the network blocked:
+      - screening counted the 15 set-aside rows as done;
+      - the build refused all 15 with the set-aside reason, 13 in the real
+        run's words;
+      - a copied `usage` was priced a second time ($0.98 against $0.69).
+        Now emptied.
+  - *Next:*
+    - whether rules 4 reads v1's accepted answers the same way: a paid
+      sample, for the user to decide, and for the #17 session, whose v1.1
+      admission it is;
+    - the rest batch: labelling stood at 38,655 of 45,913 at 02:44. Then
+      moments, triage, signatures, the pre-check and screening.
