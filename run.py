@@ -203,6 +203,18 @@ def find_moments(
     if twice:
         print(f"  {twice} moments left out: the corpus holds rows of their session twice, under the same "
               "turn numbers", flush=True)
+    # And a session whose developer edited a message the agent had answered and
+    # sent it again: its rows hold the abandoned branch as if it had happened,
+    # and a build would replay that branch's edits (G-95, pilot audit 10-02).
+    # The collector lists them (`crawl.shape.rewound`); SWE-chat's corpus has
+    # no such list, and nothing is left out there.
+    edited = CORPUS / "rewound.json"
+    rewound = set(json.loads(edited.read_text())) if edited.exists() else set()
+    branched = sum(1 for m in fresh if m["session_id"] in rewound)
+    fresh = [m for m in fresh if m["session_id"] not in rewound]
+    if branched:
+        print(f"  {branched} moments left out: the developer edited and sent again a message the agent had "
+              "answered, and the session's rows still hold the abandoned branch", flush=True)
     untranscribed = sum(1 for m in fresh if not has_transcript(m["session_id"]))
     fresh = [m for m in fresh if has_transcript(m["session_id"])]
     if untranscribed:

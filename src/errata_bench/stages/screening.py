@@ -7,6 +7,7 @@ cheap gate never reaches an expensive one.
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import time
 
@@ -213,6 +214,19 @@ async def stage_read(paths: Paths, limit: int, concurrency: int) -> Progress:
     return p
 
 
+def failures_held(paths: Paths) -> dict[tuple[str, int], str]:
+    """The failed answers usable trajectories already hold: in this run folder and its siblings, as `run.py
+    moments --fresh` reads them, less backups (``.pre-``)."""
+    taken: dict[tuple[str, int], str] = {}
+    for f in sorted(paths.root.parent.glob("*/trajectories.jsonl")):
+        if ".pre-" in f.parent.name:
+            continue
+        for r in load(f):
+            if r.get("usable") and isinstance(r.get("failed"), int) and r["failed"] >= 0:
+                taken.setdefault((r["session_id"], r["failed"]), f"{f.parent.name}:{r.get('complaint')}")
+    return taken
+
+
 async def stage_locate(paths: Paths, limit: int, concurrency: int) -> Progress:
     """Find the four turns that define each task."""
     from ..corpus.turns import load_session_turns
@@ -234,11 +248,23 @@ async def stage_locate(paths: Paths, limit: int, concurrency: int) -> Progress:
         return p
 
     turns = recovered(load_session_turns({r["session_id"] for r in todo}))
+    # One failure, one task (pilot audit, 10-02): two objections to the same
+    # answer -- a session's first pushback and a later one, in two runs --
+    # were both read and located. A usable trajectory whose failed answer one
+    # already holds, in this run or a sibling run folder, is not usable.
+    taken = failures_held(paths)
 
     async def one(r):
         try:
             t = await locate(turns[r["session_id"]], r["turn_number"])
             b = boundaries(t)
+            if b.usable:
+                before = taken.get((r["session_id"], t.failed_turn))
+                if before:
+                    b = dataclasses.replace(b, usable=False,
+                                            reason=f"the same failed answer as the trajectory at {before}")
+                else:
+                    taken[(r["session_id"], t.failed_turn)] = f"{paths.root.name}:{r['turn_number']}"
             append_used(
                 paths.trajectories,
                 {

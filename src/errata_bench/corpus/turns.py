@@ -366,6 +366,10 @@ def build_excerpt(
             if kind in ("progress", "file_snapshot", "system_event", "queue_operation"):
                 continue
             content = (t.get("content") or "").strip()
+            # As the first pass: an empty row says nothing (pilot audit, 10-02:
+            # squeezed views showed bare "AGENT:" lines).
+            if not content and kind not in ("tool_use",):
+                continue
             if kind == "user_prompt":
                 marker = " <-- THE PUSHBACK" if (mark_pushback and n == cut_turn) else ""
                 squeezed.append(f"\n[turn {n}] {speaker(t)}{marker}:\n{_cut(content, message_chars, record)}")

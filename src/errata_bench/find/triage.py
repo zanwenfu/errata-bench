@@ -70,6 +70,18 @@ def view(turns: list[dict], turn_number) -> str:
     while start > 0 and size + 1 + len(rows[start - 1][1]) <= TAIL_CHARS:
         start -= 1
         size += 1 + len(rows[start][1])
+    # Not from inside a batch of calls: a result shown without its call reads
+    # as the next call's (pilot audit, 10-02). Back to the earliest call whose
+    # result is in view, unless that adds more than another TAIL_CHARS.
+    call_at = {t.get("tool_call_id"): i for i, (t, _) in enumerate(rows)
+               if t.get("turn_type") == "tool_use" and t.get("tool_call_id")}
+    while start > 0:
+        earliest = min((call_at[t.get("tool_call_id")] for t, _ in rows[start:]
+                        if t.get("turn_type") == "tool_result" and call_at.get(t.get("tool_call_id"), start) < start),
+                       default=start)
+        if earliest >= start or sum(len(shown) + 1 for _, shown in rows[earliest:start]) > TAIL_CHARS:
+            break
+        start = earliest
     kept = [shown for _, shown in rows[start:]]
     first = start
     answer = next((i for i in range(len(rows) - 1, -1, -1) if rows[i][0].get("turn_type") == "assistant_response"),

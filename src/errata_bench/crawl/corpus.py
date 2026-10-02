@@ -46,7 +46,7 @@ import pyarrow.parquet as pq
 from ..store.rows import load
 from .discover import rank
 from .label import digest
-from .shape import CONVERSATIONS, claude_code_rows, is_claude_code, read_entries
+from .shape import CONVERSATIONS, claude_code_rows, is_claude_code, once, read_entries, rewound
 
 S = pa.large_string()
 TS_NS, TS_US = pa.timestamp("ns", tz="UTC"), pa.timestamp("us", tz="UTC")
@@ -177,6 +177,10 @@ def assemble(out: Path, *, log=print) -> dict:
             left_out["the same session under a second repository"] += len(held) - 1
 
     sessions, logs, checkpoint_sessions = [], [], {}
+    # Sessions whose developer edited a message the agent had answered and sent
+    # it again: their rows hold the abandoned branch too (`shape.rewound`, G-95).
+    # `find_moments` leaves them out.
+    rewound_sessions: dict[str, int] = {}
     writer = pq.ParquetWriter(corpus / "conversations.parquet.part", CONVERSATIONS)
     batch: list[dict] = []
     try:
@@ -192,6 +196,7 @@ def assemble(out: Path, *, log=print) -> dict:
                 continue
             pk = f"{repo}#{s['checkpoint_id']}"
             rows = claude_code_rows(sid, repo, pk, entries, strategy=s.get("strategy"))
+            edited = rewound(once(entries))
             for r in rows:
                 if r["turn_type"] == "user_prompt":
                     developer_turns.add((sid, r["turn_number"]))
@@ -204,6 +209,8 @@ def assemble(out: Path, *, log=print) -> dict:
             if not any(r["turn_type"] == "user_prompt" for r in rows):
                 left_out["no developer message"] += 1
                 continue
+            if edited:
+                rewound_sessions[sid] = edited
             batch += rows
             if len(batch) >= ROW_GROUP:
                 writer.write_table(pa.Table.from_pylist(batch, schema=CONVERSATIONS))
@@ -317,12 +324,14 @@ def assemble(out: Path, *, log=print) -> dict:
     _write(corpus / "checkpoints.parquet", checkpoints, CHECKPOINTS)
     _write(corpus / "commits.parquet", commit_rows, COMMITS)
     _write(corpus / "repositories.parquet", repositories, REPOSITORIES)
+    (corpus / "rewound.json").write_text(json.dumps(dict(sorted(rewound_sessions.items())), indent=1) + "\n")
     # A label whose turn holds no developer message now -- the corpus re-assembled
     # with turns moved, or the session left out -- is counted, not dropped unseen.
     unplaced = sum(1 for key in labels if key not in developer_turns)
     if unplaced:
         labelled["not put: no developer message at that turn"] = unplaced
-    summary = {"sessions": len(sessions), "repositories": len(repositories), "checkpoints": len(checkpoints),
+    summary = {"sessions": len(sessions), "rewound sessions": len(rewound_sessions),
+               "repositories": len(repositories), "checkpoints": len(checkpoints),
                "commit_rows": len(commit_rows), "left_out": dict(left_out), "agents_left_for_later": dict(agents_left),
                "labels": dict(labelled)}
     (corpus / "left_out.json").write_text(json.dumps(summary, indent=1) + "\n")

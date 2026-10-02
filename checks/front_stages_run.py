@@ -159,7 +159,7 @@ async def fake_read_pushback(turns, turn, **kw):
 async def fake_locate(turns, turn, **kw):
     records("locate")
     return Trajectory(
-        request_turn=1, failed_turn=6, complaint_turn=7, objection=True, knowable=True,
+        request_turn=1, failed_turn=6, complaint_turn=7, objection=True, knowable=True, resolution_fixes_it=True,
         defect="the backoff is never exercised", resolved=True,
         later_turns_are_new_work=False, resolved_turn=9,
         resolution="added the sleep and verified it", rounds=1,

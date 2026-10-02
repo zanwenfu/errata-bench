@@ -506,6 +506,41 @@ check(agent90.get("No response requested.") == "system_injected" and agent90.get
       and agent90.get("Pushed.") == "assistant_response",
       f"a message Claude Code writes in the agent's turn (model <synthetic>) is its own, not the agent's (G-94): "
       f"{agent90}")
+# Pilot audit, 10-02: another agent's message queued, then delivered wrapped
+# ("Another Claude session sent a message:" before it, a note of the harness's
+# after), was shown twice. The queued copy is Claude Code's; no row moves.
+hand_back = '<agent-message from="z9">[Subagent hand-back] the report</agent-message>'
+wrapped = "Another Claude session sent a message:\n" + hand_back + "\n\nThat is an agent of this session."
+queued_copy = claude_code_rows("pq", "o/r", "o/r#pq", [
+    U90("g0", None, "go"),
+    {"type": "queue-operation", "timestamp": T.format(1), "operation": "enqueue", "content": hand_back},
+    M90("g2", "g0", wrapped, origin={"kind": "peer"})])
+attached_copy = claude_code_rows("pa", "o/r", "o/r#pa", [
+    U90("g0", None, "go"),
+    {"type": "attachment", "uuid": "g1", "parentUuid": "g0", "timestamp": T.format(1), "attachment": {
+        "type": "queued_command", "commandMode": "prompt", "prompt": hand_back}},
+    M90("g2", "g1", wrapped, origin={"kind": "peer"})])
+alone = claude_code_rows("pn", "o/r", "o/r#pn", [U90("g0", None, "go"), M90("g2", "g0", wrapped, origin={"kind": "peer"}),
+                                                 U90("g3", "g2", hand_back)])
+kinds_of = lambda rows: [(r["turn_number"], r["turn_type"]) for r in rows if r["role"] == "user"]
+check(kinds_of(queued_copy) == [(0, "user_prompt"), (2, "system_injected"), (3, "peer_message")]
+      and kinds_of(attached_copy) == [(0, "user_prompt"), (1, "system_injected"), (2, "peer_message")]
+      and kinds_of(alone) == [(0, "user_prompt"), (1, "peer_message"), (2, "peer_message")],
+      f"a queued or attached copy of another agent's message, delivered again whole, is Claude Code's and no row "
+      f"moves; a message with no copy before it stays another agent's: {kinds_of(queued_copy)} "
+      f"{kinds_of(attached_copy)} {kinds_of(alone)}")
+# G-95: a message the developer edited and sent again after the agent had
+# answered it leaves the first branch in the transcript.
+from errata_bench.crawl.shape import rewound  # noqa: E402
+branch95 = [U90("e1", None, "add retries"), A90("f1", "e1", {"type": "text", "text": "Added."}),
+            U90("e2", "f1", "now test it"), A90("f2", "e2", {"type": "text", "text": "Tested."}),
+            U90("e3", "f1", "now test it on Windows"), A90("f3", "e3", {"type": "text", "text": "On Windows: fine."})]
+unanswered95 = [U90("e1", None, "add retries"), A90("f1", "e1", {"type": "text", "text": "Added."}),
+                U90("e2", "f1", "now test it"), U90("e3", "f1", "now test it on Windows"),
+                A90("f3", "e3", {"type": "text", "text": "On Windows: fine."})]
+check(rewound(branch95) == 1 and rewound(unanswered95) == 0 and rewound(said90) == 0,
+      f"a message edited and sent again after the agent answered it is counted; one resent before any answer, "
+      f"or none, is not (G-95): {rewound(branch95)}, {rewound(unanswered95)}, {rewound(said90)}")
 summary90 = next((r for r in rows90 if (r["content"] or "").startswith("This session is being continued")), {})
 check(summary90.get("turn_type") == "user_prompt" and summary90.get("is_continuation") is True
       and [r["turn_number"] for r in rows90] == list(range(len(rows90)))
@@ -601,6 +636,8 @@ with tempfile.TemporaryDirectory() as t:
     corpus = out / "corpus"
     check(summary["sessions"] == 1 and summary["left_out"] == {"not a Claude Code transcript (for later)": 1},
           f"only Claude Code sessions are written, the others counted, a new format included: {summary}")
+    check(json.loads((corpus / "rewound.json").read_text()) == {} and summary.get("rewound sessions") == 0,
+          "the corpus lists the sessions whose developer edited and resent an answered message: none here (G-95)")
     cc1 = corpus / "transcripts" / "cc1.jsonl"
     check(cc1.exists() and cc1.read_bytes() == cc_transcript("cc1", "please fix a.txt", "toolu_e1")
           and (corpus / "subagents" / "cc1" / "toolu_e1" / "agent-s1.jsonl").exists(),

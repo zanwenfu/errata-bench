@@ -110,6 +110,15 @@ class Trajectory(BaseModel):
         default="",
         description="What the resolving turn actually did, concretely. Empty when unresolved.",
     )
+    resolution_fixes_it: bool = Field(
+        default=False,
+        description=(
+            "Whether the resolving turn itself puts this defect right: it gives the corrected answer, or "
+            "reports the change that fixed it and what changed. False when it is a status summary, an "
+            "acknowledgement ('noted', 'you're right'), a plan, a question, or a report of other work; and "
+            "when the developer, not the agent, supplied the fix. False when unresolved."
+        ),
+    )
     rounds: int = Field(
         default=1,
         description=(
@@ -168,7 +177,9 @@ The fourth is the hard one, and getting it wrong ruins the task.
 
 A resolution is an agent turn that puts the defect right: the corrected answer, \
 or a report of the fix that says what changed. An acknowledgement ("correction \
-accepted", "you're right"), a status line, a plan or a question is not one. \
+accepted", "you're right"), a status line or a session summary, a plan or a \
+question is not one, and neither is a fix the developer supplied: say so \
+(resolution_fixes_it false). \
 When the developer adds new requirements after the complaint, the resolution \
 still answers the complaint, and rounds count only pushback on the same defect, \
 not changes of design.
@@ -253,6 +264,14 @@ def boundaries(t: Trajectory) -> Boundaries:
             t.request_turn, t.failed_turn, t.complaint_turn, -1, False,
             "the defect was never resolved, so there is no success criterion",
         )
+    # A status summary admitted cyc-seattle-isthmia-74 on its own words: the
+    # agent never corrected the estimate, the developer did (pilot audit, 10-02).
+    if not t.resolution_fixes_it:
+        return Boundaries(
+            t.request_turn, t.failed_turn, t.complaint_turn, -1, False,
+            "the turn given as the resolution does not put the defect right: a status line, an "
+            "acknowledgement, a plan, or a fix the developer supplied is no success criterion",
+        )
     # A turn the reader could not find comes back as -1, which sorts below every
     # real turn -- so an ordering test alone reports a coherent episode for an
     # episode with a hole in it.
@@ -311,6 +330,8 @@ def render(turns: list[dict], start: int, end: int, *, budget: int = 900, calls:
         if kind in ("progress", "file_snapshot", "system_event", "queue_operation"):
             continue
         body = (turn.get("content") or "").strip()
+        if not body and kind != "tool_use":
+            continue
         # A row put back from the transcript is labelled with the turn it is shown
         # under, as `build_excerpt` labels it: the reader names boundaries by whole
         # turns, and a "[turn 180.33333333333334]" invited a fractional one.

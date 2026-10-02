@@ -14644,6 +14644,22 @@ try:
 finally:
     _sessions_mod.CORPUS, _sessions_mod.load_repos = _keep163
 (_all163, _said_all163), (_after163, _said_after163) = _got163
+# G-95: a session whose developer edited and resent a message the agent had
+# answered holds the abandoned branch in its rows; the corpus lists it, and
+# no moment is drawn from it.
+(_corpus163 / "rewound.json").write_text(json.dumps({"s-c2": 1}))
+_sessions_mod.CORPUS, _sessions_mod.load_repos = _corpus163, REAL_LOAD_REPOS
+try:
+    _out163r, _said163r = Path(tempfile.mkdtemp()) / "m.jsonl", _io38.StringIO()
+    with _contextlib38.redirect_stdout(_said163r), _transcripts_at(_corpus163):
+        _run_mod.find_moments(10, _out163r)
+finally:
+    _sessions_mod.CORPUS, _sessions_mod.load_repos = _keep163
+    (_corpus163 / "rewound.json").unlink()
+_rew163 = sorted(r["session_id"] for r in load(_out163r))
+check("s-c2" not in _rew163 and "s-c1" in _rew163
+      and "1 moments left out: the developer edited and sent again" in " ".join(_said163r.getvalue().split()),
+      f"no moment is drawn from a session the corpus lists as holding an abandoned branch, and it is said: {_rew163}")
 check([s for s, _ in _all163] == ["s-a2", "s-b1", "s-c1", "s-c2", "s-e", "s-f"],
       f"of three copies of one moment, the one collected is in a session that starts first and holds the most "
       f"after it; of two the same, the first by id; the same words at another time, another message at the "
@@ -14817,13 +14833,97 @@ check(_asked165 == ["pushback-reader"] and not _read165.benchmark_viable,
       f"and the reader's own answer is held to its checks before any stage stores it: {_read165.benchmark_viable}")
 _loc165 = dict(request_turn=1, failed_turn=2, complaint_turn=3, defect="d", resolved=True, resolved_turn=4,
                later_turns_are_new_work=True)
-_b165 = {name: _tj165.boundaries(_tj165.Trajectory(**_loc165, objection=o, knowable=k))
-         for name, o, k in (("both", True, True), ("no objection", False, True), ("not knowable", True, False))}
+_b165 = {name: _tj165.boundaries(_tj165.Trajectory(**_loc165, objection=o, knowable=k, resolution_fixes_it=f))
+         for name, o, k, f in (("both", True, True, True), ("no objection", False, True, True),
+                               ("not knowable", True, False, True), ("no fix", True, True, False))}
 check(_b165["both"].usable and not _b165["no objection"].usable and not _b165["not knowable"].usable
+      and not _b165["no fix"].usable and "does not put the defect right" in _b165["no fix"].reason
       and "does not object" in _b165["no objection"].reason and "to know" in _b165["not knowable"].reason
       and _b165["no objection"].resolved_turn == -1,
-      f"a complaint that objects to nothing, or a defect the agent could not have known, makes no usable "
-      f"trajectory, with its own reason: {[(n, b.usable, b.reason[:40]) for n, b in _b165.items()]}")
+      f"a complaint that objects to nothing, a defect the agent could not have known, or a resolution that does "
+      f"not put it right (a status line, pilot audit) makes no usable trajectory, with its own reason: "
+      f"{[(n, b.usable, b.reason[:40]) for n, b in _b165.items()]}")
+
+print("\n166. what the gate-3 pilot's audit found in the views, the trajectories and the selection (10-02)")
+from errata_bench.find import reading as _rd166, triage as _tri166
+from errata_bench.find.trajectory import render as _render166
+
+# A squeezed view, and locate's, show no empty row: bare "AGENT:" lines.
+_empty166 = [_T63(1, "user_prompt", content="add retries"), _T63(2, "assistant_response", content=""),
+             _T63(3, "assistant_thinking", content="  "), _T63(4, "tool_use", tool_name="Bash", command="make",
+                                                           tool_call_id="m"),
+             _T63(5, "tool_result", content="x" * 9_000, tool_call_id="m"), _T63(6, "user_prompt", content="no")]
+_sq166 = _bx70(_empty166, 6, record=2, max_chars=500)
+_lo166 = _render166(_empty166, 1, 6)
+check("AGENT:\n\n" not in _sq166 + "\n" and "[turn 2]" not in _sq166 and "[turn 3]" not in _sq166
+      and "[turn 2]" not in _lo166,
+      f"a squeezed view and locate's skip an empty message, as the first pass does: "
+      f"{[l for l in _sq166.splitlines() if l.startswith('[turn')][:4]}")
+# Triage's view does not start inside a batch of calls: three results of 4,000
+# characters, so the tail ends between the calls and their results.
+_batch166 = [_T63(1, "user_prompt", content="fix it"), _T63(2, "assistant_response", content="Looking.")] + [
+    _T63(3 + i, "tool_use", tool_name="Read", file_path=f"/r/{c}.py", tool_call_id=c) for i, c in enumerate("abc")] + [
+    _T63(6 + i, "tool_result", content=f"{c}-out " * 900, tool_call_id=c) for i, c in enumerate("abc")] + [
+    _T63(9, "user_prompt", content="that is wrong")]
+_vb166 = _tri166.view(_batch166, 9)
+_lines166 = [l for l in _vb166.splitlines() if l.startswith("[turn")]
+_order166 = [l.split("]")[0] for l in _lines166]
+check(all(f"/r/{c}.py" in _vb166 for c in "abc") and _order166.index("[turn 3") < _order166.index("[turn 6"),
+      f"triage's view does not start inside a batch of calls, a result without its call: {_order166}")
+# The reader's view is fitted to READ_CHARS: 18 results of 4,500 characters
+# keep 4,000 each, where 60,000 squeezed them to 200.
+_asked166 = []
+
+
+class _Reader166:
+    @staticmethod
+    async def run(agent, prompt, **kw):
+        _asked166.append(prompt)
+        raise RuntimeError("asked")
+
+
+_long166 = [_T63(1, "user_prompt", content="add retries")] + [
+    x for n in range(2, 38, 2) for x in (_T63(n, "tool_use", tool_name="Bash", command=f"run {n}", tool_call_id=f"r{n}"),
+                                         _T63(n + 1, "tool_result", content=f"line {n} " * 600, tool_call_id=f"r{n}"))] + [
+    _T63(38, "assistant_response", content="Done."), _T63(39, "user_prompt", content="it never retries")]
+_saved166 = (_rd166.configure_client, _agents_mod.Runner)
+_rd166.configure_client = lambda: None
+_agents_mod.Runner = _Reader166
+try:
+    try:
+        asyncio.run(_rd166.read_pushback(_long166, 39))
+    except Exception:
+        pass
+finally:
+    _rd166.configure_client, _agents_mod.Runner = _saved166
+_kept166 = max((len(l) for l in (_asked166 + [""])[0].splitlines() if "-> result:" in l), default=0)
+check(_rd166.READ_CHARS == 100_000 and _kept166 > 3_900,
+      f"the reader's view is fitted to {_rd166.READ_CHARS:,} characters, so its results keep their room: {_kept166}")
+# One failed answer, one usable trajectory, across sibling run folders.
+_runs166 = Path(tempfile.mkdtemp())
+_a166, _b166 = Paths(_runs166 / "run-a"), Paths(_runs166 / "run-b")
+append(_a166.trajectories, {"session_id": "s166", "repo_id": "r/r", "complaint": 7, "failed": 5, "resolved": 12,
+                            "usable": True, "reason": "usable"})
+append(_b166.readings, {"session_id": "s166", "repo_id": "r/r", "turn_number": 9, "reading": {"benchmark_viable": True}})
+
+
+async def _located166(turns, turn):
+    return _traj41.Trajectory(request_turn=1, failed_turn=5, complaint_turn=turn, objection=True, knowable=True,
+                              defect="d", resolved=True, resolved_turn=12, resolution="fixed",
+                              resolution_fixes_it=True, later_turns_are_new_work=True)
+
+
+_saved166b = (_traj41.locate, turns_mod.load_session_turns)
+_traj41.locate = _located166
+turns_mod.load_session_turns = lambda ids: {i: [] for i in ids}
+try:
+    asyncio.run(_stage_locate41(_b166, 10**9, concurrency=1))
+finally:
+    _traj41.locate, turns_mod.load_session_turns = _saved166b
+_row166 = (_rows41(_b166.trajectories) or [{}])[0]
+check(_row166.get("usable") is False and "run-a:7" in str(_row166.get("reason")),
+      f"a second objection to an answer a sibling run already holds makes no second usable trajectory: "
+      f"{_row166.get('usable')}, {_row166.get('reason')!r}")
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:

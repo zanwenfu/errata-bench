@@ -271,6 +271,102 @@ def queued_and_delivered(entries: list[dict]) -> set[int]:
     return paired
 
 
+def rewound(entries: list[dict]) -> int:
+    """How many of the developer's messages were edited and sent again after the agent had answered them
+    (G-95, pilot audit 10-02).
+
+    Claude Code keeps the abandoned branch in the transcript: the first
+    message, and everything the agent did in answer to it, under the same
+    parent as the message sent in its place. The rows are written in the
+    file's order, so a conversation shows both, as if one had followed the
+    other, and a build would replay the abandoned branch's edits. A branch
+    point is an entry with two or more children that are the developer's own
+    messages; one is abandoned when the path from the session's last entry
+    back to its root does not pass through it and the agent answered it. 148
+    of the corpus's 6,449 sessions hold one (370 in all).
+    """
+    index: dict[str, int] = {}
+    children: dict[str | None, list[int]] = {}
+    for i, entry in enumerate(entries):
+        if entry.get("uuid"):
+            index.setdefault(entry["uuid"], i)
+            if "parentUuid" in entry:
+                children.setdefault(entry.get("parentUuid"), []).append(i)
+
+    def typed(i: int) -> bool:
+        entry = entries[i]
+        message = entry.get("message") if isinstance(entry.get("message"), dict) else {}
+        content = message.get("content")
+        if entry.get("type") != "user" or entry.get("isMeta") or (isinstance(content, list) and any(
+                isinstance(b, dict) and b.get("type") == "tool_result" for b in content)):
+            return False
+        text = _text(content)
+        return bool(text.strip()) and user_kind(entry, text) == "user_prompt"
+
+    path: set[int] = set()
+    at = next((i for i in range(len(entries) - 1, -1, -1) if entries[i].get("uuid")), None)
+    while at is not None and at not in path:
+        path.add(at)
+        parent = entries[at].get("parentUuid")
+        at = index.get(parent) if parent else None
+    count = 0
+    for parent, kids in children.items():
+        typed_kids = [i for i in kids if typed(i)]
+        if parent is None or len(typed_kids) < 2:
+            continue
+        for i in typed_kids:
+            if i in path:
+                continue
+            below, todo = {i}, [entries[i].get("uuid")]
+            while todo:
+                for j in children.get(todo.pop(), []):
+                    if j not in below:
+                        below.add(j)
+                        todo.append(entries[j].get("uuid"))
+            if not below & path and any(entries[j].get("type") == "assistant" for j in below):
+                count += 1
+    return count
+
+
+# How Claude Code opens the entry that delivers another session's or agent's message.
+DELIVERED_PEER = "Another Claude session sent a message:"
+
+
+def peer_copies(entries: list[dict]) -> set[int]:
+    """The queue entries and queued attachments holding another agent's message that Claude Code writes again,
+    whole, in the entry that delivers it (pilot audit, 10-02).
+
+    The delivering entry opens with "Another Claude session sent a message:"
+    and closes with a note of the harness's, so the texts differ and
+    `queued_and_delivered` never paired them: the message was shown twice, a
+    7,000-character report among them. The delivering entry is where the
+    agent read it. The copy before it is typed Claude Code's, not dropped, so
+    no row moves: labels and runs name rows by their number. Paired one to
+    one, the earliest waiting copy contained in the delivered text first.
+    """
+    waiting: list[tuple[int, str]] = []
+    copies: set[int] = set()
+    for i, entry in enumerate(entries):
+        kind = entry.get("type")
+        att = entry.get("attachment") if isinstance(entry.get("attachment"), dict) else {}
+        if kind == "queue-operation" and entry.get("operation") == "enqueue" and isinstance(entry.get("content"), str):
+            text = " ".join(entry["content"].split())
+        elif kind == "attachment" and att.get("type") == "queued_command" and isinstance(att.get("prompt"), str):
+            text = " ".join(att["prompt"].split())
+        elif kind == "user" and isinstance(entry.get("message"), dict):
+            said = " ".join(_text(entry["message"].get("content")).split())
+            if said.startswith(DELIVERED_PEER):
+                hit = next((k for k, (_, queued) in enumerate(waiting) if queued in said), None)
+                if hit is not None:
+                    copies.add(waiting.pop(hit)[0])
+            continue
+        else:
+            continue
+        if text and PEER.match(text):
+            waiting.append((i, text))
+    return copies
+
+
 def _said(entry: dict) -> str:
     """What an entry says, without its bookkeeping (branch, directory, version, ids)."""
     return json.dumps([entry.get(k) for k in ("type", "subtype", "message", "attachment", "content")], sort_keys=True)
@@ -315,6 +411,7 @@ def claude_code_rows(session_id: str, repo_id: str, checkpoint_pk: str, entries:
     results: set[str] = set()  # calls whose result is written
     last_of_message: dict[str, int] = {}  # message id -> index of its last row
     delivered = queued_and_delivered(entries)
+    copies = peer_copies(entries)
     index: dict[str, int] = {}  # uuid -> the entry's place, for what a meta entry follows
     for n, entry in enumerate(entries):
         if entry.get("uuid"):
@@ -386,14 +483,14 @@ def claude_code_rows(session_id: str, repo_id: str, checkpoint_pk: str, entries:
             # Where it is written again on delivery, that copy is the row (G-84).
             text = entry.get("content") if kind == "queue-operation" else None
             if entry.get("operation") == "enqueue" and isinstance(text, str) and text.strip() and n not in delivered:
-                add("user", user_kind({}, text), text, entry)
+                add("user", "system_injected" if n in copies else user_kind({}, text), text, entry)
         elif kind == "attachment":
             att = entry.get("attachment") if isinstance(entry.get("attachment"), dict) else {}
             if att.get("type") == "queued_command" and isinstance(att.get("prompt"), str) and att["prompt"].strip():
                 # A message queued while the agent was busy, delivered as an
                 # attachment by newer versions: the developer's unless it is
                 # itself a notice (`commandMode` "task-notification").
-                kind_of = ("system_injected" if att.get("commandMode") not in (None, "prompt")
+                kind_of = ("system_injected" if att.get("commandMode") not in (None, "prompt") or n in copies
                            else user_kind({}, att["prompt"]))
                 add("user", kind_of, att["prompt"], entry)
             elif att.get("type") == "edited_text_file":

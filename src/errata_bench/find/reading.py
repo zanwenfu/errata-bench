@@ -161,6 +161,9 @@ class Reading(BaseModel):
     )
 
 
+# How long the reader's view may be before its tool output is squeezed.
+READ_CHARS = 100_000
+
 INSTRUCTIONS = """\
 You are reading a real conversation between a developer and a coding agent, at a \
 moment where the developer pushed back on what the agent did.
@@ -238,7 +241,11 @@ async def read_pushback(
     # Every message whole, each call with its input, and every cut of a call or
     # a result said with how much went (G-92): record 1 cut each message at
     # 4,000 characters with nothing said, in 383 of the first 681 Entire moments.
-    excerpt = build_excerpt(turns, pushback_turn, mark_pushback=True, record=2, whole_messages=True)
+    # Fitted to READ_CHARS: at 60,000 the whole messages left the results so
+    # little room that 8 of the pilot's 20 views cut them to 40 characters,
+    # among them a deleted branch's hash the fix needed (pilot audit, 10-02).
+    excerpt = build_excerpt(turns, pushback_turn, mark_pushback=True, record=2, whole_messages=True,
+                            max_chars=READ_CHARS)
     agent = Agent(
         name="pushback-reader",
         instructions=with_field_guide(INSTRUCTIONS, Reading),
