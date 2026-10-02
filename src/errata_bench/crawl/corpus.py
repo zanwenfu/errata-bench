@@ -43,6 +43,7 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from ..corpus.sessions import REWOUND_RULES
 from ..store.rows import load
 from .discover import rank
 from .label import digest
@@ -324,7 +325,8 @@ def assemble(out: Path, *, log=print) -> dict:
     _write(corpus / "checkpoints.parquet", checkpoints, CHECKPOINTS)
     _write(corpus / "commits.parquet", commit_rows, COMMITS)
     _write(corpus / "repositories.parquet", repositories, REPOSITORIES)
-    (corpus / "rewound.json").write_text(json.dumps(dict(sorted(rewound_sessions.items())), indent=1) + "\n")
+    (corpus / "rewound.json").write_text(json.dumps(
+        {"rules": REWOUND_RULES, "sessions": dict(sorted(rewound_sessions.items()))}, indent=1) + "\n")
     # A label whose turn holds no developer message now -- the corpus re-assembled
     # with turns moved, or the session left out -- is counted, not dropped unseen.
     unplaced = sum(1 for key in labels if key not in developer_turns)

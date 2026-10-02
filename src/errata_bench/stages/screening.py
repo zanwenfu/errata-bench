@@ -81,18 +81,12 @@ def unbranched(moments: list[dict]) -> tuple[list[dict], int]:
 
     `find_moments` leaves them out when it collects; asked again here, as
     `runnable` is, because a moments file drawn before the list existed is
-    read too (review, 10-02). A corpus with no list -- SWE-chat's -- leaves
-    nothing out.
+    read too (review, 10-02), at triage, reading and locate. The list is read
+    by `corpus.sessions.edited_sessions`, which refuses a stale one.
     """
-    import json
+    from ..corpus.sessions import edited_sessions
 
-    from ..corpus.sessions import CORPUS
-
-    listed = CORPUS / "rewound.json"
-    try:
-        branched = set(json.loads(listed.read_text())) if listed.exists() else set()
-    except (OSError, ValueError):
-        branched = set()
+    branched = edited_sessions()
     keep = [m for m in moments if m.get("session_id") not in branched]
     return keep, len(moments) - len(keep)
 
@@ -130,6 +124,15 @@ async def stage_triage(paths: Paths, limit: int, concurrency: int) -> Progress:
         return p
 
     turns = recovered(load_session_turns({m["session_id"] for m in todo}))
+    # A shell command the developer ran is no message to the agent: passed
+    # over when moments are drawn, and here for a moments file drawn before.
+    shell = {key_of(m) for m in todo if any(
+        t.get("turn_number") == m["turn_number"] and t.get("turn_type") == "user_prompt"
+        and (t.get("content") or "").lstrip().startswith("<bash-input>") for t in turns.get(m["session_id"], []))}
+    if shell:
+        todo = [m for m in todo if key_of(m) not in shell]
+        p.notes.append(f"{len(shell)} moments are not read: each is a shell command the developer ran, not a "
+                       "message to the agent")
 
     async def one(m):
         try:
@@ -260,7 +263,9 @@ def failures_held(paths: Paths) -> dict[tuple[str, int], tuple[str, int]]:
         if ".pre-" in f.parent.name:
             continue
         for r in load(f):
-            if (r.get("usable") and r.get("rules") == RULES and isinstance(r.get("failed"), int)
+            # A malformed row of another folder holds nothing, and stops nothing.
+            if (isinstance(r, dict) and r.get("usable") and r.get("rules") == RULES
+                    and isinstance(r.get("session_id"), str) and isinstance(r.get("failed"), int)
                     and r["failed"] >= 0):
                 taken.setdefault((r["session_id"], r["failed"]), (f.parent.name, r.get("complaint")))
     return taken
@@ -275,11 +280,16 @@ async def stage_locate(paths: Paths, limit: int, concurrency: int) -> Progress:
 
     p = Progress("locate")
     t0 = time.monotonic()
-    viable = [
-        r
+    # One row a moment: a reading written twice would be located twice, and
+    # the same moment is never refused against itself (review, 10-02).
+    viable = list({
+        key_of(r): r
         for r in load(paths.readings)
         if (r.get("reading") or {}).get("benchmark_viable")
-    ]
+    }.values())
+    viable, branched = unbranched(viable)
+    if branched:
+        p.notes.append(f"{branched} viable readings are not located: their session's rows hold an abandoned branch")
     done = already_done(paths.trajectories)
     todo = p.cap([r for r in viable if key_of(r) not in done], limit, len(viable))
     if not todo:
@@ -287,10 +297,6 @@ async def stage_locate(paths: Paths, limit: int, concurrency: int) -> Progress:
         return p
 
     turns = recovered(load_session_turns({r["session_id"] for r in todo}))
-    # One failure, one task (pilot audit, 10-02): two objections to the same
-    # answer -- a session's first pushback and a later one, in two runs --
-    # were both read and located. A usable trajectory whose failed answer one
-    # already holds, in this run or a sibling run folder, is not usable.
     # One failure, one task (pilot audit, 10-02): two objections to one answer
     # -- a session's first pushback and a later one, drawn into two runs --
     # were both located as usable. A usable trajectory whose failed answer

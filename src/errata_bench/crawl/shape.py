@@ -296,16 +296,32 @@ def rewound(entries: list[dict]) -> int:
     # A compaction's boundary has no parent, and names the entry it follows in
     # `logicalParentUuid`: without it the conversation's path stopped there,
     # and both sides of an edit made before it were counted (review, 10-02).
-    def parent_of(entry: dict) -> str | None:
-        return entry.get("parentUuid") or entry.get("logicalParentUuid")
-
+    # When that entry is not in the file -- 491 of the corpus's 1,624
+    # boundaries name one that is not -- the boundary follows the entry before
+    # it in the file, where the conversation it compacted ended.
     index: dict[str, int] = {}
-    children: dict[str | None, list[int]] = {}
     for i, entry in enumerate(entries):
         if entry.get("uuid"):
             index.setdefault(entry["uuid"], i)
-            if "parentUuid" in entry or "logicalParentUuid" in entry:
-                children.setdefault(parent_of(entry), []).append(i)
+    before: list[str | None] = []
+    seen = None
+    for entry in entries:
+        before.append(seen)
+        seen = entry.get("uuid") or seen
+
+    def parent_of(i: int) -> str | None:
+        entry = entries[i]
+        if entry.get("parentUuid"):
+            return entry["parentUuid"]
+        logical = entry.get("logicalParentUuid")
+        if logical:
+            return logical if logical in index else before[i]
+        return None
+
+    children: dict[str | None, list[int]] = {}
+    for i, entry in enumerate(entries):
+        if entry.get("uuid") and ("parentUuid" in entry or "logicalParentUuid" in entry):
+            children.setdefault(parent_of(i), []).append(i)
 
     def typed(i: int) -> bool:
         entry = entries[i]
@@ -317,27 +333,22 @@ def rewound(entries: list[dict]) -> int:
         text = _text(content)
         return bool(text.strip()) and user_kind(entry, text) == "user_prompt"
 
-    path: set[int] = set()
-    at = next((i for i in range(len(entries) - 1, -1, -1) if entries[i].get("uuid")), None)
-    while at is not None and at not in path:
-        path.add(at)
-        parent = parent_of(entries[at])
-        at = index.get(parent) if parent else None
+    # The conversation as it ended runs from its last entry back to its root,
+    # so a message is abandoned exactly when that last entry is not under it.
+    last = next((i for i in range(len(entries) - 1, -1, -1) if entries[i].get("uuid")), None)
     count = 0
     for parent, kids in children.items():
         typed_kids = [i for i in kids if typed(i)]
         if parent is None or len(typed_kids) < 2:
             continue
         for i in typed_kids:
-            if i in path:
-                continue
             below, todo = {i}, [entries[i].get("uuid")]
             while todo:
                 for j in children.get(todo.pop(), []):
                     if j not in below:
                         below.add(j)
                         todo.append(entries[j].get("uuid"))
-            if not below & path and any(entries[j].get("type") == "assistant" for j in below):
+            if last not in below and any(entries[j].get("type") == "assistant" for j in below):
                 count += 1
     return count
 
@@ -346,7 +357,7 @@ def rewound(entries: list[dict]) -> int:
 DELIVERED_PEER = "Another Claude session sent a message:"
 
 
-def peer_copies(entries: list[dict], delivered: set[int] = frozenset()) -> set[int]:
+def peer_copies(entries: list[dict]) -> set[int]:
     """The queue entries and queued attachments holding another agent's message that Claude Code writes again,
     whole, in the entry that delivers it (pilot audit, 10-02).
 
@@ -358,12 +369,12 @@ def peer_copies(entries: list[dict], delivered: set[int] = frozenset()) -> set[i
     Claude Code's, not dropped, so no row moves: labels and runs name rows by
     their number.
 
-    Only a copy that is a row: a queue entry ``delivered`` (by
-    `queued_and_delivered`) already makes none, and its attachment is the
-    copy -- newer versions write the queue entry, the attachment, then the
-    wrapped delivery, and taking the queue entry left the attachment shown
-    (review, 10-02). Paired one to one, the latest copy before the delivery
-    first, so an earlier delivery of the same words is left as it was.
+    Paired one to one: the longest text the delivery holds, so a shorter
+    message it quotes is not taken for it, and of equal texts the latest
+    before the delivery, so an earlier delivery of the same words is left as
+    it was. Newer versions write the queue entry, the attachment that
+    delivers it mid-turn, then the wrapped delivery: the attachment, the row,
+    is the later of the two (review, 10-02).
     """
     waiting: list[tuple[int, str]] = []
     copies: set[int] = set()
@@ -371,17 +382,15 @@ def peer_copies(entries: list[dict], delivered: set[int] = frozenset()) -> set[i
         kind = entry.get("type")
         att = entry.get("attachment") if isinstance(entry.get("attachment"), dict) else {}
         if kind == "queue-operation" and entry.get("operation") == "enqueue" and isinstance(entry.get("content"), str):
-            if i in delivered:
-                continue
             text = " ".join(entry["content"].split())
         elif kind == "attachment" and att.get("type") == "queued_command" and isinstance(att.get("prompt"), str):
             text = " ".join(att["prompt"].split())
         elif kind == "user" and isinstance(entry.get("message"), dict):
             said = " ".join(_text(entry["message"].get("content")).split())
             if said.startswith(DELIVERED_PEER):
-                hit = next((k for k in range(len(waiting) - 1, -1, -1) if waiting[k][1] in said), None)
-                if hit is not None:
-                    copies.add(waiting.pop(hit)[0])
+                held = [k for k, (_, queued) in enumerate(waiting) if queued in said]
+                if held:
+                    copies.add(waiting.pop(max(held, key=lambda k: (len(waiting[k][1]), k)))[0])
             continue
         else:
             continue
@@ -434,7 +443,7 @@ def claude_code_rows(session_id: str, repo_id: str, checkpoint_pk: str, entries:
     results: set[str] = set()  # calls whose result is written
     last_of_message: dict[str, int] = {}  # message id -> index of its last row
     delivered = queued_and_delivered(entries)
-    copies = peer_copies(entries, delivered)
+    copies = peer_copies(entries)
     index: dict[str, int] = {}  # uuid -> the entry's place, for what a meta entry follows
     for n, entry in enumerate(entries):
         if entry.get("uuid"):

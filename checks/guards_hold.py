@@ -14648,7 +14648,9 @@ finally:
 # G-95: a session whose developer edited and resent a message the agent had
 # answered holds the abandoned branch in its rows; the corpus lists it, and
 # no moment is drawn from it.
-(_corpus163 / "rewound.json").write_text(json.dumps({"s-c2": 1}))
+from errata_bench.corpus.sessions import REWOUND_RULES as _RW163
+
+(_corpus163 / "rewound.json").write_text(json.dumps({"rules": _RW163, "sessions": {"s-c2": 1}}))
 _sessions_mod.CORPUS, _sessions_mod.load_repos = _corpus163, REAL_LOAD_REPOS
 try:
     _out163r, _said163r = Path(tempfile.mkdtemp()) / "m.jsonl", _io38.StringIO()
@@ -14700,12 +14702,27 @@ finally:
     (_corpus163s / "left_out.json").unlink()
 check("assemble it again" in _stale163,
       f"a collected corpus without the list of edited sessions is refused: {_stale163[:80]!r}")
+_refused163 = []
+for _bad163 in (json.dumps({"s-c2": 1}), json.dumps({"rules": _RW163 - 1, "sessions": {}}), "{not json"):
+    (_corpus163s / "rewound.json").write_text(_bad163)
+    _sessions_mod.CORPUS = _corpus163s
+    try:
+        try:
+            _sessions_mod.edited_sessions()
+            _refused163.append("read")
+        except SystemExit as _e163b:
+            _refused163.append("refused" if "assemble the corpus again" in str(_e163b) else str(_e163b))
+    finally:
+        _sessions_mod.CORPUS = _keep163[0]
+(_corpus163s / "rewound.json").unlink()
+check(_refused163 == ["refused"] * 3,
+      f"a list counted before the rules were stamped, under other rules, or unreadable is refused: {_refused163}")
 # And moments drawn before the list are not read further, at triage or reading.
 from errata_bench.find import reading as _rd163, triage as _tr163
 from errata_bench.stages import stage_read as _stage_read163, stage_triage as _stage_triage163
 
 _listed163 = Path(tempfile.mkdtemp())
-(_listed163 / "rewound.json").write_text(json.dumps({"s-x": 1}))
+(_listed163 / "rewound.json").write_text(json.dumps({"rules": _RW163, "sessions": {"s-x": 1}}))
 _asked163: list[str] = []
 
 
@@ -14722,11 +14739,12 @@ async def _read163(ts, turn, **kw):
 
 _keep163b = (turns_mod.load_session_turns, _tr163.triage, _rd163.read_pushback, _sessions_mod.CORPUS)
 turns_mod.load_session_turns = lambda ids: {i: [{"turn_number": 7, "turn_type": "user_prompt",
-                                                  "content": f"said in {i}"}] for i in ids}
+                                                  "content": "<bash-input>ls</bash-input>" if i == "s-z"
+                                                  else f"said in {i}"}] for i in ids}
 _tr163.triage, _rd163.read_pushback, _sessions_mod.CORPUS = _triage163, _read163, _listed163
 try:
     _p163 = Paths(Path(tempfile.mkdtemp()) / "run")
-    for _s163 in ("s-x", "s-y"):
+    for _s163 in ("s-x", "s-y", "s-z"):
         append(_p163.moments, {"session_id": _s163, "turn_number": 7, "repo_id": "acme/up", "kind": "correction"})
     _tp163 = asyncio.run(_stage_triage163(_p163, 10**9, concurrency=1))
     _triaged163 = list(_asked163)
@@ -14737,10 +14755,36 @@ finally:
     turns_mod.load_session_turns, _tr163.triage, _rd163.read_pushback, _sessions_mod.CORPUS = _keep163b
 check(len(_triaged163) == 1 and "said in s-y" in _triaged163[0]
       and any("their session holds a message the developer edited" in n for n in _tp163.notes)
+      and any("1 moments are not read: each is a shell command" in n for n in _tp163.notes)
       and _read_asked163 == ["said in s-y"]
       and any("abandoned branch" in n for n in _rp163.notes),
-      f"moments drawn before the list are not read, at triage or reading, and it is said: triage asked "
-      f"{len(_triaged163)}, reading asked {_read_asked163}")
+      f"moments drawn before the list are not read, at triage or reading, nor a shell command at triage, and "
+      f"it is said: triage asked {len(_triaged163)}, reading asked {_read_asked163}")
+# Nor located: a viable reading of a listed session, read before the list.
+_located163: list[str] = []
+
+
+async def _locate163(ts, turn, **kw):
+    _located163.append(ts[0]["content"])
+    return _traj41.Trajectory(request_turn=1, failed_turn=3, complaint_turn=turn, objection=True, knowable=True,
+                              defect="d", resolved=False, later_turns_are_new_work=True)
+
+
+_keep163c = (turns_mod.load_session_turns, _traj41.locate, _sessions_mod.CORPUS)
+turns_mod.load_session_turns = lambda ids: {i: [{"turn_number": 7, "turn_type": "user_prompt",
+                                                  "content": f"said in {i}"}] for i in ids}
+_traj41.locate, _sessions_mod.CORPUS = _locate163, _listed163
+try:
+    _pl163 = Paths(Path(tempfile.mkdtemp()) / "run")
+    for _s163 in ("s-x", "s-y", "s-y"):   # s-y read twice: located once
+        append(_pl163.readings, {"session_id": _s163, "turn_number": 7, "repo_id": "acme/up",
+                                 "reading": {"benchmark_viable": True}})
+    _lp163 = asyncio.run(_stage_locate41(_pl163, 10**9, concurrency=1))
+finally:
+    turns_mod.load_session_turns, _traj41.locate, _sessions_mod.CORPUS = _keep163c
+check(_located163 == ["said in s-y"] and len(_rows41(_pl163.trajectories)) == 1
+      and any("not located: their session's rows hold an abandoned branch" in n for n in _lp163.notes),
+      f"nor located, and a moment read twice is located once: {_located163}, {len(_rows41(_pl163.trajectories))} rows")
 check(_shell163 == [("s-g", 7)]
       and "1 rows labelled pushback passed over: a shell command" in " ".join(_said163s.getvalue().split()),
       f"a shell command the developer ran is passed over, and the message after it is the session's first "
@@ -15024,6 +15068,10 @@ for _sid166, _held166, _row166x in (
         ("s166e", _a166, {"complaint": 9, "usable": True, "rules": _RULES166})):   # the same moment, elsewhere
     append(_held166.trajectories, {"session_id": _sid166, "repo_id": "r/r", "failed": 5, "resolved": 12,
                                    "reason": "usable", **_row166x})
+# And two malformed rows in the sibling's file (review, 10-02): they once
+# raised inside every usable answer's check.
+with open(_a166.trajectories, "a") as _fh166:
+    _fh166.write('[1, 2]\n' + json.dumps({"usable": True, "rules": _RULES166, "failed": 5, "complaint": 3}) + "\n")
 for _sid166, _turn166 in (("s166", 9), ("s166b", 9), ("s166c", 9), ("s166d", 9), ("s166e", 9),
                           ("s166f", 9), ("s166f", 11)):
     append(_b166.readings, {"session_id": _sid166, "repo_id": "r/r", "turn_number": _turn166,
@@ -15119,6 +15167,68 @@ check(len(_mid_asks166) == 2 and 410 < _mid166._looked_to < 1210
       f"{_mid166._looked_to}")
 check(len(_seen166) == 1,
       f"and none is taken when the first view alone is past it: {[len(x) for x in _seen166]}")
+# When a second look could not make the trajectory usable, none is taken
+# (review, 10-02): a fix already in view; an objection to nothing; nothing
+# more to show. A status line in view -- isthmia-74's shape -- is no fix, and
+# the look goes on. And a session ending on a fraction of a turn still ends.
+import signal as _signal166
+
+_answers166: list = []
+_asked166b: list[str] = []
+
+
+class _Scripted166:
+    @staticmethod
+    async def run(agent, prompt, **kw):
+        _asked166b.append(prompt)
+        return type("R", (), {"final_output": _answers166.pop(0), "context_wrapper": None})()
+
+
+def _tj_answer166(**kw):
+    base = dict(request_turn=1, failed_turn=5, complaint_turn=10, objection=True, knowable=True, defect="d",
+                resolved=False, resolved_turn=-1, later_turns_are_new_work=True)
+    return _tj166.Trajectory(**{**base, **kw})
+
+
+def _asks166(turns, *answers):
+    _answers166[:] = list(answers)
+    _asked166b.clear()
+    t = asyncio.run(_tj166.locate(turns, 10))
+    return len(_asked166b), t
+
+
+_snapshots166 = _far166[:3] + [_T63(20, "assistant_response", content="Working on it.")] + [
+    _T63(n, "file_snapshot", content="{}") for n in range(411, 900)]
+_fraction166 = _far166[:3] + [_T63(n, "tool_use", tool_name="Bash", command=f"s {n}", tool_call_id=f"q{n}")
+                              for n in range(11, 400)] + [_T63(415.5, "assistant_response", content="put back")]
+_saved166d = (_tj166.configure_client, _agents_mod.Runner)
+_tj166.configure_client = lambda: None
+_agents_mod.Runner = _Scripted166
+_old_alarm166 = _signal166.signal(_signal166.SIGALRM, lambda *a: (_ for _ in ()).throw(TimeoutError("hung")))
+try:
+    _fixed166 = _asks166(_far166, _tj_answer166(resolved=True, resolved_turn=20, resolution="fixed",
+                                                resolution_fixes_it=True))
+    _status166 = _asks166(_far166, _tj_answer166(resolved=True, resolved_turn=20, resolution="status"),
+                          _tj_answer166(resolved=True, resolved_turn=900, resolution="fixed", resolution_fixes_it=True))
+    _nothing166 = _asks166(_far166, _tj_answer166(objection=False))
+    _same166 = _asks166(_snapshots166, _tj_answer166(), _tj_answer166())
+    _signal166.alarm(5)
+    try:
+        _ends166 = _asks166(_fraction166, _tj_answer166(), _tj_answer166())
+    except TimeoutError:
+        _ends166 = ("hung", None)
+    finally:
+        _signal166.alarm(0)
+finally:
+    _signal166.signal(_signal166.SIGALRM, _old_alarm166)
+    _tj166.configure_client, _agents_mod.Runner = _saved166d
+check(_fixed166[0] == 1 and _status166[0] == 2 and _status166[1].resolved_turn == 900 and _nothing166[0] == 1
+      and _same166[0] == 1,
+      f"a second look only where it could help: a fix in view {_fixed166[0]} ask, a status line in view "
+      f"{_status166[0]} (resolved at {_status166[1].resolved_turn}), an objection to nothing {_nothing166[0]}, "
+      f"nothing more to show {_same166[0]}")
+check(_ends166[0] != "hung",
+      f"and a session whose last row sits at a fraction of a turn ends its search: {_ends166[0]}")
 _stored166 = _rows41(_b166.trajectories)[0]
 check("looked_to" in _stored166, f"the stored trajectory says where its view ended: {sorted(_stored166)}")
 
@@ -15156,17 +15266,23 @@ class _Judge167:
         return type("R", (), {"final_output": verdict, "context_wrapper": None})()
 
 
+_memory167 = _task49("g96-memory")   # never written down: its reference is whole in memory
+_memory167.oracle, _memory167.criterion = _over167, "c" * 40
 _saved167 = (_jm167.configure_client, _agents_mod.Runner)
 _jm167.configure_client = lambda: None
 _agents_mod.Runner = _Judge167
 try:
     # The real judge, which the suite keeps aside: `judge_mod.judge` is a
     # stand-in from the top of the file.
-    for _task167 in (_long167, _back167, _short167):
+    for _task167 in (_long167, _back167, _short167, _memory167):
         asyncio.run(REAL_JUDGE(_task167, "an answer"))
 finally:
     _jm167.configure_client, _agents_mod.Runner = _saved167
-_pl167, _pc167, _ps167 = (_asked167 + ["", "", ""])[:3]
+_pl167, _pc167, _ps167, _pm167 = (_asked167 + ["", "", "", ""])[:4]
+check("characters cut]" in _pm167 and "THE LOST TAIL" not in _pm167 and len(_pm167) < len(_over167),
+      "a task the judge reads from memory, never written down, has its reference kept as on disk")
+check(_spec167.kept("x" * (_spec167.REFERENCE_CHARS + 1)).endswith("[... 1 character cut]"),
+      "and one character cut is said as one")
 check("THE FAILED TAIL" in _pl167 and "longer than shown" not in _pl167,
       f"the judge reads a 9,000-character reference whole, where it read 6,000: {'THE FAILED TAIL' in _pl167}")
 check("characters cut]" in _pc167 and "Reference answer A was longer than shown" in _pc167

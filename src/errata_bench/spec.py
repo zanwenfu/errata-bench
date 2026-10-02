@@ -62,7 +62,7 @@ MIN_ORACLE_CHARS = 40
 #: and a cut, past this, is said (`kept`).
 REFERENCE_CHARS = 60_000
 # How `kept` says a reference answer was cut, and how a kept one is known again.
-_CUT = re.compile(r"\n\[\.\.\. [\d,]+ characters cut\]\Z")
+_CUT = re.compile(r"\n\[\.\.\. [\d,]+ characters? cut\]\Z")
 
 
 def kept(reference: str) -> str:
@@ -78,7 +78,8 @@ def kept(reference: str) -> str:
     said = _CUT.search(reference)
     if said and said.start() == REFERENCE_CHARS:
         return reference
-    return reference[:REFERENCE_CHARS] + f"\n[... {len(reference) - REFERENCE_CHARS:,} characters cut]"
+    gone = len(reference) - REFERENCE_CHARS
+    return reference[:REFERENCE_CHARS] + f"\n[... {gone:,} character{'s' if gone != 1 else ''} cut]"
 
 
 def was_cut(reference: str) -> bool:

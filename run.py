@@ -84,6 +84,12 @@ def find_moments(
 
     from errata_bench.corpus.sessions import CORPUS
 
+    # Asked first: a stale or missing list stops the collection before the
+    # passes over the corpus, not after (review, 10-02).
+    from errata_bench.corpus.sessions import edited_sessions
+
+    rewound = edited_sessions()
+
     # One file or many: `--exclude` names one, `--fresh` hands over every
     # moments file already on disk.
     sources = [skip_seen] if isinstance(skip_seen, Path) else list(skip_seen or [])
@@ -153,8 +159,8 @@ def find_moments(
     # no failing answer in this transcript to cut before. Triage catches these
     # for the price of a model call; counting rows costs nothing.
     if shell:
-        print(f"  {shell} rows labelled pushback passed over: a shell command the developer ran, not a message "
-              "to the agent", flush=True)
+        print(f"  {shell} rows in the corpus labelled pushback passed over: a shell command the developer ran, "
+              "not a message to the agent", flush=True)
     if later:
         first = _later_moments(conv, pushes, repo_of, min_agent_turns)
     need = {m["session_id"]: m["turn_number"] for m in first.values()}
@@ -221,14 +227,6 @@ def find_moments(
     # and a build would replay that branch's edits (G-95, pilot audit 10-02).
     # The collector lists them (`crawl.shape.rewound`); SWE-chat's corpus has
     # no such list, and nothing is left out there.
-    edited = CORPUS / "rewound.json"
-    # A corpus the collector assembled before the list was written would
-    # leave nothing out and say nothing (review, 10-02); the collector writes
-    # `left_out.json`, SWE-chat's corpus does not.
-    if not edited.exists() and (CORPUS / "left_out.json").exists():
-        raise SystemExit(f"{CORPUS} was assembled before the sessions holding an abandoned branch were listed "
-                         "(rewound.json): assemble it again")
-    rewound = set(json.loads(edited.read_text())) if edited.exists() else set()
     branched = sum(1 for m in fresh if m["session_id"] in rewound)
     fresh = [m for m in fresh if m["session_id"] not in rewound]
     if branched:

@@ -544,6 +544,18 @@ twice_over = claude_code_rows("pt", "o/r", "o/r#pt", [
     U90("g0", None, "go"), enqueue(hand_back), attach("g1", "g0", hand_back),
     A90("g2", "g1", {"type": "text", "text": "Read it."}), enqueue(hand_back),
     M90("g3", "g2", wrapped, origin={"kind": "peer"})])
+# A long report queued, then a short one it quotes; delivered in that order.
+short_back = '<agent-message from="z8">ok</agent-message>'
+long_back = '<agent-message from="z9">[Subagent hand-back] the report; it quotes ' + short_back + '</agent-message>'
+quoted = claude_code_rows("pq2", "o/r", "o/r#pq2", [
+    U90("g0", None, "go"), enqueue(long_back), enqueue(short_back),
+    M90("g3", "g0", "Another Claude session sent a message:\n" + long_back + "\n\nThat is an agent.",
+        origin={"kind": "peer"}),
+    M90("g4", "g3", "Another Claude session sent a message:\n" + short_back + "\n\nThat is an agent.",
+        origin={"kind": "peer"})])
+check(kinds_of(quoted) == [(0, "user_prompt"), (2, "system_injected"), (4, "system_injected"), (5, "peer_message"),
+                           (6, "peer_message")],
+      f"a delivery is paired with the longest copy it holds, not a shorter message it quotes: {kinds_of(quoted)}")
 check(kinds_of(as_written) == [(0, "user_prompt"), (2, "system_injected"), (3, "peer_message")]
       and kinds_of(twice_over) == [(0, "user_prompt"), (2, "peer_message"), (5, "system_injected"),
                                    (6, "peer_message")],
@@ -567,6 +579,25 @@ compacted95 = branch95 + [
 check(rewound(compacted95) == 1,
       f"an edit made before a compaction counts once, its kept side reached through the boundary: "
       f"{rewound(compacted95)}")
+# A boundary naming an entry the file does not hold follows the entry before
+# it: an edit made before any answer abandons nothing (review, 10-02: 491 of
+# the corpus's 1,624 boundaries name one it does not hold).
+dangling95 = [U90("e1", None, "add retries"), A90("f1", "e1", {"type": "text", "text": "Added."}),
+              U90("e2", "f1", "now test it"), U90("e3", "f1", "now test it on Windows"),
+              A90("f3", "e3", {"type": "text", "text": "On Windows: fine."}),
+              {"type": "system", "subtype": "compact_boundary", "uuid": "cb", "parentUuid": None,
+               "logicalParentUuid": "gone", "timestamp": T.format(2)},
+              U90("e4", "cb", "now the docs"), A90("f4", "e4", {"type": "text", "text": "Docs written."})]
+# A compaction inside the abandoned branch: its answer comes after the boundary.
+inside95 = [U90("e1", None, "add retries"), A90("f1", "e1", {"type": "text", "text": "Added."}),
+            U90("e2", "f1", "now test it"),
+            {"type": "system", "subtype": "compact_boundary", "uuid": "cb2", "parentUuid": None,
+             "logicalParentUuid": "e2", "timestamp": T.format(2)},
+            A90("f2", "cb2", {"type": "text", "text": "Tested."}),
+            U90("e3", "f1", "now test it on Windows"), A90("f3", "e3", {"type": "text", "text": "On Windows: fine."})]
+check(rewound(dangling95) == 0 and rewound(inside95) == 1,
+      f"a boundary naming an entry the file lacks follows the one before it, and an answer after a boundary "
+      f"inside the abandoned branch is under it: {rewound(dangling95)}, {rewound(inside95)}")
 check(rewound(branch95) == 1 and rewound(unanswered95) == 0 and rewound(said90) == 0,
       f"a message edited and sent again after the agent answered it is counted; one resent before any answer, "
       f"or none, is not (G-95): {rewound(branch95)}, {rewound(unanswered95)}, {rewound(said90)}")
@@ -675,8 +706,9 @@ with tempfile.TemporaryDirectory() as t:
     corpus = out / "corpus"
     check(summary["sessions"] == 1 and summary["left_out"] == {"not a Claude Code transcript (for later)": 1},
           f"only Claude Code sessions are written, the others counted, a new format included: {summary}")
-    check(json.loads((corpus / "rewound.json").read_text()) == {"cc1": 2} and summary.get("rewound sessions") == 1
-          and len(asked_rewound) >= 1,
+    from errata_bench.corpus.sessions import REWOUND_RULES
+    check(json.loads((corpus / "rewound.json").read_text()) == {"rules": REWOUND_RULES, "sessions": {"cc1": 2}}
+          and summary.get("rewound sessions") == 1 and len(asked_rewound) >= 1,
           f"the corpus lists each session whose developer edited and resent an answered message, with how many "
           f"(G-95): {(corpus / 'rewound.json').read_text().strip()}, {summary.get('rewound sessions')}")
     cc1 = corpus / "transcripts" / "cc1.jsonl"

@@ -46,6 +46,7 @@ are rejected.
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 
 from pydantic import BaseModel, Field, PrivateAttr
@@ -358,7 +359,9 @@ def render(turns: list[dict], start: int, end: int, *, budget: int = 900, calls:
 #: 10-02: the resolution must put the defect right (`resolution_fixes_it`)
 #: and a view left open is looked at again. A row of earlier rules -- the
 #: pilot's cyc-seattle-isthmia-74 among them -- holds no failed answer
-#: against another moment (`stages.screening.failures_held`).
+#: against another moment (`stages.screening.failures_held`). So a bump frees
+#: every failed answer the earlier rules held, admitted tasks' among them:
+#: locate those again, or count the admitted tasks, before drawing more.
 RULES = 2
 
 # How far past the complaint the second look reaches, and the most it may read.
@@ -369,7 +372,11 @@ FURTHER_CHARS = 200_000
 def reach(turns: list[dict], start: int, near: int, far: int, limit: int = FURTHER_CHARS) -> int:
     """The furthest end of a view from ``start``, no further than ``far``, whose rendering fits in ``limit``
     characters; ``near`` when none past it does. A view only grows as its end moves on."""
-    lo, hi = near, far
+    # Whole turns: a row put back from the transcript sits at a fraction, and
+    # a fractional bound never closed the search (review, 10-02).
+    lo, hi = int(near), math.floor(far)
+    if hi <= lo:
+        return lo
     while lo < hi:
         mid = (lo + hi + 1) // 2
         if len(render(turns, start, mid)) <= limit:
@@ -421,8 +428,15 @@ async def locate(
 
     near = complaint_turn + lookahead
     t = await ask(near)
-    last = max((x.get("turn_number") or 0 for x in turns), default=0)
-    if (t.resolved and t.resolved_turn >= 0) or last <= near:
+    # Only where a second look could make the trajectory usable: an objection
+    # the agent could have known about, with nothing in view that puts it
+    # right -- a status line in view, isthmia-74's shape, is no resolution --
+    # and more of the conversation to show (review, 10-02).
+    if (t.resolved and t.resolved_turn >= 0 and t.resolution_fixes_it) or not (t.objection and t.knowable):
         return t
-    end = reach(turns, complaint_turn - lookback, near, min(complaint_turn + further, last))
-    return await ask(end) if end > near else t
+    start = complaint_turn - lookback
+    last = max((x.get("turn_number") or 0 for x in turns), default=0)
+    end = reach(turns, start, near, min(complaint_turn + further, last))
+    if end <= near or render(turns, start, end) == render(turns, start, near):
+        return t
+    return await ask(end)
