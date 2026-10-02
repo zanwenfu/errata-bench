@@ -15,18 +15,28 @@ from SWE-chat's parser, each on purpose:
 - **Who wrote a user message is decided by rule.** SWE-chat's split between
   `user_prompt` and `system_injected` was inconsistent: the same kind of entry
   landed on both sides, and a message holding an image was dropped. Measured
-  on 300 sessions, 09-29. Here:
+  on 300 sessions, 09-29. Here, by the marks Claude Code writes on the entry
+  where it writes them, and by the text where it does not (`user_kind`, G-90):
+  - `peer_message`: another agent's message, delivered into the agent's
+    turn: a teammate's in an agent team, a subagent's hand-back, another
+    Claude session's, a coordinator's relay. SWE-chat has no such type. No
+    developer typed these, and they are shown as another agent's
+    (`corpus.turns`);
   - `system_injected`: built-in commands (`<command-name>/model`), command
     and shell output (`<local-command-stdout>`, `<bash-stdout>`, ...),
     background-task notices, system reminders and instructions, and CI
-    events. SWE-chat counted most
-    background-task notices as the developer's; they are not;
+    events. SWE-chat counted most background-task notices as the
+    developer's; they are not. Also what Claude Code writes there itself: a
+    skill the agent loaded with its own call, a prompt a timer or the
+    harness sent, a Stop hook's feedback, the line it writes on resuming, a
+    note on an image a tool returned, and the "Tool loaded." beside a
+    deferred tool's result;
   - `user_prompt` (the developer's): everything else, including commands
     with their arguments and expanded instructions, `!` shell input,
     interruptions, messages typed while the agent was busy (written only as
-    queue entries), and the summary that opens a continued session (kept as
-    SWE-chat kept it, with `is_continuation`, since the candidate needs what
-    it says);
+    queue entries, or beside a tool's result), and the summary that opens a
+    continued session (kept as SWE-chat kept it, with `is_continuation`,
+    since the candidate needs what it says);
   - an image is kept as the text ``[Image: <type>]``, SWE-chat's form, and
     context an IDE attaches (``<ide_selection>``, the file opened) is kept,
     where SWE-chat dropped it.
@@ -64,6 +74,20 @@ CONVERSATIONS = pa.schema([
 INJECTED = re.compile(r"^\s*<(local-command-caveat|local-command-stdout|local-command-stderr|bash-stdout|bash-stderr"
                       r"|command-name|task-notification|system-reminder|system[_-]instructions?|ci-monitor-event)>")
 CONTINUED = "This session is being continued"
+# Another agent's message, delivered into the agent's turn (G-90): a teammate's,
+# a subagent handing its result back, another Claude session's, a coordinator's
+# relay. Claude Code 2.1 marks most (`origin.kind` or `turnOrigin` "peer"); the
+# opening catches those delivered from a queue, or written by a version that
+# marks nothing. 3,244 of the corpus's 95,496 developer rows were these (10-02).
+PEER = re.compile(r"^\s*(?:<(?:teammate-message|agent-message|cross-session-message|relay)\b"
+                  r"|Another Claude session sent a message)")
+# What Claude Code writes into the user's turn itself, by the marks on the
+# entry (G-90): a notice, an automatic continuation, a timer's or the harness's
+# prompt.
+HARNESS_ORIGINS = frozenset({"task-notification", "auto-continuation"})  # origin.kind
+HARNESS_TURNS = frozenset({"task_notification", "scheduled", "system"})  # turnOrigin
+# Written beside a deferred tool's result when the agent loads it.
+TOOL_LOADED = "Tool loaded."
 METADATA = {"progress": "progress", "file-history-snapshot": "file_snapshot", "system": "system_event",
             "summary": "summary", "queue-operation": "queue_operation"}
 FILE_KEYS = ("file_path", "notebook_path", "path")
@@ -99,16 +123,77 @@ def _text(content) -> str:
     return "\n".join(parts)
 
 
-def user_kind(entry: dict, text: str) -> str:
-    """By what the text is, as SWE-chat mostly decided, not by `isMeta`.
+def user_kind(entry: dict, text: str, *, beside_result: bool = False, expansion: bool = False) -> str:
+    """Who wrote a user entry's text: the developer (`user_prompt`), another agent (`peer_message`) or Claude Code
+    (`system_injected`). By the marks Claude Code writes on the entry, and by the text where it wrote none (G-90).
 
-    `isMeta` also marks a command's expanded instructions, which are what the
-    developer asked for and what the agent was given; SWE-chat kept those as
-    the developer's in 109 of 124 cases measured, and so does this.
+    `isMeta` marks what Claude Code wrote into the turn, and among that a
+    command's expanded instructions, which are what the developer asked for
+    and what the agent was given; SWE-chat kept those as the developer's in
+    109 of 124 cases measured, and so does this. So a meta entry is the
+    developer's only when it expands a command they ran (``expansion``, as
+    `is_expansion` decides) and no call of the agent's loaded it
+    (`sourceToolUseID`, a skill the agent ran). Every other meta entry is
+    Claude Code's: a hook's feedback, the line it writes on resuming, a note
+    on an image a tool returned, a timer's or a wake-up's prompt, "your
+    previous response had no visible output", a command's output. Of the
+    corpus's meta entries, 3,307 expand a command (10-02).
+
+    Text beside a tool's result in the same entry (``beside_result``) is a
+    message the developer typed while the tool ran, as their answer to a
+    question or a permission prompt is, except the "Tool loaded." Claude Code
+    writes beside a deferred tool's.
     """
     if entry.get("isCompactSummary") or text.lstrip().startswith(CONTINUED):
         return "user_prompt"
-    return "system_injected" if INJECTED.match(text) else "user_prompt"
+    if INJECTED.match(text):
+        return "system_injected"
+    origin = entry.get("origin") if isinstance(entry.get("origin"), dict) else {}
+    if origin.get("kind") == "peer" or entry.get("turnOrigin") == "peer" or PEER.match(text):
+        return "peer_message"
+    if (origin.get("kind") in HARNESS_ORIGINS or entry.get("turnOrigin") in HARNESS_TURNS
+            or entry.get("promptSource") == "system"
+            or entry.get("isMeta") and (not expansion or bool(entry.get("sourceToolUseID")))
+            or beside_result and text.strip() == TOOL_LOADED):
+        return "system_injected"
+    return "user_prompt"
+
+
+COMMAND_ENTRY = re.compile(r"^\s*<command-message>")
+
+
+def is_expansion(entries: list[dict], i: int, index: dict[str, int]) -> bool:
+    """Whether meta entry ``i`` expands a command the developer ran: the first entry before it, looking past
+    attachments, system entries, progress and other meta entries, is their command entry.
+
+    Their own command opens with its message (`<command-message>`); a built-in
+    one opens with its name, and a meta entry after it is its output (`/context`
+    writes its report so). A command a timer ran (`turnOrigin` "scheduled") is
+    not theirs either. The entry before is the one `parentUuid` names, or the
+    one before it in the file when the entry names none.
+    """
+    seen = 0
+    while seen < 200:
+        seen += 1
+        entry = entries[i]
+        if "parentUuid" in entry:
+            parent = entry.get("parentUuid")
+            if parent not in index:
+                return False
+            i = index[parent]
+        elif i > 0:
+            i -= 1
+        else:
+            return False
+        before = entries[i]
+        if before.get("type") == "assistant":
+            return False
+        if before.get("type") != "user" or before.get("isMeta"):
+            continue
+        msg = before.get("message") if isinstance(before.get("message"), dict) else {}
+        text = _text(msg.get("content"))
+        return bool(COMMAND_ENTRY.match(text)) and user_kind(before, text) == "user_prompt"
+    return False
 
 
 _COMMAND_NAME = re.compile(r"<command-name>\s*(.*?)\s*</command-name>", re.DOTALL)
@@ -215,6 +300,10 @@ def claude_code_rows(session_id: str, repo_id: str, checkpoint_pk: str, entries:
     results: set[str] = set()  # calls whose result is written
     last_of_message: dict[str, int] = {}  # message id -> index of its last row
     delivered = queued_and_delivered(entries)
+    index: dict[str, int] = {}  # uuid -> the entry's place, for what a meta entry follows
+    for n, entry in enumerate(entries):
+        if entry.get("uuid"):
+            index.setdefault(entry["uuid"], n)
 
     def add(role, turn_type, content, entry, **fields):
         row = {"role": role, "turn_type": turn_type, "content": content,
@@ -229,7 +318,10 @@ def claude_code_rows(session_id: str, repo_id: str, checkpoint_pk: str, entries:
             content = msg.get("content")
             text = _text(content)
             if text.strip() or isinstance(content, str):
-                turn_type = user_kind(entry, text)
+                beside = isinstance(content, list) and any(
+                    isinstance(b, dict) and b.get("type") == "tool_result" for b in content)
+                turn_type = user_kind(entry, text, beside_result=beside,
+                                      expansion=bool(entry.get("isMeta")) and is_expansion(entries, n, index))
                 add("user", turn_type, text, entry, is_continuation=bool(entry.get("isCompactSummary"))
                     or text.lstrip().startswith(CONTINUED))
             for block in content if isinstance(content, list) else []:

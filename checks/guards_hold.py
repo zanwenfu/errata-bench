@@ -14465,6 +14465,90 @@ check(_moved161([("a", "Bash", "/Users/dev/up/src"), ("b", "Bash", "/tmp/x"), ("
       "a subfolder of its own checkout, a scratch folder, a folder outside the repository, and anything after "
       "the cut are not another checkout")
 
+print("\n162. another agent's message is shown and read as another agent's; the request and the work since the "
+      "developer spoke are the developer's (10-02)")
+# G-90: the collector held another agent's messages (a teammate's, a subagent's
+# hand-back, another session's) as the developer's; 116 were labelled their
+# pushback. It now types them `peer_message`, and every view that shows the
+# conversation must show them, as another agent's.
+from errata_bench.corpus.turns import PEER_SPEAKER as _peer162, _fit_result_budget as _fit162
+from errata_bench.find import redact as _rd162
+from errata_bench.find.trajectory import render as _render162
+from errata_bench.construct.build import calls_behind as _behind162, last_user_message as _asked162
+
+_said162 = '<teammate-message teammate_id="qa">your retry loop never backs off</teammate-message>'
+_rows162 = [_T63(1, "user_prompt", content="add retries to the uploader"),
+            _T63(2, "assistant_response", content="Done, retries are in."),
+            _T63(3, "peer_message", content=_said162),
+            _T63(4, "tool_use", tool_name="Bash", command="make test", tool_call_id="b1"),
+            _T63(5, "tool_result", content="ok", tool_call_id="b1"),
+            _T63(6, "assistant_response", content="Fixed the backoff.")]
+_shown162 = [_bx70(_rows162, 6, record=r, max_chars=10**9) for r in (1, 2, 3)]
+check(all(f"[turn 3] {_peer162}:\n{_said162}" in v and "[turn 3] USER" not in v for v in _shown162),
+      "another agent's message is shown as another agent's, under every record, never as the developer's")
+_squeezed162 = _bx70(_rows162 + [_T63(5.5, "tool_result", content="x" * 5000, tool_call_id="b2")], 6, record=2,
+                     max_chars=300)
+check(f"[turn 3] {_peer162}:\n{_said162}" in _squeezed162 and f"[turn 3] {_peer162}:\n{_said162}" in
+      _render162(_rows162, 1, 6),
+      "and so it is in a conversation squeezed to fit, and in the view the locating stage reads")
+_long162 = [_T63(1, "peer_message", content="p" * 30_000)] + [
+    _T63(n, "tool_result", content="r" * 9_000, tool_call_id=f"r{n}") for n in range(2, 8)]
+# A room of 20,000 binds: each result's share is under the 4,000 cap either way.
+_with162 = _fit162(_long162, 9, 20_000)
+_without162 = _fit162([{**_long162[0], "turn_type": "other"}] + _long162[1:], 9, 20_000)
+check(_with162 < _without162 < 4_000,
+      f"its length is counted against the room a conversation leaves its results, as a message's is: "
+      f"{_with162} < {_without162}")
+_work162 = [_T63(1, "user_prompt", content="add retries"), _T63(2, "tool_use", tool_name="Bash", command="make",
+                                                                 tool_call_id="m"),
+            _T63(3, "tool_result", content="ok", tool_call_id="m"), _T63(4, "peer_message", content=_said162),
+            _T63(5, "assistant_response", content="Done.")]
+check((_asked162(_work162, 5) or {}).get("turn_number") == 1 and [c["command"] for c in _behind162(_work162, 5)] == ["make"],
+      f"the request a candidate answers is the developer's last message, not another agent's, and the agent's work "
+      f"since the developer spoke runs past another agent's message: {(_asked162(_work162, 5) or {}).get('turn_number')}, "
+      f"{_behind162(_work162, 5)}")
+# The leak repair reads another agent's message as one of the conversation's
+# messages: a hint in it is one the surveyor can drop or rewrite.
+_quote162 = "your retry loop never backs off"
+check(_rd162.carried_by(_rows162, 6, _quote162) == "prose" and _rd162.carrying(_rows162, 6, _quote162) == {3},
+      f"a hint in another agent's message is in the conversation's messages, where a repair can reach it: "
+      f"{_rd162.carried_by(_rows162, 6, _quote162)}, {_rd162.carrying(_rows162, 6, _quote162)}")
+_asked_rd162 = []
+
+
+class _Surveyor162:
+    @staticmethod
+    async def run(agent, prompt, **kw):
+        _asked_rd162.append((agent.instructions, prompt))
+
+        class _Out:
+            final_output = _rd162.Survey(verdicts=[], diffuse=False, reasoning="r")
+        return _Out()
+
+
+_saved162 = (_rd162.configure_client, _agents_mod.Runner)
+_rd162.configure_client = lambda: None
+_agents_mod.Runner = _Surveyor162
+try:
+    asyncio.run(_rd162.survey(_rows162, 6))
+    asyncio.run(_rd162.survey([t for t in _rows162 if t["turn_type"] != "peer_message"], 6))
+finally:
+    _rd162.configure_client, _agents_mod.Runner = _saved162
+(_inst162, _prompt162), (_inst162b, _prompt162b) = (_asked_rd162 + [("", ""), ("", "")])[:2]
+check(f"[turn 3] ANOTHER AGENT:\n{_said162}" in _prompt162 and "Turns marked ANOTHER AGENT" in _inst162
+      and "[turn 1] USER:" in _prompt162 and "[turn 2] AGENT:" in _prompt162,
+      "the surveyor is shown another agent's message as another agent's, and told what such a turn is")
+check(_inst162b == _rd162.with_field_guide(_rd162.INSTRUCTIONS, _rd162.Survey) and "ANOTHER AGENT" not in _prompt162b,
+      "and a conversation with no other agent in it is asked about in the same words as before")
+_kept162 = _rd162.apply([_T63(1, "user_prompt", content="add retries"),
+                         _T63(2, "peer_message", content=_said162),
+                         {**_T63(2.5, "assistant_response", content="You're right, I'll add a backoff."),
+                          "recovered": True, "shown_as": 3},
+                         _T63(3, "tool_use", tool_name="Edit", file_path="/r/up.ts", tool_call_id="e")], [2])
+check([t["turn_number"] for t in _kept162] == [1, 3],
+      f"a text put back right after another agent's dropped message is its answer, and goes with it: "
+      f"{[t['turn_number'] for t in _kept162]}")
+
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:
     print("  -", f)

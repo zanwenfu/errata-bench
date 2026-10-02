@@ -308,6 +308,8 @@ entries = [
     {"type": "queue-operation", "timestamp": T.format(5), "operation": "enqueue", "content": "no, don't touch tests"},
     {"type": "queue-operation", "timestamp": T.format(5), "operation": "enqueue", "content": "<task-notification>done</task-notification>"},
     {"type": "user", "timestamp": T.format(6), "message": {"role": "user", "content": "<command-name>/model</command-name>"}},
+    {"type": "user", "timestamp": T.format(6), "message": {"role": "user", "content":
+        "<command-message>review</command-message>\n<command-name>/review</command-name>"}},
     {"type": "user", "timestamp": T.format(6), "isMeta": True, "message": {"role": "user", "content": [
         {"type": "text", "text": "Review the diff carefully."}]}},
     {"type": "user", "timestamp": T.format(7), "message": {"role": "user", "content": [
@@ -411,6 +413,97 @@ check(kinds2.count("tool_use") == 1 and kinds2.count("tool_result") == 1 and kin
 check(("system_injected", "<command-name>/model</command-name>") in user and ("user_prompt", "Review the diff carefully.") in user,
       "a built-in command is injected; a command's expanded instructions are the developer's request")
 check(("user_prompt", "see this\n[Image: image/png]") in user, "an image is kept as SWE-chat wrote it")
+# G-90. Who wrote a user message: the developer, another agent, or Claude Code.
+# By the marks Claude Code writes on the entry, and by the text where it wrote
+# none. Each entry names the one before it, as Claude Code's do.
+U90 = lambda uid, parent, content, **kw: {"type": "user", "uuid": uid, "parentUuid": parent, "timestamp": T.format(0),
+                                          "message": {"role": "user", "content": content}, **kw}
+M90 = lambda uid, parent, text, **kw: U90(uid, parent, [{"type": "text", "text": text}], isMeta=True, **kw)
+A90 = lambda uid, parent, *blocks: {"type": "assistant", "uuid": uid, "parentUuid": parent, "timestamp": T.format(1),
+                                    "message": {"id": "m-" + uid, "model": "x", "content": list(blocks)}}
+said90 = [
+    U90("u1", None, "please fix the parser"),
+    A90("a1", "u1", {"type": "text", "text": "On it."}),
+    U90("p1", "a1", '<teammate-message teammate_id="tester" color="green">P1 done</teammate-message>'),
+    U90("p2", "p1", "please review the API", origin={"kind": "peer", "from": "lead", "body": "please review the API"}),
+    U90("p3", "p2", "the tests pass now", turnOrigin="peer"),
+    {"type": "queue-operation", "timestamp": T.format(2), "operation": "enqueue",
+     "content": '<agent-message from="a9">[Subagent hand-back] done</agent-message>'},
+    {"type": "attachment", "uuid": "q1", "parentUuid": "p3", "timestamp": T.format(2), "attachment": {
+        "type": "queued_command", "commandMode": "prompt",
+        "prompt": '<cross-session-message from="uds:/tmp/s">fix the lint</cross-session-message>'}},
+    A90("a2", "q1", {"type": "tool_use", "id": "s1", "name": "Skill", "input": {"skill": "review"}}),
+    U90("r1", "a2", [{"type": "tool_result", "tool_use_id": "s1", "content": "Launching skill: review"}]),
+    M90("k1", "r1", "Base directory for this skill: /x\n# Review", sourceToolUseID="s1"),
+    U90("c1", "k1", "<command-message>ship</command-message>\n<command-name>/ship</command-name>"),
+    M90("k2", "c1", "Ship it: run the tests,"),
+    M90("k2b", "k2", "then push."),
+    M90("k1b", "c1", "Base directory for this skill: /y\n# Lint", sourceToolUseID="s9"),
+    A90("a3", "k2b", {"type": "text", "text": "Pushed."}),
+    M90("k4", "a3", "Check the build again."),
+    U90("c2", "k4", "<command-name>/context</command-name>"),
+    M90("k3", "c2", "## Context Usage 12k of 200k"),
+    M90("k5", "k3", "Stop hook feedback: run the linter first"),
+    M90("k6", "k5", "Continue from where you left off."),
+    U90("d1", "k6", "Continue from where you left off."),
+    M90("k7", "d1", "[Image: original 100x80, displayed at 100x80.]"),
+    A90("a4", "k7", {"type": "tool_use", "id": "ts", "name": "ToolSearch", "input": {"query": "select:Read"}}),
+    U90("r2", "a4", [{"type": "tool_result", "tool_use_id": "ts", "content": "Read"}, {"type": "text", "text": "Tool loaded."}]),
+    A90("a5", "r2", {"type": "tool_use", "id": "e1", "name": "Edit", "input": {"file_path": "/r/a.py"}}),
+    U90("r3", "a5", [{"type": "tool_result", "tool_use_id": "e1", "content": "ok"},
+                     {"type": "text", "text": "use the other file"}]),
+    U90("h1", "r3", "update", promptSource="system"),
+    U90("h2", "h1", "Background agent X was stopped", origin={"kind": "task-notification"}),
+    U90("h3", "h2", "Goal set: finish the roadmap", origin={"kind": "auto-continuation"}),
+    U90("h4", "h3", "Check the CI run", turnOrigin="task_notification"),
+    U90("h5", "h4", "the nightly job finished", turnOrigin="system"),
+    U90("c3", "h5", "<command-message>good-night</command-message>\n<command-name>/good-night</command-name>",
+        turnOrigin="scheduled"),
+    M90("k8", "c3", "Run the overnight improvements."),
+    U90("d2", "k8", "now the docs", promptSource="typed", origin={"kind": "human"}),
+    M90("k9", "d2", "<command-message>brainstorm</command-message>\n<command-name>brainstorm</command-name>"),
+    M90("k10", "k9", "# Brainstorming\nAsk one question at a time."),
+    U90("cs", "k10", "This session is being continued from a previous conversation. Summary: ...",
+        isCompactSummary=True, turnOrigin="task_notification"),
+]
+rows90 = claude_code_rows("w", "o/r", "o/r#w", said90)
+got90 = [(r["turn_type"], r["content"]) for r in rows90 if r["role"] == "user"]
+kind90 = lambda text: [k for k, c in got90 if c == text]
+check(kind90('<teammate-message teammate_id="tester" color="green">P1 done</teammate-message>') == ["peer_message"]
+      and kind90("please review the API") == ["peer_message"] and kind90("the tests pass now") == ["peer_message"]
+      and kind90('<agent-message from="a9">[Subagent hand-back] done</agent-message>') == ["peer_message"]
+      and kind90('<cross-session-message from="uds:/tmp/s">fix the lint</cross-session-message>') == ["peer_message"],
+      f"another agent's message is another agent's, marked as one (`origin`, `turnOrigin`) or only tagged, written as "
+      f"an entry, a queue entry or an attachment (G-90): {[(k, c[:20]) for k, c in got90[:6]]}")
+check(kind90("Ship it: run the tests,") == ["user_prompt"] and kind90("then push.") == ["user_prompt"]
+      and kind90("please fix the parser") == ["user_prompt"] and kind90("now the docs") == ["user_prompt"]
+      and kind90("Continue from where you left off.") == ["system_injected", "user_prompt"],
+      f"a command's expansion is the developer's, in one meta entry or two; what they typed is theirs, the resume "
+      f"line too when they type it (G-90): {[(k, c[:20]) for k, c in got90 if k == 'user_prompt']}")
+check(all(kind90(text) == ["system_injected"] for text in (
+          "Base directory for this skill: /x\n# Review", "Base directory for this skill: /y\n# Lint",
+          "Check the build again.", "## Context Usage 12k of 200k", "Stop hook feedback: run the linter first",
+          "[Image: original 100x80, displayed at 100x80.]", "Run the overnight improvements.",
+          "<command-message>brainstorm</command-message>\n<command-name>brainstorm</command-name>",
+          "# Brainstorming\nAsk one question at a time.")),
+      f"every other meta entry is Claude Code's: a skill the agent's call loaded, even right after the developer's "
+      f"command; a timer's prompt after the agent's turn; a built-in command's output; a hook's feedback; the resume "
+      f"line; a note on an image; what follows a command a timer ran, or a skill that loaded itself (G-90): "
+      f"{[(k, c[:24]) for k, c in got90 if c.startswith(('Base', 'Check', '##', 'Stop', '[Image', 'Run', '<command-message>b', '# B'))]}")
+check(all(kind90(text) == ["system_injected"] for text in (
+          "update", "Background agent X was stopped", "Goal set: finish the roadmap", "Check the CI run",
+          "the nightly job finished", "<command-message>good-night</command-message>\n<command-name>/good-night</command-name>",
+          "Tool loaded.")) and kind90("use the other file") == ["user_prompt"],
+      f"a prompt the harness or a timer sent, a notice and an automatic continuation are Claude Code's by the marks "
+      f"on the entry; beside a tool's result, \"Tool loaded.\" is Claude Code's and what the developer typed is "
+      f"theirs (G-90): {[(k, c[:20]) for k, c in got90 if c in ('update', 'Tool loaded.', 'use the other file')]}")
+summary90 = next((r for r in rows90 if (r["content"] or "").startswith("This session is being continued")), {})
+check(summary90.get("turn_type") == "user_prompt" and summary90.get("is_continuation") is True
+      and [r["turn_number"] for r in rows90] == list(range(len(rows90)))
+      # every entry but r1, which holds only a result, is a row
+      and len(got90) == sum(1 for e in said90 if e["type"] in ("user", "queue-operation", "attachment")) - 1,
+      f"the summary that opens a continued session stays as it was, whatever turn it came in on, and every message "
+      f"is still a row in its place, only who wrote it decided (G-90): {summary90.get('turn_type')}, {len(got90)}")
 snap = next(r for r in rows if r["turn_type"] == "file_snapshot")
 check(snap["role"] == "metadata" and snap["timestamp"] is None and not any(r["content"].startswith('{"type": "custom-title"')
       for r in rows), "a snapshot is a metadata row without a time; a title is no row")

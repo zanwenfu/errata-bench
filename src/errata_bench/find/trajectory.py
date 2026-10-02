@@ -50,7 +50,7 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, Field
 
-from ..corpus.turns import speaker
+from ..corpus.turns import PEER_SPEAKER, speaker
 from ..llm import MODEL, configure_client, resilient, with_field_guide
 
 
@@ -256,6 +256,8 @@ def render(turns: list[dict], start: int, end: int, *, budget: int = 900) -> str
         label = turn.get("shown_as", n)
         if kind == "user_prompt":
             lines.append(f"\n[turn {n}] {speaker(turn)}:\n{body[:3000]}")
+        elif kind == "peer_message":
+            lines.append(f"\n[turn {n}] {PEER_SPEAKER}:\n{body[:3000]}")
         elif kind == "assistant_response":
             lines.append(f"\n[turn {label}] AGENT:\n{body[:3000]}")
         elif kind == "tool_use":
