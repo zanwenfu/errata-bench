@@ -12058,3 +12058,95 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
       (about $0.20 a moment) and locating (about $0.25), to be refused
       only at screening (about $2) or calibration.
     - These are fixed or weighed before gate 3.
+- **10-02, 21:0x UTC** — **Gate 2's defects fixed, and the finding stages'
+  judgements asked again of the reviewers' verdicts (#16).**
+  - *G-90, who wrote a message.* The collector now decides it by the marks
+    Claude Code writes on the entry (`origin.kind`, `turnOrigin`,
+    `promptSource`, `sourceToolUseID`), and by the text where an older
+    version wrote none.
+    - 3,244 of the corpus's 95,496 developer rows are another agent's: a
+      teammate's, a subagent's hand-back, another Claude session's. They are
+      a new type, `peer_message`, shown as ANOTHER AGENT in the candidate's,
+      locate's and the leak surveyor's views. SWE-chat has no such rows, so
+      v1's views do not change.
+    - 10,186 are Claude Code's own, now `system_injected`: a skill the
+      agent's call loaded, a timer's or wake-up's prompt, a hook's feedback,
+      the resume line, a note on an image, a command's output, "Tool
+      loaded.". A meta entry is the developer's only when it expands a
+      command they ran: 3,307 do.
+    - Checked over all 6,464 transcripts: no row moved or changed but its
+      type. The re-assembled corpus holds 6,449 sessions; 15 held no
+      developer message at all. It carries the rest batch's labels too:
+      43,113 placed, and 2,795 left off rows that are not the developer's,
+      446 of them pushback.
+    - 26 of the first runs' 681 moments were not the developer's (21 typed
+      otherwise now, 5 in the 15 sessions). None of the 16 tasks' complaints.
+  - *G-91, copies.* Corrects the 06:3x entry: the 634 sessions counted there
+    shared text, and most of that text was a command or template sent again
+    on another day; in 80 sampled pairs no shared message had the same time.
+    A copy keeps the message's text and its time to the millisecond, with a
+    new uuid. So measured: 2,075 of the collected corpus's developer rows
+    (2.2%) in 129 sessions, and 1,638 of SWE-chat's (3.4% of those with a
+    time) in 54. The first runs read 9 moments twice; two of the 16 tasks
+    (bertrandvidal-sound-map-61 and -62) are one moment. None of v1's 55.
+    `find_moments` now keeps one copy, in the session that starts first,
+    then the one with the most turns after it, and none of one an earlier
+    collection took.
+  - *G-92, cut views.* Every message is shown whole to triage, reading and
+    locate, and every cut of tool output says how much went. Triage reads
+    from the start of a turn, always from the agent's last answer, its tool
+    output no longer squeezed by history it never reads. Reading's view grew
+    15% at the median, locate's 4%. The default rendering, what v1's
+    candidates and gates read, is unchanged.
+  - *G-94, new.* 1,933 rows in the agent's name were Claude Code's own
+    (model `<synthetic>`): "No response requested.", a spend limit,
+    "Prompt is too long", API errors. Two located trajectories took one for
+    the failed answer. They are now `system_injected`; the 20 thinking rows
+    in such messages are the agent's and stay so.
+  - *The three failed side installs.* cli-281's ran `npm ci` in a folder
+    with a lockfile and no package.json; nrmeyers-19 and -20's frontend has
+    a settings-only pnpm-workspace.yaml, which pnpm 9 refuses. Now: no
+    install without a package.json, and pnpm 10 for such a workspace. The
+    rebuilt frontend installs strict. v1's 55 Dockerfiles, rendered with
+    both recipes, are byte for byte the same.
+  - *The finding stages' judgements.* Instructions changed for triage,
+    reading and locate, from the reviewers' patterns, with no example taken
+    from the items judged. Reading now answers four checks before its
+    verdict (the pushback is the developer's; the agent could have known;
+    the defect shows from the repository; getting it right means doing as
+    asked), and a no makes it not viable in code. Locate says whether the
+    complaint is an objection and whether the agent could have known, and
+    an acknowledgement or a status line is no longer a resolution. The scope
+    gate is unchanged: one clear miss in 24, and it is part of v1.1's
+    screening.
+  - *Asked again of the reviewers' verdicts* (gpt-6-astra, Azure credits,
+    $13.95 in all). "Should flip" counts verdicts the reviewers judged
+    wrong; "should hold", those they judged right.
+    - First pass, 67 calls ($11.17): triage flipped 2 of 2 and held 20 of
+      21; reading flipped 4 of 5 and held 14 of 18; locate flipped 5 of 6
+      and held 14 of 15. Reading's four losses read "could the agent have
+      known" as "had the developer said so before", and "context
+      sufficient" as needing a reproduction.
+    - Those two checks and triage's line on corrections were reworded, and
+      the 22 decisions they touch asked again ($2.78): triage flipped 2 of 2
+      and held 6 of 6; reading flipped 5 of 5 and held 8 of 9.
+    - Left: one reading the reviewer would call viable (agent-skills-34:
+      whether the inclusion rule was first set in the pushback), and one
+      locate the reviewer faulted that still reads usable (oh-my-posh-174),
+      now on another defect its whole view shows. Reading's not-viable
+      verdicts were not all asked again after the rewording.
+  - *Held.* The collector's checks (section 5) hold G-90 and G-94; the
+    guard suite's sections 162 to 164 and front_stages_run's 11 hold the
+    views, the copies and the installs. All six suites pass on the final
+    code, 1,043 checks in the guard suite. Each of the 58 pieces was broken
+    alone in its own copy, with a control per suite, and each is now
+    caught. Five survived a first pass for want of a check and were caught
+    once theirs was written; five were first aimed at the wrong file by the
+    runner, and caught when aimed right.
+  - *Not fixed here.* G-93, notices never shown, and v1's exposure to G-90
+    and G-91, are #17's: SWE-chat's table holds about 1,300 pushback labels
+    on text no developer typed, and none of v1's 55 tasks has one as its
+    complaint or request; 5 show such rows before their cut. Also noted:
+    a pushback the developer gives inside a tool's result (a declined plan)
+    cannot become a moment; "Implement the following plan:" is the agent's
+    plan sent on the developer's approval, shown as USER.
