@@ -1009,7 +1009,11 @@ def main() -> int:
               "not repairable: the leak is the developer's request itself")
           and rows9["t-asked"].get("released_redacted_turns") == [3] and env_seen9 == {("900", "5")}
           and all(r.get("screen_model") == "gpt-6-astra" and "usage" in r and r.get("screen_passes") == 3
-                  and r.get("task_fingerprint") and r.get("conversation_sha256") for r in rows9.values()),
+                  and r.get("task_fingerprint") and r.get("conversation_sha256")
+                  # And the session data it was screened on, which the apply checks (10-01).
+                  and r.get("session_sha256") == recover_mod.session_fingerprint(
+                      r["session_id"], list(SESSIONS.get(r["session_id"], SESSION)))
+                  for r in rows9.values()),
           f"each frozen task is screened from before its repair, three times over, its rows priced by their model: "
           f"{seen9}")
     # Each decision, and its reason, read off its row (10-01: a mutant setting a
@@ -1448,6 +1452,31 @@ def main() -> int:
           and rows10h[0].get("redaction_outcome"),
           f"a surveyor's answer that did not parse is asked once more and the row finished: {screened10h}, "
           f"surveyed {len(surveyed10)} times, {[(r.get('error') or r.get('redaction_outcome'))[:50] for r in rows10h]}")
+    # A task is rendered again only from the session data its re-screen read: from
+    # another copy of the corpus it could show a conversation the leak check never
+    # read. Refused, changing nothing (10-01).
+    release10j = Path(tempfile.mkdtemp()) / "release"
+    pristine10(release10j, ("t-undo",), harbor=False)
+    files10j = lambda: {p.relative_to(release10j).as_posix(): p.read_bytes()
+                        for p in sorted(release10j.rglob("*")) if p.is_file()}
+    before10j = files10j()
+
+    def elsewhere10(ids):
+        return {sid: [dict(t, content=str(t.get("content") or "") + " ") for t in SESSIONS.get(sid, SESSION)]
+                for sid in ids}
+
+    kept10j = (turns_mod.build_excerpt, attempt_mod9.build_excerpt, turns_mod.load_session_turns)
+    turns_mod.build_excerpt = attempt_mod9.build_excerpt = REAL_BUILD_EXCERPT
+    turns_mod.load_session_turns = elsewhere10
+    try:
+        with contextlib10.redirect_stderr(io10.StringIO()) as said10j:
+            elsewhere_rc10 = apply9.main([str(release10j), str(out10)])
+    finally:
+        turns_mod.build_excerpt, attempt_mod9.build_excerpt, turns_mod.load_session_turns = kept10j
+    check(elsewhere_rc10 == 2 and files10j() == before10j and "other session data" in said10j.getvalue()
+          and "t-undo" in said10j.getvalue(),
+          f"a task is not rendered again from other session data than its re-screen read, and nothing changes: "
+          f"{elsewhere_rc10}, {said10j.getvalue().strip()[:100]!r}")
 
     print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
     for f in FAIL:

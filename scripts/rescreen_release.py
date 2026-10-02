@@ -20,13 +20,15 @@ render its conversation.txt byte for byte: a task whose view differs would be
 screened on a conversation its candidate is not shown, and the run is refused.
 
 Each task becomes one row of <out>/signatures.jsonl, carrying its task id, its
-fingerprint and its conversation's digest; the stage writes <out>/screened.jsonl,
-each row with its own token use. The release is not changed:
-`scripts/apply_rescreen.py` applies the verdicts. Needs the corpus and its
-transcripts, not GitHub. Paid, on the screening model, ERRATA_MODEL, which must
-be named: price it with `scripts/harbor_spend.py --admitted <out>`, and guard
-it with `ADMITTED=<out> scripts/harbor-guard.sh`. Run again, it asks only what
-is not yet done; an --out holding other tasks or task versions is refused.
+fingerprint, its conversation's digest and a digest of the session data it is
+screened on (`corpus.recover.session_fingerprint`), which the apply checks. The
+stage writes <out>/screened.jsonl, each row with its own token use. The release
+is not changed: `scripts/apply_rescreen.py` applies the verdicts. Needs the
+corpus and its transcripts, not GitHub. Paid, on the screening model,
+ERRATA_MODEL, which must be named: price it with `scripts/harbor_spend.py
+--admitted <out>`, and guard it with `ADMITTED=<out> scripts/harbor-guard.sh`.
+Run again, it asks only what is not yet done; an --out holding other tasks,
+task versions or session data is refused.
 """
 
 from __future__ import annotations
@@ -68,13 +70,16 @@ def rows_of(release: Path, only: set[str]) -> list[dict]:
     return rows
 
 
-def unscreenable(release: Path, rows: list[dict]) -> dict[str, str]:
-    """The tasks whose gates' view, with the task's own repair, does not render its conversation.txt."""
+def unscreenable(release: Path, rows: list[dict], loaded: dict[str, list[dict]]) -> dict[str, str]:
+    """The tasks whose gates' view, with the task's own repair, does not render its conversation.txt.
+
+    ``loaded`` is the corpus's turns of their sessions (`load_session_turns`).
+    """
     from errata_bench.corpus.recover import recovered
-    from errata_bench.corpus.turns import RECORD, RECORD_CHARS, build_excerpt, load_session_turns
+    from errata_bench.corpus.turns import RECORD, RECORD_CHARS, build_excerpt
     from errata_bench.stages.screening import screened_view
 
-    turns = recovered(load_session_turns({r["session_id"] for r in rows}))
+    turns = recovered(loaded)
     bad = {}
     for r in rows:
         if not turns.get(r["session_id"]):
@@ -129,15 +134,25 @@ def main(argv: list[str]) -> int:
     if not rows:
         print(f"refused: no frozen tasks under {args.release / 'tasks'}", file=sys.stderr)
         return 2
+    from errata_bench.corpus.recover import session_fingerprint
+    from errata_bench.corpus.turns import load_session_turns
+
+    # Each row carries a digest of the session data it is screened on: applying
+    # the re-screen renders a repaired task again only from the same (10-01).
+    loaded = load_session_turns({r["session_id"] for r in rows})
+    for r in rows:
+        r["session_sha256"] = session_fingerprint(r["session_id"], loaded.get(r["session_id"]) or [])
     signatures = args.out / "signatures.jsonl"
     wanted = "".join(json.dumps(r) + "\n" for r in rows)
     # Written once, and the stage resumes on it: a folder screened on other tasks,
-    # or on other versions of them, would report them done and screen nothing.
+    # on other versions of them, or on other session data, would report them done
+    # and screen nothing.
     if signatures.exists() and signatures.read_text() != wanted:
-        print(f"refused: {args.out} holds a re-screen of other tasks or task versions than these; use a new --out; "
-              f"nothing was read", file=sys.stderr)
+        print(f"refused: {args.out} holds a re-screen of other tasks, task versions or session data than these; "
+              f"use a new --out; nothing was asked", file=sys.stderr)
         return 2
-    bad = unscreenable(args.release, rows)
+    bad = unscreenable(args.release, rows, loaded)
+    del loaded
     gc.collect()
     if bad:
         print(f"refused: {len(bad)} task(s) would be screened on a conversation their candidate is not shown; "

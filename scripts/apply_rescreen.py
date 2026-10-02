@@ -36,10 +36,11 @@ repair, so a judge is admitted after this, not before.
 
 Refused, changing nothing, unless every task has one finished row, screened at
 --passes or more, of the task as it now is (its fingerprint) and of the
-conversation it now shows (its digest). Needs the corpus to render again, the
-one the re-screen read: a task is rendered from it as the re-screen's leak
-check read it, and nothing here checks that it is the same corpus. Makes no
-model calls.
+conversation it now shows (its digest). Needs the corpus to render again, and
+refused, changing nothing, unless each task to render has here the session data
+its re-screen read (`corpus.recover.session_fingerprint`): from another copy of
+the corpus, a task could show a conversation the leak check never read. Makes
+no model calls.
 """
 
 from __future__ import annotations
@@ -213,6 +214,22 @@ def main(argv: list[str]) -> int:
     rerender = module.rerender
     redo = [p for p in plan if render[p["task_id"]]]
     loaded = load_session_turns({tasks[p["task_id"]][0].session_id for p in redo}) if redo else {}
+    from errata_bench.corpus.recover import session_fingerprint
+
+    # Rendered again only from the session data the re-screen read: from another
+    # copy of the corpus, a task could show its candidate a conversation the
+    # re-screen's leak check never read (10-01 review).
+    elsewhere = []
+    for p in redo:
+        sid = tasks[p["task_id"]][0].session_id
+        if row_of[p["task_id"]].get("session_sha256") != session_fingerprint(sid, loaded.get(sid) or []):
+            elsewhere.append(p["task_id"])
+    if elsewhere:
+        print(f"refused: {len(elsewhere)} task(s) would be rendered again from other session data than their "
+              f"re-screen read; apply it where the re-screen ran. Nothing was changed:"
+              + "".join(f"\n  - {t}" for t in elsewhere[:12]) + ("\n  ..." if len(elsewhere) > 12 else ""),
+              file=sys.stderr)
+        return 2
     now, version = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"), code_version()
     # Each task recorded as it is done, so a run stopped part way keeps the record
     # of what it changed: one recorded at the end lost it (10-01 review).

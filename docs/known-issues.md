@@ -116,7 +116,9 @@ be taken to mean.
    - Four official tasks' defects name nothing a check could look for
      ([#8](https://github.com/zanwenfu/errata-bench/issues/8)):
      entireio-cli-283, femto-mcp-chrome-58, hutusi-amytis-15 and
-     hutusi-amytis-349.
+     hutusi-amytis-349. Each was read in its task's tree on 1 October, by a
+     Claude model, and found there; the evidence is on #8. No person has
+     read them yet.
 4. **The graders share a maker, and the tasks favour one.**
    - Both grading models are OpenAI's, so their agreement is a weaker check
      than agreement across makers, and OpenAI-family agents cannot yet be
@@ -314,10 +316,9 @@ and the verdicts applied (`scripts/apply_rescreen.py`): each task kept, its
 leak repaired again, never by removing the request, or set aside. Then its
 Harbor tasks' digests are recorded and the judge admitted again on the new
 conversations. The re-screen and the admission are paid steps and wait for
-approval. The apply must run on the corpus the re-screen read: it renders
-each repaired task from the corpus, as the re-screen's leak check read it,
-and does not check that the corpus is the same one. One change any run on
-v1.1 carries: on the 17 tasks whose
+approval. The apply renders each repaired task from the corpus, and refuses
+to unless the task's session data are those its re-screen read. One change
+any run on v1.1 carries: on the 17 tasks whose
 instruction cuts long tool traffic to fit, the put-back text and the longer
 note on the cut take room, so each long tool output is cut 0.6% to 13.5%
 shorter than in v1.0 (Nagi-ovo-gemini-voyager-195: at 5,447 characters,
@@ -346,8 +347,9 @@ error.
   now read every conversation whole.
 - **The defect labels overstated what was checked**
   ([#8](https://github.com/zanwenfu/errata-bench/issues/8)). They were
-  relabelled, and two missed defects found. One item was reopened: a person
-  must read the four tasks above.
+  relabelled, and two missed defects found. One item was reopened, reading
+  the four tasks above in their trees: on 1 October a Claude model found each
+  defect there. A person's reading is part of #3.
 - **Windows paths** ([#9](https://github.com/zanwenfu/errata-bench/issues/9)).
 - **Provenance** ([#6](https://github.com/zanwenfu/errata-bench/issues/6),
   partly):

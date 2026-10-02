@@ -515,6 +515,28 @@ def with_text(session_id: str, turns: list[dict]) -> list[dict]:
 SUBAGENT_WRITES = frozenset({"Edit", "Write", "MultiEdit", "NotebookEdit"})
 
 
+def session_fingerprint(session_id: str, turns: list[dict]) -> str:
+    """A digest of everything a session's tasks are rendered from on this machine.
+
+    Its turns as the corpus holds them (`load_session_turns`, before anything is
+    put back), its transcript (the calls and the text put back, G-76 and G-79),
+    and its subagents' transcripts (#16). The release re-screen records it, and
+    applying the re-screen renders a repaired task again only where it is the
+    same: from another copy of the corpus a task could show its candidate a
+    conversation the re-screen's leak check never read (10-01).
+    """
+    import hashlib
+
+    digest = hashlib.sha256(json.dumps(turns, sort_keys=True, default=str).encode("utf-8"))
+    path = transcript_path(session_id)
+    digest.update(b"\0transcript\0" + (path.read_bytes() if path.is_file() else b"none"))
+    sub = subagent_dir(session_id)
+    if sub is not None and sub.is_dir():
+        for f in sorted(p for p in sub.rglob("*") if p.is_file()):
+            digest.update(b"\0" + f.relative_to(sub).as_posix().encode("utf-8") + b"\0" + f.read_bytes())
+    return digest.hexdigest()
+
+
 def subagent_dir(session_id: str) -> Path | None:
     """Where the collector keeps this session's subagent transcripts, when the corpus has them (#16).
 

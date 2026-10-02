@@ -86,9 +86,9 @@ trial given another for an error, after the trial is paid for. `--check`
 confirms it before the digests are recorded. Each `cp -R` must make a folder
 that does not exist yet: into one that does, it copies the release inside it.
 
-- Run the apply where the re-screen ran, on the same corpus. It renders each
-  repaired task from the corpus, as the re-screen's leak check read it, and
-  does not check that the corpus is the same one.
+- Run the apply where the re-screen ran. It renders each repaired task from
+  the corpus, and refuses, changing nothing, where a task's session data are
+  not those its re-screen read.
 - Either step, stopped part way, is run again as it was. The re-screen asks
   only the rows it has not finished. The apply finishes what an earlier run
   began, and records each decision against the release as screened.

@@ -13978,6 +13978,35 @@ check(all(all(v) for v in _again159.values()),
       f"a re-screen run again asks only the rows whose calls failed, exits 1 while any did, and applied twice "
       f"keeps the first backup and each row's old verdict: {_again159}")
 
+print("\n160. before shipping (10-01): a release re-screen is applied only on the session data it read")
+# The apply renders a repaired task again from the corpus where it runs. The
+# re-screen records a digest of each session's data, and the digest changes with
+# anything a task is rendered from: the turns, the transcript the calls and text
+# are put back from, and the subagents' transcripts.
+_d160 = Path(tempfile.mkdtemp())
+_kept160 = (recover_mod.transcript_path, recover_mod.subagent_dir)
+recover_mod.transcript_path = lambda sid: _d160 / "transcripts" / f"{sid}.jsonl"
+recover_mod.subagent_dir = lambda sid: _d160 / "subagents" / sid
+try:
+    _turns160 = [{"turn_number": 1, "turn_type": "user_prompt", "content": "add retries to the uploader"}]
+    _seen160 = {"none": recover_mod.session_fingerprint("s160", _turns160),
+                "the same again": recover_mod.session_fingerprint("s160", [dict(t) for t in _turns160]),
+                "a turn changed": recover_mod.session_fingerprint("s160", [dict(_turns160[0], content="add retries")])}
+    (_d160 / "transcripts").mkdir()
+    (_d160 / "transcripts" / "s160.jsonl").write_text('{"type": "user"}\n')
+    _seen160["a transcript"] = recover_mod.session_fingerprint("s160", _turns160)
+    (_d160 / "transcripts" / "s160.jsonl").write_text('{"type": "user"} \n')
+    _seen160["another transcript"] = recover_mod.session_fingerprint("s160", _turns160)
+    (_d160 / "subagents" / "s160").mkdir(parents=True)
+    (_d160 / "subagents" / "s160" / "agent-a.jsonl").write_text("{}\n")
+    _seen160["a subagent's transcript"] = recover_mod.session_fingerprint("s160", _turns160)
+finally:
+    recover_mod.transcript_path, recover_mod.subagent_dir = _kept160
+check(_seen160["none"] == _seen160["the same again"]
+      and len({v for k, v in _seen160.items() if k != "the same again"}) == 5,
+      f"a session's digest is the same for the same data, and changes with its turns, its transcript and its "
+      f"subagents' transcripts: {sorted({k: v[:8] for k, v in _seen160.items()}.items())}")
+
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:
     print("  -", f)
