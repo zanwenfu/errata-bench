@@ -14697,13 +14697,16 @@ _shown_r164 = max((len(line) for line in _fitted164.splitlines() if "-> result: 
 check("m" * 10_000 in _fitted164 and _shown_r164 > 3_000,
       f"with messages whole, a result keeps the room the whole messages leave it, not a squeezed 200: "
       f"{_shown_r164} characters")
+# 39 results of about 3,500 characters: fitted to 60,000 as a whole, each would
+# keep under 1,500; triage reads only the last few, and they keep 3,500.
 _long_tool164 = [_T63(1, "user_prompt", content="add retries")] + [
-    x for n in range(2, 40, 2) for x in (_T63(n, "tool_use", tool_name="Bash", command=f"make {n}", tool_call_id=f"c{n}"),
-                                         _T63(n + 1, "tool_result", content=f"out {n} " * 400, tool_call_id=f"c{n}"))] + [
-    _T63(40, "assistant_response", content="Done."), _T63(41, "user_prompt", content="that is wrong")]
-_tail164 = _tri164.view(_long_tool164, 41)
-check("[turn 39] -> result: out 38 out 38" in _tail164 and len(_tail164.split("[turn 39] -> result: ")[1].split("\n")[0]) > 2_000,
-      "triage's results are not squeezed by the history it never reads")
+    x for n in range(2, 80, 2) for x in (_T63(n, "tool_use", tool_name="Bash", command=f"make {n}", tool_call_id=f"c{n}"),
+                                         _T63(n + 1, "tool_result", content=f"out {n} " * 500, tool_call_id=f"c{n}"))] + [
+    _T63(80, "assistant_response", content="Done."), _T63(81, "user_prompt", content="that is wrong")]
+_tail164 = _tri164.view(_long_tool164, 81)
+_last164 = (_tail164.split("[turn 79] -> result: ") + [""])[1].split("\n")[0]
+check(_last164.startswith("out 78 out 78") and len(_last164) > 3_000,
+      f"triage's results are not squeezed by the history it never reads: the last keeps {len(_last164)} characters")
 _dev164 = "Here is the log: " + "line\n" * 1500
 _peer164 = "<teammate-message teammate_id=\"qa\">" + "finding " * 800 + "</teammate-message>"
 _read164w = _render164([_T63(1, "user_prompt", content=_dev164), _T63(2, "peer_message", content=_peer164),
