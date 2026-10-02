@@ -75,54 +75,33 @@ errata-bench turns real failures into a test that any model can take.
 
 The system has three parts. The tasks are built once per release. An agent runs each one in a
 container that reaches model APIs and nothing else. Its answer is graded outside the container,
-against known answers the agent never sees.
+against known answers the agent never sees. The numbers on the figure are the steps below.
 
-```mermaid
-flowchart TB
-  subgraph build["a · Build the tasks: the maintainers, once per release"]
-    direction LR
-    sessions["<b>Real sessions</b><br/>5,851 in SWE-chat<br/>lost calls put back"]
-    find["<b>Pushbacks</b><br/>2,458 examined<br/>1,040 pass triage"]
-    cut["<b>Cut and screen</b><br/>cut before the report<br/>3 gates, read 3 times<br/>301 pass"]
-    rebuild["<b>Rebuild the repo</b><br/>its base commit<br/>the edits replayed<br/>95 rebuilt"]
-    admit["<b>Admit</b><br/>the judge must grade<br/>the known answers<br/>55 tasks"]
-    release["<b>Release</b><br/>Harbor tasks, digests<br/>51 official<br/>dataset v1.0.2"]
-    sessions --> find --> cut --> rebuild --> admit --> release
-  end
-  subgraph run["b · Run an agent: in a container, model APIs only"]
-    direction LR
-    task["<b>The task</b><br/>the repository and<br/>the conversation"]
-    agent["<b>Any agent</b><br/>any agent Harbor runs<br/>3 attempts a task"]
-    recorder["<b>Recorder</b><br/>every call, whole<br/>grades nothing"]
-    task --> agent --> recorder
-  end
-  subgraph grade["c · Grade and score: outside the container"]
-    direction LR
-    judge["<b>Judge</b><br/>gpt-6-astra<br/>3 readings"]
-    settle["<b>Settle</b><br/>quotes checked<br/>majority of 3"]
-    score["<b>Score</b><br/>honest, fixed, both<br/>95% intervals"]
-    compare["<b>Compare</b><br/>15 model pairs<br/>a registered test"]
-    judge --> settle --> score --> compare
-  end
-  build -- "the task" --> run
-  run -- "report and record" --> grade
-  build -. "the known answers, kept outside the container" .-> grade
-```
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/img/architecture-dark.svg">
+  <img alt="errata-bench's system: tasks are built once per release from real SWE-chat sessions (find, cut and screen, rebuild, admit, release); an agent runs each task in a sealed Harbor container with a recorder; outside the container the judge reads the report against the record three times, settled by majority and scored; the known answers never enter the container" src="docs/img/architecture-light.svg" width="100%">
+</picture>
 
 1. **Find.** Take the developer messages in SWE-chat that push back on an agent's work. Keep
-   those that a model's reading confirms show a real error by the agent.
-2. **Rebuild.** Cut the conversation just before the agent's faulty report. Rebuild the
-   repository from the last commit before the session, with the agent's file edits replayed
-   and checked against the files the conversation shows. Other commands' effects are not
-   replayed.
-3. **Admit.** Keep a task only if the judge grades its two real answers correctly (the one the
+   those that a model's reading confirms show a real error by the agent: 1,040 of 2,458 pass a
+   first check, and each of those is read in full.
+2. **Cut and screen.** Cut the conversation just before the agent's faulty report. Three gates,
+   each read three times, ask whether the developer asks for something, whether the defect is
+   within it, and whether the conversation already gives the answer away. 301 pass.
+3. **Rebuild.** Rebuild the repository from the last commit before the session, with the
+   agent's file edits replayed and checked against the files the conversation shows. Other
+   commands' effects are not replayed.
+4. **Admit.** Keep a task only if the judge grades its two real answers correctly (the one the
    developer rejected and the one that resolved it), along with three known-answer controls.
-4. **Run.** Give a candidate agent the conversation, the repository and its tools, with the
-   network closed. Any agent that [Harbor](https://github.com/harbor-framework/harbor) runs can
-   be tested.
-5. **Grade.** The judge compares the answer with the two real answers and reads it against the
-   candidate's whole record. A second grader, the trace check, lists every claimed action and
-   looks for it in the record; in v1 it is a diagnostic.
+5. **Release.** Freeze each task, export it as a Harbor task with a digest of every file, and
+   check the official judge on it again: 51 of the 55 tasks count.
+6. **Run.** Give a candidate agent the conversation, the repository and its tools, with the
+   network closed but for model APIs. Any agent that [Harbor](https://github.com/harbor-framework/harbor)
+   runs can be tested. A recorder keeps every call, and grades nothing.
+7. **Grade.** Outside the container, the judge compares the answer with the two real answers
+   and reads it against the attempt's whole record, three times; the majority decides. A second
+   grader, the trace check, lists every claimed action and looks for it in the record; in v1 it
+   is a diagnostic.
 
 Of 2,458 moments examined, 55 became tasks. [Method](docs/method.md) describes each step.
 

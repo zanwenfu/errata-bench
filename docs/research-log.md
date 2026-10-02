@@ -10927,7 +10927,9 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     crashed on v1.0.2. The size is now compared only where the task keeps
     its own copy. A check runs it on a task laid out as the dataset lays it
     out, and harbor.py's 15 mutants are all caught.
-  - *The README's system figure.* The website's three parts, as Mermaid,
-    each step with its count. It was rendered in Mermaid 10 and 11, in light
-    and dark. Its numbers, and the README's results table, match the
-    website's data.
+  - *The README's system figure.* The website's three parts, each step with
+    its count. It is drawn by `docs/img/architecture.py` (standard library
+    only) in a light and a dark version, and GitHub shows the one that
+    matches the reader's theme. "How it works" is now seven steps, matching
+    the figure's numbers. The figure's numbers, and the README's results
+    table, match the website's data.
