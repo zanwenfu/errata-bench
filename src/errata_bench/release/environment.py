@@ -129,8 +129,9 @@ def recipe(task: dict, files: list[str], package_jsons: dict[str, str],
            pyprojects: dict[str, str] | None = None) -> Recipe:
     """A task's recipe, from its task.json, its working copy's file list and its manifests.
 
-    ``files`` are paths relative to the working copy; ``package_jsons`` and
-    ``pyprojects`` map a package.json's or pyproject.toml's path to its text.
+    ``files`` are paths relative to the working copy; ``package_jsons`` maps a
+    package.json's or pnpm-workspace.yaml's path to its text, and
+    ``pyprojects`` a pyproject.toml's.
     Lockfiles under node_modules or deeper than three folders are not the
     project's own.
     """
@@ -167,6 +168,11 @@ def recipe(task: dict, files: list[str], package_jsons: dict[str, str],
             if lock in names:
                 if lock in JS_LOCKS and lock != keep_js:
                     continue
+                # A lockfile with no package.json beside it has nothing to install
+                # from: `npm ci` stops at once (entireio-cli-281's .opencode, 10-02).
+                if lock in JS_LOCKS and "package.json" not in names:
+                    r.notes.append(f"{folder or '.'}: {lock} with no package.json, not installed")
+                    continue
                 if lock == "requirements.txt" and names & {"uv.lock", "poetry.lock"}:
                     continue
                 r.installs.append((folder, strict, lenient, lock))
@@ -175,7 +181,12 @@ def recipe(task: dict, files: list[str], package_jsons: dict[str, str],
             r.installs.append((folder, UNLOCKED[pm], UNLOCKED[pm], "package.json"))
             r.notes.append(f"{folder or '.'}: package.json with no lockfile, installed unlocked with {pm}")
         if "pnpm-lock.yaml" in names and not manager.startswith("pnpm@"):
-            r.tools.append("corepack install -g pnpm@9")
+            # A pnpm-workspace.yaml that only holds settings, with no `packages`,
+            # is pnpm 10's: pnpm 9 refuses it ("packages field missing or empty"),
+            # as it did nrmeyers-agentalloy-19's and -20's frontend (10-02).
+            workspace = package_jsons.get(f"{folder}/pnpm-workspace.yaml" if folder else "pnpm-workspace.yaml")
+            settings_only = workspace is not None and not re.search(r"(?m)^packages\s*:", workspace)
+            r.tools.append("corepack install -g pnpm@10" if settings_only else "corepack install -g pnpm@9")
         pkg_path = f"{folder}/package.json" if folder else "package.json"
         run = (_runner(names) or (_runner(by_folder.get("", set())) if pkg_path in package_jsons else None)
                or ("npm run" if "package.json" in names else None))
@@ -318,7 +329,8 @@ def environment_failure(output: str) -> str | None:
 
 
 def workspace_contents(archive: Path) -> tuple[list[str], dict[str, str], dict[str, str]]:
-    """The working copy's files (paths under workspace/, outside .git), and its package.json and pyproject.toml texts."""
+    """The working copy's files (paths under workspace/, outside .git); its JavaScript manifests' texts by path
+    (package.json, and pnpm-workspace.yaml, which says which pnpm wrote it); and its pyproject.toml texts."""
     files, packages, pyprojects = [], {}, {}
     with tarfile.open(archive) as tar:
         for m in tar:
@@ -327,7 +339,8 @@ def workspace_contents(archive: Path) -> tuple[list[str], dict[str, str], dict[s
                 continue
             rel = "/".join(parts[1:])
             files.append(rel)
-            if parts[-1] in ("package.json", "pyproject.toml") and "node_modules" not in parts and len(parts) <= 5:
+            if (parts[-1] in ("package.json", "pnpm-workspace.yaml", "pyproject.toml") and "node_modules" not in parts
+                    and len(parts) <= 5):
                 text = tar.extractfile(m).read().decode("utf-8", "replace")
-                (packages if parts[-1] == "package.json" else pyprojects)[rel] = text
+                (pyprojects if parts[-1] == "pyproject.toml" else packages)[rel] = text
     return files, packages, pyprojects

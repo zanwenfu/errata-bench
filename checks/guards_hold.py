@@ -8979,6 +8979,18 @@ check([i[1] for i in _mix129.installs] == ["pnpm install --frozen-lockfile", "go
                                            "uv sync --frozen --all-extras"]
       and "corepack install -g pnpm@9" in _mix129.tools and len(_mix129.checks) == 3,
       f"pnpm, Go and uv side by side each install and each get a check: {[i[1] for i in _mix129.installs]}")
+# 10-02: a lockfile with no package.json beside it installs nothing, and a
+# pnpm-workspace.yaml holding only settings is pnpm 10's, which pnpm 9 refuses.
+_lone129 = _env129.recipe(_T129, ["go.mod", ".opencode/package-lock.json", "web/package.json", "web/pnpm-lock.yaml",
+                                  "web/pnpm-workspace.yaml"],
+                          {"web/package.json": json.dumps({"scripts": {}}),
+                           "web/pnpm-workspace.yaml": "allowBuilds:\n  esbuild: true\n"})
+_pkgs129 = _env129.recipe(_T129, ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "apps/a/package.json"],
+                          {"package.json": "{}", "pnpm-workspace.yaml": "packages:\n  - apps/*\n"})
+check([i[0] for i in _lone129.installs] == ["", "web"] and "corepack install -g pnpm@10" in _lone129.tools
+      and any(".opencode" in n for n in _lone129.notes) and _pkgs129.tools == ["corepack install -g pnpm@9"],
+      f"a lockfile with no package.json is not installed and says so; a settings-only pnpm workspace gets pnpm 10, "
+      f"a workspace with packages pnpm 9: {_lone129.installs} {_lone129.tools} {_pkgs129.tools}")
 _df129 = _env129.dockerfile(_ws129)
 check(_df129.startswith("# errata-bench v1: t129\nFROM errata-base:v1\n")
       and "mv /tmp/workspace '/Users/stavan/Docs - Stavan'\"'\"'s Mac/AiTutor'" in _df129
