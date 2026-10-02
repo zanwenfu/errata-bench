@@ -25,9 +25,42 @@ where it sits.
 
 from __future__ import annotations
 
+import re
+
 from pydantic import BaseModel, Field
 
 from ..llm import MODEL, configure_client, resilient, with_field_guide
+
+# How much of the end of the conversation triage reads, at the least.
+TAIL_CHARS = 9000
+LEFT_OUT = "[... the conversation before this is not shown ...]"
+_TURN = re.compile(r"(?m)^\[turn ")
+_AGENT_SAYS = re.compile(r"(?m)^\[turn [^\]\n]*\] AGENT:$")
+
+
+def view(turns: list[dict], turn_number) -> str:
+    """What triage reads: the end of the conversation up to the developer's message (G-92).
+
+    From the start of a turn, about the last `TAIL_CHARS` of it, every message
+    whole (`build_excerpt`'s ``whole_messages``, record 2, so a call shows its
+    input and a cut says how much went), and always from the agent's last
+    answer before the message: the work it may object to. A line says where
+    the rest was left out. It read the last 9,000 characters as they fell,
+    with each message cut at 4,000: the view began inside a turn in 643 of the
+    first 681 Entire moments, and the agent's last answer was cut, unmarked,
+    in 77.
+    """
+    from ..corpus.turns import build_excerpt
+
+    text = build_excerpt(turns, turn_number, record=2, whole_messages=True)
+    starts = [m.start() for m in _TURN.finditer(text)]
+    within = [at for at in starts if len(text) - at <= TAIL_CHARS]
+    start = within[0] if within else (starts[-1] if starts else 0)
+    answers = [m.start() for m in _AGENT_SAYS.finditer(text)]
+    if answers:
+        start = min(start, answers[-1])
+    # The rendering opens with a blank line before its first turn: from there, nothing is left out.
+    return text if not starts or start <= starts[0] else f"{LEFT_OUT}\n{text[start:]}"
 
 
 class Triage(BaseModel):
@@ -79,7 +112,7 @@ saying no is cheap, and saying yes commits several expensive reads."""
 
 
 async def triage(excerpt: str, *, model: str = MODEL) -> Triage:
-    """One call deciding whether a moment deserves the full reader."""
+    """One call deciding whether a moment deserves the full reader, on the end of the conversation (`view`)."""
     from agents import Agent, Runner
 
     configure_client()
@@ -89,8 +122,8 @@ async def triage(excerpt: str, *, model: str = MODEL) -> Triage:
         model=model,
         output_type=Triage,
     )
-    # Only the tail matters: whether the agent has acted, and what the developer
-    # said about it. The reader gets the whole conversation afterwards, if this
-    # says it is worth having.
-    result = await resilient(lambda: Runner.run(agent, f"The conversation:\n\n{excerpt[-9000:]}", max_turns=3))
+    # Only the end matters: whether the agent has acted, and what the developer
+    # said about it (`view`). The reader gets the whole conversation afterwards,
+    # if this says it is worth having.
+    result = await resilient(lambda: Runner.run(agent, f"The conversation:\n\n{excerpt}", max_turns=3))
     return result.final_output

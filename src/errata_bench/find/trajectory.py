@@ -50,7 +50,7 @@ from dataclasses import dataclass
 
 from pydantic import BaseModel, Field
 
-from ..corpus.turns import PEER_SPEAKER, speaker
+from ..corpus.turns import PEER_SPEAKER, _cut, speaker
 from ..llm import MODEL, configure_client, resilient, with_field_guide
 
 
@@ -239,8 +239,15 @@ def boundaries(t: Trajectory) -> Boundaries:
     )
 
 
-def render(turns: list[dict], start: int, end: int, *, budget: int = 900) -> str:
-    """Render a turn range for reading, keeping the narrative and compressing tools."""
+def render(turns: list[dict], start: int, end: int, *, budget: int = 900, calls: int = 200) -> str:
+    """Render a turn range for reading: every message whole, each call and result cut to a length, and said so.
+
+    Each message was cut at 3,000 characters, a result at 900 and a call at
+    200, with nothing said. 17 of the 89 failed answers the first Entire runs
+    located, and 12 of their resolutions, were longer, and in a sampled one
+    the cut hid the wrong sentence itself (G-92). Whole, the view is 4% longer
+    at the median (72,781 characters) and at most 2.7 times as long.
+    """
     lines: list[str] = []
     for turn in turns:
         n = turn.get("turn_number") or 0
@@ -255,16 +262,16 @@ def render(turns: list[dict], start: int, end: int, *, budget: int = 900) -> str
         # turns, and a "[turn 180.33333333333334]" invited a fractional one.
         label = turn.get("shown_as", n)
         if kind == "user_prompt":
-            lines.append(f"\n[turn {n}] {speaker(turn)}:\n{body[:3000]}")
+            lines.append(f"\n[turn {n}] {speaker(turn)}:\n{body}")
         elif kind == "peer_message":
-            lines.append(f"\n[turn {n}] {PEER_SPEAKER}:\n{body[:3000]}")
+            lines.append(f"\n[turn {n}] {PEER_SPEAKER}:\n{body}")
         elif kind == "assistant_response":
-            lines.append(f"\n[turn {label}] AGENT:\n{body[:3000]}")
+            lines.append(f"\n[turn {label}] AGENT:\n{body}")
         elif kind == "tool_use":
-            detail = turn.get("command") or turn.get("file_path") or body[:120]
-            lines.append(f"[turn {label}] calls {turn.get('tool_name')}: {str(detail)[:200]}")
+            detail = turn.get("command") or turn.get("file_path") or body
+            lines.append(f"[turn {label}] calls {turn.get('tool_name')}: {_cut(str(detail), calls, 2)}")
         elif kind == "tool_result" and body:
-            lines.append(f"[turn {label}] -> {body[:budget]}")
+            lines.append(f"[turn {label}] -> {_cut(body, budget, 2)}")
     return "\n".join(lines)
 
 

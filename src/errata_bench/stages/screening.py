@@ -81,10 +81,9 @@ async def stage_triage(paths: Paths, limit: int, concurrency: int) -> Progress:
     moments were read at full price and every one came back unclear, because
     they were opening instructions rather than objections.
     """
-    from ..corpus.turns import build_excerpt
     from ..corpus.turns import load_session_turns
     from ..corpus.recover import recovered
-    from ..find.triage import triage
+    from ..find.triage import triage, view as triage_view
     from ..llm import metering, model_name
 
     p = Progress("triage")
@@ -107,7 +106,7 @@ async def stage_triage(paths: Paths, limit: int, concurrency: int) -> Progress:
 
     async def one(m):
         try:
-            excerpt = build_excerpt(turns[m["session_id"]], m["turn_number"])
+            excerpt = triage_view(turns[m["session_id"]], m["turn_number"])
             verdict = await triage(excerpt)
             append_used(
                 paths.triaged,

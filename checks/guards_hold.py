@@ -14624,6 +14624,72 @@ check([s for s, _ in _after163] == ["s-a2", "s-c1", "s-c2", "s-e"]
       f"a copy of a moment an earlier collection took is left out, in every session: {_after163} "
       f"{_said_after163[:200]!r}")
 
+print("\n164. the finding stages read every message whole, and every cut says how much went (10-02)")
+# G-92: triage read the last 9,000 characters as they fell, each message cut at
+# 4,000 with nothing said; reading saw each message cut so; locate cut each at
+# 3,000, a result at 900 and a call at 200, unmarked. The agent's last answer
+# before the pushback, the work objected to, was cut in 77 of the first 681
+# Entire moments, and in a sampled locate the cut hid the wrong sentence itself.
+from errata_bench.find import reading as _read164, triage as _tri164
+from errata_bench.find.trajectory import render as _render164
+
+_answer164 = "I fixed it. " + "Details. " * 1500 + "All tests pass, verified end to end."
+_rows164 = [_T63(1, "user_prompt", content="add retries to the uploader"),
+            _T63(2, "tool_use", tool_name="Bash", command="make test " * 200, tool_call_id="b"),
+            _T63(3, "tool_result", content="ok " * 3000, tool_call_id="b"),
+            _T63(4, "assistant_response", content=_answer164),
+            _T63(5, "user_prompt", content="the tests never ran")]
+_whole164 = [_bx70(_rows164, 5, record=r, whole_messages=True) for r in (1, 2)]
+_cut164 = _bx70(_rows164, 5, record=2)
+check(all(_answer164 in v for v in _whole164) and _answer164 not in _cut164
+      and "more characters not shown]" in _whole164[1],
+      "with whole_messages a message is shown whole under records 1 and 2, where it was cut, and record 2 says "
+      "where a call or a result was cut")
+_squeezed164 = _bx70(_rows164, 5, record=2, whole_messages=True, max_chars=2_000)
+check(_answer164 in _squeezed164 and "more characters not shown]" in _squeezed164,
+      "and squeezed to fit, the tool traffic is cut and said so, never a message")
+_view164 = _tri164.view(_rows164, 5)
+check(_view164.startswith(_tri164.LEFT_OUT + "\n[turn 4] AGENT:\n") and _answer164 in _view164
+      and _view164.rstrip().endswith("the tests never ran"),
+      f"triage reads from the start of a turn, the agent's last answer whole however long, the developer's "
+      f"message whole, and a line saying the rest was left out: {_view164[:70]!r}")
+_short164 = [_T63(1, "user_prompt", content="add retries"), _T63(2, "assistant_response", content="Done."),
+             _T63(3, "user_prompt", content="no, that is wrong")]
+_view164s = _tri164.view(_short164, 3)
+check(_view164s == _bx70(_short164, 3, record=2, whole_messages=True) and _tri164.LEFT_OUT not in _view164s,
+      f"and a conversation shorter than its reach is read whole, with nothing said left out: {_view164s[:40]!r}")
+_asked164 = []
+
+
+class _Reader164:
+    @staticmethod
+    async def run(agent, prompt, **kw):
+        _asked164.append((agent.name, prompt))
+        raise RuntimeError("asked")
+
+
+_saved164 = (_tri164.configure_client, _read164.configure_client, _agents_mod.Runner)
+_tri164.configure_client = _read164.configure_client = lambda: None
+_agents_mod.Runner = _Reader164
+try:
+    for _call164 in (lambda: _tri164.triage(_view164), lambda: _read164.read_pushback(_rows164, 5)):
+        try:
+            asyncio.run(_call164())
+        except Exception:
+            pass
+finally:
+    _tri164.configure_client, _read164.configure_client, _agents_mod.Runner = _saved164
+_prompts164 = dict(_asked164)
+check(_view164 in _prompts164.get("triage", "") and _answer164 in _prompts164.get("pushback-reader", "")
+      and "more characters not shown]" in _prompts164.get("pushback-reader", ""),
+      f"triage is asked about its view whole, and the reader is shown every message whole and every cut said: "
+      f"{sorted((k, len(v)) for k, v in _prompts164.items())}")
+_read164v = _render164(_rows164, 1, 5)
+check(_answer164 in _read164v and "[turn 3] -> ok ok" in _read164v and "more characters not shown]" in
+      _read164v.split("[turn 3]")[1].split("\n")[0] and "more characters not shown]" in
+      _read164v.split("[turn 2]")[1].split("\n")[0],
+      "locate reads every message whole, and a call or a result cut to its length says how much went")
+
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:
     print("  -", f)

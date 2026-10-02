@@ -162,7 +162,10 @@ async def read_pushback(
     from agents import Agent, Runner
 
     configure_client()
-    excerpt = build_excerpt(turns, pushback_turn, mark_pushback=True)
+    # Every message whole, each call with its input, and every cut of a call or
+    # a result said with how much went (G-92): record 1 cut each message at
+    # 4,000 characters with nothing said, in 383 of the first 681 Entire moments.
+    excerpt = build_excerpt(turns, pushback_turn, mark_pushback=True, record=2, whole_messages=True)
     agent = Agent(
         name="pushback-reader",
         instructions=with_field_guide(INSTRUCTIONS, Reading),

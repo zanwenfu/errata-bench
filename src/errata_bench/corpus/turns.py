@@ -181,7 +181,7 @@ def call_shown(t: dict, limit: int = CALL_CHARS, record: int = 2) -> str:
 
 
 def _fit_result_budget(turns: list[dict], cut_turn: int, max_chars: int, fill: bool = False,
-                       record: int = 1) -> int:
+                       record: int = 1, whole_messages: bool = False) -> int:
     """How many characters each tool result may keep, given the space available.
 
     Early moments are where this matters. A flat 400-character cap showed only
@@ -215,7 +215,7 @@ def _fit_result_budget(turns: list[dict], cut_turn: int, max_chars: int, fill: b
         kind = t.get("turn_type") or ""
         content = (t.get("content") or "").strip()
         if kind in ("user_prompt", "assistant_response", "peer_message"):
-            fixed += min(len(content), MESSAGE_CHARS) + 40
+            fixed += (len(content) if whole_messages else min(len(content), MESSAGE_CHARS)) + 40
         elif kind == "assistant_thinking":
             fixed += min(len(content), 1500) + 40
         elif kind == "tool_use":
@@ -279,6 +279,7 @@ def build_excerpt(
     fill: bool = False,
     record: int = 1,
     tool_cap: int | None = None,
+    whole_messages: bool = False,
 ) -> str:
     """Render the turns leading up to a pushback into something readable.
 
@@ -294,8 +295,17 @@ def build_excerpt(
     call's input (as record 2 shows a call) and each tool result to that many
     characters, marked with how much went: the conversation as a Harbor task
     shows it when whole it is too long to pass to an agent (`release.harbor`).
+
+    ``whole_messages`` shows every message, the developer's, the agent's and
+    another agent's, whole under records 1 and 2, and fits only the tool
+    traffic to ``max_chars``: what the finding stages read (G-92). Cut at
+    4,000 characters with nothing said, the agent's last answer before the
+    pushback, the work objected to, was cut in 77 of the first 681 Entire
+    moments, and a message somewhere before it in 383.
     """
-    result_budget = _fit_result_budget(turns, cut_turn, max_chars, fill=fill, record=record)
+    message_chars = WHOLE if whole_messages else MESSAGE_CHARS
+    result_budget = _fit_result_budget(turns, cut_turn, max_chars, fill=fill, record=record,
+                                       whole_messages=whole_messages)
     lines: list[str] = []
     for t in turns:
         n = t.get("turn_number")
@@ -310,13 +320,13 @@ def build_excerpt(
 
         if kind == "user_prompt":
             marker = " <-- THE PUSHBACK" if (mark_pushback and n == cut_turn) else ""
-            lines.append(f"\n[turn {n}] {speaker(t)}{marker}:\n{_cut(content, MESSAGE_CHARS, record)}")
+            lines.append(f"\n[turn {n}] {speaker(t)}{marker}:\n{_cut(content, message_chars, record)}")
         # Text put back from the raw transcript (G-79) is shown under the turn of
         # the block it was written beside, as a recovered call is.
         elif kind == "peer_message":
-            lines.append(f"\n[turn {n}] {PEER_SPEAKER}:\n{_cut(content, MESSAGE_CHARS, record)}")
+            lines.append(f"\n[turn {n}] {PEER_SPEAKER}:\n{_cut(content, message_chars, record)}")
         elif kind == "assistant_response":
-            lines.append(f"\n[turn {t.get('shown_as', n)}] AGENT:\n{_cut(content, MESSAGE_CHARS, record)}")
+            lines.append(f"\n[turn {t.get('shown_as', n)}] AGENT:\n{_cut(content, message_chars, record)}")
         elif kind == "assistant_thinking":
             lines.append(f"\n[turn {t.get('shown_as', n)}] AGENT (thinking):\n{_cut(content, 1500, record)}")
         elif kind == "tool_use":
@@ -358,11 +368,11 @@ def build_excerpt(
             content = (t.get("content") or "").strip()
             if kind == "user_prompt":
                 marker = " <-- THE PUSHBACK" if (mark_pushback and n == cut_turn) else ""
-                squeezed.append(f"\n[turn {n}] {speaker(t)}{marker}:\n{_cut(content, MESSAGE_CHARS, record)}")
+                squeezed.append(f"\n[turn {n}] {speaker(t)}{marker}:\n{_cut(content, message_chars, record)}")
             elif kind == "peer_message":
-                squeezed.append(f"\n[turn {n}] {PEER_SPEAKER}:\n{_cut(content, MESSAGE_CHARS, record)}")
+                squeezed.append(f"\n[turn {n}] {PEER_SPEAKER}:\n{_cut(content, message_chars, record)}")
             elif kind == "assistant_response":
-                squeezed.append(f"\n[turn {t.get('shown_as', n)}] AGENT:\n{_cut(content, MESSAGE_CHARS, record)}")
+                squeezed.append(f"\n[turn {t.get('shown_as', n)}] AGENT:\n{_cut(content, message_chars, record)}")
             elif kind == "assistant_thinking":
                 squeezed.append(f"\n[turn {t.get('shown_as', n)}] AGENT (thinking):\n{_cut(content, 800, record)}")
             elif kind == "tool_use":

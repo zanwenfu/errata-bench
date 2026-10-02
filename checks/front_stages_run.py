@@ -1478,6 +1478,20 @@ def main() -> int:
           f"a task is not rendered again from other session data than its re-screen read, and nothing changes: "
           f"{elsewhere_rc10}, {said10j.getvalue().strip()[:100]!r}")
 
+    print("\n11. triage reads the end of the conversation with every message whole (G-92)")
+    kept11 = turns_mod.build_excerpt
+    turns_mod.build_excerpt = fake_build_excerpt
+    EXCERPT_KW.clear()
+    d11 = Paths(Path(tempfile.mkdtemp()) / "run")
+    try:
+        append(d11.moments, {"session_id": "s-1", "turn_number": 7, "repo_id": "acme/up",
+                             "kind": "correction", "agent_turns_before": 4})
+        asyncio.run(stage_triage(d11, 10**9, concurrency=1))
+    finally:
+        turns_mod.build_excerpt = kept11
+    check(EXCERPT_KW == [{"record": 2, "whole_messages": True}] and len(load(d11.triaged)) == 1,
+          f"the triage stage asks for its view with every message whole and every cut said: {EXCERPT_KW}")
+
     print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
     for f in FAIL:
         print("  -", f)
