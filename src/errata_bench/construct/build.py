@@ -25,17 +25,21 @@ import re
 import tempfile
 from pathlib import Path
 
-from ..corpus.recover import foreign_transcript, has_transcript, recovered, subagent_edits, unrecorded_subagents
+from datetime import datetime, timezone
+
+from ..corpus.recover import (call_folders, foreign_transcript, has_transcript, recovered, start_of, subagent_edits,
+                              unrecorded_subagents)
 from ..corpus.sessions import load_repos
-from .consistency import check as consistency_check, tree_changing_git, why_inconsistent
-from .edits import OUTSIDE, edits_before, replay, unreplayed_writes
+from .consistency import (EDIT_TOOLS, READ_TOOLS, check as consistency_check, checkout_of, main_checkout_of,
+                          start_evidence, tree_changing_git, why_inconsistent)
+from .edits import OUTSIDE, edits_before, posix_form, replay, unreplayed_writes
 from .presence import check, repo_url, token_in_tree
 from ..corpus.turns import load_session_turns
 from ..find.signature import Signature
 from ..spec import MIN_ORACLE_CHARS, BuildResult, Rejection, Task
 from ..corpus.session_time import session_starts
 from ..corpus.timeline import load_commits_by_repo, session_checkpoints
-from .workspace import GitError, fetch, is_permanent
+from .workspace import GitError, History, fetch, history, is_permanent
 
 
 
@@ -176,6 +180,142 @@ def unrecorded_subagents_before(session_id: str, turns: list[dict], cut: int) ->
     at = {str(t["tool_call_id"]): t["turn_number"] for t in turns
           if t.get("turn_type") == "tool_use" and t.get("tool_call_id") and t.get("turn_number") is not None}
     return [c for c in unrecorded_subagents(session_id, turns) if at.get(c) is not None and at[c] <= cut]
+
+
+def _iso(ns: int) -> str:
+    return datetime.fromtimestamp(ns / 1e9, timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+ESTABLISHED, SINGLED_OUT = "established", "singled out"
+
+
+def base_candidates(probe: History, start_iso: str, evidence: dict, last_checkpoint: str | None,
+                    own_first: str | None, mine: frozenset[str]) -> tuple[list[tuple[str, str]], str, str | None]:
+    """The commits the session may have started from, how the base is to be chosen, or why it cannot be (G-86).
+
+    Measured on the 48 Entire moments that reached a base (10-02): 16 sessions
+    say where they started, in a commit the remote holds. It was the remote's
+    last commit before the session 8 times, the last commit a checkpoint
+    recorded once, both (the same commit) 3 times, and neither 4 times -- a
+    developer's checkout can sit anywhere on its branch, behind the remote or
+    ahead of what Entire saw. Neither is a base to assume. So, in order:
+
+      1. What the session says (`consistency.start_evidence`): a HEAD it
+         printed before anything moved it, the commit its first pull says it
+         moved from, the parent of its first commit. One commit, which the
+         remote must hold, made before the session began, and not one of its
+         own; different commits, or any of those failing, and the moment is
+         refused.
+      2. The last commit a checkpoint recorded before the session, when it is
+         also the remote's last commit before the session: Entire saw it on the
+         developer's machine and nothing newer was pushed.
+      3. Otherwise each of the remote's last commits before the session -- on
+         the branch the session started on, in the history of its own commits,
+         on the default branch -- and the checkpoint's. The build takes one only
+         when at least two were built and compared, and it alone fits, on
+         something the conversation showed; candidates whose files are the
+         same, byte for byte, are one.
+
+    Returns (candidates, ESTABLISHED or SINGLED_OUT, None) or ([], "", why not).
+    Never one of the session's own commits (`mine`).
+    """
+    said = [(probe.resolve(h), h, "the HEAD the conversation printed") for h in evidence.get("heads") or []]
+    if evidence.get("updated_from"):
+        said.append((probe.resolve(evidence["updated_from"]), evidence["updated_from"],
+                     "the commit the session's first pull moved from"))
+    unheld = next((short for full, short, _ in said if full is None), None)
+    if unheld:
+        return [], "", f"the session says it started from commit {unheld}, which the repository's remote does not hold"
+    committed = probe.resolve(evidence["committed"]) if evidence.get("committed") else None
+    parent = probe.parent(committed) if committed else None
+    if parent:
+        said.append((parent, evidence["committed"], "the parent of the session's first commit"))
+    if said:
+        if len({full for full, _, _ in said}) > 1:
+            return [], "", ("the session says different things of the commit it started from: "
+                            + ", ".join(sorted({short for _, short, _ in said})))
+        # A move this cannot see -- a command it does not know, the developer's
+        # own terminal -- can come before what it read: then the "start" may be
+        # a commit made during the session, its fix among it (10-02 review).
+        full, short, where = said[0]
+        if full in mine:
+            return [], "", f"the session says it started from {short}, which is one of its own commits"
+        if not probe.made_before(full, start_iso):
+            return [], "", f"the session says it started from {short}, which was made after it began"
+        return [(full, where)], ESTABLISHED, None
+    remote = []
+    if probe.branch_on_remote:
+        remote.append((probe.last_before("refs/remotes/origin/branch", start_iso, mine), "the session's branch"))
+    if own_first and own_first not in probe.missing:
+        remote.append((probe.last_before(own_first, start_iso, mine), "the history of the session's own commits"))
+    remote.append((probe.last_before("refs/remotes/origin/default", start_iso, mine), "the default branch"))
+    latest = next((sha for sha, _ in remote if sha), None)
+    if last_checkpoint and last_checkpoint == latest:
+        return [(latest, "the last commit a checkpoint recorded, which the remote had last")], ESTABLISHED, None
+    out, seen = [], set()
+    for sha, where in remote + [(last_checkpoint, "the last commit a checkpoint recorded")]:
+        if sha and sha not in seen:
+            seen.add(sha)
+            out.append((sha, where))
+    if not out:
+        return [], "", "no commit on the remote precedes the session"
+    return out, SINGLED_OUT, None
+
+
+def _same_trees(trees: list[Path]) -> bool:
+    """Whether rebuilt trees hold the same files, byte for byte: two candidate bases that differ only in
+    commits that change nothing are one base for the task."""
+    def digest(root: Path) -> dict[str, str]:
+        import hashlib
+        out = {}
+        for f in sorted(root.rglob("*")):
+            if f.is_file() and not f.is_symlink():
+                out[str(f.relative_to(root))] = hashlib.sha256(f.read_bytes()).hexdigest()
+            elif f.is_symlink():
+                out[str(f.relative_to(root))] = "link:" + str(f.readlink())
+        return out
+    first = digest(trees[0])
+    return all(digest(t) == first for t in trees[1:])
+
+
+# Agent tools that move a session into another checkout of its repository.
+WORKTREE_TOOLS = frozenset({"EnterWorktree", "ExitWorktree"})
+
+
+def checkouts_before(session_id: str, turns: list[dict], cut: int, cwd: str | None,
+                     folders: dict[str, str] | None = None) -> list[str]:
+    """Other checkouts of the repository the session worked in before the cut (G-89).
+
+    An agent-made worktree (`.claude/worktrees/<name>`) is the repository on
+    another branch, with its own files. A session that moved into one, or out
+    of the one it started in, has a tree in each, the replay would lay both sets
+    of edits on one, and the base comes from the branch it started on. Read
+    from the folder each call ran in, the files it read or wrote, and the
+    worktree tools. A folder outside the repository is not a checkout of it.
+    """
+    folders = call_folders(session_id) if folders is None else folders
+    start = checkout_of(cwd)
+    main = main_checkout_of(cwd)
+    seen = []
+    for t in turns:
+        if t.get("turn_number") is None or t["turn_number"] > cut or t.get("turn_type") != "tool_use":
+            continue
+        tool = t.get("tool_name") or ""
+        if tool in WORKTREE_TOOLS:
+            seen.append(tool)
+            continue
+        places = [folders.get(str(t.get("tool_call_id") or ""))]
+        if tool in READ_TOOLS | EDIT_TOOLS:
+            places.append(t.get("file_path"))
+        for place in places:
+            if not place or OUTSIDE.match(place):
+                continue
+            p, there = posix_form(place), checkout_of(place)
+            if there and there != start:
+                seen.append(there)
+            elif not there and main and (p == main or p.startswith(main + "/")):
+                seen.append(main)
+    return sorted(set(seen))
 
 
 def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
@@ -343,10 +483,10 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
             if started_ns is None:
                 reject("no turn in this session carries a timestamp, so its start is unknown")
                 continue
-            sha = base_commit(repo_id, started_ns, commits, checkpoints.get(row["session_id"], set()))
-            if sha is None:
-                reject("no commit exists before the session started")
-                continue
+            # Where the session started: its branch, for the base, and its folder,
+            # for telling its own checkout from another (G-86..G-89).
+            branch, cwd = start_of(row["session_id"])
+            folders = call_folders(row["session_id"])
 
             sig = Signature(
                 kind=row["kind"],
@@ -375,7 +515,7 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
             # A tree changed by git before the cut is in no commit plus edits
             # (B-239). Documented as rejected since the replay was written; this is
             # the check that does it.
-            git = tree_changing_git(turns, row["cut"])
+            git = tree_changing_git(turns, row["cut"], cwd, folders)
             if git:
                 reject(f"the agent changed its files with git before the cut, which no replay "
                        f"reproduces: {git[0][:90]}")
@@ -396,6 +536,14 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
             unknown = unrecorded_subagents_before(row["session_id"], turns, row["cut"])
             if unknown:
                 reject(f"a sub-agent ran before the cut and left no record of what it did: {unknown[0][:60]}")
+                continue
+            # A session that worked in another checkout of the repository -- a
+            # worktree on its own branch -- has two trees, and the replay would
+            # lay both sets of edits on one (G-89).
+            elsewhere = checkouts_before(row["session_id"], turns, row["cut"], cwd, folders)
+            if elsewhere:
+                reject(f"the session worked in another checkout of the repository before the cut, so no "
+                       f"one tree is its own: {elsewhere[0][-90:]}")
                 continue
             # A transcript in another agent's format: the table may hold none of
             # the session's calls (a Copilot session's has no tool rows, while its
@@ -421,36 +569,113 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
 
             base = scratch or Path(tempfile.gettempdir()) / "errata-bench-build"
             base.mkdir(parents=True, exist_ok=True)
+            own = checkpoints.get(row["session_id"], set())
+            mine = frozenset(c.commit_sha for c in commits.get(repo_id, []) if c.checkpoint_pk in own and c.commit_sha)
+            own_first = min((c for c in commits.get(repo_id, []) if c.commit_sha in mine),
+                            key=lambda c: c.commit_ns or c.author_ns or 0, default=None)
+            last_checkpoint = base_commit(repo_id, started_ns, commits, own)
+            # What the whole session says of where it started, up to its first
+            # move of HEAD, before the cut or after it.
+            evidence = start_evidence(turns, cwd, folders)
+            said = evidence["heads"] + [x for x in (evidence["updated_from"], evidence["committed"]) if x]
             with tempfile.TemporaryDirectory(dir=base) as d:
+                # The commits on the remote, without their files (G-86): the corpus
+                # holds only the commits a checkpoint recorded, so the last of those
+                # before the session was older than the tree the session started
+                # from whenever a commit was made without Entire, or none at all.
                 try:
-                    checkout = fetch(url, sha, Path(d) / "repo")
-                    tree = checkout.export_tree(sha, Path(d) / "tree")
+                    shas = [own_first.commit_sha if own_first else None, last_checkpoint]
+                    probe = history(url, Path(d) / "history", branch=branch, shas=shas)
+                    # A HEAD printed from a branch deleted since, kept by its pull request.
+                    if any(probe.resolve(h) is None for h in said):
+                        probe = history(url, Path(d) / "history-pulls", branch=branch, shas=shas, pulls=True)
                 except GitError as e:
                     # Named, so the funnel distinguishes a task worth retrying
                     # from one whose code no longer exists anywhere.
                     why = ("the code is gone from the remote"
-                           if is_permanent(e) else "could not build the tree")
+                           if is_permanent(e) else "could not build the tree: the repository's history")
                     reject(f"{why}: {str(e)[:110]}")
+                    continue
+                candidates, how, none = base_candidates(probe, _iso(started_ns), evidence, last_checkpoint,
+                                                        own_first.commit_sha if own_first else None, mine)
+                if none:
+                    reject(none)
                     continue
                 # The base commit predates the session; the agent's own edits up to
                 # the cut are replayed onto it so the tree matches the transcript.
                 # Seven of twelve calibrated tasks had such edits and none of them
                 # were in the tree. An edit that will not apply means this commit
-                # is not what the agent was editing, and the task is rejected.
-                edits = edits_before(turns, row["cut"])
-                rep = replay(tree, edits, repo_id)
-                if not rep.ok:
-                    reject(f"the agent's in-session edits do not apply to the base commit: {rep.reason[:120]}")
-                    continue
-                # The tree against what the conversation showed of it (A5): a file's
-                # last read before the cut, line by line, and any HEAD it printed.
-                # On the first grid 3 of 21 trees differed -- an older base, an
-                # uncommitted file -- and an agent that checked then found the
+                # is not what the agent was editing.
+                #
+                # And the tree against what the conversation showed of it (A5): a
+                # file's last read before the cut, line by line, and any HEAD it
+                # printed. On the first grid 3 of 21 trees differed -- an older base,
+                # an uncommitted file -- and an agent that checked then found the
                 # opposite of what the conversation said.
-                consistent = consistency_check(tree, turns, row["cut"], sha)
-                if not consistent["consistent"]:
-                    reject(why_inconsistent(consistent))
+                #
+                # An established base must pass both. Candidates are each built,
+                # and one is taken only when it alone passes, on something the
+                # conversation showed: a line it read, or an edit that matched.
+                edits = edits_before(turns, row["cut"])
+                fits, failures, unbuilt = [], [], []
+                for sha, base_from in candidates:
+                    try:
+                        checkout = fetch(url, sha, Path(d) / sha[:12] / "repo")
+                        tree = checkout.export_tree(sha, Path(d) / sha[:12] / "tree")
+                    except GitError as e:
+                        unbuilt.append(("the code is gone from the remote" if is_permanent(e)
+                                        else "could not build the tree") + f": {str(e)[:110]}")
+                        continue
+                    rep = replay(tree, edits, repo_id)
+                    if not rep.ok:
+                        failures.append(f"the agent's in-session edits do not apply to the base commit: "
+                                        f"{rep.reason[:120]}")
+                        continue
+                    consistent = consistency_check(tree, turns, row["cut"], sha, cwd=cwd, folders=folders)
+                    if not consistent["consistent"]:
+                        failures.append(why_inconsistent(consistent))
+                        continue
+                    fits.append((sha, base_from, tree, rep, consistent["files_compared"] + rep.verified))
+                # A tree that could not be built this pass is said first, as the
+                # prune reads it: a retry may build it, so what was bought for the
+                # task is kept (10-02 review).
+                transient = next((u for u in unbuilt if u.startswith("could not build the tree")), None)
+                if how == SINGLED_OUT:
+                    # Singled out only among candidates actually compared: each built,
+                    # more than one, and every other refused on what it holds. One
+                    # candidate alone, or one never built, is no comparison.
+                    if transient:
+                        reject(transient)
+                        continue
+                    if unbuilt:
+                        reject(f"the commit the session started from cannot be established: a candidate base is "
+                               f"{unbuilt[0]}")
+                        continue
+                    if len(candidates) < 2:
+                        reject("the commit the session started from cannot be established: the session does not "
+                               "say, and there is one candidate base, with nothing to tell it from")
+                        continue
+                    if len(fits) > 1 and not _same_trees([f[2] for f in fits]):
+                        reject(f"the commit the session started from cannot be established: the session does not "
+                               f"say, and {len(fits)} of {len(candidates)} candidate bases fit what the "
+                               f"conversation showed")
+                        continue
+                    if fits and not fits[0][4]:
+                        reject("the commit the session started from cannot be established: the one candidate "
+                               "base that fits rests on nothing the conversation showed")
+                        continue
+                if not fits:
+                    # An established base is one candidate, so its one failure is
+                    # the reason, a transient one included; several are singled
+                    # out above, where a transient failure is said first.
+                    reasons = failures + unbuilt
+                    others = len(candidates) - 1
+                    reject(reasons[0] + (f" (and no other of the {others} candidate bases fits)" if others else ""))
                     continue
+                sha, base_from, tree, rep, _ = fits[0]
+                if how == SINGLED_OUT:
+                    base_from = (f"{base_from}, the only candidate the conversation's files fit" if len(fits) == 1
+                                 else f"{base_from}, whose files every candidate that fits holds alike")
                 presence = check(task_id, sig, tree)
                 # Measured here, while the tree exists: after the `with` it is
                 # gone, and every token read as absent (09-27 review).
@@ -509,6 +734,7 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
                     edits_verified=rep.verified,
                     calls_recovered=bool(row.get("calls_recovered")) and has_transcript(row["session_id"]),
                     text_recovered=bool(row.get("text_recovered")) and has_transcript(row["session_id"]),
+                    base_from=base_from,
                 )
             )
             seen.add(task_id)

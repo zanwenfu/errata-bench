@@ -135,6 +135,12 @@ class Task:
     # what the agent wrote before a call in the same message. False for every
     # task before dataset v1.1, whose candidates were shown the table's view.
     text_recovered: bool = False
+    # Where the base commit came from (G-86): a HEAD the conversation printed,
+    # the session's branch, the history of its own commits, the default branch,
+    # or the last commit a checkpoint recorded. Empty for every task built
+    # before 10-02, all of whose bases came from the last. Not in the
+    # fingerprint: `sha` is, and it is the tree.
+    base_from: str = ""
 
     @property
     def discriminates(self) -> bool:
@@ -196,6 +202,10 @@ class Task:
         d = dict(self.__dict__)
         d["oracle"] = self.oracle[:REFERENCE_CHARS]
         d["criterion"] = self.criterion[:REFERENCE_CHARS]
+        # Left out when empty: a task built before G-86 is written as it was, byte
+        # for byte, which admission and grading folders compare (10-02 review).
+        if not d.get("base_from"):
+            d.pop("base_from", None)
         return d
 
     @classmethod

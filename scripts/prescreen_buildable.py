@@ -9,8 +9,8 @@ Screening asks its gates over each whole conversation, at about $2 a moment on
 long sessions. The build then refuses many of the moments screening passed, for
 reasons visible as soon as the cut is chosen. On 10-02, 27 of the 59 rejections
 among the 71 Entire moments were of this kind: the agent's git commands before
-the cut, a sub-agent's unrecorded work, no commit before the session, an answer
-too short to test. With 10 more that screening refused but these checks also
+the cut, a sub-agent's unrecorded work, no commit before the session (6, all
+false: G-86), an answer too short to test. With 10 more that screening refused but these checks also
 fail, this sets aside 37 of the 71, whose screening cost $81.98 of $148.55.
 
 This runs the build's checks that no screening verdict can change, in the
@@ -45,13 +45,12 @@ def main(argv: list[str]) -> int:
                     help="check every signature row against the build's verdicts in this run; write nothing")
     args = ap.parse_args(argv)
 
-    from errata_bench.construct.build import base_commit, subagent_edits_before, unrecorded_subagents_before
+    from errata_bench.construct.build import checkouts_before, subagent_edits_before, unrecorded_subagents_before
     from errata_bench.construct.consistency import tree_changing_git
     from errata_bench.construct.edits import unreplayed_writes
-    from errata_bench.corpus.recover import foreign_transcript, has_transcript, recovered
+    from errata_bench.corpus.recover import call_folders, foreign_transcript, has_transcript, recovered, start_of
     from errata_bench.corpus.session_time import session_starts
     from errata_bench.corpus.sessions import load_repos
-    from errata_bench.corpus.timeline import load_commits_by_repo, session_checkpoints
     from errata_bench.corpus.turns import load_session_turns
     from errata_bench.spec import MIN_ORACLE_CHARS
     from errata_bench.store.rows import append, completed, key_of, load
@@ -61,8 +60,7 @@ def main(argv: list[str]) -> int:
     done = {key_of(r) for r in completed(screened)} if screened.exists() else set()
     todo = signatures if args.replay else [r for r in signatures if key_of(r) not in done]
     sessions = {r["session_id"] for r in todo}
-    starts, commits, repos = session_starts(sessions), load_commits_by_repo(), load_repos()
-    checkpoints = session_checkpoints(sessions)
+    starts, repos = session_starts(sessions), load_repos()
     turns_by_session = recovered(load_session_turns(sessions))
 
     def refusal(row: dict) -> str | None:
@@ -88,9 +86,10 @@ def main(argv: list[str]) -> int:
             return "repository not in the corpus"
         if starts.get(sid) is None:
             return "no turn in this session carries a timestamp, so its start is unknown"
-        if base_commit(repo_id, starts[sid], commits, checkpoints.get(sid, set())) is None:
-            return "no commit exists before the session started"
-        git = tree_changing_git(turns, cut)
+        # The base needs the remote's history since 10-02 (G-86), so it is the
+        # build's to choose, and not checked here.
+        cwd, folders = start_of(sid)[1], call_folders(sid)
+        git = tree_changing_git(turns, cut, cwd, folders)
         if git:
             return f"the agent changed its files with git before the cut, which no replay reproduces: {git[0][:90]}"
         unread = unreplayed_writes(turns, cut)
@@ -104,6 +103,10 @@ def main(argv: list[str]) -> int:
         unknown = unrecorded_subagents_before(sid, turns, cut)
         if unknown:
             return f"a sub-agent ran before the cut and left no record of what it did: {unknown[0][:60]}"
+        elsewhere = checkouts_before(sid, turns, cut, cwd, folders)
+        if elsewhere:
+            return (f"the session worked in another checkout of the repository before the cut, so no "
+                    f"one tree is its own: {elsewhere[0][-90:]}")
         if foreign_transcript(sid):
             return ("the session's transcript is not in Claude Code's format, so its calls "
                     "cannot be checked against the table")
@@ -124,9 +127,10 @@ def main(argv: list[str]) -> int:
         # aside, and one it refused for a reason visible before screening must be.
         structural = ("the corpus holds rows", "the failing turn is", "the resolving turn is", "the failed answer is",
                       "the resolution is", "repository not in the corpus", "no turn in this session carries",
-                      "no commit exists before", "the agent changed its files with git",
+                      "the agent changed its files with git",
                       "the agent changed files before the cut", "a sub-agent edited files",
-                      "a sub-agent ran before the cut", "the session's transcript is not",
+                      "a sub-agent ran before the cut", "the session worked in another checkout",
+                      "the session's transcript is not",
                       "the session has no transcript")
         # A task records its turn as `complaint_turn`, a rejection and a signature row as
         # `complaint`. Keyed on the wrong field, no built task matched any row and the

@@ -4419,44 +4419,129 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   inlined in the kit). Guard section 60 drives all four scripts' `main`.
   Reverting the shared check alone turns it red on three of them; reverting
   the kit's copy alone, on the fourth.
-- **G-86 · The build's base comes from a table that holds only the
-  commits a checkpoint recorded.** *(opened 10-02, from an audit of the
-  Entire build's rejections; #16.)*
-  - *What happens.* Both corpora's commit tables hold only commits an Entire
-    checkpoint recorded: Entire's 23,241 of 23,241 rows, SWE-chat's 14,459 of
-    14,459. `base_commit` picks the last of these before the session started.
-    A commit made outside Entire, by hand or before Entire was installed, is
-    invisible to it. The base is then an older commit than the one the
-    session started from, or no commit at all.
-  - *On the Entire runs* (10-02 03:0x entry):
-    - All 6 "no commit exists before the session started" rejections are
-      false. GitHub shows a commit before each session, from 1 hour to 2
-      months earlier.
-    - Where GitHub still has the session's branch, 2 built tasks start 19 and
-      21 commits behind the branch's last commit before the session. 3 "tree
-      differs" rejections start 1 to 3 commits behind. The one "HEAD printed"
-      rejection's HEAD is GitHub's commit.
-    - The build's consistency checks catch a stale base only when the
-      conversation shows a file that changed in between. The 2 stale tasks
-      passed them.
-  - *v1.* It used the same table and the same rule. Not yet measured on its
-    55 tasks.
-  - *Fix (proposed).* Take the base from the repository's own history: the
-    last commit on the session's branch before the session started. Where
-    GitHub no longer has the branch, use a HEAD the conversation printed,
-    or refuse.
+- **G-89 · A session that worked in two checkouts has two trees.**
+  *(opened and fixed in the code 10-02, from the review before the rebuild;
+  #16.)*
+  - *What happens.* A worktree is the repository on another branch, with its
+    own files. A session that moves into one before the cut -- Claude Code's
+    `EnterWorktree`, or a `cd` into `.claude/worktrees/<name>` or a hidden
+    `.worktrees/<name>` -- has a tree in each. The replay lays both sets of
+    edits on one tree, and the base comes from the branch it started on.
+  - *Seen.* 3 sessions used `EnterWorktree` and 3 worked in a worktree by
+    `cd` before their cut, among the 48 moments that reached a base.
+  - *Fix.* `build.checkouts_before` refuses such a moment, read from the
+    folder each call ran in (`recover.call_folders`), the files read or
+    written, and the worktree tools. A subfolder of the session's own
+    checkout, a scratch folder and a folder outside the repository are not
+    another checkout.
+- **G-88 · The HEAD check read commits that were not the session's HEAD.**
+  *(opened and fixed in the code 10-02, from the review before the rebuild;
+  #16.)* `printed_heads` took the first commit a `git log` or `git
+  rev-parse` printed for the session's HEAD:
+  - in another worktree, after `cd .claude/worktrees/eng-2189-...`, and in a
+    hidden `.worktrees/reader-provider`;
+  - from `git log --oneline --all --grep=2173`;
+  - from a range ending in `FETCH_HEAD`, read as HEAD because the name ends
+    so;
+  - from `... | xargs git log -1`;
+  - after a `git checkout` or `switch` to another commit, which it did not
+    count as moving HEAD.
+  Each made a "HEAD contradicts the base" rejection that was not one, or
+  would have taken the wrong commit as evidence.
+  - *Fix.* Only from the session's own checkout, as each call's folder
+    places it; only `git rev-parse HEAD`, or `git log` with options that
+    keep HEAD first, a format that opens with the commit's own name, and no
+    revision but HEAD -- no range, since `main...HEAD` lists commits HEAD
+    lacks and an empty `main..HEAD` hands the first name in the output to
+    what prints next; only when everything the command ran before it
+    prints no commit name (a quiet git invocation, `cd`, a name set, an
+    `echo` of literal words) and nothing after it drops its first line
+    (`| tail -1`); and a checkout or switch to another commit, or a commit
+    made with git's own options, moves HEAD. `printed_heads` reads through
+    `start_evidence`, which reads the same over the whole session.
 - **G-87 · The git check flags commands run in another copy of a
-  repository.** *(opened 10-02, from the same audit; #16.)*
-  - *What happens.* `tree_changing_git` reads every `git checkout` before
-    the cut as changing the session's files, wherever it ran. It does not
+  repository.** *(opened 10-02, from the audit of the Entire build's
+  rejections; fixed in the code 10-02; #16.)*
+  - *What happens.* `tree_changing_git` read every `git checkout` before
+    the cut as changing the session's files, wherever it ran. It did not
     see a `cd` or a `-C` into another folder.
   - *The cases.* 2 of the 13 git rejections:
     - one call ran `cd` into a scratch clone of another repository, then
       `git checkout <sha>`;
-    - one ran `git -C /tmp/<copy> checkout` in throwaway clones.
-  - *Also.* The second session's `git checkout -q -b <new>` is read as a
-    switch: the exemption for a new branch where HEAD already is reads
-    `-b` only as the first word, and `-q` came first.
+    - one ran `git -C /tmp/<copy> checkout` in throwaway clones, and `git
+      checkout -q -b <new>`: the exemption for a new branch where HEAD
+      already is read `-b` only as the first word, and `-q` came first.
+  - *Fix.* Each git invocation is read with the folder it ran in: where
+    the transcript says its call ran, then `cd`, `pushd`, `git -C`, a
+    `NAME=value` set before, a subshell that closes. The command is split
+    as the shell splits it, not inside quotes or a heredoc's text, and
+    git's own options (`-c`, `--no-pager`) may stand before its verb. A
+    folder certainly another checkout -- the agent's scratch, /tmp, another
+    worktree -- is not the session's. Any other folder outside where the
+    session began counts, since it may be the same repository: a monorepo
+    session that began in `frontend/` and ran `cd ../backend && git
+    checkout main` was missed by the first version of this fix (the 10-02
+    review). Flags that change nothing before `-b` are skipped; `-f` is
+    not among them.
+- **G-86 · The build's base came from a table that holds only the commits a
+  checkpoint recorded.** *(opened 10-02, from the audit of the Entire build's
+  rejections; fixed in the code 10-02; #16.)*
+  - *What happens.* Both corpora's commit tables hold only commits an Entire
+    checkpoint recorded: Entire's 23,241 of 23,241 rows, SWE-chat's 14,459 of
+    14,459. `base_commit` picked the last of these before the session. A
+    commit made outside Entire, by hand or before Entire was installed, was
+    invisible to it.
+  - *On the Entire runs.* All 6 "no commit exists before the session
+    started" rejections were false: GitHub shows a commit before each
+    session, from 1 hour to 2 months earlier. 3 "tree differs" rejections
+    and the "HEAD printed" one were a stale base.
+  - *Neither commit is a base to assume.* The remote's last commit before the
+    session is not the developer's start either.
+    - nrmeyers-agentalloy-20's first move was `git pull`, printing
+      "Updating 6d93c52..c8a9188". The session started at 6d93c52, the
+      checkpoint's commit. GitHub already held c8a9188, which added the
+      state store whose absence is the task's defect.
+    - On the 48 moments that reached a base, 16 sessions say where they
+      started in a commit the remote holds. That commit was the remote's
+      last before the session 8 times, the checkpoint commit once, both (the
+      same commit) 3 times, and neither 4 times: a checkout sits anywhere on
+      its branch. 23 say nothing; 9 name a commit the remote does not hold.
+  - *Fix.* The base is established, or the moment is refused
+    (`build.base_candidates`, `consistency.start_evidence`,
+    `workspace.history`):
+    1. What the session says, up to its first move of HEAD, before the cut
+       or after it: a HEAD it printed, the commit its first pull or merge
+       says it moved from, the parent of its first commit. The remote must
+       hold it, made before the session began, and not as one of the
+       session's own commits. Either of those means a move this cannot see
+       came first -- a commit it does not recognise, the developer's own
+       terminal -- and the moment is refused.
+    2. The checkpoint commit, when it is also the remote's last commit
+       before the session.
+    3. Otherwise each candidate (the remote's last commit on the session's
+       branch, in its own commits' history, on the default branch, and the
+       checkpoint commit) is built. One is taken only when at least two were
+       built and compared, and it alone fits the conversation, on a line it
+       read or an edit that matched. Candidates whose files are the same,
+       byte for byte, are one.
+    4. Otherwise: "the commit the session started from cannot be
+       established".
+    The remote's history is fetched without trees or files, and each line is
+    walked along its first parents only. A repository's first commit is now
+    fetched like any other. `Task.base_from` says which rule chose the base,
+    and is left out of a task built before.
+  - *v1, measured 10-02 (read-only, no trees built).* Of its 55 tasks:
+    - 27 bases are confirmed: by a printed HEAD (12), by the checkpoint
+      commit being the remote's last (9), or by the first commit's parent (6);
+    - 6 differ from the start the session gives: 135yshr-savanna-vet-go-28,
+      entireio-cli-163, hutusi-amytis-15, -18 and -349,
+      shunkakinoki-dotfiles-98;
+    - 6 sessions give a start that cannot be used: one of their own commits
+      (2), made after they began (2), or not on the remote (2);
+    - 16 say nothing, and their checkpoint commit and the remote's last
+      commit before the session differ, by up to 112 commits
+      (shunkakinoki-dotfiles-49). Whether their files single one out was
+      not measured.
 - **G-83 · A repair removed the developer's request itself.** *(opened and
   fixed in the code 09-30, found by an independent review; #17.)* When the
   leak gate finds that a conversation gives away the agent's failure, the
@@ -11710,3 +11795,79 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     stored.
   - *Next.* Fix G-86 and G-87 and rebuild the 71 (no model calls), for the
     user to approve. G-86 touches v1 as well.
+- **10-02, 05:4x UTC** — **Before the rebuild: the base, the git rule and the
+  HEAD check fixed (G-86..G-89), reviewed, broken and dry-run. 16 tasks of the
+  71 moments, each base established (#16).**
+  The user's request: inspect and review everything before the rebuild, so
+  that no rebuild is spent finding what a review could.
+  - *What the investigation found* (no model calls; git over the network):
+    - Each of the 48 moments that reached a base was built on every
+      candidate: the checkpoint commit and the remote's last commits before
+      the session. Where the files the conversation showed decided (8), the
+      checkpoint commit was the stale one every time.
+    - But the remote's last commit is not the start either.
+      nrmeyers-agentalloy-20's first pull printed "Updating
+      6d93c52..c8a9188": it started at the checkpoint commit, and GitHub
+      already held the commit whose absence is its defect.
+    - Where a session names a commit the remote holds (16), it was the
+      remote's last 8 times, the checkpoint's once, both 3 times, and
+      neither 4 times.
+    - Hence G-86's rule: established or refused. G-88 and G-89 came out of
+      the same reading.
+  - *An independent read-only review of the change* (10-02) found 12 points.
+    All were taken:
+    - a start read late in the session may be a commit made during it: now
+      refused when it is the session's own, or made after it began;
+    - a monorepo session that began in a subfolder had its sibling folders'
+      git missed. Only a certainly other checkout is skipped now;
+    - the history walk followed every parent, so a later merge lent it a
+      feature's older commits. It now walks first parents only;
+    - HEAD read from a range, a `%P` format, `git remote update`, text
+      printed before it, or `| tail` after it;
+    - "singled out" with one candidate, or with a candidate never built;
+    - a transient failure reported second, which the prune would have read
+      as permanent;
+    - each call's folder, and git's own options before its verb;
+    - quotes, heredocs, `cd -P`, `${X:-y}`, `popd`, and `$(...)` inside a
+      subshell;
+    - `base_from` written on tasks built before, which would have broken
+      byte-for-byte comparisons of their folders;
+    - a remote with no default branch;
+    - identical candidate trees refused as two;
+    - the check fixture running the machine's git hooks.
+  - *Held.*
+    - Section 161 of `checks/guards_hold.py`: 22 checks. They run on
+      `file://` remotes made in the check, with the network stood in for
+      every build the suite drives.
+    - All six suites pass.
+    - 49 mutants, each one piece of the fix undone in its own copy of the
+      tree. All are caught but one, which changed only a branch no input
+      can reach. The branch was removed.
+    - A control mutant of an old rule was caught too.
+    - The first round of mutants ran against the unchanged code: the suite
+      puts its own folder's `src` first on the path. Every mutant
+      "survived". The runner now copies the whole tree per mutant and
+      checks that Python imports the mutated file.
+  - *The dry run* (the new build, in memory, on both folders):
+    - 16 tasks instead of 12.
+    - 6 keep their base, now established: 2 by the checkpoint commit being
+      the remote's last, 2 by a printed HEAD, 1 by the first commit's
+      parent, and nrmeyers-20 by its pull.
+    - 2 move to the base their session gives: nrmeyers-19, by a printed
+      HEAD; 1natsu-34, by its first commit's parent. 1natsu-34's old base
+      was on another line of history (diverged: 1 ahead, 2 behind).
+    - 1 moves to the remote's commit whose files equal the checkpoint's:
+      go-nuts-210.
+    - 7 are new: 1natsu-100, oh-my-posh-128, Omni-Scale-97, sound-map-61
+      and -62, cli-281, Archy-532.
+    - Refused: forgemark-33 and raman325-56, whose two candidates both fit
+      and differ; cli-67, whose printed HEAD is one of its own commits, a
+      move unseen before it; hackerslash-90 and cybernaut-100, each one
+      candidate with nothing to compare.
+  - *v1.* Measured read-only, as the G-86 entry says: 27 bases confirmed,
+    6 differ from the start their session gives, 6 cannot be read, and 16
+    are not established. For #17 to weigh before v1.1.
+  - *Next.* Commit, rebuild both folders with the committed code, and check
+    the result against the dry run and the pre-check's replay. Calibration
+    of the new and changed tasks is a paid step, for the user, and the
+    rules-4 question of the 02:4x entry stands.

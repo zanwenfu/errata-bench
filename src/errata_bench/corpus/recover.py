@@ -162,6 +162,59 @@ def raw_results(path: Path) -> dict[str, str]:
     return out
 
 
+def start_of(session_id: str) -> tuple[str | None, str | None]:
+    """The branch and the folder the session started in, from its transcript's first entries (G-86).
+
+    Claude Code writes both on every entry. A detached HEAD names no branch.
+    None for either when there is no transcript, or it names neither.
+    """
+    path = transcript_path(session_id)
+    branch = cwd = None
+    if not path.exists():
+        return None, None
+    with path.open() as fh:
+        for line in fh:
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(entry, dict):
+                continue
+            branch = branch or entry.get("gitBranch") or None
+            cwd = cwd or entry.get("cwd") or None
+            if branch and cwd:
+                break
+    return (None if branch == "HEAD" else branch), cwd
+
+
+def call_folders(session_id: str) -> dict[str, str]:
+    """The folder each of the main agent's calls ran in, by the call's id (G-89).
+
+    Claude Code writes the shell's folder on every entry, and the shell stays
+    where a `cd` left it: a session that moved into another worktree records it
+    here, call by call.
+    """
+    path = transcript_path(session_id)
+    out: dict[str, str] = {}
+    if not path.exists():
+        return out
+    with path.open() as fh:
+        for line in fh:
+            try:
+                entry = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(entry, dict) or entry.get("type") != "assistant" or entry.get("isSidechain"):
+                continue
+            message = entry.get("message")
+            if not isinstance(message, dict) or not isinstance(message.get("content"), list) or not entry.get("cwd"):
+                continue
+            for block in message["content"]:
+                if isinstance(block, dict) and block.get("type") == "tool_use" and block.get("id"):
+                    out[str(block["id"])] = str(entry["cwd"])
+    return out
+
+
 def whole_results(session_id: str, turns: list[dict]) -> list[dict]:
     """``turns`` with each result the table cut given back whole, from the raw transcript (record 3).
 

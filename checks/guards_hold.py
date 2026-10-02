@@ -3347,6 +3347,45 @@ check(_ok43, f"how much of the replay was verified is on the task row and out of
 # seven dependencies stubbed, which is the only seam that line sits behind.
 from errata_bench.construct.edits import Replay as _Replay43
 import errata_bench.construct.build as _B43w
+
+
+# The remote's history, stood in for every build driven below (G-86). It holds
+# no commit, so the base is the last one a checkpoint recorded, as these checks
+# were written for; section 161 drives the choice itself. The real `history`
+# would reach the network, and a stand-in that does is how B-264 spent money.
+class _NoHistory43w:
+    branch_on_remote, missing = False, ()
+
+    def last_before(self, ref, iso, skip=frozenset()):
+        return None
+
+    def resolve(self, abbreviated):
+        return None
+
+    def parent(self, sha):
+        return None
+
+
+_B43w.history = lambda url, dest, **kw: _NoHistory43w()
+
+
+def _agreeing43w(sid):
+    """The remote, stood in to agree with the checkpoint commit the stubbed corpus holds.
+
+    That commit is then the established base (G-86), as it was the only one
+    before, so a section written for something else -- the replay's counts,
+    the token at the start -- still tests that, and not the base.
+    """
+    sha = _B43w.base_commit("acme/up", _B43w.session_starts()[sid], _B43w.load_commits_by_repo(),
+                            _B43w.session_checkpoints({sid}).get(sid, set()))
+
+    class _Agree(_NoHistory43w):
+        branch_on_remote = True
+
+        def last_before(self, ref, iso, skip=frozenset()):
+            return sha
+
+    return lambda url, dest, **kw: _Agree()
 from errata_bench.construct.presence import Presence as _Presence43w
 from errata_bench.corpus.sessions import Repo as _Repo43w
 
@@ -3367,7 +3406,7 @@ class _Checkout43w:
 
 _kept43w = {n: getattr(_B43w, n) for n in
             ("load_repos", "session_starts", "load_commits_by_repo", "session_checkpoints",
-             "load_session_turns", "fetch", "edits_before", "replay", "check", "has_transcript")}
+             "load_session_turns", "fetch", "edits_before", "replay", "check", "has_transcript", "history")}
 
 def _built43w(verified):
     _B43w.load_repos = lambda: {"acme/up": _Repo43w(repo_id="acme/up", url="https://x/acme/up",
@@ -3384,6 +3423,7 @@ def _built43w(verified):
         task_id=task_id, probeable=True, present=True, detail="ok", strength="declared")
     # A session whose transcript is here, screened on the calls and text it restores.
     _B43w.has_transcript = lambda sid: True
+    _B43w.history = _agreeing43w("s-43w")
     row = {"session_id": "s-43w", "repo_id": "acme/up", "request": 1, "failed": 2,
            "complaint": 3, "resolved": 4, "cut": 1, "kind": "none", "path": "src/a.py",
            "token": "", "defect": "a defect", "rounds": 1, "usable": True,
@@ -5520,7 +5560,7 @@ print("\n79. the build replays the lost edits, and rejects a tree git changed or
 # found 3 of 21 trees differing from what their conversation showed.
 _kept79 = {n: getattr(_B43w, n) for n in
            ("load_repos", "session_starts", "load_commits_by_repo", "session_checkpoints", "load_session_turns",
-            "fetch", "replay", "check")}
+            "fetch", "replay", "check", "history")}
 _long79 = lambda head: head + " " + "the uploader now retries and the tests pass. " * 12
 
 
@@ -5536,6 +5576,7 @@ def _build79(turns, *, flag=True, commits=None, checkpoints=None, extra=None):
     _B43w.replay = lambda tree, edits, repo_id: _Replay43(applied=len(edits), verified=len(edits), files={"b"})
     _B43w.check = lambda task_id, sig, tree: _Presence43w(
         task_id=task_id, probeable=True, present=True, detail="ok", strength="declared")
+    _B43w.history = _agreeing43w("s79")
     row = {"session_id": "s79", "repo_id": "acme/up", "request": 1, "failed": 8, "complaint": 9,
            "resolved": 10, "cut": 7, "kind": "none", "path": "src/a.py", "token": "",
            "defect": "a defect", "rounds": 1, "usable": True, "asks_for_something": True,
@@ -10059,6 +10100,7 @@ def _built143(token):
         _B43w.check = lambda task_id, sig, tree: _Presence43w(
             task_id=task_id, probeable=True, present=True, detail="ok", strength="token")
         _B43w.has_transcript = lambda sid: True
+        _B43w.history = _agreeing43w("s-43w")
         row = {"session_id": "s-43w", "repo_id": "acme/up", "request": 1, "failed": 2,
                "complaint": 3, "resolved": 4, "cut": 1, "kind": "present", "path": "src/a.py",
                "token": token, "defect": "a defect", "rounds": 1, "usable": True,
@@ -13977,6 +14019,406 @@ for _mod159, _gate159, _stub159, _backup_name159, _field159 in (
 check(all(all(v) for v in _again159.values()),
       f"a re-screen run again asks only the rows whose calls failed, exits 1 while any did, and applied twice "
       f"keeps the first backup and each row's old verdict: {_again159}")
+
+print("\n161. the base is the commit the conversation agrees with, from the remote's history; git and HEAD read in "
+      "another checkout are not the session's; a session that worked in two checkouts is refused (10-02)")
+# G-86: the corpus holds only the commits a checkpoint recorded, so the build's
+# base was older than the session's tree whenever a commit was made without
+# Entire -- 6 moments had none at all, 2 tasks started 19 and 21 commits behind,
+# and 4 "tree differs" rejections were the stale base. G-87: a checkout in a
+# throwaway clone rejected two moments. G-88: another worktree's `git log`, a
+# `--all --grep`, a FETCH_HEAD range and an `xargs git log` were read as HEAD.
+# G-89: a session that moved into another worktree has two trees.
+import subprocess as _sp161
+from errata_bench.construct import workspace as _ws161
+from errata_bench.construct import consistency as _cs161
+
+# A remote of our own, served from disk: no network.
+_origin161 = Path(tempfile.mkdtemp()) / "origin"
+_origin161.mkdir()
+
+
+def _git161(*args, when=None):
+    env = {**os.environ, **({"GIT_AUTHOR_DATE": when, "GIT_COMMITTER_DATE": when} if when else {})}
+    return _sp161.run(["git", *args], cwd=_origin161, env=env, capture_output=True, text=True, check=True).stdout.strip()
+
+
+def _commit161(name, when):
+    (_origin161 / name).write_text(name + "\n")
+    _git161("add", name)
+    _git161("commit", "-q", "-m", name, when=when)
+    return _git161("rev-parse", "HEAD")
+
+
+_git161("init", "-q", "-b", "main")
+for _k161, _v161 in (("user.email", "t@t"), ("user.name", "t"), ("uploadpack.allowFilter", "true"),
+                     ("uploadpack.allowAnySHA1InWant", "true"), ("commit.gpgsign", "false"),
+                     ("core.hooksPath", "/dev/null")):
+    _git161("config", _k161, _v161)
+_c1 = _commit161("c1", "2026-07-01T00:00:00Z")
+_c2 = _commit161("c2", "2026-07-05T00:00:00Z")
+_git161("checkout", "-q", "-b", "feature")
+_f1 = _commit161("f1", "2026-07-06T00:00:00Z")
+_f2 = _commit161("f2", "2026-07-08T00:00:00Z")
+_git161("checkout", "-q", "main")
+_c3 = _commit161("c3", "2026-07-10T00:00:00Z")
+_git161("merge", "-q", "--no-ff", "-m", "merge feature", "feature", when="2026-07-12T00:00:00Z")
+_m161 = _git161("rev-parse", "HEAD")
+_url161 = f"file://{_origin161}"
+# And a remote with no default branch: its HEAD names a branch that does not exist.
+_bare161 = Path(tempfile.mkdtemp()) / "nohead.git"
+_sp161.run(["git", "clone", "-q", "--bare", str(_origin161), str(_bare161)], check=True, capture_output=True)
+_sp161.run(["git", "symbolic-ref", "HEAD", "refs/heads/nowhere"], cwd=_bare161, check=True)
+_sp161.run(["git", "config", "uploadpack.allowFilter", "true"], cwd=_bare161, check=True)
+
+# A repository's first commit is a base like any other.
+try:
+    _first161 = _ws161.fetch(_url161, _c1, Path(tempfile.mkdtemp()) / "c").parent_sha
+except Exception as _e161:  # noqa: BLE001
+    _first161 = f"{type(_e161).__name__}: {_e161}"
+check(_first161 == "", f"a repository's first commit is fetched, with no parent: {_first161!r}")
+
+# The history, commits only: the branch as the remote has it, the default
+# branch, and a commit's ancestry; a commit it will not serve is named.
+try:
+    _h161 = _ws161.history(_url161, Path(tempfile.mkdtemp()) / "h", branch="feature",
+                           shas=[_f2, "0" * 40])
+    _seen161 = (_h161.branch_on_remote, _h161.last_before("refs/remotes/origin/branch", "2026-07-07T00:00:00Z"),
+                _h161.last_before("refs/remotes/origin/default", "2026-07-07T00:00:00Z"),
+                _h161.last_before(_f2, "2026-07-09T00:00:00Z", frozenset({_f2})),
+                _h161.resolve(_f1[:9]), _h161.resolve("deadbee"), _h161.missing)
+    # Main on 07-09 was c2's line: the merge brought f2 (07-08) in only on 07-12.
+    _line161 = (_h161.last_before("refs/remotes/origin/default", "2026-07-09T00:00:00Z"),
+                _h161.made_before(_f1, "2026-07-07T00:00:00Z"), _h161.made_before(_f2, "2026-07-07T00:00:00Z"))
+    _gone161 = _ws161.history(_url161, Path(tempfile.mkdtemp()) / "g", branch="deleted", shas=[]).branch_on_remote
+    _nohead161 = _ws161.history(f"file://{_bare161}", Path(tempfile.mkdtemp()) / "n", branch="feature", shas=[])
+    _nohead161 = (_nohead161.last_before("refs/remotes/origin/default", "2026-07-20T00:00:00Z"),
+                  _nohead161.last_before("refs/remotes/origin/branch", "2026-07-20T00:00:00Z"))
+except Exception as _e161:  # noqa: BLE001
+    _seen161, _gone161 = f"{type(_e161).__name__}: {_e161}", None
+    _line161 = _nohead161 = _seen161
+check(_line161 == (_c2, True, False) and _nohead161 == (None, _f2),
+      f"a line is walked along its first parents, so a branch merged later lends it nothing from before; a commit "
+      f"says when it was made; a remote with no default branch is read for the rest: {_line161} {_nohead161}")
+check(_seen161 == (True, _f1, _c2, _f1, _f1, None, ("0" * 40,)) and _gone161 is False,
+      f"the remote's history says which commit came last before the session on each line, skips the session's "
+      f"own, resolves a short name and names what it would not serve: {_seen161} {_gone161}")
+
+
+# The candidates, from a remote stood in.
+class _H161:
+    def __init__(self, refs, known=(), on=True, missing=(), parents=None, after=()):
+        self.refs, self.known, self.branch_on_remote, self.missing = refs, known, on, missing
+        self.parents, self.after = parents or {}, set(after)
+
+    def made_before(self, sha, iso):
+        return sha not in self.after
+
+    def last_before(self, ref, iso, skip=frozenset()):
+        return self.refs.get(ref)
+
+    def resolve(self, abbreviated):
+        return next((k for k in self.known if k.startswith(abbreviated)), None)
+
+    def parent(self, sha):
+        return self.parents.get(sha)
+
+
+_ev161 = lambda heads=(), updated=None, committed=None: {"heads": list(heads), "updated_from": updated,
+                                                         "committed": committed, "first_move": None}
+_refs161 = {"refs/remotes/origin/branch": "b" * 40, "own1": "o" * 40, "refs/remotes/origin/default": "d" * 40}
+_bc161 = lambda probe, ev, ckpt="k" * 40, own="own1": _B43w.base_candidates(probe, "x", ev, ckpt, own, frozenset())
+_said161 = [_bc161(_H161(_refs161, known=("e" * 40,)), _ev161(heads=["eeeeeee"])),
+            _bc161(_H161(_refs161, known=("e" * 40,)), _ev161(updated="eeeeeee")),
+            _bc161(_H161(_refs161, known=("c" * 40,), parents={"c" * 40: "e" * 40}), _ev161(committed="ccccccc")),
+            _bc161(_H161(_refs161, known=("e" * 40, "c" * 40), parents={"c" * 40: "e" * 40}),
+                   _ev161(heads=["eeeeeee"], updated="eeeeeee", committed="ccccccc"))]
+check([(c[0][0][0][0], c[0][0][1], c[1]) for c in _said161] == [
+          ("e", "the HEAD the conversation printed", "established"),
+          ("e", "the commit the session's first pull moved from", "established"),
+          ("e", "the parent of the session's first commit", "established"),
+          ("e", "the HEAD the conversation printed", "established")],
+      f"what the session says of its start -- a HEAD it printed, the commit its first pull moved from, its first "
+      f"commit's parent -- is the one candidate: {_said161}")
+_lack161 = _bc161(_H161(_refs161, known=()), _ev161(heads=["eeeeeee"]))
+_differ161 = _bc161(_H161(_refs161, known=("e" * 40, "f" * 40)), _ev161(heads=["eeeeeee"], updated="fffffff"))
+_unpushed161 = _bc161(_H161(_refs161, known=()), _ev161(committed="ccccccc"))
+_late_e161 = _bc161(_H161(_refs161, known=("e" * 40,), after=("e" * 40,)), _ev161(heads=["eeeeeee"]))
+_own_e161 = _B43w.base_candidates(_H161(_refs161, known=("e" * 40,)), "x", _ev161(heads=["eeeeeee"]), None, None,
+                                  frozenset({"e" * 40}))
+check(not _late_e161[0] and "made after it began" in _late_e161[2]
+      and not _own_e161[0] and "one of its own commits" in _own_e161[2],
+      f"a start the session gives that was made after it began, or is one of its own commits, is refused: a move "
+      f"it could not see came first, and the fix may be in it: {_late_e161} {_own_e161}")
+check(not _lack161[0] and "does not hold" in _lack161[2] and not _differ161[0]
+      and "says different things" in _differ161[2] and _unpushed161[1] == "singled out",
+      f"a printed HEAD the remote lacks, or two different starts, refuse the moment; a first commit the remote "
+      f"never got says nothing: {_lack161} {_differ161} {_unpushed161[1:]}")
+_agree161 = _bc161(_H161(_refs161), _ev161(), ckpt="b" * 40)
+_open161 = _bc161(_H161(_refs161), _ev161())
+_dup161 = _bc161(_H161({**_refs161, "own1": "b" * 40}), _ev161(), ckpt="d" * 40)
+_gone161b = _bc161(_H161(_refs161, on=False, missing=("own1",)), _ev161(), ckpt=None)
+_none161 = _bc161(_H161({}, on=False), _ev161(), ckpt=None, own=None)
+check(_agree161 == ([("b" * 40, "the last commit a checkpoint recorded, which the remote had last")], "established", None)
+      and [s[0] for s, _ in _open161[0]] == ["b", "o", "d", "k"] and _open161[1] == "singled out"
+      and [s[0] for s, _ in _dup161[0]] == ["b", "d"] and [s[0] for s, _ in _gone161b[0]] == ["d"]
+      and _none161 == ([], "", "no commit on the remote precedes the session"),
+      f"a checkpoint commit the remote also had last is established; otherwise every candidate, each once, from "
+      f"the session's branch to the checkpoint's: {_agree161} {_open161} {_dup161} {_gone161b} {_none161}")
+
+
+# The build, end to end, with the remote and the trees stood in.
+class _Tree161:
+    def __init__(self, body):
+        self.body, self.extra = (body, {}) if isinstance(body, str) else (body[0], body[1])
+
+    def export_tree(self, sha, dest):
+        (dest / "src").mkdir(parents=True)
+        (dest / "src" / "a.py").write_text(self.body)
+        for name, text in self.extra.items():
+            (dest / name).write_text(text)
+        return dest
+
+
+def _built161(probe, trees, *, commits=None, turns=None, verified=None, refuse_two=False):
+    saved = {n: getattr(_B43w, n) for n in _kept79}
+    fetched = []
+
+    def fetch(url, sha, dest):
+        fetched.append(sha[:1])
+        if sha not in trees:
+            raise _ws161.GitError(f"git fetch: not our ref {sha}")
+        if trees[sha] == "timeout":
+            raise _ws161.GitError("git fetch: timed out after 300s")
+        return _Tree161(trees[sha])
+
+    try:
+        (_dir70 / "s79.jsonl").write_text("\n".join(_cc87) + "\n")
+        recover_mod.transcript_path = lambda sid: _dir70 / f"{sid}.jsonl"
+        _B43w.load_repos = lambda: {"acme/up": _Repo43w(repo_id="acme/up", url="https://x/acme/up",
+                                                        license_type="mit", language="Python")}
+        _B43w.session_starts = lambda ids=None: {"s79": 1_000_000_000}
+        _B43w.load_commits_by_repo = lambda **kw: commits or {}
+        _B43w.session_checkpoints = lambda ids: {}
+        _B43w.load_session_turns = lambda ids: {"s79": list(turns or _turns79())}
+        _B43w.fetch = fetch
+        _B43w.history = probe if callable(probe) else (lambda url, dest, **kw: probe)
+        _B43w.replay = lambda tree, edits, repo_id: (
+            _Replay43(applied=0, verified=0, files=set(), failed_at=2, reason="turn 2: old_string not found")
+            if "x = 2" in (tree / "src" / "a.py").read_text() and refuse_two else
+            _Replay43(applied=len(edits), verified=len(edits) if verified is None else verified, files={"b"}))
+        _B43w.check = lambda task_id, sig, tree: _Presence43w(
+            task_id=task_id, probeable=True, present=True, detail="ok", strength="declared")
+        row = {"session_id": "s79", "repo_id": "acme/up", "request": 1, "failed": 8, "complaint": 9,
+               "resolved": 10, "cut": 7, "kind": "none", "path": "src/a.py", "token": "",
+               "defect": "a defect", "rounds": 1, "usable": True, "asks_for_something": True,
+               "within_scope": True, "signals_trouble": False, "calls_recovered": True, "text_recovered": True}
+        return _B43w.build([row]), fetched
+    finally:
+        recover_mod.transcript_path = _NO_TRANSCRIPTS
+        for _n, _v in saved.items():
+            setattr(_B43w, _n, _v)
+
+
+_ckpt_c161 = lambda sha: {"acme/up": [
+    type("C161", (), {"author_ns": 1, "commit_ns": None, "checkpoint_pk": "", "commit_sha": sha})()]}
+_bd161 = lambda **refs: _H161({"refs/remotes/origin/branch": refs.get("b"), "refs/remotes/origin/default": refs.get("d")},
+                              known=refs.get("known", ()))
+# The conversation read `x = 1` in src/a.py. The branch's commit holds `x = 2`,
+# the default branch's `x = 1`: it alone fits, on a line the conversation read.
+_pick161, _f161 = _built161(_bd161(b="b" * 40, d="d" * 40), {"b" * 40: "x = 2\n", "d" * 40: "x = 1\n"})
+_both161, _ = _built161(_bd161(b="b" * 40, d="d" * 40), {"b" * 40: ("x = 1\n", {"b.txt": "b"}),
+                                                          "d" * 40: ("x = 1\n", {"d.txt": "d"})})
+_alike161, _ = _built161(_bd161(b="b" * 40, d="d" * 40), {"b" * 40: "x = 1\n", "d" * 40: "x = 1\n"})
+_unread161 = [t for t in _turns79() if t.get("tool_call_id") != "r1"]
+_blind161, _ = _built161(_bd161(b="b" * 40, d="d" * 40), {"b" * 40: "x = 2\n", "d" * 40: "x = 1\n"},
+                         turns=_unread161, verified=0, refuse_two=True)
+_alone161, _ = _built161(_bd161(b="b" * 40), {"b" * 40: "x = 1\n"})
+_slow161, _ = _built161(_bd161(b="b" * 40, d="d" * 40), {"b" * 40: "timeout", "d" * 40: "x = 1\n"})
+_lost161, _ = _built161(_bd161(b="b" * 40, d="d" * 40), {"d" * 40: "x = 1\n"})
+_wait161, _ = _built161(_bd161(b="c" * 40), {"c" * 40: "timeout"}, commits=_ckpt_c161("c" * 40))
+_all161, _ = _built161(_bd161(b="b" * 40, d="d" * 40), {"b" * 40: "x = 2\n", "d" * 40: "x = 3\n"})
+_no161, _ = _built161(_H161({}, on=False), {})
+_ckpt161, _ = _built161(_bd161(b="c" * 40), {"c" * 40: "x = 1\n"}, commits=_ckpt_c161("c" * 40))
+check([(t.sha[0], t.base_from) for t in _pick161.tasks]
+      == [("d", "the default branch, the only candidate the conversation's files fit")] and _f161 == ["b", "d"]
+      and not _both161.tasks and any("cannot be established" in w and "2 of 2" in w for w in _why79(_both161))
+      and [t.base_from for t in _alike161.tasks] == ["the session's branch, whose files every candidate that fits "
+                                                     "holds alike"]
+      and not _blind161.tasks and any("rests on nothing the conversation showed" in w for w in _why79(_blind161))
+      and not _all161.tasks and any("differs from what the conversation showed" in w
+                                    and "no other of the 1 candidate bases fits" in w for w in _why79(_all161))
+      and _why79(_no161) == ["no commit on the remote precedes the session"]
+      and [(t.sha[0], t.base_from) for t in _ckpt161.tasks]
+      == [("c", "the last commit a checkpoint recorded, which the remote had last")],
+      f"the build takes a candidate only when the session established it or the conversation's files single it "
+      f"out, and says which: {[(t.sha[:4], t.base_from) for t in _pick161.tasks]} {_f161} {_why79(_both161)} "
+      f"{_why79(_blind161)} {_why79(_all161)} {_why79(_no161)} {[(t.sha[:4], t.base_from) for t in _ckpt161.tasks]}")
+# What the session says, after its cut too: a pull at turn 12 that moved from
+# eeeeeee, and nothing moved HEAD before it.
+_late161 = _turns79() + _bash85(12, "git pull origin main 2>&1", "Updating eeeeeee..fffffff\nFast-forward")
+_after161, _ = _built161(_bd161(b="b" * 40, d="d" * 40, known=("e" * 40,)),
+                         {"e" * 40: "x = 1\n", "b" * 40: "x = 1\n"}, turns=_late161)
+_unheld161, _ = _built161(_bd161(b="b" * 40, known=()), {"b" * 40: "x = 1\n"}, turns=_late161)
+check([(t.sha[0], t.base_from) for t in _after161.tasks] == [("e", "the commit the session's first pull moved from")]
+      and not _unheld161.tasks and any("which the repository's remote does not hold" in w for w in _why79(_unheld161)),
+      f"a start the session gives after its cut is its start, and one the remote lacks refuses the moment: "
+      f"{[(t.sha[:4], t.base_from) for t in _after161.tasks]} {_why79(_unheld161)}")
+
+
+def _no_remote161(url, dest, **kw):
+    raise _ws161.GitError("git ls-remote: unable to access: Could not resolve host")
+
+
+_down161, _ = _built161(_no_remote161, {})
+check(not _down161.tasks and any(w.startswith("could not build the tree: the repository's history")
+                                 for w in _why79(_down161)),
+      f"a remote that cannot be read is a tree not built this pass, which the prune keeps: {_why79(_down161)}")
+check(not _alone161.tasks and any("one candidate base, with nothing to tell it from" in w for w in _why79(_alone161))
+      and not _slow161.tasks and any(w.startswith("could not build the tree: git fetch: timed out")
+                                     for w in _why79(_slow161))
+      and not _lost161.tasks and any("cannot be established: a candidate base is the code is gone" in w
+                                     for w in _why79(_lost161))
+      and not _wait161.tasks and any(w.startswith("could not build the tree: git fetch: timed out")
+                                     for w in _why79(_wait161)),
+      f"one candidate alone is no comparison; a candidate that could not be fetched this pass leaves the moment to "
+      f"a retry, and one gone from the remote leaves nothing compared: {_why79(_alone161)} {_why79(_slow161)} "
+      f"{_why79(_lost161)}")
+
+_old_t161 = Task("t161", "r/r", "u", "sha", "s161", 10, 11, 12, 13, "wrong " * 10, "right " * 10, "a defect", "none")
+check("base_from" not in _old_t161.to_json()
+      and _dc78.replace(_old_t161, base_from="the default branch").to_json()["base_from"] == "the default branch"
+      and Task.from_json(_old_t161.to_json()).base_from == "",
+      "a task built before G-86 is written as it was, byte for byte; one built since says where its base came from")
+
+# What a whole session says of its start, read up to its first move of HEAD.
+_se161 = lambda *pairs: _cs161.start_evidence(
+    [t for n, (cmd, out) in enumerate(pairs) for t in _bash85(2 * n + 2, cmd, out)], "/Users/dev/up")
+_s1 = _se161(("git log --oneline -1", "abc1234 start"), ("git pull", "Updating abc1234..def5678\nFast-forward"),
+             ("git log --oneline -1", "def5678 later"))
+_s2 = _se161(("git commit -qm one", "[main 1234567] one"))
+_s3 = _se161(("git commit --amend -m x", "[main 7654321] x"))
+_s4 = _se161(("git commit -qm one && git pull", "[main 1234567] one\nUpdating 1234567..89abcde"))
+_s5 = _se161(("git pull", "The user doesn't want to proceed with this tool use."), ("git log -1 --oneline", "abc1234 x"))
+check((_s1["heads"], _s1["updated_from"]) == (["abc1234"], "abc1234") and _s2["committed"] == "1234567"
+      and _s3["committed"] is None and (_s4["committed"], _s4["updated_from"]) == (None, None)
+      and _s5["heads"] == ["abc1234"],
+      f"a session's HEADs before its first move, its first pull's start, its first commit; not an amend's, not "
+      f"two moves in one command, and a move declined at the prompt moves nothing: {_s1} {_s2} {_s3} {_s4} {_s5}")
+
+# G-87: a git command in another checkout changes that checkout.
+_git161c = lambda cmd, cwd="/Users/dev/up": _cs161.tree_changing_git(
+    [_T63(1, "tool_use", tool_name="Bash", command=cmd)], 2, cwd)
+check(not _cs161.tree_changing_git([_T63(1, "tool_use", tool_name="Bash", command="cd /tmp/x && git checkout main")], 2, None)
+      and _cs161.tree_changing_git([_T63(1, "tool_use", tool_name="Bash", command="cd /opt/x && git checkout main")], 2, None),
+      "with no starting folder known, scratch is still elsewhere, and any other folder still counts")
+_elsewhere161 = ["S=/private/tmp/claude-501/x/scratchpad\ncd $S/go-git && git checkout --quiet abc1234",
+                 "git -C /tmp/copy checkout -q abc1234 2>/dev/null",
+                 "cd /tmp/archy && rm -rf b && git clone -q a b && git -C b checkout -q abc1234",
+                 "git checkout -q -b feat/new && git status --short",
+                 "cd /Users/dev/up/.claude/worktrees/other && git checkout main"]
+_own161 = ["git checkout main", "cd sub && git checkout main", "cd /Users/dev/up/src && git checkout main",
+           "(cd /tmp/x && make) && git checkout main", "cd $UNKNOWN && git checkout main",
+           "cd .. && git checkout main", "git checkout -f -b feat", "git checkout -q -b feat origin/main"]
+_own161 += ["cat <<EOF > notes.md\ncd /tmp\nEOF\ngit checkout main", "cd ../backend && git checkout main", "git -C ../backend checkout main", "cd /Users/dev/backend && git stash",
+            "pushd /tmp/x && make && popd && git checkout main", 'git commit -qm "x && cd /tmp/y"; git checkout main',
+            "cd /Users/dev/My\\ Proj && git checkout main", "(cd /tmp/x && echo $(pwd)) && git checkout main",
+            "git -c advice.detachedHead=false checkout abc1234", "git --git-dir=/x/.git checkout main",
+            "cd ${X:-/tmp/x} && git checkout main"]
+_elsewhere161 += ["cd -- /tmp/x && git checkout main", "git --no-pager -C /tmp/copy checkout main",
+                  "(cd /tmp/x && echo $(pwd) && git checkout main)",
+                  "cat <<EOF > notes.md\ncd /tmp\nEOF\ncd /tmp/x && git checkout main"]
+check(not any(_git161c(c) for c in _elsewhere161) and all(_git161c(c) for c in _own161)
+      and _git161c("cd /d/up && git checkout main", "D:\\up") and _git161c("cd /c/Temp/x && git checkout main", "D:\\up")
+      and not _git161c("cd /c/Users/me/AppData/Local/Temp/x && git checkout main", "D:\\up")
+      and _git161c("cd src && git checkout main", "/tmp/proj") and not _git161c("cd /tmp/other && git checkout main", "/tmp/proj")
+      and not _cs161.tree_changing_git([_T63(1, "tool_use", tool_name="Bash", command="git checkout main", tool_call_id="k")],
+                                       2, "/Users/dev/up", {"k": "/tmp/x"}),
+      f"a checkout in a scratch clone, a copy or another worktree, and a new branch made with -q, change nothing "
+      f"here: {[c for c in _elsewhere161 if _git161c(c)]} counted; in the session's own checkout, or one that "
+      f"cannot be placed, they still do: {[c for c in _own161 if not _git161c(c)]} missed")
+
+# G-88: only this checkout's HEAD, printed first.
+_heads161 = lambda *pairs, cwd="/Users/dev/up": _cs161.printed_heads(
+    [t for n, (cmd, out) in enumerate(pairs) for t in _bash85(2 * n + 2, cmd, out)], 99, cwd)
+check(_heads161(("cd /Users/dev/up/.claude/worktrees/w && git log --oneline -3", "09e2d4a other")) == []
+      and _heads161(("git log --oneline --all --grep=2173 | head", "8a6d537 match")) == []
+      and _heads161(("git fetch origin b && git log --oneline origin/main..FETCH_HEAD", "c9423f7 fetched")) == []
+      and _heads161(("git merge-base origin/main b | xargs git log --oneline -1", "fcbfd41 base")) == []
+      and _heads161(("git rev-list --count a..b && git log --oneline -1", "3\nabc1234 head")) == []
+      and _heads161(("cd /tmp/go-git && git log --oneline -1", "d6cbbfa theirs")) == []
+      and _heads161(("git status --short && git log --oneline -1", " M a.py\nabc1234 head")) == ["abc1234"]
+      and _heads161(("git log -1 --format '%h %s'", "abc1234 head")) == ["abc1234"],
+      "a HEAD is read only from the session's checkout, and only where `git log` or `rev-parse` names HEAD "
+      "before any other commit")
+check(_heads161(("git log --oneline main...HEAD", "fedcba9 main only")) == []
+      and _heads161(("git log --oneline origin/main..HEAD; git log --oneline HEAD..origin/main", "fedcba9 theirs")) == []
+      and _heads161(("git log -1 --format=%P", "fedcba9")) == []
+      and _heads161(("git log -1 --format='%h %s'", "abc1234 x")) == ["abc1234"]
+      and _heads161(("git remote update && git log -1 --oneline", "Fetching origin\n   fedcba9..0123abc main\nabc1234 x")) == []
+      and _heads161(("cat .git/ORIG_HEAD && git log -1 --oneline", "fedcba9876\nabc1234 x")) == []
+      and _heads161(("echo --- && git log -1 --oneline", "---\nabc1234 x")) == ["abc1234"]
+      and _heads161(("git log --oneline -3 | tail -1", "1111111 two back")) == []
+      and _heads161(("git log --oneline -3 | head -1", "abc1234 x")) == ["abc1234"]
+      and _heads161(("xargs -a ids.txt git log --oneline -1", "abc1234 x")) == []
+      and _heads161(("git log --oneline origin/main..FETCH_HEAD", "c9423f7 fetched")) == []
+      and _heads161(("cd -P /tmp/x && git log --oneline -1", "d6cbbfa theirs")) == []
+      and _heads161(("WT=$PWD/../wt; cd $WT && git log --oneline -1", "d6cbbfa theirs")) == []
+      and _cs161.printed_heads(_bash85(2, "git log --oneline -1", "0123abc theirs"), 99, "/Users/dev/up",
+                               {"b2": "/Users/dev/up/.claude/worktrees/w"}) == []
+      and _cs161.start_evidence(_bash85(2, "git -c user.name=a commit -qm x", "[main 7777777] x")
+                                + _bash85(4, "git log --oneline -1", "7777777 x"), "/Users/dev/up")["heads"] == []
+      and _heads161(("git log --oneline -1", "abc1234 here"), cwd=None) == ["abc1234"],
+      "no range, no format that leads with another commit, nothing printed before it by anything but a quiet "
+      "command, nothing after it that drops its first line, no folder the shell can still change, no call the "
+      "transcript places in another checkout; and a commit made with git's own options is a move")
+check(_heads161(("git fetch && git log --oneline -1", "From github.com:o/r\n   abc1234..def5678  main -> origin/main\n"
+                                                         "0123abc head")) == []
+      and _heads161(("cd /Users/dev/up/.worktrees/rp && git log --oneline -1", "fbc365b theirs")) == [],
+      "a fetch prints the range it moved a branch over, so a HEAD after it is not read; nor one printed in a "
+      "worktree kept in a hidden folder of the repository")
+check(_heads161(("git checkout -b feat origin/feat && git log -1 --oneline", "fff9999 x"),
+                ("git log --oneline -1", "fff9999 x")) == []
+      and _heads161(("git checkout -q -b feat && git log --oneline -1", "abc1234 here")) == ["abc1234"]
+      and _heads161(("git -C /tmp/copy commit -qm x", ""), ("git log --oneline -1", "abc1234 here")) == ["abc1234"],
+      "a checkout to another commit ends the reading as a commit does; a branch made where HEAD is, or a "
+      "commit in another checkout, does not")
+
+# G-89: two checkouts before the cut.
+_tx161 = lambda *entries: "\n".join(json.dumps({"type": "assistant", "cwd": cwd, "message": {"id": f"m{i}", "content": [
+    {"type": "tool_use", "id": cid, "name": name, "input": {}}]}}) for i, (cid, name, cwd) in enumerate(entries)) + "\n"
+
+
+def _moved161(entries, turns, cwd="/Users/dev/up"):
+    (_dir70 / "s161.jsonl").write_text(_tx161(*entries))
+    recover_mod.transcript_path = lambda sid: _dir70 / f"{sid}.jsonl"
+    try:
+        return _B43w.checkouts_before("s161", turns, 9, cwd)
+    finally:
+        recover_mod.transcript_path = _NO_TRANSCRIPTS
+
+
+_wt161 = "/Users/dev/up/.claude/worktrees/w"
+_calls161 = lambda *ids: [_T63(n, "tool_use", tool_name=name, tool_call_id=cid, file_path=path)
+                          for n, (cid, name, path) in enumerate(ids, 1)]
+check(_moved161([("a", "Bash", _wt161)], _calls161(("a", "Bash", None))) == [_wt161]
+      and _moved161([("a", "Edit", "/Users/dev/up")], _calls161(("a", "Edit", _wt161 + "/src/a.py"))) == [_wt161]
+      and _moved161([], _calls161(("a", "EnterWorktree", None))) == ["EnterWorktree"]
+      and _moved161([("a", "Bash", "/Users/dev/up")], _calls161(("a", "Bash", None)), cwd=_wt161) == ["/Users/dev/up"],
+      "a session that ran a call or touched a file in another worktree, entered one, or left the one it started "
+      "in for the main checkout, worked in two checkouts")
+check(_moved161([("a", "Bash", "/Users/dev/up/.worktrees/rp")], _calls161(("a", "Bash", None))) == ["/Users/dev/up/.worktrees/rp"]
+      and _moved161([("a", "Bash", "/Users/dev/up")], _calls161(("a", "Bash", None)), cwd="/Users/dev/up/.trees/x")
+      == ["/Users/dev/up"],
+      "and so did one that worked in a worktree kept in a hidden folder of the repository, or left one for the "
+      "main checkout")
+check(_moved161([("a", "Bash", "/Users/dev/up/src"), ("b", "Bash", "/tmp/x"), ("c", "Bash", "/Users/dev/other")],
+                _calls161(("a", "Bash", None), ("b", "Bash", None), ("c", "Bash", None))) == []
+      and _moved161([("a", "Bash", _wt161 + "/src")], _calls161(("a", "Read", _wt161 + "/a.py")), cwd=_wt161) == []
+      and _moved161([("a", "Bash", _wt161)], [_T63(12, "tool_use", tool_name="Bash", tool_call_id="a")]) == [],
+      "a subfolder of its own checkout, a scratch folder, a folder outside the repository, and anything after "
+      "the cut are not another checkout")
+
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:
