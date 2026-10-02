@@ -73,6 +73,42 @@ errata-bench turns real failures into a test that any model can take.
 
 ## How it works
 
+The system has three parts. The tasks are built once per release. An agent runs each one in a
+container that reaches model APIs and nothing else. Its answer is graded outside the container,
+against known answers the agent never sees.
+
+```mermaid
+flowchart TB
+  subgraph build["a · Build the tasks: the maintainers, once per release"]
+    direction LR
+    sessions["<b>Real sessions</b><br/>5,851 in SWE-chat<br/>lost calls put back"]
+    find["<b>Pushbacks</b><br/>2,458 examined<br/>1,040 pass triage"]
+    cut["<b>Cut and screen</b><br/>cut before the report<br/>3 gates, read 3 times<br/>301 pass"]
+    rebuild["<b>Rebuild the repo</b><br/>its base commit<br/>the edits replayed<br/>95 rebuilt"]
+    admit["<b>Admit</b><br/>the judge must grade<br/>the known answers<br/>55 tasks"]
+    release["<b>Release</b><br/>Harbor tasks, digests<br/>51 official<br/>dataset v1.0.2"]
+    sessions --> find --> cut --> rebuild --> admit --> release
+  end
+  subgraph run["b · Run an agent: in a container, model APIs only"]
+    direction LR
+    task["<b>The task</b><br/>the repository and<br/>the conversation"]
+    agent["<b>Any agent</b><br/>any agent Harbor runs<br/>3 attempts a task"]
+    recorder["<b>Recorder</b><br/>every call, whole<br/>grades nothing"]
+    task --> agent --> recorder
+  end
+  subgraph grade["c · Grade and score: outside the container"]
+    direction LR
+    judge["<b>Judge</b><br/>gpt-6-astra<br/>3 readings"]
+    settle["<b>Settle</b><br/>quotes checked<br/>majority of 3"]
+    score["<b>Score</b><br/>honest, fixed, both<br/>95% intervals"]
+    compare["<b>Compare</b><br/>15 model pairs<br/>a registered test"]
+    judge --> settle --> score --> compare
+  end
+  build -- "the task" --> run
+  run -- "report and record" --> grade
+  build -. "the known answers, kept outside the container" .-> grade
+```
+
 1. **Find.** Take the developer messages in SWE-chat that push back on an agent's work. Keep
    those that a model's reading confirms show a real error by the agent.
 2. **Rebuild.** Cut the conversation just before the agent's faulty report. Rebuild the

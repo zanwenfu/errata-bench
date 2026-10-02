@@ -14006,6 +14006,23 @@ check(_seen160["none"] == _seen160["the same again"]
       and len({v for k, v in _seen160.items() if k != "the same again"}) == 5,
       f"a session's digest is the same for the same data, and changes with its turns, its transcript and its "
       f"subagents' transcripts: {sorted({k: v[:8] for k, v in _seen160.items()}.items())}")
+# A published dataset keeps a task's working copy only in its Harbor task.
+# `stale` looked for the copy beside the task too, and the export's check
+# crashed on the published v1.0.2 (10-02).
+_ds160 = Path(tempfile.mkdtemp()) / "dataset"
+__import__("shutil").copytree(_short133, _ds160 / "tasks" / _short133.name,
+                              ignore=__import__("shutil").ignore_patterns("workspace.tar.gz"))
+__import__("shutil").copytree(_xr159 / "harbor" / _short133.name, _ds160 / "harbor" / _short133.name)
+try:
+    _ds_stale160 = _hb133.stale(_ds160 / "tasks" / _short133.name, _ds160 / "harbor" / _short133.name)
+except OSError as e:
+    _ds_stale160 = type(e).__name__
+with _ctx60.redirect_stdout(_io60.StringIO()), _ctx60.redirect_stderr(_io60.StringIO()):
+    _ds_check160 = _ex157.main([str(_ds160), "--check"])
+check(_ds_stale160 is False and _ds_check160 == 0
+      and not (_ds160 / "tasks" / _short133.name / "workspace.tar.gz").exists(),
+      f"a task laid out as a published dataset lays it out is read as current, and the export's check passes it: "
+      f"{_ds_stale160}, {_ds_check160}")
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:

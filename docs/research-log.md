@@ -10916,3 +10916,18 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     The published dataset matches the release folder file for file, but for
     its card (`README.md`, edited on Hugging Face the day it was released).
     Its gate approves a request on accepting the terms.
+  - *Why that code is four days old.* `main` builds another instruction for
+    17 of the published tasks (the note on cut conversations was reworded),
+    and grades under the judge's rules 4, where the published admission was
+    made under rules 3. So `main` refuses v1.0.2, and `v1.0.4` is the newest
+    code that runs it. `main`'s fixes reach testers with v1.1.
+  - *A crash of this round's own, found on the published data.* `stale`'s
+    size check looked for the working copy beside each task. A published
+    dataset keeps it only in its Harbor task, so `export_harbor.py --check`
+    crashed on v1.0.2. The size is now compared only where the task keeps
+    its own copy. A check runs it on a task laid out as the dataset lays it
+    out, and harbor.py's 15 mutants are all caught.
+  - *The README's system figure.* The website's three parts, as Mermaid,
+    each step with its count. It was rendered in Mermaid 10 and 11, in light
+    and dark. Its numbers, and the README's results table, match the
+    website's data.
