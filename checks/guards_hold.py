@@ -14786,7 +14786,8 @@ check(_located163 == ["said in s-y"] and len(_rows41(_pl163.trajectories)) == 1
       and any("not located: their session's rows hold an abandoned branch" in n for n in _lp163.notes),
       f"nor located, and a moment read twice is located once: {_located163}, {len(_rows41(_pl163.trajectories))} rows")
 check(_shell163 == [("s-g", 7)]
-      and "1 rows labelled pushback passed over: a shell command" in " ".join(_said163s.getvalue().split()),
+      and "1 rows in the corpus labelled pushback passed over: a shell command" in " ".join(
+          _said163s.getvalue().split()),
       f"a shell command the developer ran is passed over, and the message after it is the session's first "
       f"pushback: {_shell163}")
 check("s-c2" not in _rew163 and "s-c1" in _rew163
