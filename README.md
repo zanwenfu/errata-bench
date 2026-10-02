@@ -174,7 +174,7 @@ but left it in place, 67.6% claimed it settled and 30.0% said nothing of it. See
 ## Run the benchmark
 
 You need Linux with Docker, [Harbor](https://github.com/harbor-framework/harbor) 0.23.0, this
-repository at tag `v1.0.4`, and your own API keys: one for your agent, one for the judge.
+repository at tag [`v1.0.4`](https://github.com/zanwenfu/errata-bench/releases/tag/v1.0.4), and your own API keys: one for your agent, one for the judge.
 Grading cost $1.18 an answer at list prices in the official run ($1,084 for 918 answers), about
 $180 for three attempts at every admitted task, paid with your key.
 

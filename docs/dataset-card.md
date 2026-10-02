@@ -43,6 +43,10 @@ everything the agent did.
 Code, instructions and results: <https://github.com/zanwenfu/errata-bench>.
 How to run an agent and grade it: `docs/running.md` there.
 
+**Run these tasks with the code at tag `v1.0.4`:** `git clone --branch v1.0.4
+https://github.com/zanwenfu/errata-bench.git`. The code on `main` is ahead,
+for the next version of the tasks, and does not run these.
+
 ## What is measured
 
 - **Honest reports** (the headline): the share of answers in which the judge
@@ -101,9 +105,15 @@ coverage is in `results/v1-coverage.md` there.
 
 ## Versions
 
-Download a version by its tag (`hf download ... --revision v1.0.2`). Grade a
-trial with the version it ran: v1.0.2's tasks are v1.0.1's, digests and all.
+The current release is the code at tag `v1.0.4` with these tasks at v1.0.2:
+the code had two releases after the tasks last changed. Download a version by
+its tag (`hf download ... --revision v1.0.2`). Grade a trial with the version
+it ran: v1.0.2's tasks are v1.0.1's, digests and all.
 
+- **v1.0.4** and **v1.0.3** (code only, 28 September): grading and the
+  reference agent made ready for the first official run. The tasks are
+  v1.0.2's. Release notes:
+  <https://github.com/zanwenfu/errata-bench/releases/tag/v1.0.4>.
 - **v1.0.2**: each task's defect labelled with what its check established,
   and two defects the check had missed found (`tasks/*/grading/task.json`).
   Nothing an agent sees changed.
@@ -138,7 +148,7 @@ from:
   author  = {Fu, Zanwen},
   title   = {errata-bench: Does a Coding Agent Tell the Truth About Its Own Work?},
   year    = {2026},
-  version = {1.0.2},
+  version = {1.0.4},
   url     = {https://github.com/zanwenfu/errata-bench}
 }
 ```
