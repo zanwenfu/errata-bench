@@ -4118,7 +4118,7 @@ check(_fp49(_short49) == _fp49(_T49.from_json(_short49.to_json()))
 # And the cap is one constant, not two literals that can drift apart.
 _spec_src49 = Path("src/errata_bench/spec.py").read_text()
 check(_spec_src49.count("kept(self.oracle)") == 1 and _spec_src49.count("kept(task.oracle)") == 1
-      and "[:6000]" not in _spec_src49 and "[:REFERENCE_CHARS]" not in _spec_src49,
+      and "[:6000]" not in _spec_src49 and _spec_src49.count("[:REFERENCE_CHARS]") == 1,
       "the cap is one expression, `kept`, used by both, rather than written twice (G-96)")
 
 print("\n50. whether an attempt counts is settled, not taken from whichever reading was first")
@@ -14792,7 +14792,8 @@ check(_view164.startswith(_tri164.LEFT_OUT + "\n[turn 4] AGENT:\n") and _answer1
 _short164 = [_T63(1, "user_prompt", content="add retries"), _T63(2, "assistant_response", content="Done."),
              _T63(3, "user_prompt", content="no, that is wrong")]
 _view164s = _tri164.view(_short164, 3)
-check(_view164s == _bx70(_short164, 3, record=2, whole_messages=True) and _tri164.LEFT_OUT not in _view164s,
+check(_view164s == _bx70(_short164, 3, record=2, whole_messages=True).lstrip("\n")
+      and _tri164.LEFT_OUT not in _view164s,
       f"and a conversation shorter than its reach is read whole, with nothing said left out: {_view164s[:40]!r}")
 _asked164 = []
 
@@ -14958,19 +14959,25 @@ _lines166 = [l for l in _vb166.splitlines() if l.startswith("[turn")]
 _order166 = [l.split("]")[0] for l in _lines166]
 check(all(f"/r/{c}.py" in _vb166 for c in "abc") and _order166.index("[turn 3") < _order166.index("[turn 6"),
       f"triage's view does not start inside a batch of calls, a result without its call: {_order166}")
-check(not _vb166.startswith("\n") and _vb166.startswith("[turn 1]"),
-      f"and a view from the start opens on its first row, not a blank line: {_vb166[:12]!r}")
-# Two steps back of about 5,000 characters each: the first is taken, the
-# second would make 9,900 in all past the tail, and is not (review, 10-02).
+_vt166 = _tri166.view([_T63(1, "user_prompt", content="add retries"), _T63(2, "assistant_response", content="Done."),
+                      _T63(3, "user_prompt", content="no")], 3)
+check(_vt166.startswith("[turn 1] USER:"),
+      f"and a view from the start opens on its first row, not a blank line: {_vt166[:16]!r}")
+# Two steps back: to B's call (about 4,100 characters), then to A's (another
+# 8,200, making 12,300 past the tail): the first is taken and the second is
+# not, though each alone is under TAIL_CHARS (review, 10-02). The view keeps
+# 4,000 characters of a result.
 _steps166 = [_T63(1, "user_prompt", content="fix it"),
              _T63(2, "tool_use", tool_name="Read", file_path="/r/A.py", tool_call_id="a"),
-             _T63(3, "tool_result", content="z1 " * 1_600, tool_call_id="nobody-1"),
-             _T63(4, "tool_use", tool_name="Read", file_path="/r/B.py", tool_call_id="b"),
-             _T63(5, "tool_result", content="a-out", tool_call_id="a"),
-             _T63(6, "tool_result", content="z2 " * 1_600, tool_call_id="nobody-2"),
-             _T63(7, "tool_result", content="b-out " * 1_330, tool_call_id="b"),
-             _T63(8, "user_prompt", content="wrong")]
-_vs166 = _tri166.view(_steps166, 8)
+             _T63(3, "tool_result", content="z" * 5_000, tool_call_id="nobody-1"),
+             _T63(4, "tool_result", content="y" * 5_000, tool_call_id="nobody-2"),
+             _T63(5, "tool_use", tool_name="Read", file_path="/r/B.py", tool_call_id="b"),
+             _T63(6, "tool_result", content="a-out", tool_call_id="a"),
+             _T63(7, "tool_result", content="x" * 5_000, tool_call_id="nobody-3"),
+             _T63(8, "tool_result", content="w" * 5_000, tool_call_id="nobody-4"),
+             _T63(9, "tool_result", content="b-out " * 900, tool_call_id="b"),
+             _T63(10, "user_prompt", content="wrong")]
+_vs166 = _tri166.view(_steps166, 10)
 check("/r/B.py" in _vs166 and "/r/A.py" not in _vs166,
       f"triage's steps back stop at another TAIL_CHARS in all, not in each: B shown {'/r/B.py' in _vs166}, "
       f"A shown {'/r/A.py' in _vs166}")
@@ -15083,6 +15090,16 @@ try:
     _asks166, _first166 = len(_seen166), (_seen166 + [""])[0]
     _short166 = asyncio.run(_tj166.locate(_far166[:3] + _far166[3:300], 10))
     _asks166b = len(_seen166) - _asks166
+    # Results of 200 characters: the first view is about 86,000 characters,
+    # 1,200 turns would be about 270,000, so the second look stops where
+    # FURTHER_CHARS does. Results of 900: the first view alone is past it,
+    # so there is no second look.
+    _medium166 = [_T63(1, "user_prompt", content="add retries"), _T63(5, "assistant_response", content="Added."),
+                  _T63(10, "user_prompt", content="it loops")] + [
+        _T63(n, "tool_result", content="z" * 200, tool_call_id=f"m{n}") for n in range(11, 1500)]
+    _seen166.clear()
+    _mid166 = asyncio.run(_tj166.locate(_medium166, 10))
+    _mid_asks166 = list(_seen166)
     _heavy166 = [_T63(1, "user_prompt", content="add retries"), _T63(5, "assistant_response", content="Added."),
                  _T63(10, "user_prompt", content="it loops")] + [
         _T63(n, "tool_result", content="z" * 900, tool_call_id=f"h{n}") for n in range(11, 1500)]
@@ -15096,9 +15113,12 @@ check(_asks166 == 2 and "[turn 900]" not in _first166 and _went166.resolved and 
       f"answer is kept: {_asks166} asks, resolved at {_went166.resolved_turn}, view to {_went166._looked_to}")
 check(_asks166b == 1 and _short166._looked_to == 410,
       f"a session that ends within the view is asked about once: {_asks166b} asks, view to {_short166._looked_to}")
-check(len(_seen166) == 2 and len(_seen166[1]) <= _tj166.FURTHER_CHARS + 400 < len(
-          _tj166.render(_heavy166, -50, 1210)),
-      f"and the second look reads no more than FURTHER_CHARS: {[len(x) for x in _seen166]}")
+check(len(_mid_asks166) == 2 and 410 < _mid166._looked_to < 1210
+      and len(_mid_asks166[1]) <= _tj166.FURTHER_CHARS + 400 < len(_tj166.render(_medium166, -50, 1210)),
+      f"and the second look reads no more than FURTHER_CHARS: {[len(x) for x in _mid_asks166]}, view to "
+      f"{_mid166._looked_to}")
+check(len(_seen166) == 1,
+      f"and none is taken when the first view alone is past it: {[len(x) for x in _seen166]}")
 _stored166 = _rows41(_b166.trajectories)[0]
 check("looked_to" in _stored166, f"the stored trajectory says where its view ended: {sorted(_stored166)}")
 
@@ -15140,8 +15160,10 @@ _saved167 = (_jm167.configure_client, _agents_mod.Runner)
 _jm167.configure_client = lambda: None
 _agents_mod.Runner = _Judge167
 try:
+    # The real judge, which the suite keeps aside: `judge_mod.judge` is a
+    # stand-in from the top of the file.
     for _task167 in (_long167, _back167, _short167):
-        asyncio.run(_jm167.judge(_task167, "an answer"))
+        asyncio.run(REAL_JUDGE(_task167, "an answer"))
 finally:
     _jm167.configure_client, _agents_mod.Runner = _saved167
 _pl167, _pc167, _ps167 = (_asked167 + ["", "", ""])[:3]
