@@ -14684,6 +14684,63 @@ try:
 finally:
     _sessions_mod.CORPUS, _sessions_mod.load_repos = _keep163
 _shell163 = [(r["session_id"], r["turn_number"]) for r in load(_out163s)]
+# A corpus the collector assembled before it listed the sessions holding an
+# abandoned branch is refused, not read as listing none (review, 10-02).
+(_corpus163s / "left_out.json").write_text("{}")
+_sessions_mod.CORPUS, _sessions_mod.load_repos = _corpus163s, REAL_LOAD_REPOS
+try:
+    try:
+        with _contextlib38.redirect_stdout(_io38.StringIO()), _transcripts_at(_corpus163s):
+            _run_mod.find_moments(10, Path(tempfile.mkdtemp()) / "m.jsonl")
+        _stale163 = "not refused"
+    except SystemExit as _e163:
+        _stale163 = str(_e163)
+finally:
+    _sessions_mod.CORPUS, _sessions_mod.load_repos = _keep163
+    (_corpus163s / "left_out.json").unlink()
+check("assemble it again" in _stale163,
+      f"a collected corpus without the list of edited sessions is refused: {_stale163[:80]!r}")
+# And moments drawn before the list are not read further, at triage or reading.
+from errata_bench.find import reading as _rd163, triage as _tr163
+from errata_bench.stages import stage_read as _stage_read163, stage_triage as _stage_triage163
+
+_listed163 = Path(tempfile.mkdtemp())
+(_listed163 / "rewound.json").write_text(json.dumps({"s-x": 1}))
+_asked163: list[str] = []
+
+
+async def _triage163(excerpt, **kw):
+    _asked163.append(excerpt)
+    return _Triage43(agent_has_acted=True, objects_to_that_work=True, reason="r")
+
+
+async def _read163(ts, turn, **kw):
+    _asked163.append(ts[0]["content"])
+    return _Reading43(what_user_asked="a", what_agent_did="b", what_user_objected_to="c",
+                      objection_kind="real_error", benchmark_viable=True, context_sufficient=True)
+
+
+_keep163b = (turns_mod.load_session_turns, _tr163.triage, _rd163.read_pushback, _sessions_mod.CORPUS)
+turns_mod.load_session_turns = lambda ids: {i: [{"turn_number": 7, "turn_type": "user_prompt",
+                                                  "content": f"said in {i}"}] for i in ids}
+_tr163.triage, _rd163.read_pushback, _sessions_mod.CORPUS = _triage163, _read163, _listed163
+try:
+    _p163 = Paths(Path(tempfile.mkdtemp()) / "run")
+    for _s163 in ("s-x", "s-y"):
+        append(_p163.moments, {"session_id": _s163, "turn_number": 7, "repo_id": "acme/up", "kind": "correction"})
+    _tp163 = asyncio.run(_stage_triage163(_p163, 10**9, concurrency=1))
+    _triaged163 = list(_asked163)
+    append(_p163.triaged, {"session_id": "s-x", "turn_number": 7, "repo_id": "acme/up", "worth_reading": True})
+    _rp163 = asyncio.run(_stage_read163(_p163, 10**9, concurrency=1))
+    _read_asked163 = _asked163[len(_triaged163):]
+finally:
+    turns_mod.load_session_turns, _tr163.triage, _rd163.read_pushback, _sessions_mod.CORPUS = _keep163b
+check(len(_triaged163) == 1 and "said in s-y" in _triaged163[0]
+      and any("their session holds a message the developer edited" in n for n in _tp163.notes)
+      and _read_asked163 == ["said in s-y"]
+      and any("abandoned branch" in n for n in _rp163.notes),
+      f"moments drawn before the list are not read, at triage or reading, and it is said: triage asked "
+      f"{len(_triaged163)}, reading asked {_read_asked163}")
 check(_shell163 == [("s-g", 7)]
       and "1 rows labelled pushback passed over: a shell command" in " ".join(_said163s.getvalue().split()),
       f"a shell command the developer ran is passed over, and the message after it is the session's first "
@@ -14903,6 +14960,20 @@ check(all(f"/r/{c}.py" in _vb166 for c in "abc") and _order166.index("[turn 3") 
       f"triage's view does not start inside a batch of calls, a result without its call: {_order166}")
 check(not _vb166.startswith("\n") and _vb166.startswith("[turn 1]"),
       f"and a view from the start opens on its first row, not a blank line: {_vb166[:12]!r}")
+# Two steps back of about 5,000 characters each: the first is taken, the
+# second would make 9,900 in all past the tail, and is not (review, 10-02).
+_steps166 = [_T63(1, "user_prompt", content="fix it"),
+             _T63(2, "tool_use", tool_name="Read", file_path="/r/A.py", tool_call_id="a"),
+             _T63(3, "tool_result", content="z1 " * 1_600, tool_call_id="nobody-1"),
+             _T63(4, "tool_use", tool_name="Read", file_path="/r/B.py", tool_call_id="b"),
+             _T63(5, "tool_result", content="a-out", tool_call_id="a"),
+             _T63(6, "tool_result", content="z2 " * 1_600, tool_call_id="nobody-2"),
+             _T63(7, "tool_result", content="b-out " * 1_330, tool_call_id="b"),
+             _T63(8, "user_prompt", content="wrong")]
+_vs166 = _tri166.view(_steps166, 8)
+check("/r/B.py" in _vs166 and "/r/A.py" not in _vs166,
+      f"triage's steps back stop at another TAIL_CHARS in all, not in each: B shown {'/r/B.py' in _vs166}, "
+      f"A shown {'/r/A.py' in _vs166}")
 # The reader's view is fitted to READ_CHARS: 18 results of 4,500 characters
 # keep 4,000 each, where 60,000 squeezed them to 200.
 _asked166 = []
@@ -14935,9 +15006,21 @@ check(_rd166.READ_CHARS == 100_000 and _kept166 > 3_900,
 # One failed answer, one usable trajectory, across sibling run folders.
 _runs166 = Path(tempfile.mkdtemp())
 _a166, _b166 = Paths(_runs166 / "run-a"), Paths(_runs166 / "run-b")
-append(_a166.trajectories, {"session_id": "s166", "repo_id": "r/r", "complaint": 7, "failed": 5, "resolved": 12,
-                            "usable": True, "reason": "usable"})
-append(_b166.readings, {"session_id": "s166", "repo_id": "r/r", "turn_number": 9, "reading": {"benchmark_viable": True}})
+_pre166 = Paths(_runs166 / "run-a.pre-fix")
+from errata_bench.find.trajectory import RULES as _RULES166
+
+for _sid166, _held166, _row166x in (
+        ("s166", _a166, {"complaint": 7, "usable": True, "rules": _RULES166}),     # held: a different objection
+        ("s166b", _pre166, {"complaint": 7, "usable": True, "rules": _RULES166}),  # a backup holds nothing
+        ("s166c", _a166, {"complaint": 7, "usable": False, "rules": _RULES166}),   # nor an unusable row
+        ("s166d", _a166, {"complaint": 7, "usable": True}),                         # nor one of earlier rules
+        ("s166e", _a166, {"complaint": 9, "usable": True, "rules": _RULES166})):   # the same moment, elsewhere
+    append(_held166.trajectories, {"session_id": _sid166, "repo_id": "r/r", "failed": 5, "resolved": 12,
+                                   "reason": "usable", **_row166x})
+for _sid166, _turn166 in (("s166", 9), ("s166b", 9), ("s166c", 9), ("s166d", 9), ("s166e", 9),
+                          ("s166f", 9), ("s166f", 11)):
+    append(_b166.readings, {"session_id": _sid166, "repo_id": "r/r", "turn_number": _turn166,
+                            "reading": {"benchmark_viable": True}})
 
 
 async def _located166(turns, turn):
@@ -14953,10 +15036,21 @@ try:
     asyncio.run(_stage_locate41(_b166, 10**9, concurrency=1))
 finally:
     _traj41.locate, turns_mod.load_session_turns = _saved166b
-_row166 = (_rows41(_b166.trajectories) or [{}])[0]
-check(_row166.get("usable") is False and "run-a:7" in str(_row166.get("reason")),
-      f"a second objection to an answer a sibling run already holds makes no second usable trajectory: "
-      f"{_row166.get('usable')}, {_row166.get('reason')!r}")
+_got166 = {(r["session_id"], r["complaint"]): r for r in _rows41(_b166.trajectories)}
+_row166 = _got166.get(("s166", 9), {})
+check(_row166.get("usable") is False and "run-a:7" in str(_row166.get("reason"))
+      and _row166.get("held_by") == "run-a:7" and _row166.get("rules") == _RULES166,
+      f"a second objection to an answer a sibling run already holds makes no second usable trajectory, and says "
+      f"which holds it: {_row166.get('usable')}, {_row166.get('reason')!r}, {_row166.get('held_by')!r}")
+check(all(_got166.get((s, 9), {}).get("usable") is True for s in ("s166b", "s166c", "s166d", "s166e")),
+      f"a backup's row, an unusable row, a row of earlier rules, and the same moment located in another folder "
+      f"hold nothing: {[(s, _got166.get((s, 9), {}).get('usable')) for s in ('s166b', 's166c', 's166d', 's166e')]}")
+check(_got166.get(("s166f", 9), {}).get("usable") is True
+      and _got166.get(("s166f", 11), {}).get("usable") is False
+      and _got166.get(("s166f", 11), {}).get("held_by") == "run-b:9"
+      and _got166.get(("s166f", 9), {}).get("resolution_fixes_it") is True,
+      f"two objections to one answer in the same run: the first is usable, the second held by it: "
+      f"{[(k, v.get('usable'), v.get('held_by')) for k, v in _got166.items() if k[0] == 's166f']}")
 # Locate looks once more, further on, when its view leaves the defect
 # unresolved and the session goes on past it; within FURTHER_CHARS.
 from errata_bench.find import trajectory as _tj166

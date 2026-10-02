@@ -529,6 +529,26 @@ check(kinds_of(queued_copy) == [(0, "user_prompt"), (2, "system_injected"), (3, 
       f"a queued or attached copy of another agent's message, delivered again whole, is Claude Code's and no row "
       f"moves; a message with no copy before it stays another agent's: {kinds_of(queued_copy)} "
       f"{kinds_of(attached_copy)} {kinds_of(alone)}")
+# As newer versions write it: the queue entry, the attachment that delivers it
+# mid-turn (`queued_and_delivered` makes the queue entry no row), then the
+# wrapped delivery. The attachment is the copy (review, 10-02).
+enqueue = lambda t: {"type": "queue-operation", "timestamp": T.format(1), "operation": "enqueue", "content": t}
+attach = lambda uid, parent, t: {"type": "attachment", "uuid": uid, "parentUuid": parent, "timestamp": T.format(1),
+                                 "attachment": {"type": "queued_command", "commandMode": "prompt", "prompt": t}}
+as_written = claude_code_rows("pw", "o/r", "o/r#pw", [
+    U90("g0", None, "go"), enqueue(hand_back), attach("g1", "g0", hand_back),
+    M90("g2", "g1", wrapped, origin={"kind": "peer"})])
+# The same words delivered earlier as they were, then queued again and
+# delivered wrapped: the earlier delivery stays, the later copy goes.
+twice_over = claude_code_rows("pt", "o/r", "o/r#pt", [
+    U90("g0", None, "go"), enqueue(hand_back), attach("g1", "g0", hand_back),
+    A90("g2", "g1", {"type": "text", "text": "Read it."}), enqueue(hand_back),
+    M90("g3", "g2", wrapped, origin={"kind": "peer"})])
+check(kinds_of(as_written) == [(0, "user_prompt"), (2, "system_injected"), (3, "peer_message")]
+      and kinds_of(twice_over) == [(0, "user_prompt"), (2, "peer_message"), (5, "system_injected"),
+                                   (6, "peer_message")],
+      f"with the attachment newer versions write between them, the attachment is the copy; an earlier delivery of "
+      f"the same words is left as it was: {kinds_of(as_written)} {kinds_of(twice_over)}")
 # G-95: a message the developer edited and sent again after the agent had
 # answered it leaves the first branch in the transcript.
 from errata_bench.crawl.shape import rewound  # noqa: E402
@@ -538,6 +558,15 @@ branch95 = [U90("e1", None, "add retries"), A90("f1", "e1", {"type": "text", "te
 unanswered95 = [U90("e1", None, "add retries"), A90("f1", "e1", {"type": "text", "text": "Added."}),
                 U90("e2", "f1", "now test it"), U90("e3", "f1", "now test it on Windows"),
                 A90("f3", "e3", {"type": "text", "text": "On Windows: fine."})]
+# An edit made before a compaction: the boundary has no parent and names the
+# entry it follows in `logicalParentUuid`, and the conversation goes on from it.
+compacted95 = branch95 + [
+    {"type": "system", "subtype": "compact_boundary", "uuid": "cb", "parentUuid": None, "logicalParentUuid": "f3",
+     "timestamp": T.format(2)},
+    U90("e4", "cb", "now the docs"), A90("f4", "e4", {"type": "text", "text": "Docs written."})]
+check(rewound(compacted95) == 1,
+      f"an edit made before a compaction counts once, its kept side reached through the boundary: "
+      f"{rewound(compacted95)}")
 check(rewound(branch95) == 1 and rewound(unanswered95) == 0 and rewound(said90) == 0,
       f"a message edited and sent again after the agent answered it is counted; one resent before any answer, "
       f"or none, is not (G-95): {rewound(branch95)}, {rewound(unanswered95)}, {rewound(said90)}")
@@ -632,12 +661,24 @@ with tempfile.TemporaryDirectory() as t:
     (out / "discover" / "repos.jsonl").write_text(json.dumps({"query_repo": "o/full", "full_name": "o/full",
                                                              "license": "MIT", "language": "Go", "fork": False}) + "\n")
     (out / "discover" / "commits.jsonl").write_text("")
-    summary = assemble(out, log=lambda *_: None)
+    # `rewound` is checked on its own above; here, that assembly asks it of each
+    # session and writes what it says (review, 10-02: reverting either line kept
+    # this green when the answer was always none).
+    import errata_bench.crawl.corpus as corpus_module
+    asked_rewound = []
+    real_rewound = corpus_module.rewound
+    corpus_module.rewound = lambda entries: asked_rewound.append(len(entries)) or 2
+    try:
+        summary = assemble(out, log=lambda *_: None)
+    finally:
+        corpus_module.rewound = real_rewound
     corpus = out / "corpus"
     check(summary["sessions"] == 1 and summary["left_out"] == {"not a Claude Code transcript (for later)": 1},
           f"only Claude Code sessions are written, the others counted, a new format included: {summary}")
-    check(json.loads((corpus / "rewound.json").read_text()) == {} and summary.get("rewound sessions") == 0,
-          "the corpus lists the sessions whose developer edited and resent an answered message: none here (G-95)")
+    check(json.loads((corpus / "rewound.json").read_text()) == {"cc1": 2} and summary.get("rewound sessions") == 1
+          and len(asked_rewound) >= 1,
+          f"the corpus lists each session whose developer edited and resent an answered message, with how many "
+          f"(G-95): {(corpus / 'rewound.json').read_text().strip()}, {summary.get('rewound sessions')}")
     cc1 = corpus / "transcripts" / "cc1.jsonl"
     check(cc1.exists() and cc1.read_bytes() == cc_transcript("cc1", "please fix a.txt", "toolu_e1")
           and (corpus / "subagents" / "cc1" / "toolu_e1" / "agent-s1.jsonl").exists(),

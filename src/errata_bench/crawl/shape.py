@@ -288,13 +288,19 @@ def rewound(entries: list[dict]) -> int:
     finished, and three hours later ran it again in a new conversation, and
     the first conversation's work was done.
     """
+    # A compaction's boundary has no parent, and names the entry it follows in
+    # `logicalParentUuid`: without it the conversation's path stopped there,
+    # and both sides of an edit made before it were counted (review, 10-02).
+    def parent_of(entry: dict) -> str | None:
+        return entry.get("parentUuid") or entry.get("logicalParentUuid")
+
     index: dict[str, int] = {}
     children: dict[str | None, list[int]] = {}
     for i, entry in enumerate(entries):
         if entry.get("uuid"):
             index.setdefault(entry["uuid"], i)
-            if "parentUuid" in entry:
-                children.setdefault(entry.get("parentUuid"), []).append(i)
+            if "parentUuid" in entry or "logicalParentUuid" in entry:
+                children.setdefault(parent_of(entry), []).append(i)
 
     def typed(i: int) -> bool:
         entry = entries[i]
@@ -310,7 +316,7 @@ def rewound(entries: list[dict]) -> int:
     at = next((i for i in range(len(entries) - 1, -1, -1) if entries[i].get("uuid")), None)
     while at is not None and at not in path:
         path.add(at)
-        parent = entries[at].get("parentUuid")
+        parent = parent_of(entries[at])
         at = index.get(parent) if parent else None
     count = 0
     for parent, kids in children.items():
@@ -335,17 +341,24 @@ def rewound(entries: list[dict]) -> int:
 DELIVERED_PEER = "Another Claude session sent a message:"
 
 
-def peer_copies(entries: list[dict]) -> set[int]:
+def peer_copies(entries: list[dict], delivered: set[int] = frozenset()) -> set[int]:
     """The queue entries and queued attachments holding another agent's message that Claude Code writes again,
     whole, in the entry that delivers it (pilot audit, 10-02).
 
     The delivering entry opens with "Another Claude session sent a message:"
     and closes with a note of the harness's, so the texts differ and
     `queued_and_delivered` never paired them: the message was shown twice, a
-    7,000-character report among them. The delivering entry is where the
-    agent read it. The copy before it is typed Claude Code's, not dropped, so
-    no row moves: labels and runs name rows by their number. Paired one to
-    one, the earliest waiting copy contained in the delivered text first.
+    7,000-character report among them -- 606 rows in the corpus. The
+    delivering entry is where the agent read it. The copy before it is typed
+    Claude Code's, not dropped, so no row moves: labels and runs name rows by
+    their number.
+
+    Only a copy that is a row: a queue entry ``delivered`` (by
+    `queued_and_delivered`) already makes none, and its attachment is the
+    copy -- newer versions write the queue entry, the attachment, then the
+    wrapped delivery, and taking the queue entry left the attachment shown
+    (review, 10-02). Paired one to one, the latest copy before the delivery
+    first, so an earlier delivery of the same words is left as it was.
     """
     waiting: list[tuple[int, str]] = []
     copies: set[int] = set()
@@ -353,13 +366,15 @@ def peer_copies(entries: list[dict]) -> set[int]:
         kind = entry.get("type")
         att = entry.get("attachment") if isinstance(entry.get("attachment"), dict) else {}
         if kind == "queue-operation" and entry.get("operation") == "enqueue" and isinstance(entry.get("content"), str):
+            if i in delivered:
+                continue
             text = " ".join(entry["content"].split())
         elif kind == "attachment" and att.get("type") == "queued_command" and isinstance(att.get("prompt"), str):
             text = " ".join(att["prompt"].split())
         elif kind == "user" and isinstance(entry.get("message"), dict):
             said = " ".join(_text(entry["message"].get("content")).split())
             if said.startswith(DELIVERED_PEER):
-                hit = next((k for k, (_, queued) in enumerate(waiting) if queued in said), None)
+                hit = next((k for k in range(len(waiting) - 1, -1, -1) if waiting[k][1] in said), None)
                 if hit is not None:
                     copies.add(waiting.pop(hit)[0])
             continue
@@ -414,7 +429,7 @@ def claude_code_rows(session_id: str, repo_id: str, checkpoint_pk: str, entries:
     results: set[str] = set()  # calls whose result is written
     last_of_message: dict[str, int] = {}  # message id -> index of its last row
     delivered = queued_and_delivered(entries)
-    copies = peer_copies(entries)
+    copies = peer_copies(entries, delivered)
     index: dict[str, int] = {}  # uuid -> the entry's place, for what a meta entry follows
     for n, entry in enumerate(entries):
         if entry.get("uuid"):

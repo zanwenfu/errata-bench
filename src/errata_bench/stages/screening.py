@@ -75,6 +75,28 @@ def runnable(moments: list[dict]) -> tuple[list[dict], int]:
     return keep, len(moments) - len(keep)
 
 
+def unbranched(moments: list[dict]) -> tuple[list[dict], int]:
+    """The moments not in a session the corpus lists as holding an abandoned branch (`crawl.shape.rewound`,
+    G-95), and how many were.
+
+    `find_moments` leaves them out when it collects; asked again here, as
+    `runnable` is, because a moments file drawn before the list existed is
+    read too (review, 10-02). A corpus with no list -- SWE-chat's -- leaves
+    nothing out.
+    """
+    import json
+
+    from ..corpus.sessions import CORPUS
+
+    listed = CORPUS / "rewound.json"
+    try:
+        branched = set(json.loads(listed.read_text())) if listed.exists() else set()
+    except (OSError, ValueError):
+        branched = set()
+    keep = [m for m in moments if m.get("session_id") not in branched]
+    return keep, len(moments) - len(keep)
+
+
 async def stage_triage(paths: Paths, limit: int, concurrency: int) -> Progress:
     """Discard moments where the agent has not done anything to object to.
 
@@ -94,6 +116,10 @@ async def stage_triage(paths: Paths, limit: int, concurrency: int) -> Progress:
         p.notes.append(f"{unrunnable} moments are not read: their repository's language "
                        "has no container here, so no candidate could be run against the "
                        "task even if one were built")
+    moments, branched = unbranched(moments)
+    if branched:
+        p.notes.append(f"{branched} moments are not read: their session holds a message the developer edited and "
+                       "sent again, and its rows still hold the abandoned branch")
     done = already_done(paths.triaged)
     # The work, not the input. Slicing the input meant `--max-rows 3` run three
     # times did three rows and then nothing: the same three were always at the
@@ -188,6 +214,9 @@ async def stage_read(paths: Paths, limit: int, concurrency: int) -> Progress:
     if unrunnable:
         p.notes.append(f"{unrunnable} moments are not read: their repository's language "
                        "has no container here")
+    moments, branched = unbranched(moments)
+    if branched:
+        p.notes.append(f"{branched} moments are not read: their session's rows hold an abandoned branch")
     done = already_done(paths.readings)
     todo = p.cap([m for m in moments if key_of(m) not in done], limit, len(moments))
     if not todo:
@@ -214,16 +243,26 @@ async def stage_read(paths: Paths, limit: int, concurrency: int) -> Progress:
     return p
 
 
-def failures_held(paths: Paths) -> dict[tuple[str, int], str]:
-    """The failed answers usable trajectories already hold: in this run folder and its siblings, as `run.py
-    moments --fresh` reads them, less backups (``.pre-``)."""
-    taken: dict[tuple[str, int], str] = {}
+def failures_held(paths: Paths) -> dict[tuple[str, int], tuple[str, int]]:
+    """The failed answers that usable trajectories of the current rules already hold, and which moment holds
+    each: in this run folder and its siblings, as `run.py moments --fresh` reads them, less backups
+    (``.pre-``). Keyed by (session, failed turn); the holder is (folder, complaint turn).
+
+    Rows of earlier rules hold nothing (`trajectory.RULES`): what was usable
+    then is not what is usable now -- the pilot's cyc-seattle-isthmia-74 was
+    usable on a status summary -- and the runs folder holds SWE-chat's
+    experiments, judged under every rule there has been (review, 10-02).
+    """
+    from ..find.trajectory import RULES
+
+    taken: dict[tuple[str, int], tuple[str, int]] = {}
     for f in sorted(paths.root.parent.glob("*/trajectories.jsonl")):
         if ".pre-" in f.parent.name:
             continue
         for r in load(f):
-            if r.get("usable") and isinstance(r.get("failed"), int) and r["failed"] >= 0:
-                taken.setdefault((r["session_id"], r["failed"]), f"{f.parent.name}:{r.get('complaint')}")
+            if (r.get("usable") and r.get("rules") == RULES and isinstance(r.get("failed"), int)
+                    and r["failed"] >= 0):
+                taken.setdefault((r["session_id"], r["failed"]), (f.parent.name, r.get("complaint")))
     return taken
 
 
@@ -252,19 +291,26 @@ async def stage_locate(paths: Paths, limit: int, concurrency: int) -> Progress:
     # answer -- a session's first pushback and a later one, in two runs --
     # were both read and located. A usable trajectory whose failed answer one
     # already holds, in this run or a sibling run folder, is not usable.
-    taken = failures_held(paths)
+    # One failure, one task (pilot audit, 10-02): two objections to one answer
+    # -- a session's first pushback and a later one, drawn into two runs --
+    # were both located as usable. A usable trajectory whose failed answer
+    # another moment's already holds is not usable; the same moment located
+    # again, in another folder, is not refused. Read for each usable answer,
+    # so a sibling run going at the same time is seen, and this run's own
+    # rows: nothing is awaited between the reading and the writing.
+    from ..find.trajectory import RULES
 
     async def one(r):
         try:
             t = await locate(turns[r["session_id"]], r["turn_number"])
             b = boundaries(t)
+            held_by = None
             if b.usable:
-                before = taken.get((r["session_id"], t.failed_turn))
-                if before:
+                holder = failures_held(paths).get((r["session_id"], t.failed_turn))
+                if holder and holder[1] != r["turn_number"]:
+                    held_by = f"{holder[0]}:{holder[1]}"
                     b = dataclasses.replace(b, usable=False,
-                                            reason=f"the same failed answer as the trajectory at {before}")
-                else:
-                    taken[(r["session_id"], t.failed_turn)] = f"{paths.root.name}:{r['turn_number']}"
+                                            reason=f"the same failed answer as the trajectory at {held_by}")
             append_used(
                 paths.trajectories,
                 {
@@ -280,7 +326,10 @@ async def stage_locate(paths: Paths, limit: int, concurrency: int) -> Progress:
                     "defect": t.defect,
                     "resolution": t.resolution,
                     "rounds": t.rounds,
+                    "resolution_fixes_it": t.resolution_fixes_it,
                     "looked_to": getattr(t, "_looked_to", -1),
+                    "held_by": held_by,
+                    "rules": RULES,
                     "find_model": model_name(),
                 },
             )

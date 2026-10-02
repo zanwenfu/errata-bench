@@ -222,6 +222,12 @@ def find_moments(
     # The collector lists them (`crawl.shape.rewound`); SWE-chat's corpus has
     # no such list, and nothing is left out there.
     edited = CORPUS / "rewound.json"
+    # A corpus the collector assembled before the list was written would
+    # leave nothing out and say nothing (review, 10-02); the collector writes
+    # `left_out.json`, SWE-chat's corpus does not.
+    if not edited.exists() and (CORPUS / "left_out.json").exists():
+        raise SystemExit(f"{CORPUS} was assembled before the sessions holding an abandoned branch were listed "
+                         "(rewound.json): assemble it again")
     rewound = set(json.loads(edited.read_text())) if edited.exists() else set()
     branched = sum(1 for m in fresh if m["session_id"] in rewound)
     fresh = [m for m in fresh if m["session_id"] not in rewound]

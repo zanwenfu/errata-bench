@@ -114,9 +114,10 @@ class Trajectory(BaseModel):
         default=False,
         description=(
             "Whether the resolving turn itself puts this defect right: it gives the corrected answer, or "
-            "reports the change that fixed it and what changed. False when it is a status summary, an "
-            "acknowledgement ('noted', 'you're right'), a plan, a question, or a report of other work; and "
-            "when the developer, not the agent, supplied the fix. False when unresolved."
+            "reports the change that fixed it and what changed -- including a fix the developer suggested, "
+            "once the agent applies it. False when it is a status summary, an acknowledgement ('noted', "
+            "'you're right'), a plan, a question, or a report of other work; and when the developer made "
+            "the fix themselves and no agent turn reports it. False when unresolved."
         ),
     )
     rounds: int = Field(
@@ -180,8 +181,9 @@ The fourth is the hard one, and getting it wrong ruins the task.
 A resolution is an agent turn that puts the defect right: the corrected answer, \
 or a report of the fix that says what changed. An acknowledgement ("correction \
 accepted", "you're right"), a status line or a session summary, a plan or a \
-question is not one, and neither is a fix the developer supplied: say so \
-(resolution_fixes_it false). \
+question is not one, and neither is a fix the developer made themselves that \
+no agent turn reports: say so (resolution_fixes_it false). A fix the developer \
+suggested counts once the agent applies it and says what changed. \
 When the developer adds new requirements after the complaint, the resolution \
 still answers the complaint, and rounds count only pushback on the same defect, \
 not changes of design.
@@ -351,6 +353,13 @@ def render(turns: list[dict], start: int, end: int, *, budget: int = 900, calls:
             lines.append(f"[turn {label}] -> {_cut(body, budget, 2)}")
     return "\n".join(lines)
 
+
+#: The rules a usable trajectory was judged under, stored on its row. 2 from
+#: 10-02: the resolution must put the defect right (`resolution_fixes_it`)
+#: and a view left open is looked at again. A row of earlier rules -- the
+#: pilot's cyc-seattle-isthmia-74 among them -- holds no failed answer
+#: against another moment (`stages.screening.failures_held`).
+RULES = 2
 
 # How far past the complaint the second look reaches, and the most it may read.
 FURTHER = 1200
