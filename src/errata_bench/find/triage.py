@@ -111,6 +111,15 @@ instruction is not, however firmly worded. A constraint stated up front -- \
 "don't commit automatically", "preserve the existing behaviour" -- is not, \
 because nothing has gone wrong yet.
 
+Some messages only sound like objections. A question about the design ("do we \
+really need this layer?"), a clarification of what the developer wants next, or \
+a reply that accepts the work and then extends it ("fine, keep that; now do the \
+same for the exporter") does not say the agent got anything wrong, even with an \
+evaluative word in it. But correcting a fact the agent stated or assumed is an \
+objection, however mildly put. And the work objected to must be the agent's: \
+questioning code that was in the repository before the agent touched it is not \
+objecting to the agent.
+
 Both must be true for this moment to be worth examining further. Be strict: \
 saying no is cheap, and saying yes commits several expensive reads."""
 

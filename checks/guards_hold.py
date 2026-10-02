@@ -2594,7 +2594,7 @@ async def _located41(turns, turn):
     # never got resolved, which is a real and common outcome and writes an
     # ordinary row with no error on it.
     return _traj41.Trajectory(
-        request_turn=-1, failed_turn=-1, complaint_turn=0,
+        request_turn=-1, failed_turn=-1, complaint_turn=0, objection=True, knowable=True,
         defect="the agent said the tests passed", resolved=False,
         later_turns_are_new_work=True,
     )

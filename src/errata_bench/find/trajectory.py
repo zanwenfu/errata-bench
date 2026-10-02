@@ -73,6 +73,20 @@ class Trajectory(BaseModel):
     )
     failed_turn: int = Field(description="The agent turn that got it wrong.")
     complaint_turn: int = Field(description="The user turn objecting to it.")
+    objection: bool = Field(
+        description=(
+            "Whether the complaint objects to something a specific earlier answer of the agent's said or did "
+            "wrong. False for a new request or a requirement first stated in it, an answer to a question the "
+            "agent asked, approval, a retraction, or a message from another agent or a tool."
+        )
+    )
+    knowable: bool = Field(
+        description=(
+            "Whether the agent, at its failed answer, had what it needed to get it right: the conversation "
+            "before that answer and the repository. False when the right answer rests on something first "
+            "said in or after the complaint, a fact only the developer knew, or a decision made elsewhere."
+        )
+    )
 
     defect: str = Field(
         description="One sentence: what specifically was wrong. Be concrete -- a named file, command, claim or value."
@@ -133,7 +147,25 @@ Points 2 and 4 must each be a turn the agent WROTE: one shown below as \
 be built from one. When the failure or the fix happened inside tool calls, \
 give the AGENT turn that reported it to the developer.
 
+Check the complaint first. It must object to something a specific earlier \
+answer of the agent's said or did wrong. A new request, a requirement first \
+stated in it, an answer to a question the agent asked, approval, a retraction \
+("I was mistaken"), or a message from another agent is not a complaint: say so \
+(objection false), and do not build a defect around it. Then check the agent \
+could have got it right: what the right answer rests on must be in the \
+conversation before the failed answer, or in the repository. If it was first \
+said in or after the complaint, or only the developer knew it, say so \
+(knowable false). When the complaint lists several problems, take the first \
+the failed answer is responsible for, and say in the defect which it is.
+
 The fourth is the hard one, and getting it wrong ruins the task.
+
+A resolution is an agent turn that puts the defect right: the corrected answer, \
+or a report of the fix that says what changed. An acknowledgement ("correction \
+accepted", "you're right"), a status line, a plan or a question is not one. \
+When the developer adds new requirements after the complaint, the resolution \
+still answers the complaint, and rounds count only pushback on the same defect, \
+not changes of design.
 
 The resolution is not automatically the next agent turn. Sometimes the user \
 pushes back again on the same defect and it takes several attempts. Count those \
@@ -193,7 +225,23 @@ class Boundaries:
 
 
 def boundaries(t: Trajectory) -> Boundaries:
-    """Reduce a reading to the turns a task needs, and say if it is usable."""
+    """Reduce a reading to the turns a task needs, and say if it is usable.
+
+    The complaint is checked before the resolution: a retraction, a new request
+    or another agent's message all read "never resolved" when it was not, and
+    6 of 15 sampled usable trajectories were built on one, or on a defect the
+    agent could not have known (gate 2, 10-02).
+    """
+    if not t.objection:
+        return Boundaries(
+            t.request_turn, t.failed_turn, t.complaint_turn, -1, False,
+            "the complaint does not object to an earlier answer of the agent's",
+        )
+    if not t.knowable:
+        return Boundaries(
+            t.request_turn, t.failed_turn, t.complaint_turn, -1, False,
+            "what the right answer needed was not the agent's to know at its failed answer",
+        )
     if not t.resolved or t.resolved_turn < 0:
         return Boundaries(
             t.request_turn, t.failed_turn, t.complaint_turn, -1, False,

@@ -147,6 +147,10 @@ async def fake_read_pushback(turns, turn, **kw):
         what_agent_did="added retries and said the tests pass",
         what_user_objected_to="it never checked the backoff fires",
         objection_kind="unverified_claim",
+        pushback_is_the_developers=True,
+        knowable_at_the_failing_turn=True,
+        visible_from_the_repository=True,
+        consistent_with_instructions=True,
         benchmark_viable=True,
         context_sufficient=True,
     )
@@ -155,7 +159,7 @@ async def fake_read_pushback(turns, turn, **kw):
 async def fake_locate(turns, turn, **kw):
     records("locate")
     return Trajectory(
-        request_turn=1, failed_turn=6, complaint_turn=7,
+        request_turn=1, failed_turn=6, complaint_turn=7, objection=True, knowable=True,
         defect="the backoff is never exercised", resolved=True,
         later_turns_are_new_work=False, resolved_turn=9,
         resolution="added the sleep and verified it", rounds=1,
