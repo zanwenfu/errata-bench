@@ -12193,3 +12193,79 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     broken one at a time, with a control per suite: all 73 caught. v1's 55
     Dockerfiles are byte for byte the same. The corpus was assembled again:
     against the one before, those 5 rows and 2 labels changed, nothing else.
+- **10-02, 22:2x–22:5x UTC** — **Gate 3: the pilot, 100 Entire moments
+  through every stage, and its audit. Not clean (#16).**
+  - *How.*
+    - `run.py moments --fresh --max-per-repo 20` drew 50 first pushbacks
+      into `runs/entire-pilot-first` and 50 later ones into
+      `runs/entire-pilot-later`. The copy rule (G-91) left out 30 moments:
+      21 whose copy another session holds, 9 copies of moments already
+      collected. 21 was the first figure given; it counted only the first
+      kind.
+    - Both folders ran at once, 22:26–22:32, on gpt-6-astra with Azure
+      credits, under `scripts/harbor-guard.sh` with a $55 stop line.
+    - Spend: $32.59 by the guard's count, which prices uncached input at
+      gpt-6-astra's cache-write rate, as Azure bills it, so it is an upper
+      bound. $26.72 at the plain input price, the figure first reported.
+  - *Funnel.*
+    - 100 moments; triage kept 35; reading found 10 viable.
+    - Locate made 7 usable. The free pre-check set 3 aside: sub-agents
+      that left no record, and a rebase.
+    - Screening passed 4; the leak gate refused 1. The build refused 1
+      for its base, leaving 2 tasks: agentrhq-authsome-125 and
+      cyc-seattle-isthmia-74.
+    - Both pass calibration and the three controls. Both froze, exported
+      to Harbor and built their images with strict installs.
+  - *The audit.* Three read-only reviewers read each stage's decisions in
+    the exact view that stage was shown, written out per decision.
+    - Triage, 40 sampled (20 kept, 20 dropped): 33 agreed, 4 disagreed, 3
+      unsure. Drops are reliable (18 of 20); keeps less so (15 of 20).
+    - Reading, 20 (10 viable, 10 not): 16 agreed. It disagreed on
+      authsome-40 (the defect not knowable) and isthmia-74 (a fact about a
+      third-party product, not visible from the repository), and was
+      unsure of 2.
+    - Locate, all 10: 7 agreed.
+      - authsome-40 objects to nothing.
+      - split-flap-329 was called never resolved, but its fix lies past
+        the view's end, 635 turns on.
+      - isthmia-74's resolution is a session's status summary.
+    - isthmia-74 should not have been admitted. The agent never corrected
+      its estimate; the developer did.
+    - authsome-125 is defensible but weak. Its defect is one hedged
+      premise among five items, and its accepted answer reports a document
+      edited on the developer's order.
+  - *Found in the data and the views:*
+    - Another agent's message shown twice, queued and then delivered
+      wrapped ("Another Claude session sent a message:"): 606 rows, a
+      7,000-character report among them.
+    - Reading's tool output squeezed to 40 characters in 8 of 20 views.
+      Among what was hidden is the hash of a deleted branch that the fix
+      needed.
+    - Squeezed views and locate's showed empty rows as bare "AGENT:" lines.
+      Triage's view could start inside a batch of calls, showing a result
+      without its call.
+    - Two objections to one failed answer, warren-1141 and -1160, were
+      both located as usable.
+    - A message the developer edited and sent again after the agent had
+      answered it (G-95). Claude Code keeps the abandoned branch, so the
+      rows show both, and a build would replay its edits.
+    - A shell command the developer ran (`<bash-input>`) was drawn as a
+      moment.
+    - Locate's window ends 400 rows past the complaint. Of the 18
+      trajectories called never resolved so far, 15 were in sessions that
+      went on past it.
+    - The two reference answers are cut at 6,000 characters with nothing
+      said (G-96): authsome-125 kept 6,000 of its failed answer's 8,986.
+  - *Found, for #17* (shared code; their views in brackets):
+    - On both tasks the judge read the null control as solved; it failed
+      only for its empty trace. [A probe before v1.1's admission: trivial
+      work and a non-committal answer.]
+    - The leak gate refused split-flap-602, whose request is itself a bug
+      report. [The gate's wording must tell the two apart before v1.1's
+      re-screen.]
+    - Skill bodies and "Implement the following plan" rows are shown as
+      USER. [Same family as G-90.]
+    - Background agents' results are missing (G-93). [With the NOTICE
+      rendering decision.]
+    - G-96: #17 handed it to this branch, landing before gate 4.
+  - *What it means.* By the stop rule there is no merge and no gate 4 yet.
