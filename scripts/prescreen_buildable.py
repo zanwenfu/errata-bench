@@ -7,9 +7,11 @@
 
 Screening asks its gates over each whole conversation, at about $2 a moment on
 long sessions. The build then refuses many of the moments screening passed, for
-reasons visible as soon as the cut is chosen. On 10-02, 25 of the 59 rejections
-among the Entire moments were of this kind: no commit before the session, the
-agent's git commands before the cut, a sub-agent's unrecorded work.
+reasons visible as soon as the cut is chosen. On 10-02, 27 of the 59 rejections
+among the 71 Entire moments were of this kind: the agent's git commands before
+the cut, a sub-agent's unrecorded work, no commit before the session, an answer
+too short to test. With 10 more that screening refused but these checks also
+fail, this sets aside 37 of the 71, whose screening cost $81.98 of $148.55.
 
 This runs the build's checks that no screening verdict can change, in the
 build's order (`construct.build.build`), on each signature row not yet
@@ -17,7 +19,8 @@ screened. For each that fails it writes a screened row: unusable, with the
 build's own words for why. `stage_screen` then passes the moment by, and
 `stage_build` rejects it with that reason. No model is called. Run it after
 `--through signature` and before `--only screen`; it needs `ERRATA_CORPUS` set
-to the corpus the run was drawn from.
+to the corpus the run was drawn from. Its rows count as screened once:
+`--passes 3` would screen them again, and the build would still refuse them.
 """
 
 from __future__ import annotations
@@ -156,7 +159,9 @@ def main(argv: list[str]) -> int:
         r = rows[key]
         # As a screened row reads to `stage_screen` (done: finished, with `text_recovered`,
         # at the default single pass) and to `stage_build` (unusable: rejected with `reason`).
-        append(screened, {**r, "usable": False, "reason": AS + reason, "prescreened": True,
+        # `usage` is emptied: the signature row's own, copied, was priced a second time
+        # under screened.jsonl (`harbor_spend.admitted`), and no call was made here.
+        append(screened, {**r, "usable": False, "reason": AS + reason, "prescreened": True, "usage": {},
                           "screen_passes": 1, "text_recovered": has_transcript(r["session_id"])})
     print(f"wrote {len(set_aside)} rows to {screened}")
     return 0
