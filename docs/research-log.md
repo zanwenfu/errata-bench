@@ -12137,7 +12137,7 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
       verdicts were not all asked again after the rewording.
   - *Held.* The collector's checks (section 5) hold G-90 and G-94; the
     guard suite's sections 162 to 164 and front_stages_run's 11 hold the
-    views, the copies and the installs. All six suites pass on the final
+    views and the copies, and section 129 the installs. All six suites pass on the final
     code, 1,043 checks in the guard suite. Each of the 58 pieces was broken
     alone in its own copy, with a control per suite, and each is now
     caught. Five survived a first pass for want of a check and were caught
@@ -12150,3 +12150,46 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     a pushback the developer gives inside a tool's result (a declined plan)
     cannot become a moment; "Implement the following plan:" is the agent's
     plan sent on the developer's approval, shown as USER.
+- **10-02, 21:4x UTC** — **An independent review of the gate-2 fixes found
+  what the suites and the 58 mutants had not; fixed (#16).**
+  - *How.* A read-only reviewer read b7cb9eca1..1c9948645 and probed the
+    functions on inputs it made for the purpose.
+  - *Found, and fixed:*
+    - The verdicts that follow the stages' own checks (`held_to_its_checks`,
+      and `boundaries` refusing a complaint that objects to nothing or a
+      defect the agent could not have known) were held by no check: every
+      stand-in set the new fields true. The 21:0x entry's "each of the 58
+      pieces" did not include them. Section 165 holds them now, the reader's
+      own answer included.
+    - Triage's view had no bound: a long run of calls after the agent's
+      answer made it 614,603 characters in a probe. And it found turns by
+      reading the rendered text back, so a turn line quoted in a message was
+      taken for a turn. It is now chosen by rows: the last ~9,000 characters
+      and the agent's last answer, the rows between counted and left out.
+    - A meta entry chained after a command's expansion counted as the
+      developer's. The walk now stops at another meta entry. On the corpus 5
+      rows move, notes on images attached to a command, as every other image
+      note is Claude Code's; 2 labels go with them, no moment. The 21:0x
+      entry's counts become: 13,435 rows retyped (10,191 Claude Code's);
+      43,111 labels placed and 2,797 left off, 447 of them pushback.
+    - The image's pnpm was installed per folder, so the last folder's won;
+      `packages: []` chose pnpm 9, which refuses it; and a workspace root with
+      no package.json of its own installed nothing. One pnpm serves the image
+      now, pnpm 10 when any folder needs it.
+    - Instructions: locate refused "still fails" when it answered the
+      agent's own question, and judged what the agent could know without the
+      wording that fixed reading's losses; reading's line against "verify
+      before claiming" as a criterion could refuse the very moment the
+      benchmark is about; disputing what the agent said about code that was
+      already there now counts as an objection; reading drops a preference or
+      an unclear objection. These rewordings were not asked again of the
+      reviewers' verdicts.
+    - A skip file's row with no session stopped `find_moments`, and the copy
+      finder read the text of every row of every session it named.
+  - *Not fixed here, for #17:* SWE-chat's 1,723 rows of Claude Code's own
+    messages in the agent's name (G-94); none is before a v1 task's cut, or
+    its failed or resolved answer.
+  - *Held.* All six suites pass, 1,049 checks in the guard suite. 70 pieces
+    broken one at a time, with a control per suite: all 73 caught. v1's 55
+    Dockerfiles are byte for byte the same. The corpus was assembled again:
+    against the one before, those 5 rows and 2 labels changed, nothing else.
