@@ -1,7 +1,7 @@
 """A Claude Code transcript as rows of SWE-chat's conversations table, with nothing dropped (#16, G-76, G-79).
 
 The pipeline reads SWE-chat's tables, so a session collected here is written
-in their schema (`CONVERSATIONS`) with their row types. Three things differ
+in their schema (`CONVERSATIONS`) with their row types. Four things differ
 from SWE-chat's parser, each on purpose:
 
 - **Every block is a row.** Claude Code writes each block of a message as its
@@ -40,6 +40,9 @@ from SWE-chat's parser, each on purpose:
   - an image is kept as the text ``[Image: <type>]``, SWE-chat's form, and
     context an IDE attaches (``<ide_selection>``, the file opened) is kept,
     where SWE-chat dropped it.
+- **A message Claude Code writes in the agent's turn is not the agent's.**
+  One with model ``<synthetic>`` (a usage limit, an API error, "No response
+  requested.") is `system_injected`, not `assistant_response` (G-94).
 
 Entries that are not messages (progress, file snapshots, system events,
 queue operations) are kept as SWE-chat kept them, as ``metadata`` rows holding
@@ -88,6 +91,11 @@ HARNESS_ORIGINS = frozenset({"task-notification", "auto-continuation"})  # origi
 HARNESS_TURNS = frozenset({"task_notification", "scheduled", "system"})  # turnOrigin
 # Written beside a deferred tool's result when the agent loads it.
 TOOL_LOADED = "Tool loaded."
+# The model Claude Code writes on a message of its own in the agent's turn
+# (G-94): "No response requested." (546 rows of the corpus, 10-02), a usage
+# limit (205), "Prompt is too long" (114), an API error or a login expiring.
+# Shown as the agent's words, two located failed answers were one of these.
+SYNTHETIC = "<synthetic>"
 METADATA = {"progress": "progress", "file-history-snapshot": "file_snapshot", "system": "system_event",
             "summary": "summary", "queue-operation": "queue_operation"}
 FILE_KEYS = ("file_path", "notebook_path", "path")
@@ -339,8 +347,10 @@ def claude_code_rows(session_id: str, repo_id: str, checkpoint_pk: str, entries:
                     continue
                 btype = block.get("type")
                 if btype == "text":  # stripped, as SWE-chat stored it
-                    i = add("assistant", "assistant_response", (block.get("text") or "").strip(), entry,
-                            model=msg.get("model"))
+                    # Claude Code's own text in the agent's turn (G-94): a usage
+                    # limit, an API error, "No response requested.". Not the agent's.
+                    kind_of = "system_injected" if msg.get("model") == SYNTHETIC else "assistant_response"
+                    i = add("assistant", kind_of, (block.get("text") or "").strip(), entry, model=msg.get("model"))
                 elif btype == "thinking":
                     i = add("assistant", "assistant_thinking", block.get("thinking") or "", entry, model=msg.get("model"))
                 elif btype == "tool_use":

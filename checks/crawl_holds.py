@@ -465,6 +465,8 @@ said90 = [
     M90("k10", "k9", "# Brainstorming\nAsk one question at a time."),
     U90("cs", "k10", "This session is being continued from a previous conversation. Summary: ...",
         isCompactSummary=True, turnOrigin="task_notification"),
+    {"type": "assistant", "uuid": "sy", "parentUuid": "cs", "timestamp": T.format(2), "message": {
+        "id": "m-sy", "model": "<synthetic>", "content": [{"type": "text", "text": "No response requested."}]}},
 ]
 rows90 = claude_code_rows("w", "o/r", "o/r#w", said90)
 got90 = [(r["turn_type"], r["content"]) for r in rows90 if r["role"] == "user"]
@@ -497,6 +499,11 @@ check(all(kind90(text) == ["system_injected"] for text in (
       f"a prompt the harness or a timer sent, a notice and an automatic continuation are Claude Code's by the marks "
       f"on the entry; beside a tool's result, \"Tool loaded.\" is Claude Code's and what the developer typed is "
       f"theirs (G-90): {[(k, c[:20]) for k, c in got90 if c in ('update', 'Tool loaded.', 'use the other file')]}")
+agent90 = {r["content"]: r["turn_type"] for r in rows90 if r["role"] == "assistant"}
+check(agent90.get("No response requested.") == "system_injected" and agent90.get("On it.") == "assistant_response"
+      and agent90.get("Pushed.") == "assistant_response",
+      f"a message Claude Code writes in the agent's turn (model <synthetic>) is its own, not the agent's (G-94): "
+      f"{agent90}")
 summary90 = next((r for r in rows90 if (r["content"] or "").startswith("This session is being continued")), {})
 check(summary90.get("turn_type") == "user_prompt" and summary90.get("is_continuation") is True
       and [r["turn_number"] for r in rows90] == list(range(len(rows90)))
