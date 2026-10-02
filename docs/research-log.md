@@ -4419,6 +4419,44 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   inlined in the kit). Guard section 60 drives all four scripts' `main`.
   Reverting the shared check alone turns it red on three of them; reverting
   the kit's copy alone, on the fourth.
+- **G-86 · The build's base comes from a table that holds only the
+  commits a checkpoint recorded.** *(opened 10-02, from an audit of the
+  Entire build's rejections; #16.)*
+  - *What happens.* Both corpora's commit tables hold only commits an Entire
+    checkpoint recorded: Entire's 23,241 of 23,241 rows, SWE-chat's 14,459 of
+    14,459. `base_commit` picks the last of these before the session started.
+    A commit made outside Entire, by hand or before Entire was installed, is
+    invisible to it. The base is then an older commit than the one the
+    session started from, or no commit at all.
+  - *On the Entire runs* (10-02 03:0x entry):
+    - All 6 "no commit exists before the session started" rejections are
+      false. GitHub shows a commit before each session, from 1 hour to 2
+      months earlier.
+    - Where GitHub still has the session's branch, 2 built tasks start 19 and
+      21 commits behind the branch's last commit before the session. 3 "tree
+      differs" rejections start 1 to 3 commits behind. The one "HEAD printed"
+      rejection's HEAD is GitHub's commit.
+    - The build's consistency checks catch a stale base only when the
+      conversation shows a file that changed in between. The 2 stale tasks
+      passed them.
+  - *v1.* It used the same table and the same rule. Not yet measured on its
+    55 tasks.
+  - *Fix (proposed).* Take the base from the repository's own history: the
+    last commit on the session's branch before the session started. Where
+    GitHub no longer has the branch, use a HEAD the conversation printed,
+    or refuse.
+- **G-87 · The git check flags commands run in another copy of a
+  repository.** *(opened 10-02, from the same audit; #16.)*
+  - *What happens.* `tree_changing_git` reads every `git checkout` before
+    the cut as changing the session's files, wherever it ran. It does not
+    see a `cd` or a `-C` into another folder.
+  - *The cases.* 2 of the 13 git rejections:
+    - one call ran `cd` into a scratch clone of another repository, then
+      `git checkout <sha>`;
+    - one ran `git -C /tmp/<copy> checkout` in throwaway clones.
+  - *Also.* The second session's `git checkout -q -b <new>` is read as a
+    switch: the exemption for a new branch where HEAD already is reads
+    `-b` only as the first word, and `-q` came first.
 - **G-83 · A repair removed the developer's request itself.** *(opened and
   fixed in the code 09-30, found by an independent review; #17.)* When the
   leak gate finds that a conversation gives away the agent's failure, the
@@ -11630,3 +11668,45 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
       admission it is;
     - the rest batch: labelling stood at 38,655 of 45,913 at 02:44. Then
       moments, triage, signatures, the pre-check and screening.
+- **10-02, 03:0x UTC** — **The 59 build rejections and the 12 tasks
+  audited: 17 rejections and 2 tasks come from two defects of ours (G-86,
+  G-87) (#16).**
+  The user asked whether each rejection had a sound reason, not a defect of
+  ours.
+  - *How.*
+    - The evidence behind each rejection, from the stored rows and the
+      corpus, with no model calls.
+    - Each chosen base checked against GitHub's history: the last commit
+      before the session started, on the session's branch where GitHub
+      still has it.
+  - *Valid, 42:*
+    - the context gives the answer away, 21. The repair was tried on all
+      37 leaking rows and worked on 16. These 21 still leaked after editing
+      (16), the signal was spread over many turns (3), or it sat in a tool's
+      output (2);
+    - the agent switched branch, rebased, reset or pulled before the cut, 11;
+    - sub-agents that changed files the replay cannot reproduce, 6;
+    - one sub-agent rejection is over-cautious: two research sub-agents,
+      one told "do NOT modify anything";
+    - the accepted answer is "Resolved clean.", 1;
+    - nothing to answer, 1;
+    - a tree that differs on the right base, 1.
+  - *Ours, 17:*
+    - no commit before the session, 6, all false (G-86);
+    - git commands run in another copy of a repository, 2 (G-87);
+    - a stale base, confirmed on the session's branch: 3 "tree differs"
+      and 1 "HEAD printed" (G-86);
+    - a stale base, likely: 5 "tree differs" or "edits do not apply" whose
+      branch GitHub no longer has; against the default branch, each base
+      is 1 to 6 commits behind (G-86).
+  - *The 12 tasks:*
+    - 2 start on GitHub's commit, on the session's branch;
+    - 4 start on the default branch's last commit before the session, and
+      their branch is gone;
+    - 2 start 19 and 21 commits behind (G-86);
+    - 4 cannot be told.
+  - *Calibration.* The 11 failures are the rules-4 question of the 02:4x
+    entry. They were not audited further: the judge's reasons are not
+    stored.
+  - *Next.* Fix G-86 and G-87 and rebuild the 71 (no model calls), for the
+    user to approve. G-86 touches v1 as well.
