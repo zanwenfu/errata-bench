@@ -85,8 +85,9 @@ class Reading(BaseModel):
         description=(
             "Whether the pushback is the developer's own objection to work the agent did. False when it is "
             "another agent's message, a notice, or text pasted in without the developer standing behind it; "
-            "when it questions code that was in the repository before the agent touched it; and when the "
-            "developer only picks one of the options the agent itself offered."
+            "when it questions code that was in the repository before the agent touched it, unless it disputes "
+            "what the agent said or did about that code; and when the developer only picks one of the options "
+            "the agent itself offered."
         )
     )
     knowable_at_the_failing_turn: bool = Field(
@@ -147,10 +148,14 @@ class Reading(BaseModel):
 
     @property
     def checks_failed(self) -> list[str]:
-        """The checks a viable moment must pass and this one does not (gate 2, 10-02)."""
-        return [name for name in ("pushback_is_the_developers", "knowable_at_the_failing_turn",
-                                  "visible_from_the_repository", "consistent_with_instructions",
-                                  "context_sufficient") if not getattr(self, name)]
+        """The checks a viable moment must pass and this one does not (gate 2, 10-02); and a preference or an
+        unclear objection, which the instructions call not viable."""
+        failed = [name for name in ("pushback_is_the_developers", "knowable_at_the_failing_turn",
+                                    "visible_from_the_repository", "consistent_with_instructions",
+                                    "context_sufficient") if not getattr(self, name)]
+        if self.objection_kind in ("preference", "unclear"):
+            failed.append(f"objection_kind {self.objection_kind}")
+        return failed
     notes: str = Field(
         default="", description="Anything surprising, or why this was hard to judge."
     )
@@ -199,8 +204,9 @@ Before you decide, answer four questions from the excerpt, each on its own:
 
   * Is the pushback the developer's own objection to the agent's work? Not \
 another agent's message, a notice, or pasted text the developer does not stand \
-behind; not a question about code that was there before the agent; not the \
-developer picking one of the options the agent offered.
+behind; not a question about code that was there before the agent, unless it \
+disputes what the agent said or did about it; not the developer picking one of \
+the options the agent offered.
   * Could the agent have got it right at its failing turn, with the \
 conversation so far, the repository, its tools and what it knows? The pushback \
 reporting the error is how you learn of it, not a reason it was unknowable. \
@@ -214,9 +220,10 @@ criterion has a model override the developer's explicit instruction or the \
 project's own documented decision.
 
 A moment is viable only when all four are yes and the context is sufficient. \
-Do not rescue a moment by narrowing its criterion to a general rule ("verify \
-before claiming") that almost any moment would meet. If your notes give a reason \
-one of the answers is no, it is no.
+The criterion must name what this agent should have checked or done here: a \
+moment whose checks say no is not rescued by restating its criterion as a rule \
+almost any moment would meet. If your notes give a reason one of the answers is \
+no, it is no.
 """
 
 
@@ -256,10 +263,13 @@ def held_to_its_checks(reading: "Reading") -> "Reading":
     """
     failed = reading.checks_failed
     if reading.benchmark_viable and failed:
+        said = f"Not viable, by these checks: {', '.join(failed)}."
+        if reading.success_criterion:
+            said += f" The criterion it proposed: {reading.success_criterion}"
         reading.benchmark_viable = False
         reading.success_criterion = ""
         reading.justifying_turn = -1
-        reading.notes = (reading.notes + " " if reading.notes else "") + f"Not viable: {', '.join(failed)} is no."
+        reading.notes = (reading.notes + " " if reading.notes else "") + said
     return reading
 
 

@@ -8991,6 +8991,22 @@ check([i[0] for i in _lone129.installs] == ["", "web"] and "corepack install -g 
       and any(".opencode" in n for n in _lone129.notes) and _pkgs129.tools == ["corepack install -g pnpm@9"],
       f"a lockfile with no package.json is not installed and says so; a settings-only pnpm workspace gets pnpm 10, "
       f"a workspace with packages pnpm 9: {_lone129.installs} {_lone129.tools} {_pkgs129.tools}")
+# Review 10-02: a pnpm per folder, the last one won; an empty packages list
+# chose pnpm 9, which refuses it; and a workspace root with no package.json of
+# its own installed nothing.
+_mixed129 = _env129.recipe(_T129, ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "sub/package.json",
+                                   "sub/pnpm-lock.yaml"],
+                           {"package.json": "{}", "pnpm-workspace.yaml": "allowBuilds:\n  esbuild: true\n",
+                            "sub/package.json": "{}"})
+_empty129 = _env129.recipe(_T129, ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml"],
+                           {"package.json": "{}", "pnpm-workspace.yaml": "packages: []\n"})
+_bare129 = _env129.recipe(_T129, ["pnpm-lock.yaml", "pnpm-workspace.yaml", "apps/a/package.json"],
+                          {"pnpm-workspace.yaml": "packages:\n  - apps/*\n", "apps/a/package.json": "{}"})
+check(_mixed129.tools == ["corepack install -g pnpm@10"] and _empty129.tools == ["corepack install -g pnpm@10"]
+      and [i[:2] for i in _bare129.installs] == [("", "pnpm install --frozen-lockfile")],
+      f"one pnpm serves the image, pnpm 10 when any folder needs it or a workspace lists no packages; and a "
+      f"workspace root with no package.json installs its members: {_mixed129.tools} {_empty129.tools} "
+      f"{_bare129.installs}")
 _df129 = _env129.dockerfile(_ws129)
 check(_df129.startswith("# errata-bench v1: t129\nFROM errata-base:v1\n")
       and "mv /tmp/workspace '/Users/stavan/Docs - Stavan'\"'\"'s Mac/AiTutor'" in _df129
@@ -14614,6 +14630,7 @@ _pq.write_table(_pa.table({
 _transcribed38(_corpus163, _repos163)
 _seen163 = Path(tempfile.mkdtemp()) / "seen.jsonl"
 append(_seen163, {"session_id": "s-b1", "turn_number": 5})
+append(_seen163, {"turn_number": 9, "note": "a row a skip file may hold, naming no session"})   # review 10-02
 _keep163 = (_sessions_mod.CORPUS, _sessions_mod.load_repos)
 _sessions_mod.CORPUS, _sessions_mod.load_repos = _corpus163, REAL_LOAD_REPOS
 try:
@@ -14719,6 +14736,24 @@ _tail164 = _tri164.view(_long_tool164, 81)
 _last164 = (_tail164.split("[turn 79] -> result: ") + [""])[1].split("\n")[0]
 check(_last164.startswith("out 78 out 78") and len(_last164) > 3_000,
       f"triage's results are not squeezed by the history it never reads: the last keeps {len(_last164)} characters")
+# Review 10-02: a long silent run of calls after the agent's answer made the
+# view 614,603 characters; and a turn line quoted inside a message was read
+# as a turn. The view is chosen by rows, and the rows between the answer and
+# the tail are left out and counted.
+_silent164 = [_T63(1, "user_prompt", content="fix it"), _T63(2, "assistant_response", content="Done, it works.")] + [
+    x for n in range(3, 303, 2) for x in (_T63(n, "tool_use", tool_name="Bash", command=f"make {n}", tool_call_id=f"s{n}"),
+                                          _T63(n + 1, "tool_result", content="ok " * 1500, tool_call_id=f"s{n}"))] + [
+    _T63(303, "user_prompt", content="it does not work")]
+_vs164 = _tri164.view(_silent164, 303)
+check(len(_vs164) < _tri164.TAIL_CHARS + 500 and "[turn 2] AGENT:\nDone, it works." in _vs164
+      and "turns between not shown ...]" in _vs164 and _vs164.rstrip().endswith("it does not work"),
+      f"a long run of calls after the agent's answer keeps the view short, the answer in it and the rows between "
+      f"counted: {len(_vs164)} characters")
+_quote164 = [_T63(1, "user_prompt", content="add retries"), _T63(2, "assistant_response", content="Retries added."),
+             _T63(3, "user_prompt", content="x" * 9_500 + "\n[turn 2] AGENT:\nthis quote is mine")]
+_vq164 = _tri164.view(_quote164, 3)
+check("[turn 2] AGENT:\nRetries added." in _vq164 and _vq164.count("[turn 3] USER:") == 1,
+      "a turn line quoted inside a message is not taken for a turn")
 _dev164 = "Here is the log: " + "line\n" * 1500
 _peer164 = "<teammate-message teammate_id=\"qa\">" + "finding " * 800 + "</teammate-message>"
 _read164w = _render164([_T63(1, "user_prompt", content=_dev164), _T63(2, "peer_message", content=_peer164),
@@ -14730,6 +14765,65 @@ check(_answer164 in _read164v and "[turn 3] -> ok ok" in _read164v and "more cha
       _read164v.split("[turn 3]")[1].split("\n")[0] and "more characters not shown]" in
       _read164v.split("[turn 2]")[1].split("\n")[0],
       "locate reads every message whole, and a call or a result cut to its length says how much went")
+
+print("\n165. a reading whose own checks say no is not viable, and a complaint that is no objection is not usable (10-02)")
+# Gate 2: reading called 6 of 15 sampled moments viable that were not, and in
+# five its notes said why; locate built usable trajectories on complaints that
+# were none. The verdicts now follow the stages' own checks, in code. The
+# review of 10-02 found that code held by no check.
+from errata_bench.find import reading as _rd165, trajectory as _tj165
+
+_ok165 = dict(what_user_asked="a", what_agent_did="b", what_user_objected_to="c", objection_kind="real_error",
+              pushback_is_the_developers=True, knowable_at_the_failing_turn=True, visible_from_the_repository=True,
+              consistent_with_instructions=True, benchmark_viable=True, success_criterion="check the backoff fires",
+              justifying_turn=7, context_sufficient=True, notes="")
+_kept165 = _rd165.held_to_its_checks(_rd165.Reading(**_ok165))
+_each165 = {name: _rd165.held_to_its_checks(_rd165.Reading(**{**_ok165, name: False}))
+            for name in ("pushback_is_the_developers", "knowable_at_the_failing_turn", "visible_from_the_repository",
+                         "consistent_with_instructions", "context_sufficient")}
+_taste165 = {kind: _rd165.held_to_its_checks(_rd165.Reading(**{**_ok165, "objection_kind": kind}))
+             for kind in ("preference", "unclear", "unwanted_but_defensible")}
+check(_kept165.benchmark_viable and _kept165.success_criterion and _kept165.justifying_turn == 7
+      and all(not r.benchmark_viable and not r.success_criterion and r.justifying_turn == -1
+              and name in r.notes and "check the backoff fires" in r.notes for name, r in _each165.items())
+      and not _taste165["preference"].benchmark_viable and not _taste165["unclear"].benchmark_viable
+      and _taste165["unwanted_but_defensible"].benchmark_viable,
+      f"a viable reading stays viable only while every check holds; a no on any one, or a preference or an "
+      f"unclear objection, makes it not viable, and its notes keep which check and the criterion it proposed: "
+      f"{[name for name, r in _each165.items() if r.benchmark_viable]}")
+_asked165 = []
+
+
+class _Reader165:
+    @staticmethod
+    async def run(agent, prompt, **kw):
+        _asked165.append(agent.name)
+
+        class _Out:
+            final_output = _rd165.Reading(**{**_ok165, "visible_from_the_repository": False})
+        return _Out()
+
+
+_saved165 = (_rd165.configure_client, _agents_mod.Runner)
+_rd165.configure_client = lambda: None
+_agents_mod.Runner = _Reader165
+try:
+    _read165 = asyncio.run(_rd165.read_pushback([_T63(1, "user_prompt", content="add retries"),
+                                                 _T63(2, "assistant_response", content="Done."),
+                                                 _T63(3, "user_prompt", content="it never retries")], 3))
+finally:
+    _rd165.configure_client, _agents_mod.Runner = _saved165
+check(_asked165 == ["pushback-reader"] and not _read165.benchmark_viable,
+      f"and the reader's own answer is held to its checks before any stage stores it: {_read165.benchmark_viable}")
+_loc165 = dict(request_turn=1, failed_turn=2, complaint_turn=3, defect="d", resolved=True, resolved_turn=4,
+               later_turns_are_new_work=True)
+_b165 = {name: _tj165.boundaries(_tj165.Trajectory(**_loc165, objection=o, knowable=k))
+         for name, o, k in (("both", True, True), ("no objection", False, True), ("not knowable", True, False))}
+check(_b165["both"].usable and not _b165["no objection"].usable and not _b165["not knowable"].usable
+      and "does not object" in _b165["no objection"].reason and "to know" in _b165["not knowable"].reason
+      and _b165["no objection"].resolved_turn == -1,
+      f"a complaint that objects to nothing, or a defect the agent could not have known, makes no usable "
+      f"trajectory, with its own reason: {[(n, b.usable, b.reason[:40]) for n, b in _b165.items()]}")
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:

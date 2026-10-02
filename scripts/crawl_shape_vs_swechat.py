@@ -73,7 +73,10 @@ def main(argv: list[str]) -> int:
         for r in ours:
             if r["turn_type"] == "tool_result":
                 results[r["tool_call_id"]].append(r)
-        agent_text = {r["content"] for r in ours if r["turn_type"] == "assistant_response"}
+        # Claude Code's own messages in the agent's turn are system_injected here
+        # (G-94) and agent text in SWE-chat's table: the same text either way.
+        agent_text = {r["content"] for r in ours
+                      if r["turn_type"] == "assistant_response" or r.get("model") == "<synthetic>"}
         user_by_text = {}
         for r in ours:
             if r["role"] == "user":

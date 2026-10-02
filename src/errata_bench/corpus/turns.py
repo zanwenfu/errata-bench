@@ -321,10 +321,10 @@ def build_excerpt(
         if kind == "user_prompt":
             marker = " <-- THE PUSHBACK" if (mark_pushback and n == cut_turn) else ""
             lines.append(f"\n[turn {n}] {speaker(t)}{marker}:\n{_cut(content, message_chars, record)}")
-        # Text put back from the raw transcript (G-79) is shown under the turn of
-        # the block it was written beside, as a recovered call is.
         elif kind == "peer_message":
             lines.append(f"\n[turn {n}] {PEER_SPEAKER}:\n{_cut(content, message_chars, record)}")
+        # Text put back from the raw transcript (G-79) is shown under the turn of
+        # the block it was written beside, as a recovered call is.
         elif kind == "assistant_response":
             lines.append(f"\n[turn {t.get('shown_as', n)}] AGENT:\n{_cut(content, message_chars, record)}")
         elif kind == "assistant_thinking":

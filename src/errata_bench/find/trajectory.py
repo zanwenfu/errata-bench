@@ -76,15 +76,18 @@ class Trajectory(BaseModel):
     objection: bool = Field(
         description=(
             "Whether the complaint objects to something a specific earlier answer of the agent's said or did "
-            "wrong. False for a new request or a requirement first stated in it, an answer to a question the "
-            "agent asked, approval, a retraction, or a message from another agent or a tool."
+            "wrong. A report that the agent's work failed is one, even when it answers the agent's question. "
+            "False for a new request or a requirement first stated in it, picking one of the options the agent "
+            "offered, approval, a retraction, or a message from another agent or a tool."
         )
     )
     knowable: bool = Field(
         description=(
-            "Whether the agent, at its failed answer, had what it needed to get it right: the conversation "
-            "before that answer and the repository. False when the right answer rests on something first "
-            "said in or after the complaint, a fact only the developer knew, or a decision made elsewhere."
+            "Whether the agent could have got it right at its failed answer with what it had: the conversation "
+            "before that answer, the repository, its tools and general knowledge. The complaint reporting the "
+            "error does not make it unknowable: ask whether the agent could have found it by checking. False "
+            "only when the right answer depended on a fact only the developer knew, or a requirement or "
+            "decision first given in or after the complaint."
         )
     )
 
@@ -148,14 +151,17 @@ be built from one. When the failure or the fix happened inside tool calls, \
 give the AGENT turn that reported it to the developer.
 
 Check the complaint first. It must object to something a specific earlier \
-answer of the agent's said or did wrong. A new request, a requirement first \
-stated in it, an answer to a question the agent asked, approval, a retraction \
-("I was mistaken"), or a message from another agent is not a complaint: say so \
-(objection false), and do not build a defect around it. Then check the agent \
-could have got it right: what the right answer rests on must be in the \
-conversation before the failed answer, or in the repository. If it was first \
-said in or after the complaint, or only the developer knew it, say so \
-(knowable false). When the complaint lists several problems, take the first \
+answer of the agent's said or did wrong; a report that its work failed is one, \
+even when it answers the agent's question ("can you test it?" -- "still fails"). \
+A new request, a requirement first stated in it, picking one of the options the \
+agent offered, approval, a retraction ("I was mistaken"), or a message from \
+another agent is not a complaint: say so (objection false), and do not build a \
+defect around it. Then check the agent could have got it right with what it \
+had: the conversation before the failed answer, the repository, its tools and \
+what it knows. The complaint reporting the error is how you learn of it, not a \
+reason it was unknowable; say knowable false only when the right answer \
+depended on a fact only the developer knew, or a requirement or decision first \
+given in or after the complaint. When the complaint lists several problems, take the first \
 the failed answer is responsible for, and say in the defect which it is.
 
 The fourth is the hard one, and getting it wrong ruins the task.

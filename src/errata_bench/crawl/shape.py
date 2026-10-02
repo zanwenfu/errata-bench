@@ -172,13 +172,18 @@ COMMAND_ENTRY = re.compile(r"^\s*<command-message>")
 
 def is_expansion(entries: list[dict], i: int, index: dict[str, int]) -> bool:
     """Whether meta entry ``i`` expands a command the developer ran: the first entry before it, looking past
-    attachments, system entries, progress and other meta entries, is their command entry.
+    attachments, system entries and progress, is their command entry.
 
     Their own command opens with its message (`<command-message>`); a built-in
     one opens with its name, and a meta entry after it is its output (`/context`
     writes its report so). A command a timer ran (`turnOrigin` "scheduled") is
-    not theirs either. The entry before is the one `parentUuid` names, or the
-    one before it in the file when the entry names none.
+    not theirs either. Another meta entry before it ends the walk: Claude Code
+    writes an expansion right after its command (all 3,307 of the corpus's,
+    10-02), and a meta entry after the expansion is its own: a hook's
+    feedback, the resume line, or the note on an image attached to the
+    command (5 in the corpus). The entry before is the one `parentUuid` names;
+    an entry without that field is placed after the one before it in the file,
+    and one whose `parentUuid` is null has nothing before it.
     """
     seen = 0
     while seen < 200:
@@ -196,8 +201,10 @@ def is_expansion(entries: list[dict], i: int, index: dict[str, int]) -> bool:
         before = entries[i]
         if before.get("type") == "assistant":
             return False
-        if before.get("type") != "user" or before.get("isMeta"):
+        if before.get("type") != "user":
             continue
+        if before.get("isMeta"):
+            return False
         msg = before.get("message") if isinstance(before.get("message"), dict) else {}
         text = _text(msg.get("content"))
         return bool(COMMAND_ENTRY.match(text)) and user_kind(before, text) == "user_prompt"

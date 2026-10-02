@@ -125,6 +125,17 @@ def _runner(folder_files: set[str]) -> str | None:
     return None
 
 
+def _no_packages(workspace: str) -> bool:
+    """Whether a pnpm-workspace.yaml names no packages: no `packages` key, or an empty list."""
+    m = re.search(r"(?m)^packages\s*:(.*)$", workspace)
+    if not m:
+        return True
+    rest = m.group(1).split("#")[0].strip()
+    if rest:
+        return rest.replace(" ", "") == "[]"
+    return not re.match(r"[ \t]*\n[ \t]+-", workspace[m.end():])
+
+
 def recipe(task: dict, files: list[str], package_jsons: dict[str, str],
            pyprojects: dict[str, str] | None = None) -> Recipe:
     """A task's recipe, from its task.json, its working copy's file list and its manifests.
@@ -149,6 +160,7 @@ def recipe(task: dict, files: list[str], package_jsons: dict[str, str],
         r.tools.append(f"npm install -g {shlex.quote(manager.split('+')[0])}")
     if manager.startswith(("pnpm@", "yarn@")):
         r.tools.append(f"corepack install -g {shlex.quote(manager.split('+')[0])}")
+    pnpm10, pnpm_at = False, None    # whether a folder needs pnpm 10; where the image's pnpm is installed
     for folder in sorted(by_folder, key=lambda f: (f.count("/"), f)):
         names = by_folder[folder]
         # A workspace member's packages are installed from the root's lockfile.
@@ -170,7 +182,10 @@ def recipe(task: dict, files: list[str], package_jsons: dict[str, str],
                     continue
                 # A lockfile with no package.json beside it has nothing to install
                 # from: `npm ci` stops at once (entireio-cli-281's .opencode, 10-02).
-                if lock in JS_LOCKS and "package.json" not in names:
+                # A pnpm workspace's root is the exception: its members hold the
+                # package.json files, and the root installs them all.
+                if lock in JS_LOCKS and "package.json" not in names and not (
+                        lock == "pnpm-lock.yaml" and "pnpm-workspace.yaml" in names):
                     r.notes.append(f"{folder or '.'}: {lock} with no package.json, not installed")
                     continue
                 if lock == "requirements.txt" and names & {"uv.lock", "poetry.lock"}:
@@ -181,12 +196,16 @@ def recipe(task: dict, files: list[str], package_jsons: dict[str, str],
             r.installs.append((folder, UNLOCKED[pm], UNLOCKED[pm], "package.json"))
             r.notes.append(f"{folder or '.'}: package.json with no lockfile, installed unlocked with {pm}")
         if "pnpm-lock.yaml" in names and not manager.startswith("pnpm@"):
-            # A pnpm-workspace.yaml that only holds settings, with no `packages`,
-            # is pnpm 10's: pnpm 9 refuses it ("packages field missing or empty"),
-            # as it did nrmeyers-agentalloy-19's and -20's frontend (10-02).
+            # A pnpm-workspace.yaml with no packages, one that only holds
+            # settings, is pnpm 10's: pnpm 9 refuses it ("packages field missing
+            # or empty"), as it did nrmeyers-agentalloy-19's and -20's frontend
+            # (10-02). One pnpm serves the image, installed once: pnpm 10 if any
+            # folder needs it, where pnpm 9's line would have been.
             workspace = package_jsons.get(f"{folder}/pnpm-workspace.yaml" if folder else "pnpm-workspace.yaml")
-            settings_only = workspace is not None and not re.search(r"(?m)^packages\s*:", workspace)
-            r.tools.append("corepack install -g pnpm@10" if settings_only else "corepack install -g pnpm@9")
+            pnpm10 = pnpm10 or (workspace is not None and _no_packages(workspace))
+            if pnpm_at is None:
+                pnpm_at = len(r.tools)
+                r.tools.append("corepack install -g pnpm@9")
         pkg_path = f"{folder}/package.json" if folder else "package.json"
         run = (_runner(names) or (_runner(by_folder.get("", set())) if pkg_path in package_jsons else None)
                or ("npm run" if "package.json" in names else None))
@@ -208,6 +227,8 @@ def recipe(task: dict, files: list[str], package_jsons: dict[str, str],
             pyproject = pyprojects.get(f"{folder}/pyproject.toml" if folder else "pyproject.toml", "")
             r.checks.append((folder, "uv run --frozen --all-extras python -m pytest --collect-only -q"
                              if "pytest" in pyproject else "uv run --frozen --all-extras python -m compileall -q ."))
+    if pnpm10 and pnpm_at is not None:
+        r.tools[pnpm_at] = "corepack install -g pnpm@10"
     r.tools = list(dict.fromkeys(r.tools))
     if not r.installs:
         r.notes.append("no lockfile: nothing to install")

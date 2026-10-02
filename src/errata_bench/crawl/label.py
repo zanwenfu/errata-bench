@@ -48,8 +48,10 @@ LABELS = ("correction", "rejection", "failure_report", "non_pushback")
 PUSHBACK = frozenset(LABELS) - {"non_pushback"}
 # What a row's label answers: SWE-chat's codebook.
 QUESTION = "codebook"
-# What triage reads of the same moment (`find.triage`: the excerpt's last 9,000
-# characters), and of the message itself (`corpus.turns.MESSAGE_CHARS`).
+# What triage read of the same moment when this was calibrated, 10-01 (the
+# excerpt's last 9,000 characters; since 10-02 `find.triage.view` reads whole
+# turns, every message whole), and of the message itself
+# (`corpus.turns.MESSAGE_CHARS`).
 CONTEXT_CHARS = 9000
 INTERRUPTED = "[Request interrupted by user"
 CONTINUED = "This session is being continued"

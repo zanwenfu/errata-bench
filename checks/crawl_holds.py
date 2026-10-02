@@ -436,10 +436,10 @@ said90 = [
     U90("r1", "a2", [{"type": "tool_result", "tool_use_id": "s1", "content": "Launching skill: review"}]),
     M90("k1", "r1", "Base directory for this skill: /x\n# Review", sourceToolUseID="s1"),
     U90("c1", "k1", "<command-message>ship</command-message>\n<command-name>/ship</command-name>"),
-    M90("k2", "c1", "Ship it: run the tests,"),
-    M90("k2b", "k2", "then push."),
+    M90("k2", "c1", "Ship it: run the tests, then push."),
+    M90("k2b", "k2", "[Image: original 80x60, displayed at 80x60.]"),
     M90("k1b", "c1", "Base directory for this skill: /y\n# Lint", sourceToolUseID="s9"),
-    A90("a3", "k2b", {"type": "text", "text": "Pushed."}),
+    A90("a3", "c1", {"type": "text", "text": "Pushed."}),
     M90("k4", "a3", "Check the build again."),
     U90("c2", "k4", "<command-name>/context</command-name>"),
     M90("k3", "c2", "## Context Usage 12k of 200k"),
@@ -477,20 +477,22 @@ check(kind90('<teammate-message teammate_id="tester" color="green">P1 done</team
       and kind90('<cross-session-message from="uds:/tmp/s">fix the lint</cross-session-message>') == ["peer_message"],
       f"another agent's message is another agent's, marked as one (`origin`, `turnOrigin`) or only tagged, written as "
       f"an entry, a queue entry or an attachment (G-90): {[(k, c[:20]) for k, c in got90[:6]]}")
-check(kind90("Ship it: run the tests,") == ["user_prompt"] and kind90("then push.") == ["user_prompt"]
+check(kind90("Ship it: run the tests, then push.") == ["user_prompt"]
       and kind90("please fix the parser") == ["user_prompt"] and kind90("now the docs") == ["user_prompt"]
       and kind90("Continue from where you left off.") == ["system_injected", "user_prompt"],
-      f"a command's expansion is the developer's, in one meta entry or two; what they typed is theirs, the resume "
-      f"line too when they type it (G-90): {[(k, c[:20]) for k, c in got90 if k == 'user_prompt']}")
+      f"a command's expansion is the developer's; what they typed is theirs, the resume line too when they type "
+      f"it (G-90): {[(k, c[:20]) for k, c in got90 if k == 'user_prompt']}")
 check(all(kind90(text) == ["system_injected"] for text in (
           "Base directory for this skill: /x\n# Review", "Base directory for this skill: /y\n# Lint",
           "Check the build again.", "## Context Usage 12k of 200k", "Stop hook feedback: run the linter first",
+          "[Image: original 80x60, displayed at 80x60.]",
           "[Image: original 100x80, displayed at 100x80.]", "Run the overnight improvements.",
           "<command-message>brainstorm</command-message>\n<command-name>brainstorm</command-name>",
           "# Brainstorming\nAsk one question at a time.")),
       f"every other meta entry is Claude Code's: a skill the agent's call loaded, even right after the developer's "
-      f"command; a timer's prompt after the agent's turn; a built-in command's output; a hook's feedback; the resume "
-      f"line; a note on an image; what follows a command a timer ran, or a skill that loaded itself (G-90): "
+      f"command; one written after an expansion; a timer's prompt after the agent's turn; a built-in command's "
+      f"output; a hook's feedback; the resume line; a note on an image; what follows a command a timer ran, or a "
+      f"skill that loaded itself (G-90): "
       f"{[(k, c[:24]) for k, c in got90 if c.startswith(('Base', 'Check', '##', 'Stop', '[Image', 'Run', '<command-message>b', '# B'))]}")
 check(all(kind90(text) == ["system_injected"] for text in (
           "update", "Background agent X was stopped", "Goal set: finish the roadmap", "Check the CI run",

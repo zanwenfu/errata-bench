@@ -25,8 +25,6 @@ where it sits.
 
 from __future__ import annotations
 
-import re
-
 from pydantic import BaseModel, Field
 
 from ..llm import MODEL, configure_client, resilient, with_field_guide
@@ -34,37 +32,54 @@ from ..llm import MODEL, configure_client, resilient, with_field_guide
 # How much of the end of the conversation triage reads, at the least.
 TAIL_CHARS = 9000
 LEFT_OUT = "[... the conversation before this is not shown ...]"
-_TURN = re.compile(r"(?m)^\[turn ")
-_AGENT_SAYS = re.compile(r"(?m)^\[turn [^\]\n]*\] AGENT:$")
 
 
 def view(turns: list[dict], turn_number) -> str:
     """What triage reads: the end of the conversation up to the developer's message (G-92).
 
-    From the start of a turn, about the last `TAIL_CHARS` of it, every message
-    whole (`build_excerpt`'s ``whole_messages``, record 2, so a call shows its
-    input and each result keeps up to 4,000 characters, and a cut says how
-    much went), and always from the agent's last
-    answer before the message: the work it may object to. A line says where
-    the rest was left out. It read the last 9,000 characters as they fell,
-    with each message cut at 4,000: the view began inside a turn in 643 of the
-    first 681 Entire moments, and the agent's last answer was cut, unmarked,
-    in 77.
-    """
-    from ..corpus.turns import WHOLE, build_excerpt
+    Each row is rendered on its own, as `build_excerpt` renders it with every
+    message whole (record 2: a call shows its input, each result keeps up to
+    4,000 characters, and a cut says how much went), and the rows are chosen
+    as rows, never by reading the text back: a message that quotes "[turn 2]
+    AGENT:" is not a turn. From the end, whole rows up to `TAIL_CHARS`, the
+    developer's message whole however long, and the agent's last answer before
+    it, the work it may object to; the rows between those two are left out
+    and counted, so a long run of calls after the answer does not make the
+    view long. A line says where the start was left out.
 
-    # Not fitted to a length: the rendering is squeezed to fit as a whole, and
-    # the history triage never reads would cut the calls and results it does,
-    # to 40 characters each in the longest sessions.
-    text = build_excerpt(turns, turn_number, record=2, whole_messages=True, max_chars=WHOLE)
-    starts = [m.start() for m in _TURN.finditer(text)]
-    within = [at for at in starts if len(text) - at <= TAIL_CHARS]
-    start = within[0] if within else (starts[-1] if starts else 0)
-    answers = [m.start() for m in _AGENT_SAYS.finditer(text)]
-    if answers:
-        start = min(start, answers[-1])
-    # The rendering opens with a blank line before its first turn: from there, nothing is left out.
-    return text if not starts or start <= starts[0] else f"{LEFT_OUT}\n{text[start:]}"
+    It read the last 9,000 characters as they fell, each message cut at 4,000:
+    the view began inside a turn in 643 of the first 681 Entire moments, and
+    the agent's last answer was cut, unmarked, in 77. Each row rendered on
+    its own is never squeezed to fit the rest: fitted as a whole, the history
+    triage never reads cut the calls and results it does, to 40 characters in
+    the longest sessions.
+    """
+    from ..corpus.turns import build_excerpt
+
+    rows = []
+    for t in turns:
+        n = t.get("turn_number")
+        if n is None or n > turn_number:
+            continue
+        shown = build_excerpt([t], turn_number, record=2, whole_messages=True)
+        if shown:
+            rows.append((t, shown))
+    if not rows:
+        return ""
+    start, size = len(rows) - 1, len(rows[-1][1])
+    while start > 0 and size + 1 + len(rows[start - 1][1]) <= TAIL_CHARS:
+        start -= 1
+        size += 1 + len(rows[start][1])
+    kept = [shown for _, shown in rows[start:]]
+    first = start
+    answer = next((i for i in range(len(rows) - 1, -1, -1) if rows[i][0].get("turn_type") == "assistant_response"),
+                  None)
+    if answer is not None and answer < start:
+        between = start - answer - 1
+        kept = [rows[answer][1]] + ([f"[... {between} turns between not shown ...]"] if between else []) + kept
+        first = answer
+    text = "\n".join(kept)
+    return text if first == 0 else f"{LEFT_OUT}\n{text.lstrip(chr(10))}"
 
 
 class Triage(BaseModel):
@@ -118,7 +133,7 @@ same for the exporter") does not say the agent got anything wrong, even with an 
 evaluative word in it. But correcting a fact the agent stated or assumed is an \
 objection, however mildly put. And the work objected to must be the agent's: \
 questioning code that was in the repository before the agent touched it is not \
-objecting to the agent.
+objecting to the agent, unless it disputes what the agent said or did about it.
 
 Both must be true for this moment to be worth examining further. Be strict: \
 saying no is cheap, and saying yes commits several expensive reads."""

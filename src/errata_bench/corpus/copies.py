@@ -47,28 +47,34 @@ def identities(conversations, keys: set[tuple[str, int]]) -> dict[tuple[str, int
     import pyarrow as pa
     import pyarrow.compute as pc
 
+    keys = {(s, n) for s, n in keys if isinstance(s, str) and n is not None}   # a row with no session names none
     sessions = sorted({s for s, _ in keys})
     if not sessions:
         return {}
     first: dict[str, object] = {}
     last: dict[str, int] = {}
     said: dict[tuple[str, int], tuple] = {}
-    wanted = None
+    wanted = turns_wanted = None
     for batch in conversations.iter_batches(batch_size=200_000,
                                             columns=["session_id", "turn_number", "timestamp", "content"]):
         ids = batch.column("session_id")
         if wanted is None:
             wanted = pa.array(sessions, type=ids.type)
+            turns_wanted = pa.array(sorted({n for _, n in keys}), type=batch.column("turn_number").type)
         mask = pc.is_in(ids, value_set=wanted)
         if not pc.any(mask).as_py():
             continue
         rows = batch.filter(mask)
-        for s, n, ts, text in zip(*(rows.column(c).to_pylist() for c in ("session_id", "turn_number", "timestamp",
-                                                                            "content"))):
+        # Every row's time and number, for where its session starts and ends;
+        # the text only of rows at a turn some key names.
+        for s, n, ts in zip(*(rows.column(c).to_pylist() for c in ("session_id", "turn_number", "timestamp"))):
             if ts is not None and (s not in first or ts < first[s]):
                 first[s] = ts
             if n is not None and n > last.get(s, n - 1):
                 last[s] = n
+        named = rows.filter(pc.is_in(rows.column("turn_number"), value_set=turns_wanted))
+        for s, n, ts, text in zip(*(named.column(c).to_pylist() for c in ("session_id", "turn_number", "timestamp",
+                                                                             "content"))):
             if (s, n) in keys:
                 said[(s, n)] = identity(ts, text)
     return {k: (said[k], first.get(k[0]), last.get(k[0], k[1])) for k in said}

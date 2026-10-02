@@ -1493,8 +1493,8 @@ def main() -> int:
         asyncio.run(stage_triage(d11, 10**9, concurrency=1))
     finally:
         turns_mod.build_excerpt = kept11
-    from errata_bench.corpus.turns import WHOLE as WHOLE11
-    check(EXCERPT_KW == [{"record": 2, "whole_messages": True, "max_chars": WHOLE11}] and len(load(d11.triaged)) == 1,
+    check(EXCERPT_KW and all(k == {"record": 2, "whole_messages": True} for k in EXCERPT_KW)
+          and len(load(d11.triaged)) == 1,
           f"the triage stage asks for its view with every message whole and every cut said: {EXCERPT_KW}")
 
     print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))

@@ -47,9 +47,11 @@ SEED = 0
 # The row kinds each block is looked for in. What a tool or Claude Code wrote
 # into the user's turn (command output, task notifications, IDE context, system
 # reminders) is kept as `system_injected` or `queue_operation`: 717 of the 720
-# "absent" user texts of the first run were there (09-30).
-ROW_KIND = {"text": ("assistant_response",), "thinking": ("assistant_thinking",),
-            "user text": ("user_prompt", "system_injected", "queue_operation", "system_event")}
+# "absent" user texts of the first run were there (09-30). Another agent's
+# message is `peer_message` in the collector's corpus (G-90), and Claude Code's
+# own message in the agent's turn `system_injected` (G-94).
+ROW_KIND = {"text": ("assistant_response", "system_injected"), "thinking": ("assistant_thinking",),
+            "user text": ("user_prompt", "peer_message", "system_injected", "queue_operation", "system_event")}
 
 
 def norm(text) -> str:
