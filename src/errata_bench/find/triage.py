@@ -43,16 +43,20 @@ def view(turns: list[dict], turn_number) -> str:
 
     From the start of a turn, about the last `TAIL_CHARS` of it, every message
     whole (`build_excerpt`'s ``whole_messages``, record 2, so a call shows its
-    input and a cut says how much went), and always from the agent's last
+    input and each result keeps up to 4,000 characters, and a cut says how
+    much went), and always from the agent's last
     answer before the message: the work it may object to. A line says where
     the rest was left out. It read the last 9,000 characters as they fell,
     with each message cut at 4,000: the view began inside a turn in 643 of the
     first 681 Entire moments, and the agent's last answer was cut, unmarked,
     in 77.
     """
-    from ..corpus.turns import build_excerpt
+    from ..corpus.turns import WHOLE, build_excerpt
 
-    text = build_excerpt(turns, turn_number, record=2, whole_messages=True)
+    # Not fitted to a length: the rendering is squeezed to fit as a whole, and
+    # the history triage never reads would cut the calls and results it does,
+    # to 40 characters each in the longest sessions.
+    text = build_excerpt(turns, turn_number, record=2, whole_messages=True, max_chars=WHOLE)
     starts = [m.start() for m in _TURN.finditer(text)]
     within = [at for at in starts if len(text) - at <= TAIL_CHARS]
     start = within[0] if within else (starts[-1] if starts else 0)

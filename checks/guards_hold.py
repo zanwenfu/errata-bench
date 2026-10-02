@@ -14565,7 +14565,7 @@ print("\n163. one moment in several sessions is collected once, in the copy that
 _corpus163 = Path(tempfile.mkdtemp())
 _B163, _S163 = 1_700_000_000_000_000, 1_000_000
 _repos163 = {"s-a1": "o/a", "s-a2": "o/a", "s-a3": "o/a", "s-b1": "o/b", "s-b2": "o/b", "s-c1": "o/c1",
-             "s-c2": "o/c2", "s-e": "o/e"}
+             "s-c2": "o/c2", "s-e": "o/e", "s-f": "o/f"}
 _rows163 = []
 
 
@@ -14586,11 +14586,14 @@ _session163("s-b2", _B163, _B163 + 6 * _S163, "the cache is never cleared", 2)
 _session163("s-c1", _B163, _B163 + 7 * _S163, "wrong file again", 2)
 _session163("s-c2", _B163 + 50 * _S163, _B163 + 57 * _S163, "wrong file again", 2)
 _session163("s-e", _B163 + 2 * _S163, _B163 + 5 * _S163, "that broke the build", 2)
+# A moment whose own row has no time: no identity, so it is never taken for a copy.
+_session163("s-f", _B163 + 90 * _S163, _B163 + 95 * _S163, "it still fails on Windows", 2)
+_rows163 = [(*r[:4], None, r[5]) if (r[0], r[1]) == ("s-f", 5) else r for r in _rows163]
 _pq.write_table(_pa.table({"session_id": list(_repos163), "repo_id": list(_repos163.values())}),
                 _corpus163 / "sessions.parquet")
 _pq.write_table(_pa.table({
-    "repo_id": sorted(set(_repos163.values())), "url": ["u"] * 5, "license_type": ["mit"] * 5,
-    "repo_github_metadata": [json.dumps({"language": "TypeScript"})] * 5}), _corpus163 / "repositories.parquet")
+    "repo_id": sorted(set(_repos163.values())), "url": ["u"] * 6, "license_type": ["mit"] * 6,
+    "repo_github_metadata": [json.dumps({"language": "TypeScript"})] * 6}), _corpus163 / "repositories.parquet")
 _pq.write_table(_pa.table({
     "session_id": [r[0] for r in _rows163], "turn_number": [r[1] for r in _rows163],
     "turn_type": [r[2] for r in _rows163], "prompt_pushback": [r[3] for r in _rows163],
@@ -14612,13 +14615,13 @@ try:
 finally:
     _sessions_mod.CORPUS, _sessions_mod.load_repos = _keep163
 (_all163, _said_all163), (_after163, _said_after163) = _got163
-check([s for s, _ in _all163] == ["s-a2", "s-b1", "s-c1", "s-c2", "s-e"],
+check([s for s, _ in _all163] == ["s-a2", "s-b1", "s-c1", "s-c2", "s-e", "s-f"],
       f"of three copies of one moment, the one collected is in a session that starts first and holds the most "
-      f"after it; of two the same, the first by id; the same words at another time, and another message at the "
-      f"same instant, are moments of their own: {_all163}")
+      f"after it; of two the same, the first by id; the same words at another time, another message at the "
+      f"same instant, and a moment with no time of its own, are moments of their own: {_all163}")
 check("3 moments left out: a copy of a moment another session holds, the copy kept there" in _said_all163,
       f"and it says how many copies it left out: {_said_all163[:160]!r}")
-check([s for s, _ in _after163] == ["s-a2", "s-c1", "s-c2", "s-e"]
+check([s for s, _ in _after163] == ["s-a2", "s-c1", "s-c2", "s-e", "s-f"]
       and "1 moments left out: a copy of a moment already collected" in _said_after163
       and "2 moments left out: a copy of a moment another session holds" in _said_after163,
       f"a copy of a moment an earlier collection took is left out, in every session: {_after163} "
@@ -14684,6 +14687,29 @@ check(_view164 in _prompts164.get("triage", "") and _answer164 in _prompts164.ge
       and "more characters not shown]" in _prompts164.get("pushback-reader", ""),
       f"triage is asked about its view whole, and the reader is shown every message whole and every cut said: "
       f"{sorted((k, len(v)) for k, v in _prompts164.items())}")
+# With messages whole, the room left to results counts each message whole: else
+# the results are fitted to room the message has taken, the whole overruns,
+# and every result is squeezed to 200 characters instead of the 3,000 it has.
+_budget164 = [_T63(1, "user_prompt", content="m" * 10_000)] + [
+    _T63(n, "tool_result", content="r" * 6_000, tool_call_id=f"r{n}") for n in range(2, 8)]
+_fitted164 = _bx70(_budget164, 8, record=1, whole_messages=True, max_chars=30_000)
+_shown_r164 = max((len(line) for line in _fitted164.splitlines() if "-> result: " in line), default=0)
+check("m" * 10_000 in _fitted164 and _shown_r164 > 3_000,
+      f"with messages whole, a result keeps the room the whole messages leave it, not a squeezed 200: "
+      f"{_shown_r164} characters")
+_long_tool164 = [_T63(1, "user_prompt", content="add retries")] + [
+    x for n in range(2, 40, 2) for x in (_T63(n, "tool_use", tool_name="Bash", command=f"make {n}", tool_call_id=f"c{n}"),
+                                         _T63(n + 1, "tool_result", content=f"out {n} " * 400, tool_call_id=f"c{n}"))] + [
+    _T63(40, "assistant_response", content="Done."), _T63(41, "user_prompt", content="that is wrong")]
+_tail164 = _tri164.view(_long_tool164, 41)
+check("[turn 39] -> result: out 38 out 38" in _tail164 and len(_tail164.split("[turn 39] -> result: ")[1].split("\n")[0]) > 2_000,
+      "triage's results are not squeezed by the history it never reads")
+_dev164 = "Here is the log: " + "line\n" * 1500
+_peer164 = "<teammate-message teammate_id=\"qa\">" + "finding " * 800 + "</teammate-message>"
+_read164w = _render164([_T63(1, "user_prompt", content=_dev164), _T63(2, "peer_message", content=_peer164),
+                        _T63(3, "assistant_response", content="ok")], 1, 3)
+check(_dev164.strip() in _read164w and _peer164 in _read164w,
+      "locate reads the developer's and another agent's messages whole too")
 _read164v = _render164(_rows164, 1, 5)
 check(_answer164 in _read164v and "[turn 3] -> ok ok" in _read164v and "more characters not shown]" in
       _read164v.split("[turn 3]")[1].split("\n")[0] and "more characters not shown]" in
