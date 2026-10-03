@@ -253,8 +253,8 @@ that the task itself is right (G-72): no person has yet checked the tasks
     leaves the benchmark.
 - **One task per session**, so no session counts twice.
 
-Of 2,458 moments examined for the current set, 301 reached screening and 249
-passed it, 95 were built, 64 passed calibration, 62 held all seven gate
+Of 2,458 moments examined for the current set, 1,040 passed triage and were
+read in full, 301 reached screening and 249 passed it, 95 were built, 64 passed calibration, 62 held all seven gate
 readings, 56 of those passed their controls too, and 55 were kept after the
 one-per-session rule. About one moment in 45 becomes a task.
 
