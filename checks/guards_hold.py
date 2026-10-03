@@ -15633,12 +15633,15 @@ check([a[0] for a in _asked169] == [True, False] and _asked169[0][1] == [[("a", 
       f"{_asked169}")
 for _argv169, _what169 in ((["d", "--exclude-sessions", str(_none169)], "a per-repository cap"),
                            (["d", "--cap", "0"], "the exclusion files")):
+    _draw169.RUNS = Path(tempfile.mkdtemp())        # nothing to draw into, if it drew
     try:
-        with _contextlib38.redirect_stderr(_io38.StringIO()):
+        with _contextlib38.redirect_stderr(_io38.StringIO()), _contextlib38.redirect_stdout(_io38.StringIO()):
             _draw169.main(_argv169)
         _named169 = "drew"
     except SystemExit:
         _named169 = "refused"
+    except Exception as e:      # it went on to draw, and had no corpus to draw from
+        _named169 = f"drew ({type(e).__name__})"
     check(_named169 == "refused", f"and it will not draw without {_what169} named: {_named169}")
 
 # The tally: v1's readings required, the first pushback kept, a development
@@ -15665,8 +15668,8 @@ for _run169, _ts169 in _plan169.items():
                                         "ok": True, "pass": _n169})
 _tally169.can_be_scored = lambda r: True
 _tally169.stable = lambda run, judge, passing=None: (
-    set(), {t: {"asked": a, "held": h} for t, _, a, h, _ in _plan169[Path(run).name]})
-_tally169.admitted = lambda run, p, judge, passing: {t[0] for t in _plan169[Path(run).name]}
+    set(), {t: {"asked": a, "held": h} for t, _, a, h, _ in _plan169.get(Path(run).name, ())})
+_tally169.admitted = lambda run, p, judge, passing: {t[0] for t in _plan169.get(Path(run).name, ())}
 _said169t = _io38.StringIO()
 with _contextlib38.redirect_stdout(_said169t):
     _ok169 = _tally169.main([str(_tr169 / "o.json"), f"{_tr169 / 'zf'}:first", f"{_tr169 / 'al'}:later",

@@ -410,8 +410,11 @@ the differences:
   checkpoint trailers and kept by v1's licence policy. Each session's latest
   transcript is kept, with its sub-agents'. The corpus holds 6,449 Claude Code
   sessions from 202 repositories; other agents' sessions are kept for later.
-  *[Pending: how many are also in SWE-chat. No session with a task built from
-  either corpus is drawn.]*
+  1,724 of the 6,449 are also SWE-chat sessions, under the same ids, and 36
+  of those hold a task built from SWE-chat, 16 of them v1's. No session with a
+  task built from either corpus is drawn. The labelled sessions include none
+  of the 1,724, so no draw so far has held one. *[SWE-chat v2 (10-03) is not
+  yet measured.]*
 - **Who wrote a message** is read from Claude Code's marks on each transcript
   entry (G-90, G-94):
   - another agent's message is shown as ANOTHER AGENT;
@@ -422,15 +425,18 @@ the differences:
   calls 95.2% of triage's pushbacks pushback, and all 55 of v1's task moments.
   As in step 2, a label is only a first filter.
 - **The draw** (`scripts/draw_entire.py`) follows v1's step 2
-  (`scripts/draw_step2.py`):
+  (`scripts/draw_step2.py`), read over the runs of both sources:
   - first and later pushbacks;
-  - no moment any run has triaged;
+  - no moment any run has triaged, nor a copy of one;
   - no session with a task built from either corpus, v1's 55 included;
-  - for first pushbacks, no session whose later moment a batch already holds;
-  - at most *[pending: the cap]* moments from one repository in each list.
+  - for first pushbacks, no session whose later moment a batch already holds.
+    A batch is any run of later pushbacks, v1's four among them;
+  - at most *[pending: the cap]* moments from one repository in each list,
+    counted after the rules.
 
   It also leaves out:
-  - a moment copied into another session (G-91);
+  - a moment copied into another session (G-91). Where a first pushback is a
+    copy of a later one in the same draw, the later list keeps it;
   - a session holding a message edited and sent again after the agent had
     answered it (G-95; 77 sessions);
   - a shell command the developer ran.
@@ -446,10 +452,15 @@ the differences:
 - **Admission** (step 8) is v1's, under judge rules 4 and trace rules 7:
   - screening at three readings;
   - calibration;
-  - the gate's seven readings, every one held;
-  - the controls at three readings.
+  - the controls at three readings;
+  - the gate's seven readings, every one held.
 
-  v1's 55 are admitted again under the same rules in v1.1.
+  Each step runs again until no row is in error, as v1's `admit-chain.sh` ran
+  them, and until every task has been read as often as asked. A run short of
+  any reading is not tallied. Before admission, the round-3 preflight checks
+  every built task: the overclaim's invented name is in no conversation, and
+  no task was built without its lost calls and text. v1's 55 are admitted
+  again under the same rules in v1.1.
 - **One task per session**, across both sources. A session with two admitted
   tasks keeps its first pushback, and the first list is located before the
   later one, so a failed answer both share is the first pushback's. Each
@@ -458,7 +469,9 @@ the differences:
   when the first pushback fails its admission, the later one, which might have
   passed, is not tried: an accepted cost.
 - **Names.** v1's 55 keep `{repo}-{turn}` (`src/errata_bench/release/v1_names.py`).
-  Every other task is `{repo}-{session[:8]}-{turn}`, in every build.
+  Every other task is `{repo}-{tag}-{turn}`, where the tag is eight hex
+  characters of the session id's SHA-256, so the name is the same in every
+  build. A session id's own first characters can be a date shared by many.
 - **Development tasks.** The tasks of the first Entire runs and of the first
   pilot shaped the finding stages' instructions. They are reported apart, and
   results are given without them too, as v1 reports its first grid.

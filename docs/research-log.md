@@ -12524,3 +12524,76 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
       Section 168 covers names and section 169 the draw, tally, run script
       and preflight.
     - Mutants: see the next entry.
+- **10-03, 05:4x–06:3x UTC** — **An independent review of the v1 alignment
+  (db2c2e872..c9096383a): the run script would have stopped at its first
+  verdict, and nine more defects (#16).** A read-only reviewer, with no paid
+  calls, probed each claim on hand-made inputs.
+  - *Found and fixed:*
+    - **The run stopped at calibration.** `run_entire.sh` stopped on any exit
+      1, but calibration exits 1 for a misread known pair and the controls for
+      a wrong verdict: normal outcomes in every v1 run. No run would have
+      reached its gate.
+      - Now each step is judged as v1's `admit-chain.sh` judged it: by the rows
+        it left in error, by the store's own rule, and retried up to three
+        times.
+      - Two stricter rules than v1's. An admission step must also leave every
+        task read as often as v1 asked (`tally_entire.py --short`), since a
+        stage that refuses writes no error row. And a step still short after
+        three tries stops the run, where admit-chain.sh went on and left the
+        task unadmitted without a word. The script resumes.
+      - The controls now run before the gate, in v1's order.
+    - **Screening re-read the pre-check's rows.** At `--passes 3`, screening
+      read the free pre-check's set-aside rows (`screen_passes: 1`) again,
+      paying back what the pre-check saved, while the build still refused
+      them. They are done at any count.
+    - **A name tag shared by a date.** Names were tagged with
+      `session_id[:8]`, which is "2026-01-" for every dated entireio/cli
+      session (6 of v1's 55 sessions are dated). The tag is now eight hex
+      characters of the id's SHA-256.
+    - **Copies came back.** The draw filtered triaged moments after
+      `find_moments`, so a copy of one in another session came back. One
+      moment could also be one session's first pushback and its copy's later
+      one. Now every run's triage, and the later list as drawn for the first,
+      go to `find_moments`, which leaves copies out with them. On the corpus
+      this removes 3 more moments from each list.
+    - **v1's batches were missed.** Later batches were found by a name pattern,
+      which missed v1's own (`later-sample`). They are now found by their rows'
+      `later` field, over every run folder given (`--runs`). Read over v1's
+      runs as well as the Entire runs, the draw finds v1's four later batches
+      and their backups. No session in today's pool is in them.
+    - **Stored rejections lacked their session.** Only the in-memory object
+      carried it. The stored row now does (B-149 checks the row).
+    - **The tally:**
+      - it now requires three readings of each control, not only the gate's
+        seven;
+      - it refuses a part-done run, a missing run folder (it no longer creates
+        one) and a repeated name, writing nothing.
+    - **The preflight** now reads exactly what the controls read
+      (`control_conversations_for`).
+      - It stops only on a fault: a session the corpus lacks (B-263's failure,
+        where an empty conversation passed as clear), or a task built without
+        its text.
+      - The invented name in a conversation is reported instead. The control
+        marks itself not applicable there, so the task is not admitted, and a
+        stop was a dead end, since the next build makes the same task.
+    - **The draw's inputs.** The draw requires its exclusion files and refuses
+      one that is not a list of session ids. The refusal caught my own
+      exclusion file, a JSON object of 130 sessions; it is now a list. The
+      draw also refuses run folders with no triage, and writes an empty list.
+    - **`_no_packages`** now reads a byte-order mark, a quoted key, a null,
+      and a flow list over several lines.
+  - *Checks that passed with their fix removed, now fixed:*
+    - the cap's fixture: a third moment in one repository;
+    - the first-pushback key: the first run's name now sorts last;
+    - the triage fixture: two folders down, on the copy the draw does not hold;
+    - the run script: now run whole on a stand-in Python that calls nothing.
+      It checks the order of steps, a verdict's exit 1 taken as a verdict, and
+      a stop after three short tries.
+  - *Held:*
+    - All six suites pass on 22d561429 (1,097 guard checks, 84 front-stage
+      checks, 57 of 57 fixes). The import check fails only on the missing
+      SWE-chat corpus, as on every VM run.
+    - Two more check fixtures made rejections without a session (B-141, split
+      check 7). They now make them as the build does.
+  - *The pool by v1's rules,* over both sources' runs: 546 later and 547 first
+    moments at a cap of 20, or 1,413 and 1,449 with none.
