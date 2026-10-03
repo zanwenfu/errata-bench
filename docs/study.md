@@ -5,15 +5,23 @@ AI reviewer have flagged the problem the developer then pushed back on? And what
 does each one catch that the other misses? This is the question Bhuwan suggested
 on 10-01: the developer's reply is a rough gold label that no benchmark has.
 
-Status, 10-03:
+Status, 10-03 (13:30 UTC):
 - built and checked, and smoke-tested on 3 sessions;
-- reviewed twice by an independent reader before any larger run (the first
-  review's findings are fixed; the second's are below once in);
-- the pilot (40 sessions, with a self-review framing), the random arm (40
-  sessions), a second batch (80 sessions) and a second reviewer model on the
-  pilot have run, for about $368 of the $400 of Azure credits the user set for
-  12 hours. Results are below. About $32 is left, for re-running the merges
-  after the hand check.
+- reviewed twice by an independent reader before any larger run, with every
+  finding fixed;
+- runs done, for about $396 of the $400 of Azure credits the user set for 12
+  hours (no paid run is left in that window):
+  - the pilot (40 sessions, also with a self-review framing);
+  - a second batch (80 sessions);
+  - the random arm (40 sessions);
+  - on the pilot: a second reviewer model, a reviewer from another family, and
+    a second merge model;
+  - the 195 real errors merged again under the claim-level rules
+    (assumption 17);
+- waiting for the user's hand check (the guide is near the end of this page).
+
+Results are below. A first draft of the paper built from them is in
+`docs/paper-draft.md`.
 
 ## Design
 
