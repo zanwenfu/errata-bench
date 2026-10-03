@@ -480,7 +480,8 @@ def section_runner(reps):
                   and CALLED.get("classify") == 3,
                   "thread B reads every reply but an approved plan, which needs no call, and keeps SWE-chat's label")
             check(rcm == 0 and len(merges) == 2 and CALLED.get("merge", 0) == 2,
-                  f"the merge asks once for each pushback with problems to compare: {len(merges)} rows")
+                  f"the merge asks once for each pushback, by either reading, with problems to compare: "
+                  f"{len(merges)} rows")
             with contextlib.redirect_stdout(quiet):
                 rct = study.tally(SimpleNamespace(run=str(run)))
             t = json.loads((run / "tally.json").read_text())

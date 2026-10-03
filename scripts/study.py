@@ -273,7 +273,9 @@ def merge(args) -> int:
             if rr is None or (sid, k) in done:
                 waiting += rr is None
                 continue
-            if not rr.get("is_pushback"):
+            # Pushback by our reading or by SWE-chat's label: the two disagree on about a quarter of
+            # replies (pilot, 10-03), so the result is reported under each.
+            if rr.get("approved_plan") or not (rr.get("is_pushback") or rr.get("reply_label") in S.PUSHBACK_KINDS):
                 continue
             # Every report a pushback looks back on must have been reviewed first.
             needed = [j for j in range(max(1, k - M.LOOKBACK), k + 1) if j in by_index]
@@ -323,8 +325,10 @@ def tally(args) -> int:
         print("nothing to tally yet: review and human must have run", file=sys.stderr)
         return 2
     pushbacks = {k: r for k, r in replies.items() if r.get("is_pushback")}
+    labelled = {k: r for k, r in replies.items() if r.get("reply_label") in S.PUSHBACK_KINDS
+                and not r.get("approved_plan")}
     outcome, matched = {}, set()
-    for k in pushbacks:
+    for k in {**pushbacks, **labelled}:
         m = merges.get(k)
         if m is None:
             outcome[k] = "not merged"
@@ -357,6 +361,7 @@ def tally(args) -> int:
 
     problems = [(k[0], k[1], f"r{k[1]}p{i}", p) for k, r in reviews.items()
                 for i, p in enumerate(r.get("problems") or []) if p.get("quote_in_work")]
+    # A problem is the reviewer's alone if no pushback, by either reading, matched it.
     alone = [x for x in problems if (x[0], x[1], x[2]) not in matched]
     pairs = [(str(r.get("reply_label") in S.PUSHBACK_KINDS), str(bool(r.get("is_pushback"))))
              for r in replies.values() if r.get("reply_label") and not r.get("approved_plan")]
@@ -364,13 +369,16 @@ def tally(args) -> int:
         "framing": framing,
         "reports": len(reports), "reviewed": len(reviews), "replies_read": len(replies),
         "pushbacks": len(pushbacks),
-        "pushback_outcomes": dict(Counter(outcome.values())),
+        "pushbacks_by_swe_chat_label": len(labelled),
+        "pushback_outcomes": dict(Counter(o for k, o in outcome.items() if k in pushbacks)),
         "caught_same": {
             "every_pushback": caught(pushbacks),
             "real_error": caught([k for k, r in pushbacks.items() if r.get("objection_kind") == "real_error"]),
             "by_objection_kind": grouped("objection_kind"),
             "by_pushback_kind": grouped("pushback_kind"),
             "by_failure_mode": grouped("failure_modes", many=True),
+            "by_swe_chat_label": caught(labelled),
+            "both_say_pushback": caught([k for k in pushbacks if k in labelled]),
             "after_a_report": caught([k for k in pushbacks if reports.get(k, {}).get("ends_with_report")]),
             "before_a_report": caught([k for k in pushbacks if not reports.get(k, {}).get("ends_with_report", True)]),
         },
