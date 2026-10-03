@@ -12269,3 +12269,132 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
       rendering decision.]
     - G-96: #17 handed it to this branch, landing before gate 4.
   - *What it means.* By the stop rule there is no merge and no gate 4 yet.
+- **10-02, 22:5x – 10-03, 01:1x UTC** — **The pilot audit's findings fixed,
+  G-96 taken over from #17, and five independent reviews' findings fixed
+  (#16).** Commits cc887071f..HEAD on entire-label, every count measured on
+  the corpus before and after.
+  - *Another agent's message shown twice.* The queued or attached copy
+    before the wrapped delivery is now Claude Code's text
+    (`shape.peer_copies`), and no row moves.
+    - 606 rows were shown twice; none is now.
+    - Pairing takes the longest copy the delivery holds, then the latest,
+      so a shorter message it quotes, or an earlier delivery of the same
+      words, is left as it was.
+    - The attachment newer versions write between queue and delivery is the
+      copy taken.
+  - *A message edited and sent again after the agent answered it (G-95).*
+    - The corpus lists such sessions in `rewound.json`, stamped with the
+      rules they were counted under (`corpus.sessions.REWOUND_RULES` = 3).
+    - One reader, `edited_sessions`, refuses a missing, unreadable or
+      differently counted list. No moment is drawn, triaged, read, located,
+      signed, screened or built from a listed session.
+    - The rule: a developer message the agent really answered (Claude
+      Code's `<synthetic>` text is no answer), which the conversation as it
+      ended does not pass through, where either the developer sent another
+      message from the same point or the conversation went on from there by
+      another way (a command, a compaction).
+      - The conversation ends at the last main-thread entry with a place in
+        the tree.
+      - A compaction's boundary is followed to the entry it names
+        (`logicalParentUuid`), and any parent missing from the file to the
+        entry before it there.
+    - Counting took four tries, each mistake listing sessions whose kept
+      messages were taken for abandoned:
+      - 147 sessions (369 messages) when the walk stopped at a compaction;
+      - 85 when it followed `logicalParentUuid`;
+      - 79 when a boundary naming a missing entry (491 of 1,624) followed
+        the entry before it;
+      - 77 (150 messages) when the rule took the union of two halves that
+        each missed rewinds the other found, sampled on the corpus.
+    - Considered and refused: counting every off-path part with agent work
+      listed 2,230 sessions. Parallel tool calls branch the tree; that is
+      not abandonment.
+    - The pilot audit's "148 sessions, 370 rewinds, 1 pilot moment" came
+      from the first mistake. The list holds 2 of the earlier 681 moments,
+      no pilot moment and no task.
+  - *Locate.*
+    - It says whether the resolution puts the defect right
+      (`resolution_fixes_it`) and refuses it if not. That is what admitted
+      isthmia-74.
+    - It looks once more, as far as 1,200 rows within 200,000 characters
+      (`looked_to`), where that could make the trajectory usable: an
+      objection the agent could have known about, no fix in view, and more
+      to show. 15 of the 18 trajectories called never resolved were in
+      sessions that went on past the view.
+    - One failed answer, one usable trajectory:
+      - rows are stamped `rules` = 2, and only rows of the current rules
+        hold a failed answer, never against the same moment located
+        elsewhere;
+      - the runs folder is read again for each usable answer;
+      - a malformed row in it holds nothing;
+      - a moment read twice is located once.
+  - *G-96.*
+    - References are kept whole to 60,000 characters (`spec.kept`, the one
+      expression for `to_json`, `fingerprint` and the judge), and a cut says
+      how much went. The judge is told when one was cut.
+    - 5 of the first 78 usable Entire trajectories had a reference over
+      6,000 characters.
+    - v1's 55 published fingerprints, recomputed under the new code from
+      release/v1.0.2-dataset, are all as published; their longest
+      reference is 4,284 characters.
+    - Judge prompts for references under 6,000 characters are byte for
+      byte as before.
+  - *Shell commands.* A row opening `<bash-input>` is passed over when
+    moments are drawn, and at triage, where its verdict is written with no
+    model asked:
+    - 787 such rows, 11 labelled pushback;
+    - in SWE-chat, 348 and 22, none a v1 task's complaint or cut.
+  - *Views.* In the pilot's 20 reading views, results cut to about 40
+    characters fell from 8 views to 2. The two left are discourse-graph
+    views whose whole messages alone run to 142,000–155,000 characters, a
+    known limit. Empty rows are left out of every view, and triage's view
+    starts neither inside a batch of calls nor on a blank line.
+  - *The remaining pool*, drawn into scratch under these rules: 557 first
+    and 546 later moments (1,103). 48 are left out for edited sessions, 28
+    as copies, and 11 shell-command rows are passed over.
+  - *How it was checked.*
+    - Five read-only reviews, each of the code no review had read yet.
+      Each found defects the suites and mutants had passed:
+      - a pairing that took the wrong copy;
+      - a duplicate rule that would have refused v1.1's re-located moments;
+      - a list that failed open;
+      - locate closing its look on a status line;
+      - a fractional bound that hung;
+      - a shell moment that stalled a capped run;
+      - a uuid copy taken for a sibling;
+      - a fallback that loaded every pending session on every run.
+    - The suite checks those reviews named as green with their fix
+      reverted were made to fail, and every fix was broken once, alone, in
+      its own copy: the 140 pieces of today's rounds and 3 controls, rerun
+      on the final code, all caught.
+    - Stand-ins that built an invalid Reading, in sections 43 and 163, now
+      validate; before, each "reading" was stored as an error row.
+  - *Held.*
+    - All six suites pass on the final code (9267e1872): 1,079 checks in
+      the guard suite, 79 in the collector's, 83, 44, and 57 of 57 fixes
+      live. The
+      import check fails on the VM only for want of SWE-chat's corpus
+      there, as on every VM run.
+    - The corpus was assembled again five times. The first changed the type
+      of the 606 copies and nothing else; the others changed only the list
+      of edited sessions, last stamped rules 4: 77 sessions, as under rules
+      3.
+  - *One task per session (docs/method.md:252), raised by #17.* The plan
+    drew each session's first pushback and also its later one: 376 of the
+    remaining pool's sessions are in both, and the pilot's warren-1141 and
+    -1160 were both located as usable. The Entire runs hold 18 tasks in 18
+    sessions, so the rule has not yet been broken. Before gate 4, the user
+    decides; the proposal is two waves, with later moments drawn only for
+    sessions the first wave left without a task. v1 kept its first
+    pushback over entireio-cli-128 in the same way.
+  - *Known limits, not fixed here.*
+    - A session with an edited message is left out whole, though the edit
+      may come after a moment's resolution: yield only.
+    - A moment triaged worth reading before shell commands were found is
+      read: none exists.
+    - When the list takes every buildable row of a folder that holds paid
+      work, the build refuses and says so, and the tasks already built from
+      those rows stay until set aside by hand: none exists.
+    - The two reading views noted above.
+    - For #17: the null control read "solved", the leak gate's bug-report
+      requests, skill bodies and plan rows shown as USER, and G-93.
