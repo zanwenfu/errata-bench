@@ -218,6 +218,18 @@ The pilot alone caught 37% [27–48] of its 65 real errors, and the second
 batch 56% [48–65] of its 130. The two intervals barely overlap. Sessions differ
 a great deal, which is why the intervals resample whole sessions.
 
+**A second reviewer model** (pilot, 10-03; `runs/study-pilot-sol`): gpt-6-sol
+reviewing, the merge still gpt-6-astra.
+- It catches 27% [21–31] of pushbacks and 39% [29–49] of real errors,
+  against gpt-6-astra's 23% and 37%.
+- It flags more: 2.28 problems a handback, 83% of handbacks.
+- So the result is not one model's.
+
+The folder reused the pilot's replies, which were copied in. Its spend guard
+therefore counts them again, and prices gpt-6-sol at gpt-6-astra's placeholder
+rate (scripts/d40_spend.PRICE on main). The arm's real cost was $8.49 for the
+reviews and $12.12 for the merges.
+
 ## First results (pilot and random arm, 10-03; provisional)
 
 Provisional until the hand check confirms the merge (κ ≥ 0.7 with the user's
