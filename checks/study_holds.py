@@ -23,12 +23,15 @@ import contextlib
 import importlib.util
 import io
 import json
+import os
 import sys
 import tempfile
 from pathlib import Path
 from types import SimpleNamespace
 
 sys.path.insert(0, "src")
+# Never the project's .env, whatever a stand-in misses (B-264, as guards_hold.py does).
+os.environ["ERRATA_DOTENV"] = "0"
 
 import errata_bench.llm as llm_mod  # noqa: E402
 from errata_bench.store.rows import append, load  # noqa: E402
@@ -110,11 +113,13 @@ def section_reports():
           and reps[2].request_end == 14, "two developer rows with no work between are one message, the reply and the "
           "next request")
 
-    # With the raw transcript: a skill's text is not the developer's; parts of one typed message are.
-    typed = S.Typed(typed=[S._norm("Fix the login timeout TASK-TOKEN."), S._norm("No, the tests still fail REPLY-ONE."),
-                           S._norm("Part one of a long pasted plan with many words. Part two of the same plan, "
-                                   "split by the table."), S._norm("ok REPLY-THREE")],
-                    other=[S._norm("Base directory for this skill: /x # A skill's instructions for the agent")])
+    # With the raw transcript: what the developer typed decides, in order.
+    long_msg = "Part one of a long pasted plan with many words. Part two of the same plan, split by the table."
+    typed = S.Typed(typed=[S._norm("Fix the login timeout TASK-TOKEN."), S._norm(long_msg), S._norm("ok REPLY-THREE")],
+                    commands={S._norm("/review check the tests")},
+                    queued={S._norm("wait, use port 8080 QUEUED-TOKEN")},
+                    other={S._norm("Base directory for this skill: /x # A skill's instructions for the agent"),
+                           S._norm("Continue from where you left off.")})
     split = [row(1, "user_prompt", "Fix the login timeout TASK-TOKEN."),
              row(2, "assistant_response", "Working on it."),
              row(3, "user_prompt", "Base directory for this skill: /x # A skill's instructions for the agent"),
@@ -122,15 +127,76 @@ def section_reports():
              row(5, "user_prompt", "Part one of a long pasted plan with many words."),
              row(6, "user_prompt", "Part two of the same plan, split by the table."),
              row(7, "assistant_response", "Done PLAN-WORK."),
-             row(8, "user_prompt", "a short reply nowhere in the transcript")]
-    kinds = [S.prompt_kind(t, typed) for t in split if t["turn_type"] == "user_prompt"]
-    check(kinds == ["developer", None, "developer", "developer", "developer"],
-          f"the transcript decides: a skill's text is not the developer's, a split message's parts are, a row in "
-          f"neither keeps the table's word: {kinds}")
+             row(8, "user_prompt", "Part two of the same plan, split by the table."),
+             row(9, "user_prompt", '<teammate-message teammate_id="w">done</teammate-message>'),
+             row(10, "user_prompt", "a short reply nowhere in the transcript"),
+             row(11, "user_prompt", "Continue from where you left off."),
+             row(12, "assistant_response", "More work MORE-WORK."),
+             row(13, "user_prompt", "ok REPLY-THREE")]
+    said = S.row_kinds(split, typed)
+    check(sorted(said) == [1, 5, 6, 13] and said[5][0] == said[6][0] == "developer",
+          f"the transcript decides, in order: a skill's text, a later copy of a typed message, a teammate's message, "
+          f"a row found nowhere and a meta entry are not the developer's; a split message's parts are: {sorted(said)}")
     rs = S.reports("s1", split, transcript=typed)
-    check([(r.request_turn, r.request_end, r.handoff_turn) for r in rs] == [(1, 1, 5), (5, 6, 8)]
-          and "SKILL-WORK" in S.window(rs[0], split)[0] and "Base directory" not in S.window(rs[0], split)[0],
-          "the skill's text ends no report and is not shown; its work stays in the stretch")
+    check([(r.request_turn, r.request_end, r.handoff_turn) for r in rs] == [(1, 1, 5), (5, 6, 13)]
+          and "SKILL-WORK" in S.window(rs[0], split)[0] and "Base directory" not in S.window(rs[0], split)[0]
+          and "MORE-WORK" in S.window(rs[1], split)[0] and "teammate" not in S.window(rs[1], split)[0],
+          "rows that are not the developer's end no report and are not shown; the agent's work around them stays")
+
+    # The developer speaking inside a stretch: a refused tool call, a message queued while the agent worked, a command.
+    inner = [row(1, "user_prompt", "Fix the login timeout TASK-TOKEN."),
+             row(2, "tool_use", '{"command": "git checkout main"}', tool_name="Bash", call="g"),
+             row(3, "tool_result", "The user doesn't want to proceed with this tool use. The tool use was rejected "
+                                   "(eg. if it was a file edit, the new_string was NOT written to the file). To tell you "
+                                   "how to proceed, the user said:\nno, not git checkout REJECT-WORDS", call="g"),
+             row(4, "assistant_response", "Understood, using a branch instead."),
+             row(5, "queue_operation", '{"task_id": "x", "description": "a background task"}'),
+             row(6, "queue_operation", "wait, use port 8080 QUEUED-TOKEN"),
+             row(7, "tool_use", '{"command": "ls"}', tool_name="Bash", call="l"),
+             row(8, "tool_result", "a b c", call="l"),
+             row(9, "user_prompt", "<command-message>review</command-message>\n<command-name>/review</command-name>\n"
+                                   "<command-args>check the tests</command-args>")]
+    said = S.row_kinds(inner, typed)
+    check([said.get(n) for n in (3, 5, 6, 9)] == [("rejection", "no, not git checkout REJECT-WORDS"), None,
+                                                  ("queued", "wait, use port 8080 QUEUED-TOKEN"),
+                                                  ("command", "/review check the tests")],
+          f"a refused call carries the developer's words, a queued message and a command are theirs, a background "
+          f"task is not: {[said.get(n) for n in (3, 5, 6, 9)]}")
+    ri = S.reports("s1", inner, transcript=typed)
+    w0 = S.window(ri[0], inner)[0]
+    check([r.reply_kind for r in ri] == ["rejection", "queued", "command"] and "git checkout main" in w0
+          and "REJECT-WORDS" not in w0 and "doesn't want to proceed" not in w0 and not ri[0].ends_with_report
+          and "had not written a report" in w0 and ri[1].ends_with_report,
+          "a refused call ends the report: the call is shown, the refusal is not, and the window says no report came")
+    delivered = inner[:8] + [row(8.5, "assistant_response", "Port changed."),
+                             row(8.7, "user_prompt", "wait, use port 8080 QUEUED-TOKEN")] + inner[8:]
+    typed2 = S.Typed(typed=typed.typed[:1] + [S._norm("wait, use port 8080 QUEUED-TOKEN")] + typed.typed[1:],
+                     commands=typed.commands, queued=typed.queued, other=typed.other)
+    said2 = S.row_kinds(delivered, typed2)
+    check(6 in said2 and 8.7 not in said2 and said2.get(9) == ("command", "/review check the tests"),
+          "a queued message delivered later as a prompt is one message, counted where it was typed")
+    loop = [row(1, "user_prompt", "Fix the login timeout TASK-TOKEN."), row(2, "assistant_response", "w"),
+            row(3, "queue_operation", "Check the run log for new progress since last check"),
+            row(4, "assistant_response", "w"), row(5, "queue_operation", "Check the run log for new progress since last check"),
+            row(6, "assistant_response", "w"), row(7, "queue_operation", "a real thought LOOP-TYPED")]
+    typed3 = S.Typed(typed=typed.typed, commands={S._norm("/loop 10m Check the run log for new progress since last check")},
+                     queued={S._norm("Check the run log for new progress since last check"), S._norm("a real thought LOOP-TYPED")},
+                     other=set(), automatic={S._norm("Check the run log for new progress since last check")})
+    said3 = S.row_kinds(loop, typed3)
+    no_tr = S.row_kinds(loop)
+    check(sorted(said3) == [1, 7] and sorted(no_tr) == [1, 3, 7],
+          f"a /loop's timed prompt is not the developer typing; without a transcript only its repeats are dropped: "
+          f"{sorted(said3)}, {sorted(no_tr)}")
+    cmds = [row(1, "user_prompt", "<command-name>/loop</command-name><command-args>10m check CMD-LOOP</command-args>"),
+            row(2, "assistant_response", "w"),
+            row(3, "user_prompt", "<command-name>/loop</command-name><command-args>10m check CMD-LOOP</command-args>"),
+            row(4, "assistant_response", "w"), row(5, "user_prompt", "<command-name>/commit</command-name>"),
+            row(6, "assistant_response", "w"), row(7, "user_prompt", "<command-name>/commit</command-name>")]
+    said4 = S.row_kinds(cmds)
+    check(sorted(said4) == [1, 5, 7], f"a /loop's re-runs are not typed, but a /commit typed twice is: {sorted(said4)}")
+    plain = S.row_kinds([row(1, "user_prompt", "<teammate-message teammate_id='a'>hi</teammate-message>"),
+                         row(2, "user_prompt", "<command-name>/clear</command-name>")])
+    check(plain == {2: ("command", "/clear")}, f"without a transcript, a teammate is not the developer and a command is: {plain}")
     return reps
 
 
@@ -249,6 +315,7 @@ def section_runner(reps):
 
     async def fake_classify(window_text, reply, handoff_turn, *, model, max_turns=3):
         records("classify")
+        assert "PLAN-REPLY" not in reply, "an approved plan was sent to the classifier"
         push = "REPLY-ONE" in reply or "REPLY-THREE" in reply
         return fake_result(B.Reply(pushback_kind="failure_report" if push else "non_pushback",
                                    what_developer_objects_to="tests fail" if push else "",
@@ -258,7 +325,7 @@ def section_runner(reps):
     async def fake_merge(reply_row, reply_text, cands, *, model, max_turns=3):
         records("merge")
         return fake_result(M.Merge(verdicts=[M.Verdict(problem_id=c["problem_id"], match="same",
-                                                        developer_words="tests still fail",
+                                                        developer_words=" ".join(reply_text.split()[:2]),
                                                         reviewer_words="claims success", reason="r")
                                              for c in cands]))
 
@@ -270,6 +337,9 @@ def section_runner(reps):
             for r in reps:
                 text, stats = S.window(r, SESSION)
                 append(run / "reports.jsonl", S.report_row(r, text, stats))
+            plan = {**S.report_row(reps[0], *S.window(reps[0], SESSION)), "index": 4, "reply_kind": "plan",
+                    "reply": "Implement the following plan: PLAN-REPLY"}
+            append(run / "reports.jsonl", plan)
             args = SimpleNamespace(run=str(run), max_usd=100.0, concurrency=2, limit=0)
             quiet = io.StringIO()
             with contextlib.redirect_stdout(quiet), contextlib.redirect_stderr(quiet):
@@ -278,13 +348,13 @@ def section_runner(reps):
                 rc2 = study.review(args)
                 rows2 = load(run / "reviews.jsonl")
             errored = [r for r in rows1 if r.get("error")]
-            check(rc1 == 1 and len(rows1) == 3 and len(errored) == 1,
+            check(rc1 == 1 and len(rows1) == 4 and len(errored) == 1,
                   f"an errored call is written as an errored row and the stage says so: rc {rc1}, {len(errored)} errored")
             ok_rows = [r for r in rows2 if not r.get("error")]
-            check(rc2 == 0 and len(ok_rows) == 3 and all(r["usage"] and r["model"] for r in ok_rows),
+            check(rc2 == 0 and len(ok_rows) == 4 and all(r["usage"] and r["model"] for r in ok_rows),
                   f"run again, only the errored row is asked again, and every row keeps its usage: rc {rc2}")
-            found = {r["index"]: r["problems"][0]["quote_found"] for r in ok_rows}
-            inwork = {r["index"]: r["problems"][0]["quote_in_work"] for r in ok_rows}
+            found = {r["index"]: r["problems"][0]["quote_found"] for r in ok_rows if r["index"] < 4}
+            inwork = {r["index"]: r["problems"][0]["quote_in_work"] for r in ok_rows if r["index"] < 4}
             check(found == {1: True, 2: True, 3: False} and inwork == {1: True, 2: False, 3: False},
                   f"report 2 shows report 1's claim as context: found there, but not in its work: {found}, {inwork}")
             n_before = CALLED.get("review", 0)
@@ -297,21 +367,40 @@ def section_runner(reps):
                 rcm = study.merge(args)
             replies = load(run / "replies.jsonl")
             merges = load(run / "merges.jsonl")
-            check(rch == 0 and len(replies) == 3 and sum(r["is_pushback"] for r in replies) == 2
-                  and all(r.get("reply_label", "unset") != "unset" for r in replies),
-                  "thread B reads every reply, not only the labelled ones, and keeps SWE-chat's label")
+            check(rch == 0 and len(replies) == 4 and sum(r["is_pushback"] for r in replies) == 2
+                  and all(r.get("reply_label", "unset") != "unset" for r in replies)
+                  and [r.get("approved_plan") for r in replies if r["index"] == 4] == [True]
+                  and CALLED.get("classify") == 3,
+                  "thread B reads every reply but an approved plan, which needs no call, and keeps SWE-chat's label")
             check(rcm == 0 and len(merges) == 2 and CALLED.get("merge", 0) == 2,
                   f"the merge asks once for each pushback with problems to compare: {len(merges)} rows")
             with contextlib.redirect_stdout(quiet):
                 rct = study.tally(SimpleNamespace(run=str(run)))
             t = json.loads((run / "tally.json").read_text())
-            check(rct == 0 and t["pushbacks"] == 2 and t["pushbacks_by_kind_and_best_match"]["real_error"].get("same")
-                  == 2, f"the tally counts each pushback's best match: {t['pushbacks_by_kind_and_best_match']}")
+            check(rct == 0 and t["pushbacks"] == 2 and t["pushback_outcomes"] == {"same": 2}
+                  and t["caught_same"]["real_error"]["share"] == 1.0,
+                  f"the tally counts each pushback's best match: {t['pushback_outcomes']}")
+            # A 'same' whose overlap words were not found does not count; an unmerged pushback is left out, not missed.
+            mrows = load(run / "merges.jsonl")
+            mrows[0]["verdicts"][0]["developer_words_found"] = False
+            from errata_bench.store.rows import replace as replace_rows
+            replace_rows(run / "merges.jsonl", mrows[:1])
+            with contextlib.redirect_stdout(quiet):
+                study.tally(SimpleNamespace(run=str(run)))
+            t2 = json.loads((run / "tally.json").read_text())
+            check(t2["pushback_outcomes"] == {"same, words not found": 1, "not merged": 1}
+                  and t2["caught_same"]["real_error"]["n"] == 1 and t2["caught_same"]["real_error"]["share"] == 0.0,
+                  f"a 'same' without its words is not caught, and an unmerged pushback is not counted: "
+                  f"{t2['pushback_outcomes']}, n={t2['caught_same']['real_error']['n']}")
+            replace_rows(run / "merges.jsonl", mrows)
             with contextlib.redirect_stdout(quiet):
                 study.sheet(SimpleNamespace(run=str(run), matches=150, alone=50))
-            check((run / "labels.csv").exists() and (run / "key.csv").exists() and (run / "alone.md").exists()
-                  and "same" not in (run / "labels.csv").read_text().split("\n", 1)[1],
-                  "the hand-label sheet is written blind; the model's verdicts are in a separate file")
+            alone_md = (run / "alone.md").read_text()
+            check((run / "labels.csv").exists() and (run / "key.csv").exists()
+                  and "same" not in (run / "labels.csv").read_text().split("\n", 1)[1]
+                  and "~~~~" in alone_md and "open only after you decide" in alone_md,
+                  "the hand-label sheet is written blind, the model's verdicts apart, and alone.md fences each window")
+            check(study._fenced("a\n~~~~~\nb").startswith("~~~~~~\n"), "a fence is longer than any run of tildes it holds")
 
             # The spend line: every call priced at the guard's rate, stopping before the next once reached.
             run2 = Path(tmp) / "run2"
@@ -340,8 +429,8 @@ def section_runner(reps):
                 rcfm = study.merge(selfargs)
                 study.tally(SimpleNamespace(run=str(run), framing="self"))
             selfrows = load(run / "reviews-self.jsonl")
-            check(rcf == 0 and len(selfrows) == 3 and all(r["framing"] == "self" for r in selfrows)
-                  and len(load(run / "reviews.jsonl")) == 3 and CALLED.get("review-self") == 3
+            check(rcf == 0 and len(selfrows) == 4 and all(r["framing"] == "self" for r in selfrows)
+                  and len(load(run / "reviews.jsonl")) == 4 and CALLED.get("review-self") == 4
                   and (run / "merges-self.jsonl").exists() and (run / "tally-self.json").exists()
                   and study._spent(run) > spent_before,
                   "the self framing writes its own reviews, merges and tally, and its spend joins the run's")
@@ -350,10 +439,51 @@ def section_runner(reps):
                   .replace("problem in this work", "problem in your work"),
                   "the self framing differs from the outside one only in who the work belongs to")
 
+            # One process per stage: a second one is refused, before any call.
+            lockargs = SimpleNamespace(run=str(run2), max_usd=100.0, concurrency=1, limit=0)
+            from errata_bench.store.rows import only_one
+            refused = False
+            with only_one(run2, "a stand-in holding the lock", name="review-outside.lock"):
+                try:
+                    with contextlib.redirect_stdout(quiet), contextlib.redirect_stderr(quiet):
+                        study.review(lockargs)
+                except SystemExit:
+                    refused = True
+            check(refused, "a second review over the same run is refused while one holds its lock")
+            # Re-read before every call: spend another process writes mid-run stops this one at the line.
+            run3 = Path(tmp) / "run3"
+            run3.mkdir()
+            for i in range(6):
+                text, stats = S.window(reps[0], SESSION)
+                append(run3 / "reports.jsonl", {**S.report_row(reps[0], text, stats), "index": i + 1})
+            real_review = A.review
+
+            async def spending_review(window_text, *, model, framing="outside", max_turns=3):
+                # Another process's row lands while this call is in flight, worth the whole line.
+                append(run3 / "replies.jsonl", {"session_id": "x", "index": 99, "model": study._model(),
+                                                "usage": {"input_tokens": 10_000_000, "output_tokens": 0,
+                                                          "cached_tokens": 0}})
+                return await real_review(window_text, model=model, framing=framing, max_turns=max_turns)
+            A.review = spending_review
+            try:
+                with contextlib.redirect_stdout(quiet), contextlib.redirect_stderr(quiet):
+                    rcr = study.review(SimpleNamespace(run=str(run3), max_usd=50.0, concurrency=1, limit=0))
+            finally:
+                A.review = real_review
+            check(rcr == 3 and len(load(run3 / "reviews.jsonl")) == 1,
+                  f"spend another process writes mid-run stops the stage at the line: "
+                  f"{len(load(run3 / 'reviews.jsonl'))} call(s), rc {rcr}")
+            # The line is shared by the stages: with the line spent by the reviews, the classifier starts nothing.
+            n_classify = CALLED.get("classify", 0)
+            with contextlib.redirect_stdout(quiet), contextlib.redirect_stderr(quiet):
+                rcl = study.human(line)
+            check(rcl == 3 and CALLED.get("classify", 0) == n_classify,
+                  "the spend line is the run's: another stage over a spent line starts nothing")
+
             out = io.StringIO()
             with contextlib.redirect_stderr(out):
                 rcp = study.prepare(SimpleNamespace(out=str(run), session=None, sessions=1, per_repo=1, max_reports=0,
-                                                    random=0, skip=0))
+                                                    random=0, batch=0))
             check(rcp == 2 and "refused" in out.getvalue(), "a prepared run is never prepared over")
     finally:
         A.review, B.classify, M.merge = kept

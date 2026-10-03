@@ -5,7 +5,9 @@ label agreed with expert labels 63 to 74 percent of the time (its paper), and a
 list built from the label alone would miss what it missed. The label is kept on
 each row to compare. What counts as pushback is SWE-chat's codebook; whether the
 agent erred is the reader's categories (find/reading.py), so this list is
-classified as the 556 real-error moments were.
+classified as the 556 real-error moments were. A reply can be a rejected tool
+call (with any words the developer gave), a slash command or a message typed
+while the agent worked (`sessions.row_kinds`); it is read the same way.
 
 The classifier sees the same window the reviewer saw, then the reply. It never
 sees the reviewer's list.
@@ -20,14 +22,16 @@ from .review import KINDS
 OBJECTIONS = ("real_error", "unwanted_but_defensible", "preference", "unclear")
 
 
-PUSHBACK_KINDS = ("correction", "rejection", "failure_report")
+# SWE-chat's table labels takeover too (run.py's PUSHBACK_KINDS), though the codebook
+# its paper prints has three kinds; it is kept so the two lists can be compared.
+PUSHBACK_KINDS = ("correction", "rejection", "failure_report", "takeover")
 
 
 class Reply(BaseModel):
     """What the developer's reply does."""
 
-    pushback_kind: str = Field(description="One of 'correction', 'rejection', 'failure_report', or 'non_pushback', "
-                                           "as the definitions in the instructions give them.")
+    pushback_kind: str = Field(description="One of 'correction', 'rejection', 'failure_report', 'takeover', or "
+                                           "'non_pushback', as the definitions in the instructions give them.")
     what_developer_objects_to: str = Field(default="", description="If pushback: one or two sentences, in the "
                                            "developer's own framing. Empty otherwise.")
     developer_quote: str = Field(default="", description="If pushback: the reply's exact words that carry it, "
@@ -74,6 +78,8 @@ wrong", "I don't want that")
   * failure_report: the developer reports that the agent's output does not work: bugs, \
 errors, test failures, broken behaviour. ("this still doesn't work", "it's still crashing", \
 "same error, try again", "the tests are failing", "I get a 404 now")
+  * takeover: the developer takes the work over: does it themselves, or tells the agent to \
+stop and leave it to them. ("I'll do it myself", "stop, I fixed it by hand")
   * non_pushback: the reply moves the session forward normally: a new task, building on the \
 agent's output, a question, or routine iteration. ("now add a login page", "good, also add \
 unit tests", "why did you use a list here?", "change the button color to blue")
