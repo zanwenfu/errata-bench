@@ -30,6 +30,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 sys.path.insert(0, "src")
+ROOT = Path(__file__).resolve().parent.parent
 # Never the project's .env, whatever a stand-in misses (B-264, as guards_hold.py does).
 os.environ["ERRATA_DOTENV"] = "0"
 
@@ -42,6 +43,7 @@ from errata_bench.study import sessions as S  # noqa: E402
 
 FAIL = []
 CALLED = {}
+RULES_SEEN = []   # the rules version each faked merge call was asked with
 
 
 def check(ok, message):
@@ -429,8 +431,9 @@ def section_runner(reps):
                                    developer_quote="tests still fail" if "REPLY-ONE" in reply else "",
                                    objection_kind="real_error" if push else ""))
 
-    async def fake_merge(reply_row, reply_text, cands, *, model, max_turns=3):
+    async def fake_merge(reply_row, reply_text, cands, *, model, max_turns=3, rules=None):
         records("merge")
+        RULES_SEEN.append(rules)
         return fake_result(M.Merge(verdicts=[M.Verdict(problem_id=c["problem_id"], match="same",
                                                         developer_words=" ".join(reply_text.split()[:2]),
                                                         reviewer_words="claims success", reason="r")
@@ -482,6 +485,14 @@ def section_runner(reps):
             check(rcm == 0 and len(merges) == 2 and CALLED.get("merge", 0) == 2,
                   f"the merge asks once for each pushback, by either reading, with problems to compare: "
                   f"{len(merges)} rows")
+            check(all(r.get("rules") == M.RULES for r in merges) and RULES_SEEN[-2:] == [M.RULES, M.RULES],
+                  f"each merge row records the version of the rules it was asked under: "
+                  f"{[r.get('rules') for r in merges]}, asked {RULES_SEEN[-2:]}")
+            n_rows = len(merges)
+            with contextlib.redirect_stdout(quiet), contextlib.redirect_stderr(quiet):
+                rcmix = study.merge(SimpleNamespace(run=str(run), max_usd=100.0, concurrency=1, limit=0, rules=1))
+            check(rcmix == 2 and len(load(run / "merges.jsonl")) == n_rows,
+                  "a folder of merges under one version of the rules refuses a run under another")
             with contextlib.redirect_stdout(quiet):
                 rct = study.tally(SimpleNamespace(run=str(run)))
             t = json.loads((run / "tally.json").read_text())
@@ -514,7 +525,7 @@ def section_runner(reps):
             replace_rows(run / "merges.jsonl", mrows)
             real_merge = M.merge
 
-            async def wrong_ids(reply_row, reply_text, cands, *, model, max_turns=3):
+            async def wrong_ids(reply_row, reply_text, cands, *, model, max_turns=3, rules=None):
                 return fake_result(M.Merge(verdicts=[M.Verdict(problem_id="p0", match="same", reason="r")]))
             M.merge = wrong_ids
             try:
@@ -530,9 +541,12 @@ def section_runner(reps):
             (run / "merges.jsonl").unlink()
             n_before = CALLED.get("merge", 0)
             with contextlib.redirect_stdout(quiet), contextlib.redirect_stderr(quiet):
-                rcl = study.merge(SimpleNamespace(run=str(run), max_usd=100.0, concurrency=1, limit=1))
-            check(rcl == 0 and len(load(run / "merges.jsonl")) == 1 and CALLED.get("merge", 0) == n_before + 1,
+                rcl = study.merge(SimpleNamespace(run=str(run), max_usd=100.0, concurrency=1, limit=1, rules=1))
+            limited = load(run / "merges.jsonl")
+            check(rcl == 0 and len(limited) == 1 and CALLED.get("merge", 0) == n_before + 1,
                   "--limit caps the merge's calls, as it caps the review's and the reply reader's")
+            check(limited[0].get("rules") == 1 and RULES_SEEN[-1] == 1,
+                  "--rules 1 asks under the 10-03 instructions and records it")
             replace_rows(run / "merges.jsonl", mrows)
             with contextlib.redirect_stdout(quiet):
                 study.sheet(SimpleNamespace(run=str(run), matches=150, alone=50))
@@ -635,6 +649,37 @@ def section_runner(reps):
             check(rcp == 2 and "refused" in out.getvalue(), "a prepared run is never prepared over")
     finally:
         A.review, B.classify, M.merge = kept
+    # The merge and the person checking it by hand draw the line between 'same' and 'related' from one text.
+    flat = lambda text: " ".join(text.split())
+    guide = flat((ROOT / "docs" / "study.md").read_text())
+    examples = ['Developer: "the tests still fail". Reviewer: "claims the tests pass but never ran them".',
+                "the reviewer flagged the very claim the developer found false.",
+                'Developer: "the button does nothing on mobile". Reviewer: "the click handler was not tested on '
+                'touch devices".', "the same work, but the reviewer did not say the button fails."]
+    check(all(e in flat(M.INSTRUCTIONS[M.RULES]) and e in guide for e in examples)
+          and not any(e in flat(M.INSTRUCTIONS[1]) for e in examples),
+          "the merge's rules give the hand-check guide's worked examples word for word; version 1 has none")
+    asked = {v: flat(M.agent_for("stand-in", v).instructions) for v in M.INSTRUCTIONS}
+    check(all(e in asked[2] for e in examples) and not any(e in asked[1] for e in examples),
+          "the merge's agent is built from the version of the rules it is asked for")
+    # The real merge call passes its version on: the model is never reached, the agent is caught on its way.
+    import agents
+    seen = {}
+
+    async def caught_run(agent, text, max_turns=3):
+        seen["instructions"] = flat(agent.instructions)
+        return fake_result(M.Merge(verdicts=[]))
+    real_run, real_configure = agents.Runner.run, llm_mod.configure_client
+    agents.Runner.run, llm_mod.configure_client = caught_run, (lambda: None)
+    try:
+        asyncio.run(M.merge({}, "the tests still fail", [], model="stand-in", rules=1))
+        v1 = seen.pop("instructions", "")
+        asyncio.run(M.merge({}, "the tests still fail", [], model="stand-in", rules=2))
+        v2 = seen.pop("instructions", "")
+    finally:
+        agents.Runner.run, llm_mod.configure_client = real_run, real_configure
+    check(bool(v1 and v2) and not any(e in v1 for e in examples) and all(e in v2 for e in examples),
+          "a merge call asks under the version of the rules it is given")
     check(all(CALLED.get(k) for k in ("review", "classify", "merge")), f"every stand-in ran: {CALLED}")
 
 

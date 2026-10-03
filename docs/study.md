@@ -51,7 +51,7 @@ Two lists, made independently, then merged (the user's design, 10-03):
 
 `scripts/study.py` runs it: `prepare`, `estimate`, `review`, `human`, `merge`,
 `tally`, `sheet` and `combine`. `checks/study_holds.py` checks the rules with
-the model faked: 58 checks, plus 32 single-rule mutants, all caught (10-03).
+the model faked: 64 checks, plus 38 single-rule mutants, all caught (10-03).
 
 ## Who spoke: the rule both threads depend on
 
@@ -179,6 +179,23 @@ Measured on the pilot's 398 windows:
     uncached input at the cache-write rate, an upper bound. The line covers the
     whole run directory, every stage and framing, and is re-read before every
     call. Each stage holds a lock, so a second copy is refused.
+17. **The merge's rules come in two versions** (`merge --rules`).
+    - Version 1 gives the definitions of same, related and different. Every
+      10-03 result above used it.
+    - Version 2 adds the two worked examples from the hand-check guide below,
+      each with its reason. The model and the person checking it then draw the
+      line from the same text.
+
+    *Found after the runs (10-03):* the guide counts "claims the tests pass but
+    never ran them" as the same fault as "the tests still fail". Version 1's
+    model was never shown that example. It often calls a problem that flags the
+    exact claim the developer found false, but says only that it was not
+    verified, 'related'.
+
+    For real errors, 'same' is 50% and 'same or related' 85%, so the line
+    matters. A merge row records its version, and a folder holds one version.
+    Which version matches a person is the hand check's question, so the
+    pushbacks behind the hand-check items should be merged under both.
 
 ## The smoke runs and the first review (10-03)
 
@@ -342,11 +359,13 @@ listed before it. Write one word in `your_label`:
 - **same:** the reviewer names the fault the developer raised, in the same
   piece of work, even if it is worded differently or less specifically.
   Developer: "the tests still fail". Reviewer: "claims the tests pass but never
-  ran them". Same.
+  ran them". Same: the reviewer flagged the very claim the developer found
+  false.
 - **related:** the reviewer points at the same piece of work, or a cause or
   symptom of the fault, but not the fault itself. Developer: "the button does
   nothing on mobile". Reviewer: "the click handler was not tested on touch
-  devices". Related.
+  devices". Related: the same work, but the reviewer did not say the button
+  fails.
 - **different:** another problem.
 
 A catch-all such as "there may be bugs" or "it should test more" is **different**,

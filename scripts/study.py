@@ -5,7 +5,7 @@
     .venv/bin/python scripts/study.py estimate --run runs/study-pilot
     .venv/bin/python scripts/study.py review   --run runs/study-pilot --max-usd N [--concurrency 8] [--limit N]
     .venv/bin/python scripts/study.py human    --run runs/study-pilot --max-usd N [--concurrency 8] [--limit N]
-    .venv/bin/python scripts/study.py merge    --run runs/study-pilot --max-usd N [--concurrency 8] [--limit N]
+    .venv/bin/python scripts/study.py merge    --run runs/study-pilot --max-usd N [--concurrency 8] [--limit N] [--rules 2]
     .venv/bin/python scripts/study.py tally    --run runs/study-pilot
     .venv/bin/python scripts/study.py sheet    --run runs/study-pilot [--matches 150] [--alone 50]
 
@@ -262,10 +262,17 @@ def _by_session(rows: list[dict]) -> dict[str, dict[int, dict]]:
 def merge(args) -> int:
     run = Path(args.run)
     framing = getattr(args, "framing", "outside")
+    rules = getattr(args, "rules", M.RULES)
     reports = _by_session(load(path(run, "reports")))
     reviews = _by_session(completed(path(run, "review", framing)))
     replies = _by_session(completed(path(run, "human")))
-    done = {key(r) for r in completed(path(run, "merge", framing))}
+    merged = completed(path(run, "merge", framing))
+    held = {r.get("rules", 1) for r in merged}
+    if held - {rules}:
+        print(f"refused: {path(run, 'merge', framing)} holds merges made under rules {sorted(held)}; one folder holds "
+              f"one version of the merge's rules. Use another folder for rules {rules}.", file=sys.stderr)
+        return 2
+    done = {key(r) for r in merged}
     todo, alone, waiting = [], 0, 0
     for sid, by_index in reports.items():
         for k, rep in by_index.items():
@@ -283,7 +290,7 @@ def merge(args) -> int:
                 waiting += 1
                 continue
             cands = M.candidates({j: reviews[sid][j]["problems"] for j in needed}, k)
-            base = {"session_id": sid, "index": k}
+            base = {"session_id": sid, "index": k, "rules": rules}
             if not cands:
                 append(path(run, "merge", framing), {**base, "verdicts": [], "no_candidates": True, "model": None,
                                                      "usage": None})
@@ -291,7 +298,7 @@ def merge(args) -> int:
                 continue
 
             async def make(rr=rr, rep=rep, cands=cands):
-                result = await M.merge(rr, rep["reply"], cands, model=_model())
+                result = await M.merge(rr, rep["reply"], cands, model=_model(), rules=rules)
                 verdicts = M.checked(result.final_output, cands, rep["reply"])
                 if verdicts and all(v.get("missing") for v in verdicts):
                     # Every id came back wrong: an errored row, asked again on resume, not a miss.
@@ -375,6 +382,7 @@ def tally(args) -> int:
         "reports": len(reports), "reviewed": len(reviews), "replies_read": len(replies),
         "pushbacks": len(pushbacks),
         "pushbacks_by_swe_chat_label": len(labelled),
+        "merge_rules": dict(Counter(m.get("rules", 1) for m in merges.values())),
         "pushback_outcomes": dict(Counter(o for k, o in outcome.items() if k in pushbacks)),
         "caught_same": {
             "every_pushback": caught(pushbacks),
@@ -536,6 +544,10 @@ def main() -> int:
         if name in ("review", "merge"):
             q.add_argument("--framing", choices=("outside", "self"), default="outside",
                            help="the outside reviewer (default) or the same model told the work is its own")
+        if name == "merge":
+            q.add_argument("--rules", type=int, choices=sorted(M.INSTRUCTIONS), default=M.RULES,
+                           help="the version of the merge's instructions (1: the 10-03 runs; 2: with the hand "
+                                "check's worked examples)")
     c = sub.add_parser("combine")
     c.add_argument("--into", required=True)
     c.add_argument("sources", nargs="+")

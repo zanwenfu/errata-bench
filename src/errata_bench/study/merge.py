@@ -19,6 +19,11 @@ from pydantic import BaseModel, Field
 
 LOOKBACK = 2          # a pushback in reply k is compared with the problems of reports k-2..k
 MATCHES = ("same", "related", "different")
+# The merge's instructions, by version. 1 is what the 10-03 runs used. 2 adds the two worked
+# examples the hand check's guide gives (docs/study.md), so the model and the person checking
+# it draw the line between 'same' and 'related' from the same text. A merge row records its
+# version ("rules"); a row without one is version 1.
+RULES = 2
 
 
 class Verdict(BaseModel):
@@ -35,7 +40,7 @@ class Merge(BaseModel):
     verdicts: list[Verdict] = Field(default_factory=list, description="One verdict for each problem listed.")
 
 
-INSTRUCTIONS = """\
+INSTRUCTIONS_1 = """\
 You are comparing two independent readings of the same coding session.
 
 A developer replied to a coding agent and pushed back on its work. Separately, a reviewer \
@@ -53,6 +58,16 @@ more" is not 'same' unless it names the fault. For 'same' and 'related', copy th
 that overlap from the developer's reply and from the reviewer's problem, verbatim. Give one \
 verdict for every problem listed, using its id exactly.
 """
+
+EXAMPLES = """\
+Two examples (the people who check this merge by hand are given the same ones):
+  * Developer: "the tests still fail". Reviewer: "claims the tests pass but never ran them". \
+'same': the reviewer flagged the very claim the developer found false.
+  * Developer: "the button does nothing on mobile". Reviewer: "the click handler was not tested \
+on touch devices". 'related': the same work, but the reviewer did not say the button fails.
+"""
+
+INSTRUCTIONS = {1: INSTRUCTIONS_1, 2: INSTRUCTIONS_1 + "\n" + EXAMPLES}
 
 
 def candidates(problems_by_report: dict[int, list[dict]], k: int) -> list[dict]:
@@ -83,15 +98,25 @@ def prompt(reply_row: dict, reply_text: str, cands: list[dict]) -> str:
     return "\n".join(lines)
 
 
-async def merge(reply_row: dict, reply_text: str, cands: list[dict], *, model: str, max_turns: int = 3):
-    """Run the merge for one pushback. Returns the run result (`final_output` is a `Merge`)."""
-    from agents import Agent, Runner
+def agent_for(model: str, rules: int = RULES):
+    """The merge's agent under one version of the rules (no call is made)."""
+    from agents import Agent
 
-    from ..llm import configure_client, resilient, with_field_guide
+    from ..llm import with_field_guide
+
+    return Agent(name="study-merge", instructions=with_field_guide(INSTRUCTIONS[rules], Merge),
+                 model=model, output_type=Merge)
+
+
+async def merge(reply_row: dict, reply_text: str, cands: list[dict], *, model: str, max_turns: int = 3,
+                rules: int = RULES):
+    """Run the merge for one pushback. Returns the run result (`final_output` is a `Merge`)."""
+    from agents import Runner
+
+    from ..llm import configure_client, resilient
 
     configure_client()
-    agent = Agent(name="study-merge", instructions=with_field_guide(INSTRUCTIONS, Merge),
-                  model=model, output_type=Merge)
+    agent = agent_for(model, rules)
     return await resilient(lambda: Runner.run(agent, prompt(reply_row, reply_text, cands), max_turns=max_turns))
 
 
