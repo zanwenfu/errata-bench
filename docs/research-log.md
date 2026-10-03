@@ -12398,3 +12398,34 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     - The two reading views noted above.
     - For #17: the null control read "solved", the leak gate's bug-report
       requests, skill bodies and plan rows shown as USER, and G-93.
+- **10-03, 01:4x UTC** — **One task per session for the Entire tasks: v1's
+  rules, fixed before any moment is drawn (#16, agreed with #17).**
+  - *What v1 did.* `scripts/draw_step2.py` fixed its rules on 09-24, before
+    any moment was read, and `scripts/step2_tally.py` applied them.
+    - It drew first and later pushbacks at the same time. Neither draw took
+      a session that already held a built task, and the first-pushback draw
+      took no session whose later moment another run already carried.
+    - At the tally, a session with two admitted tasks kept its first
+      pushback: 56 were admitted, 55 kept, and entireio-cli-128 gave way.
+  - *The remaining pool.* 376 of its sessions are in both the first and the
+    later pool. The Entire runs hold 18 tasks in 18 sessions, so the rule
+    has not been broken yet.
+  - *Not two waves in sequence*, as first proposed. About 1 moment in 45
+    becomes a task, so nearly every session's later moment would run anyway,
+    at the same cost and in twice the time.
+  - *The rules for the second pilot and gate 4:*
+    - the draw takes no session that holds a built task in any run;
+    - both pools run together, except that the first pool's locate
+      finishes before the later pool's locate starts (below);
+    - at the tally, a session with two admitted tasks keeps its first
+      pushback.
+  - *Why the locate order (#17).* A session's two moments can share one
+    failed answer, as warren-1141 and -1160 did. The locate hold keeps the
+    moment located first, and the tally never sees the other. With both
+    pools locating at once, timing would decide the winner.
+    - A hold that gave way to the earlier pushback would still depend on
+      timing when the earlier moment dies after locate: located first, it
+      leaves no task; located second, the later moment can become the task.
+    - Ordering settles it. Every first-pool trajectory is written before
+      any later-pool locate runs, so a shared failed answer belongs to the
+      first pushback, and a rerun gives the same tasks.
