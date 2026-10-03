@@ -12429,3 +12429,10 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     - Ordering settles it. Every first-pool trajectory is written before
       any later-pool locate runs, so a shared failed answer belongs to the
       first pushback, and a rerun gives the same tasks.
+  - *An accepted cost, not the same task (#17).* Two moments sharing a
+    failed answer share their input: the cut, the tree, answer A. Each has
+    its own complaint and its own resolving answer B, though. So when the
+    first pushback dies at calibration or the controls, the later moment
+    might have passed. The hold never gives way, and that rare task is lost.
+    That is the price of one task per failed answer and of reruns that give
+    the same tasks.

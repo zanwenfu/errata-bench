@@ -327,13 +327,18 @@ async def stage_locate(paths: Paths, limit: int, concurrency: int) -> Progress:
         return p
 
     turns = recovered(load_session_turns({r["session_id"] for r in todo}))
-    # One failure, one task (pilot audit, 10-02): two objections to one answer
-    # -- a session's first pushback and a later one, drawn into two runs --
-    # were both located as usable. A usable trajectory whose failed answer
-    # another moment's already holds is not usable; the same moment located
-    # again, in another folder, is not refused. Read for each usable answer,
-    # so a sibling run going at the same time is seen, and this run's own
-    # rows: nothing is awaited between the reading and the writing.
+    # One failed answer, one usable trajectory (pilot audit, 10-02): two
+    # objections to one answer -- a session's first pushback and a later one,
+    # drawn into two runs -- were both located as usable. A usable trajectory
+    # whose failed answer another moment's already holds is not usable; the
+    # same moment located again, in another folder, is not refused. Read for
+    # each usable answer, so a sibling run going at the same time is seen, and
+    # this run's own rows: nothing is awaited between the reading and the
+    # writing. The two share their input -- the cut, the tree, the failed
+    # answer -- but not their complaint or their resolution, so a moment held
+    # here might have passed the checks the holder failed. The hold does not
+    # give way: an accepted cost, for one task per failed answer and for runs
+    # that give the same tasks again (#17, 10-03).
     from ..find.trajectory import RULES
 
     async def one(r):
