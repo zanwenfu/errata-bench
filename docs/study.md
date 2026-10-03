@@ -79,7 +79,14 @@ marks decide (`sessions.row_kinds`).
 - a /loop's timed prompt or re-run, and a background task's notice;
 - a row the transcript does not hold at all.
 
-In the pilot's sessions, 839 prompt rows count as typed by the developer.
+How much this matters, measured 10-03 on the sessions with a raw transcript:
+- In the 112 pushback-drawn sessions, the developer typed 1,629 of the 2,386
+  rows SWE-chat files as `user_prompt` (68%).
+- Rules on the table alone (dropping notices, summaries and teammates by their
+  opening words) keep 1,930. Of those, 301 (16%) are still not the developer's
+  by the transcript: re-inserted copies, expanded commands and skills,
+  scheduled prompts.
+- In the 40 random sessions, the developer typed 307 of 572 (54%).
 
 ## What the reviewer sees
 
