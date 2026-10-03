@@ -532,6 +532,28 @@ def main() -> int:
           f"{CALLED.get('signals_trouble', 0) - asked_before3}x")
     os.environ.pop("ERRATA_RESCREEN_OLD", None)
 
+    # A row the free pre-check set aside (`scripts/prescreen_buildable.py`) is
+    # done at any pass count: read as one pass, `--passes 3` screened every one
+    # again, paying back what the pre-check saved, and the build refused them
+    # all the same (review, 10-03).
+    dp = Paths(Path(tempfile.mkdtemp()) / "run")
+    append(dp.moments, {"session_id": "s-1", "turn_number": 7, "repo_id": "acme/up",
+                        "kind": "correction", "agent_turns_before": 4})
+    for stage in (stage_triage, stage_read, stage_locate, stage_signature):
+        asyncio.run(stage(dp, 10**9, concurrency=1))
+    aside = [{**r, "usable": False, "reason": "set aside before screening, as the build would refuse it: no commit",
+              "prescreened": True, "usage": {}, "screen_passes": 1, "text_recovered": True}
+             for r in load(dp.signatures)]
+    for r in aside:
+        append(dp.screened, r)
+    asked_before_p = CALLED.get("signals_trouble", 0)
+    asyncio.run(stage_screen(dp, 10**9, concurrency=1, passes=3))
+    writes = Path("scripts/prescreen_buildable.py").read_text()
+    check(len(aside) == 1 and load(dp.screened) == aside and CALLED.get("signals_trouble", 0) == asked_before_p
+          and '"prescreened": True' in writes and '"screen_passes": 1' in writes,
+          f"a row the pre-check set aside is not screened again at --passes 3: "
+          f"{len(load(dp.screened))} row(s), gates asked {CALLED.get('signals_trouble', 0) - asked_before_p}x")
+
     # A repair that rewrites the request changes what the candidate is asked: the
     # request and scope gates are asked again on the repaired conversation, not
     # left with their reading of the words the repair took out (09-30 review).

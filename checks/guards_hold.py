@@ -3936,6 +3936,8 @@ import errata_bench.construct.build as _build49
 from errata_bench.spec import BuildResult as _BR49, Rejection as _Rej49
 from errata_bench.stages.building import stage_build as _stage_build49
 
+_held49 = _build49.task_name("acme/up", "s1", 7)
+
 def _fixture49(reason):
     p = Paths(Path(tempfile.mkdtemp()) / "run")
     append(p.screened, {"session_id": "s1", "repo_id": "acme/up", "complaint": 7,
@@ -3945,7 +3947,7 @@ def _fixture49(reason):
     # Since 10-03 a task is named by its session too (`task_name`), and so is
     # the one a rejection held back: acme/up's at turn 7 from s1.
     for f in (p.calibration, p.controls, p.answers, p.attempts, p.instrument):
-        append(f, {"task_id": "acme-up-s1-7"})
+        append(f, {"task_id": _held49})
         append(f, {"task_id": "acme-kt-9"})
     kept = _build49.build
 
@@ -3969,7 +3971,7 @@ _pa49, _prog_a49 = _fixture49(f"{_TRANSIENT49}: Could not resolve host: github.c
 _left49 = {f.name: sorted(r["task_id"] for r in _rows33(f))
            for f in (_pa49.calibration, _pa49.controls, _pa49.answers, _pa49.attempts,
                      _pa49.instrument)}
-check(all(v == ["acme-kt-9", "acme-up-s1-7"] for v in _left49.values()),
+check(all(v == sorted(["acme-kt-9", _held49]) for v in _left49.values()),
       f"a task whose tree could not be fetched keeps every row bought for it: {_left49}")
 check(any("could not be fetched this pass" in n for n in _prog_a49.notes),
       f"and the stage says which tasks it held back: {[n[:70] for n in _prog_a49.notes]}")
@@ -9020,10 +9022,16 @@ _listed129 = {
     "a comment line first": "packages:\n  # all packages in direct subdirs of packages/\n  - 'packages/*'\n",
     "the list at no indent": "packages:\n- 'apps/*'\n",
     "a blank line first": "packages:\n\n  - 'apps/*'\n",
-    "the usual indent": "packages:\n  - apps/*\n"}
+    "the usual indent": "packages:\n  - apps/*\n",
+    # The review of 10-03: a byte-order mark, a quoted key, a flow list over lines.
+    "after a byte-order mark": "\ufeffpackages:\n  - apps/*\n",
+    "a quoted key": '"packages":\n  - apps/*\n',
+    "a flow list over lines": "packages: [\n  'apps/*',\n]\n",
+    "a flow list on one line": "packages: ['apps/*']\n"}
 _none129 = {"settings only": "allowBuilds:\n  esbuild: true\n", "an empty list": "packages: []\n",
             "a key with nothing under it": "packages:\n# none yet\nonlyBuiltDependencies:\n  - esbuild\n",
-            "a key at the end": "allowBuilds:\n  esbuild: true\npackages:\n"}
+            "a key at the end": "allowBuilds:\n  esbuild: true\npackages:\n",
+            "a null": "packages: ~\n", "an empty flow list over lines": "packages: [\n  # none yet\n]\n"}
 _read129 = {k: _env129._no_packages(v) for k, v in {**_listed129, **_none129}.items()}
 _comment129 = _env129.recipe(_T129, ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "packages/a/package.json"],
                              {"package.json": "{}", "pnpm-workspace.yaml": _listed129["a comment line first"]})
@@ -15434,28 +15442,36 @@ print("\n168. a task's name: v1's 55 keep theirs, every other carries its sessio
 # The plain {repo}-{turn} is not unique: v1 built entireio-cli-24 from two
 # sessions, and refused three entireio/cli candidates only because another
 # session had their name. A rule on fixed inputs names a moment the same in
-# every build; a task's fingerprint starts with its name.
+# every build; a task's fingerprint starts with its name. The tag is a hash of
+# the whole session id: entireio/cli's January sessions begin with their date,
+# and their first eight characters were one tag (review, 10-03).
+import hashlib as _hl168
+
 from errata_bench.construct.build import task_name as _name168
 from errata_bench.release.v1_names import V1_NAMES as _V1N168
 
+_tag168 = lambda sid: _hl168.sha256(sid.encode()).hexdigest()[:8]
 _own168 = _V1N168["entireio-cli-24"]
-_other168 = "85f99978-0000-4000-8000-000000000000" if not _own168.startswith("85f99978") else "e24bec4f-0000"
+_other168 = "85f99978-0000-4000-8000-000000000000"
 _cases168 = {
     "a v1 task from its own session": _name168("entireio/cli", _own168, 24),
     "another session at a v1 name": _name168("entireio/cli", _other168, 24),
     "a new moment": _name168("acme/up", "s-123456789", 3),
-    "the same moment again": _name168("acme/up", "s-123456789", 3)}
+    "the same moment again": _name168("acme/up", "s-123456789", 3),
+    "a dated session": _name168("entireio/cli", "2026-01-05-aaaa1111", 77),
+    "another dated session": _name168("entireio/cli", "2026-01-05-bbbb2222", 77)}
 try:
     _name168("acme/up", "", 3)
     _empty168 = "named"
 except ValueError:
     _empty168 = "refused"
-check(_cases168["a v1 task from its own session"] == "entireio-cli-24"
-      and _cases168["another session at a v1 name"] == f"entireio-cli-{_other168[:8]}-24"
-      and _cases168["a new moment"] == "acme-up-s-123456-3" == _cases168["the same moment again"]
+check(_own168 != _other168 and _cases168["a v1 task from its own session"] == "entireio-cli-24"
+      and _cases168["another session at a v1 name"] == f"entireio-cli-{_tag168(_other168)}-24"
+      and _cases168["a new moment"] == f"acme-up-{_tag168('s-123456789')}-3" == _cases168["the same moment again"]
+      and _cases168["a dated session"] != _cases168["another dated session"]
       and _empty168 == "refused",
-      f"v1's name is kept for its own session only; any other task is named by its session, the same every time; a "
-      f"task with no session is refused: {_cases168}, {_empty168}")
+      f"v1's name is kept for its own session only; any other task is named by a hash of its session, the same "
+      f"every time, two sessions of one date apart; a task with no session is refused: {_cases168}, {_empty168}")
 # Through the real build: two sessions at one (repository, turn) both build,
 # under two names; one moment twice is refused the second time.
 try:
@@ -15486,8 +15502,8 @@ finally:
     for _n43w, _v43w in _kept43w.items():
         setattr(_B43w, _n43w, _v43w)
 _names168 = [t.task_id for r in _built168 for t in r.tasks]
-check(_names168 == ["acme-up-s-43w-3", "acme-up-s-43x-3"]
-      and [t.task_id for t in _again168.tasks] == ["acme-up-s-43w-3"]
+check(_names168 == [f"acme-up-{_tag168('s-43w')}-3", f"acme-up-{_tag168('s-43x')}-3"]
+      and [t.task_id for t in _again168.tasks] == [f"acme-up-{_tag168('s-43w')}-3"]
       and any("two tasks cannot share a name" in r.reason and r.session_id == "s-43w" for r in _again168.rejected),
       f"two sessions at one (repository, turn) build under two names, and one moment twice is refused the second "
       f"time, its rejection carrying its session: {_names168}, {[t.task_id for t in _again168.tasks]}")
@@ -15505,8 +15521,10 @@ if _rel168.is_dir():
 else:
     print(f"  skip  the frozen names against the release: {_rel168} is not here (as in CI)")
 
-print("\n169. the Entire runs' draw and tally keep v1's rules (scripts/draw_entire.py, tally_entire.py; 10-03)")
+print("\n169. the Entire runs' draw, run script, preflight and tally keep v1's rules (10-03)")
 import importlib.util as _ilu169
+import shutil as _shutil169
+import subprocess as _sp169
 
 
 def _script169(name):
@@ -15516,118 +15534,274 @@ def _script169(name):
     return mod
 
 
-# The draw: each of its exclusions removes a session the unfiltered draw holds.
+# The draw, through the real `find_moments` over section 163's corpus: each of
+# its exclusions removes a session the unfiltered draw holds.
 _draw169 = _script169("draw_entire")
 _draw169.V1_NAMES = {}
+_none169 = Path(tempfile.mkdtemp()) / "none.json"
+_none169.write_text("[]")
 
 
-def _drawn169(runs, extra=()):
+def _drawn169(runs, extra=(), dry=False):
     _draw169.RUNS = runs
+    _said169d = _io38.StringIO()
     _sessions_mod.CORPUS, _sessions_mod.load_repos = _corpus163, REAL_LOAD_REPOS
     try:
-        with _contextlib38.redirect_stdout(_io38.StringIO()), _transcripts_at(_corpus163):
-            code = _draw169.main(["d", "--cap", "0", *(["--exclude-sessions", *extra] if extra else [])])
+        with _contextlib38.redirect_stdout(_said169d), _transcripts_at(_corpus163):
+            code = _draw169.main(["d", "--cap", "0", "--exclude-sessions", *(extra or [str(_none169)]),
+                                  "--runs", str(runs), *(["--dry-run"] if dry else [])])
     finally:
         _sessions_mod.CORPUS, _sessions_mod.load_repos = _keep163
-    return code, sorted(r["session_id"] for r in load(runs / "d-first" / "moments.jsonl"))
+    return code, sorted(r["session_id"] for r in load(runs / "d-first" / "moments.jsonl")), _said169d.getvalue()
 
 
-_base169 = _drawn169(Path(tempfile.mkdtemp()))[1]
-_runs169 = Path(tempfile.mkdtemp())
-if len(_base169) >= 5:
-    _tri169, _built169, _batch169, _else169, _v1s169 = _base169[:5]
-    append(_runs169 / "a" / "triaged.jsonl", {"session_id": _tri169, "turn_number": 5})
-    append(_runs169 / "b" / "tasks.jsonl", {"session_id": _built169, "task_id": "o-b-x-5"})
-    append(_runs169 / "c-later" / "moments.jsonl", {"session_id": _batch169, "turn_number": 9})
-    (_runs169 / "elsewhere.json").write_text(json.dumps([_else169]))
-    _draw169.V1_NAMES = {"o-v-5": _v1s169}
-    _code169, _kept169 = _drawn169(_runs169, [str(_runs169 / "elsewhere.json")])
+_empty169 = Path(tempfile.mkdtemp())
+_bare169 = _drawn169(_empty169)
+_base_runs169 = Path(tempfile.mkdtemp())
+append(_base_runs169 / "z" / "triaged.jsonl", {"session_id": "s-nobody", "turn_number": 1})
+_base169 = _drawn169(_base_runs169)[1]
+check(_bare169[0] == 2 and not (_empty169 / "d-first").exists(),
+      f"the draw refuses run folders where no run has triaged anything, writing nothing: exit {_bare169[0]}")
+_bs169 = [s for s in _base169 if s in ("s-b1", "s-b2")]
+_rest169 = [s for s in _base169 if s not in ("s-b1", "s-b2")]
+if len(_bs169) == 1 and len(_rest169) >= 5:
+    # The copy the draw holds is left out when its other copy was triaged, in
+    # a run folder two levels down (a backup's, say): one moment, triaged once.
+    _bother169 = ({"s-b1", "s-b2"} - set(_bs169)).pop()
+    _runs169 = Path(tempfile.mkdtemp())
+    append(_runs169 / "a" / "older" / "triaged.jsonl", {"session_id": _bother169, "turn_number": 5})
+    append(_runs169 / "b" / "tasks.jsonl", {"session_id": _rest169[0], "task_id": "o-b-x-5"})
+    # A batch is found by its rows, whatever its name: v1's was later-sample.
+    append(_runs169 / "later-sample" / "moments.jsonl", {"session_id": _rest169[1], "turn_number": 9, "later": True})
+    # A first list whose name holds "later" is no batch.
+    append(_runs169 / "later2-first" / "moments.jsonl", {"session_id": _rest169[4], "turn_number": 5})
+    (_runs169 / "elsewhere.json").write_text(json.dumps([_rest169[2]]))
+    _draw169.V1_NAMES = {"o-v-5": _rest169[3]}
+    _code169, _kept169, _ = _drawn169(_runs169, [str(_runs169 / "elsewhere.json")])
     _draw169.V1_NAMES = {}
-    check(_code169 == 0 and _kept169 == _base169[5:],
-          f"the draw leaves out a moment any run triaged, a session with a built task, one whose later moment a "
-          f"batch holds, one built from the other corpus and one of v1's: {_base169[:5]} out, {_kept169} kept")
+    check(_code169 == 0 and _kept169 == _rest169[4:],
+          f"the draw leaves out a copy of a moment any run triaged, a session with a built task, one whose later "
+          f"moment a batch holds, one built from the other corpus and one of v1's, and keeps one a first list "
+          f"named 'later2' holds: {_bs169 + _rest169[:4]} out, {_kept169} kept")
+    # Its own later list is no batch: a dry run after the draw counts the same.
+    append(_runs169 / "d-later" / "moments.jsonl", {"session_id": _rest169[4], "turn_number": 9, "later": True})
+    _dry169 = _drawn169(_runs169, [str(_runs169 / "elsewhere.json")], dry=True)[2]
+    check("'later-sample'" in _dry169 and "'d-later'" not in _dry169,
+          f"and its own later list is not taken for a batch: "
+          f"{[l for l in _dry169.splitlines() if 'later batches' in l][:1]}")
 else:
-    check(False, f"the draw's fixture gives too few sessions to test its rules: {_base169}")
-# The cap counts what the rules leave: a moment some run triaged takes no
-# place under it (10-03: a dry run drew 814 later moments and kept 479).
+    check(False, f"the draw's fixture gives other sessions than section 163 wrote: {_base169}")
+# Exclusion files are lists of session ids; anything else is refused.
+_runs169x = Path(tempfile.mkdtemp())
+append(_runs169x / "z" / "triaged.jsonl", {"session_id": "s-nobody", "turn_number": 1})
+(_runs169x / "tally.json").write_text(json.dumps({"funnel": [], "kept": []}))
+try:
+    _drawn169(_runs169x, [str(_runs169x / "tally.json")])
+    _obj169 = "read"
+except SystemExit as e:
+    _obj169 = str(e)
+check(_obj169.startswith("refused") and "not a JSON list" in _obj169,
+      f"an exclusion file that is not a list of session ids is refused: {_obj169[:80]}")
+# The first list is drawn with every run's triage and the later list as drawn
+# handed to `find_moments`, which leaves a copy of each out with it (G-91,
+# section 163); and the cap counts what the rules leave, a triaged moment
+# taking no place under it (10-03: a dry run drew 814 later moments, kept 479).
 _m169 = [{"session_id": sid, "repo_id": repo, "turn_number": 5}
-         for sid, repo in (("a", "r1"), ("b", "r1"), ("c", "r2"))]
-_draw169.collect = lambda later: [dict(m) for m in _m169]
+         for sid, repo in (("a", "r1"), ("b", "r1"), ("d", "r1"), ("c", "r2"))]
+_asked169 = []
+
+
+def _collect169(later, seen):
+    _asked169.append((later, [sorted((r.get("session_id"), r.get("turn_number")) for r in load(f)) for f in seen]))
+    return [{"session_id": "L", "repo_id": "r3", "turn_number": 9, "later": True}] if later else [dict(m) for m in _m169]
+
+
+_draw169.collect = _collect169
 _cr169 = Path(tempfile.mkdtemp())
 append(_cr169 / "x" / "triaged.jsonl", {"session_id": "a", "turn_number": 5})
 _draw169.RUNS = _cr169
 with _contextlib38.redirect_stdout(_io38.StringIO()):
-    _draw169.main(["c", "--cap", "1"])
+    _draw169.main(["c", "--cap", "1", "--exclude-sessions", str(_none169), "--runs", str(_cr169)])
 _capped169 = [r["session_id"] for r in load(_cr169 / "c-first" / "moments.jsonl")]
 _draw169.collect = _script169("draw_entire").collect
 check(_capped169 == ["b", "c"] and [m["session_id"] for m in _draw169.capped(_m169, 1)] == ["a", "c"],
       f"the per-repository cap counts what the rules leave, a triaged moment taking no place under it: "
       f"{_capped169}")
-try:
-    with _contextlib38.redirect_stderr(_io38.StringIO()):
-        _draw169.main(["d"])
-    _nocap169 = "drew"
-except SystemExit:
-    _nocap169 = "refused"
-check(_nocap169 == "refused", f"and it will not draw without a per-repository cap named: {_nocap169}")
-# The tally: seven readings, the first pushback, a development run, a repeated name.
+check([a[0] for a in _asked169] == [True, False] and _asked169[0][1] == [[("a", 5)]]
+      and _asked169[1][1] == [[("a", 5)], [("L", 9)]],
+      f"the triage of every run goes to `find_moments` for both lists, and the later list as drawn for the first: "
+      f"{_asked169}")
+for _argv169, _what169 in ((["d", "--exclude-sessions", str(_none169)], "a per-repository cap"),
+                           (["d", "--cap", "0"], "the exclusion files")):
+    try:
+        with _contextlib38.redirect_stderr(_io38.StringIO()):
+            _draw169.main(_argv169)
+        _named169 = "drew"
+    except SystemExit:
+        _named169 = "refused"
+    check(_named169 == "refused", f"and it will not draw without {_what169} named: {_named169}")
+
+# The tally: v1's readings required, the first pushback kept, a development
+# run apart, a part-done run and a repeated name refused, nothing written.
+from errata_bench.instrument.control import CONTROLS as _CONTROLS169
+
 _tally169 = _script169("tally_entire")
 _tr169 = Path(tempfile.mkdtemp())
-_plan169 = {"f": (("t-1", "S1", 7, 7), ("t-2", "S2", 3, 3)), "l": (("t-3", "S1", 7, 7),), "dv": (("t-4", "S4", 7, 7),),
-            "dup": (("t-1", "S5", 7, 7),)}
+# Each task: (id, session, gate readings asked, held, control readings each).
+_plan169 = {"zf": (("t-1", "S1", 7, 7, 3),), "al": (("t-3", "S1", 7, 7, 3),),
+            "dv": (("t-4", "S4", 7, 7, 3), ("t-2", "S2", 3, 3, 3), ("t-6", "S6", 7, 7, 1)),
+            "dup": (("t-1", "S5", 7, 7, 3),), "part": (("t-5", "S7", 3, 3, 3),)}
 for _run169, _ts169 in _plan169.items():
     _p169 = Paths(_tr169 / _run169)
-    for _tid169, _sid169, _, _ in _ts169:
+    append(_p169.moments, {"session_id": "S", "turn_number": 1})
+    for _tid169, _sid169, _, _, _nc169 in _ts169:
         _t169 = _task49(_tid169)
         _t169.session_id, _t169.repo_id = _sid169, "o/r"
         append(_p169.tasks, _t169.to_json())
+        append(_p169.calibration, {"task_id": _tid169, "judge_model": "gpt-6-astra"})
+        for _c169 in _CONTROLS169:
+            for _n169 in range(_nc169):
+                append(_p169.controls, {"task_id": _tid169, "control": _c169.name, "judge_model": "gpt-6-astra",
+                                        "ok": True, "pass": _n169})
 _tally169.can_be_scored = lambda r: True
 _tally169.stable = lambda run, judge, passing=None: (
-    set(), {t: {"asked": a, "held": h} for t, _, a, h in _plan169[Path(run).name]})
-_tally169.admitted = lambda run, p, judge, passing: {t for t, _, _, _ in _plan169[Path(run).name]}
-with _contextlib38.redirect_stdout(_io38.StringIO()):
-    _ok169 = _tally169.main([str(_tr169 / "o.json"), f"{_tr169 / 'f'}:first", f"{_tr169 / 'l'}:later",
+    set(), {t: {"asked": a, "held": h} for t, _, a, h, _ in _plan169[Path(run).name]})
+_tally169.admitted = lambda run, p, judge, passing: {t[0] for t in _plan169[Path(run).name]}
+_said169t = _io38.StringIO()
+with _contextlib38.redirect_stdout(_said169t):
+    _ok169 = _tally169.main([str(_tr169 / "o.json"), f"{_tr169 / 'zf'}:first", f"{_tr169 / 'al'}:later",
                              f"{_tr169 / 'dv'}:later:dev"])
-    _out169 = json.loads((_tr169 / "o.json").read_text())
-    _dup169 = _tally169.main([str(_tr169 / "o2.json"), f"{_tr169 / 'f'}:first", f"{_tr169 / 'dup'}:later"])
+    _out169 = json.loads((_tr169 / "o.json").read_text()) if (_tr169 / "o.json").exists() else {"kept": [], "dropped": []}
+    _dup169 = _tally169.main([str(_tr169 / "o2.json"), f"{_tr169 / 'zf'}:first", f"{_tr169 / 'dup'}:later"])
+    _part169 = _tally169.main([str(_tr169 / "o3.json"), f"{_tr169 / 'part'}:first"])
+    _gone169 = _tally169.main([str(_tr169 / "o4.json"), f"{_tr169 / 'nowhere'}:first"])
+    _short169 = (_tally169.main(["--short", str(_tr169 / "part"), "gate"]),
+                 _tally169.main(["--short", str(_tr169 / "zf"), "gate"]),
+                 _tally169.main(["--short", str(_tr169 / "dv"), "controls"]))
 _kept169t = sorted((r["task_id"], r["dev"]) for r in _out169["kept"])
 check(_ok169 == 0 and _kept169t == [("t-1", False), ("t-4", True)]
-      and [d["task_id"] for d in _out169["dropped"]] == ["t-3"] and _dup169 == 1,
-      f"the tally admits only a task read seven times, keeps a session's first pushback, marks a development run, "
-      f"and refuses a name used twice: kept {_kept169t}, dropped {[d['task_id'] for d in _out169['dropped']]}, "
-      f"repeated name exit {_dup169}")
+      and [d["task_id"] for d in _out169["dropped"]] == ["t-3"],
+      f"the tally admits only a task read seven times with each control read three times, keeps a session's "
+      f"first pushback whatever its run is named, and marks a development run: kept {_kept169t}, dropped "
+      f"{[d['task_id'] for d in _out169['dropped']]}")
+check(_dup169 == 1 and _part169 == 1 and _gone169 == 2 and not (_tr169 / "o2.json").exists()
+      and not (_tr169 / "o3.json").exists() and not (_tr169 / "nowhere").exists() and _short169 == (1, 0, 1),
+      f"it refuses a name used twice, a run part done and a run that is not there, writing nothing, and says "
+      f"what a step is short of: {_dup169}, {_part169}, {_gone169}, --short {_short169}")
 
-# The run script carries v1's settings and uses each where it belongs.
+# The run script: v1's settings, and its steps in v1's order, judged as v1's
+# admit-chain.sh judged them -- by rows left in error, not by calibration's or
+# the controls' exit code, which is 1 on a verdict -- and stopped when a step
+# is still short after three tries. Run on a stand-in Python that writes
+# nothing and calls nothing, from a copy of the script in a scratch folder.
 _sh169 = Path("scripts/run_entire.sh").read_text()
-_cmds169 = [c for c in _commands121(_sh169) if not c.lstrip().startswith("#")]
-check("JUDGE=gpt-6-astra; SCREEN_PASSES=3; GATE_PASSES=7; CONTROL_PASSES=3" in _sh169
-      and any("--only screen" in c and '--passes "$SCREEN_PASSES"' in c for c in _cmds169)
-      and any("run.py gate" in c and '--passes "$GATE_PASSES"' in c and '--judge "$JUDGE"' in c for c in _cmds169)
-      and any("--only control" in c and '--passes "$CONTROL_PASSES"' in c for c in _cmds169)
-      and any("--only calibrate" in c for c in _cmds169) and any("preflight_entire.py" in c for c in _cmds169),
-      "the Entire run script screens at three readings, gates at seven, controls at three, all with gpt-6-astra, "
-      "and runs the preflight before admission")
-# The preflight stops on a task whose conversation names the overclaim's invented file.
+check("JUDGE=gpt-6-astra; SCREEN_PASSES=3; GATE_PASSES=7; CONTROL_PASSES=3; CONCURRENCY=3" in _sh169,
+      "the Entire run script carries v1's settings")
+_rs169 = Path(tempfile.mkdtemp())
+(_rs169 / "scripts").mkdir()
+_shutil169.copy("scripts/run_entire.sh", _rs169 / "scripts" / "run_entire.sh")
+for _l169 in ("first", "later"):
+    (_rs169 / "runs" / f"t-{_l169}").mkdir(parents=True)
+    (_rs169 / "runs" / f"t-{_l169}" / "moments.jsonl").write_text("")
+(_rs169 / "home" / "errata-bench").mkdir(parents=True)
+(_rs169 / "home" / "errata-bench" / ".env").write_text("")
+_fake169 = _rs169 / "stand-in-python"
+_fake169.write_text('#!/bin/bash\n'
+                    'echo "$*" >> "$STANDIN_LOG"\n'
+                    'if [ "$1" = - ]; then cat > /dev/null; echo 0; exit 0; fi\n'
+                    'case "$*" in\n'
+                    '  *--short*) [ -n "${STANDIN_SHORT:-}" ] && [[ "$*" == *"$STANDIN_SHORT"* ]] && exit 1; exit 0 ;;\n'
+                    '  *"--only calibrate"*|*"--only control"*) exit 1 ;;\n'
+                    'esac\n'
+                    'exit 0\n')
+_fake169.chmod(0o755)
+
+
+def _ran169(short=""):
+    log = _rs169 / f"log-{short or 'clean'}"
+    env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(_rs169 / "home"), "PY": str(_fake169),
+           "ERRATA_CORPUS": "unused", "STANDIN_LOG": str(log), "STANDIN_SHORT": short, "RETRY_PAUSE": "0"}
+    done = _sp169.run(["bash", str(_rs169 / "scripts" / "run_entire.sh"), "t"], env=env, capture_output=True,
+                      text=True, timeout=120)
+    asked = [l.split(" --concurrency")[0] for l in (log.read_text().splitlines() if log.exists() else [])
+             if l.startswith(("run.py", "scripts/"))]
+    return done.returncode, asked
+
+
+_code169r, _asked169r = _ran169()
+_want169 = []
+for _r169 in ("runs/t-first", "runs/t-later"):
+    _want169 += [f"run.py stages --run {_r169} --only signature", f"scripts/prescreen_buildable.py {_r169}",
+                 f"run.py stages --run {_r169} --only screen --passes 3", f"run.py stages --run {_r169} --only build",
+                 f"scripts/preflight_entire.py {_r169}", f"run.py stages --run {_r169} --only calibrate",
+                 f"scripts/tally_entire.py --short {_r169} calibration",
+                 f"run.py stages --run {_r169} --only control --passes 3",
+                 f"scripts/tally_entire.py --short {_r169} controls",
+                 f"run.py gate --run {_r169} --judge gpt-6-astra --passes 7",
+                 f"scripts/tally_entire.py --short {_r169} gate"]
+_want169.append("scripts/tally_entire.py runs/t-tally.json runs/t-first:first runs/t-later:later")
+check(_code169r == 0 and sorted(_asked169r[:2]) == ["run.py stages --run runs/t-first --through locate",
+                                                     "run.py stages --run runs/t-later --through read"]
+      and _asked169r[2] == "run.py stages --run runs/t-later --only locate" and _asked169r[3:] == _want169,
+      f"the run script finds the first list through locate beside the later through reading, then the later's "
+      f"locate; then each run's steps in v1's order, calibration's and the controls' exit 1 taken for a verdict, "
+      f"each admission step checked complete; then the tally: exit {_code169r}, "
+      f"{[a for a, w in zip(_asked169r[3:], _want169) if a != w][:2] or _asked169r[:3]}")
+_code169g, _asked169g = _ran169("gate")
+check(_code169g == 1 and sum(a.startswith("run.py gate") for a in _asked169g) == 3
+      and not any("t-later --only signature" in a or "t-tally.json" in a for a in _asked169g),
+      f"a gate still short of its readings after three tries stops the run, the tally unrun: exit {_code169g}, "
+      f"{sum(a.startswith('run.py gate') for a in _asked169g)} gate runs")
+
+# The preflight reads what the controls read, says what it finds, and stops
+# only on a fault: a session the corpus lacks, a task built without its text.
+from errata_bench.score import attempt as _att169
+
 _pre169 = _script169("preflight_entire")
+check(_pre169.control_conversations_for is _att169.control_conversations_for
+      and "control_conversations_for(tasks)" in Path("src/errata_bench/stages/building.py").read_text(),
+      "the preflight reads each task's conversation through the function the controls stage reads it through")
 _pr169 = Path(tempfile.mkdtemp())
-_pp169 = Paths(_pr169 / "run")
-for _tid169, _sid169 in (("t-clean", "S1"), ("t-named", "S2")):
-    _t169 = _task49(_tid169)
-    _t169.session_id, _t169.criterion_calls = _sid169, [{"name": "Read"}]
-    _t169.calls_recovered = _t169.text_recovered = True
-    append(_pp169.tasks, _t169.to_json())
-_pre169.load_session_turns = lambda ids: {i: [] for i in ids}
-_pre169.recovered = lambda turns: turns
-_pre169.transcript_path = lambda sid: _pr169 / "none" / f"{sid}.jsonl"
-_pre169.transcript_for = lambda task, turns: (
-    "added tests/test_errata_regression.py" if task.task_id == "t-named" else "a conversation")
-_said169 = _io38.StringIO()
-with _contextlib38.redirect_stdout(_said169):
-    _code169p = _pre169.main([str(_pp169.root)])
-check(_code169p == 1 and "t-clean: clear" in _said169.getvalue()
-      and "t-named: the invented name is in its conversation" in _said169.getvalue(),
-      f"the round-3 preflight stops the run on a task whose conversation names the overclaim's invented file, and "
-      f"clears the rest: exit {_code169p}")
+_marker169 = _pre169.OVERCLAIM.marker
+(_pr169 / "raw").mkdir()
+(_pr169 / "raw" / "S3.jsonl").write_text(f"a raw line naming {_marker169}\n")
+
+
+def _preflight169(plan, convs):
+    pp = Paths(Path(tempfile.mkdtemp()) / "run")
+    for tid, sid, recovered in plan:
+        t = _task49(tid)
+        t.session_id, t.criterion_calls = sid, [{"name": "Read"}]
+        t.calls_recovered = t.text_recovered = recovered
+        append(pp.tasks, t.to_json())
+    _pre169.control_conversations_for = convs
+    _pre169.transcript_path = lambda sid: _pr169 / "raw" / f"{sid}.jsonl"
+    said = _io38.StringIO()
+    with _contextlib38.redirect_stdout(said):
+        code = _pre169.main([str(pp.root)])
+    return code, said.getvalue()
+
+
+_cuts169 = {"t-clean": "a conversation", "t-named": f"added tests/{_marker169}.py", "t-raw": "a conversation",
+            "t-bare": "a conversation"}
+_conv169 = lambda tasks: {t.task_id: {"cut": _cuts169[t.task_id]} for t in tasks}
+_c1_169, _s1_169 = _preflight169((("t-clean", "S1", True), ("t-named", "S2", True), ("t-raw", "S3", True)), _conv169)
+_c2_169, _s2_169 = _preflight169((("t-clean", "S1", True), ("t-bare", "S4", False)), _conv169)
+
+
+def _lacks169(tasks):
+    raise _att169.SessionNotInCorpus("S9 is not in the loaded corpus")
+
+
+_c3_169, _s3_169 = _preflight169((("t-clean", "S9", True),), _lacks169)
+_pre169.control_conversations_for = _att169.control_conversations_for
+check(_c1_169 == 0 and "t-clean: clear" in _s1_169 and "t-named: the invented name is in its conversation" in _s1_169
+      and "t-raw: the invented name is in its raw transcript" in _s1_169
+      and _c2_169 == 1 and "t-bare: built without its lost calls and text" in _s2_169
+      and _c3_169 == 1 and "refused" in _s3_169,
+      f"the round-3 preflight names a task whose conversation or raw transcript holds the invented name and goes "
+      f"on, as the control marks itself not applicable there; it stops on a task built without its text and on a "
+      f"session the corpus lacks: exits {_c1_169}, {_c2_169}, {_c3_169}")
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:

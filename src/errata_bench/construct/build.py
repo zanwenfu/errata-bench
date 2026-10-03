@@ -326,15 +326,22 @@ def task_name(repo_id: str, session_id: str, turn: int) -> str:
     built first would change with the runs on disk and their order, and a
     task's fingerprint starts with its name. The plain name is not unique --
     v1 built entireio-cli-24 from two sessions -- so it is kept only where
-    `release.v1_names` lists it with this session.
+    `release.v1_names` lists it with this session. The tag is eight hex
+    characters of the whole session id's SHA-256: its first characters are
+    a date in entireio/cli's January sessions ("2026-01-..."), which two
+    sessions at one turn shared (review, 10-03).
     """
+    import hashlib
+
     from ..release.v1_names import V1_NAMES
 
     if not session_id:
         raise ValueError(f"a task in {repo_id} at turn {turn} has no session to name it by")
     slug = repo_id.replace("/", "-")
     plain = f"{slug}-{turn}"
-    return plain if V1_NAMES.get(plain) == session_id else f"{slug}-{session_id[:8]}-{turn}"
+    if V1_NAMES.get(plain) == session_id:
+        return plain
+    return f"{slug}-{hashlib.sha256(session_id.encode()).hexdigest()[:8]}-{turn}"
 
 
 def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:

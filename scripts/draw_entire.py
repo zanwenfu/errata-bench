@@ -2,20 +2,24 @@
 """Draw the Entire corpus's moments for a run, by v1's rules (`scripts/draw_step2.py`, 09-24), fixed before any is read.
 
     ERRATA_CORPUS=data/entire/corpus python scripts/draw_entire.py <name> --cap N [--limit N]
-        [--exclude-sessions FILE...] [--dry-run]
+        --exclude-sessions FILE... [--runs DIR...] [--dry-run]
 
 Writes runs/<name>-first/moments.jsonl and runs/<name>-later/moments.jsonl and prints what each rule removed. No
-model calls. The rules, as v1's step 2 drew (#16, agreed with #17, 10-03):
+model calls. The rules, as v1's step 2 drew (#16, agreed with #17, 10-03), read over every run under --runs (this
+checkout's runs/ by default; v1's draw read its whole runs/, so name the other corpus's runs too):
 
 - later: each session's earliest later pushback with new agent work before it (`run.py moments --later`); first:
   each session's first pushback. The corpus's own rules apply to both (`find_moments`): a pushback label, three agent
   turns before it, a sandboxed language, a timestamp, a transcript, one copy of a moment, no session holding an
   abandoned branch, no shell command.
-- both: no moment any run has triaged; no session with a task built in any run; none of v1's 55 sessions
-  (`release.v1_names`); none named in --exclude-sessions, a JSON list or object of session ids, for the sessions
-  with a task built from the other corpus -- SWE-chat's sessions are Entire sessions, and one task per session holds
-  across both.
-- first: no session whose later moment a batch already holds (the later-pushback runs under runs/, named below).
+- both: no moment any run has triaged, nor a copy of one in another session (G-91); no session with a task built
+  in any run; none of v1's 55 sessions (`release.v1_names`); none named in --exclude-sessions, JSON lists of the
+  session ids with a task built from the other corpus -- SWE-chat's sessions are Entire sessions, and one task per
+  session holds across both. Refused where no run has triaged anything: that is not the checkout the runs are in.
+- first: no session whose later moment a batch already holds, and no copy of a moment the later list holds. A
+  batch is any run whose moments are later pushbacks (`"later": true`, as v1's later-sample and later-cap20 and
+  every Entire later run are), backups included, this draw's own later list not: v1 named its two batches, and a
+  name pattern missed v1's while it took a first list whose name held "later" (review, 10-03).
 - a session can be in both lists. If both moments become admitted tasks, the first pushback is kept (the tally),
   and the first list's locate finishes before the later list's, so a failed answer the two share is the first's.
 - --cap: the most moments from one repository in each list, 0 for none, counted after the rules above. Required:
@@ -44,12 +48,20 @@ from errata_bench.store import append, load  # noqa: E402
 RUNS = ROOT / "runs"
 
 
-def collect(later: bool) -> list[dict]:
-    """Every moment `find_moments` gives, uncapped, and what it said it left out."""
+def collect(later: bool, seen: list[Path]) -> list[dict]:
+    """Every moment `find_moments` gives, uncapped, and what it said it left out.
+
+    ``seen`` are files of moments already taken -- every run's triage, and for
+    the first list the later list -- handed to `find_moments` so that a copy
+    of one in another session (G-91) is left out with it. Filtered afterwards
+    instead, a moment one run triaged under one session came back under its
+    copy's, and a moment that is one session's first pushback and its copy's
+    later one was drawn into both lists (review, 10-03).
+    """
     out = Path(tempfile.mkdtemp()) / "moments.jsonl"
     said = io.StringIO()
     with contextlib.redirect_stdout(said):
-        run_mod.find_moments(10**6, out, later=later, max_per_repo=0)
+        run_mod.find_moments(10**6, out, skip_seen=seen, later=later, max_per_repo=0)
     for line in said.getvalue().splitlines():
         if line.strip():
             print(f"  {line.strip()}")
@@ -80,11 +92,14 @@ def capped(moments: list[dict], cap: int) -> list[dict]:
 
 
 def sessions_in(files: list[Path]) -> set[str]:
-    """The session ids in each file: a JSON list of ids, or an object keyed by them."""
+    """The session ids in each file, a JSON list of strings. Anything else is refused: an object's keys might be
+    anything, a tally's among them, and would be excluded without a word (review, 10-03)."""
     found: set[str] = set()
     for f in files:
         data = json.loads(f.read_text())
-        found |= set(data if isinstance(data, list) else data.keys())
+        if not isinstance(data, list) or not all(isinstance(x, str) and x for x in data):
+            raise SystemExit(f"refused: {f} is not a JSON list of session ids")
+        found |= set(data)
     return found
 
 
@@ -93,29 +108,58 @@ def main(argv: list[str]) -> int:
     ap.add_argument("name", help="the runs are runs/<name>-first and runs/<name>-later")
     ap.add_argument("--cap", type=int, required=True, help="most moments from one repository in each list; 0 for none")
     ap.add_argument("--limit", type=int, default=0, help="keep this many of each list, in order; 0 for all")
-    ap.add_argument("--exclude-sessions", type=Path, nargs="*", default=[],
-                    help="JSON files of session ids holding a task built from the other corpus")
+    ap.add_argument("--exclude-sessions", type=Path, nargs="+", required=True,
+                    help="JSON lists of the session ids holding a task built from the other corpus")
+    ap.add_argument("--runs", type=Path, nargs="+", default=[RUNS],
+                    help="the run folders whose triage, built tasks and later batches count; default this checkout's")
     ap.add_argument("--dry-run", action="store_true", help="count, write nothing")
     args = ap.parse_args(argv)
     if args.cap < 0 or args.limit < 0:
         ap.error("--cap and --limit are counts")
+    roots = [r.resolve() for r in args.runs]
+    missing = [str(r) for r in roots if not r.is_dir()]
+    if missing:
+        print(f"refused: no run folder at {missing}")
+        return 2
 
-    # As v1's draw read them: every folder under runs/, backups included.
+    # As v1's draw read them: every folder, backups included.
+    triaged_files = sorted(f for r in roots for f in r.glob("**/triaged.jsonl"))
+    if not triaged_files:
+        print(f"refused: no run under {[str(r) for r in roots]} has triaged anything; these are not the run folders")
+        return 2
     triaged = {(r.get("session_id"), r.get("turn_number"))
-               for f in RUNS.glob("**/triaged.jsonl") for r in load(f) if isinstance(r, dict)}
-    built = {r.get("session_id") for f in RUNS.glob("**/tasks.jsonl") for r in load(f) if isinstance(r, dict)}
+               for f in triaged_files for r in load(f) if isinstance(r, dict)}
+    built = {r.get("session_id") for root in roots for f in root.glob("**/tasks.jsonl")
+             for r in load(f) if isinstance(r, dict)}
     v1 = set(V1_NAMES.values())
     elsewhere = sessions_in(args.exclude_sessions)
-    later_runs = sorted(d for d in RUNS.glob("*later*") if (d / "moments.jsonl").exists() and ".pre-" not in d.name)
-    in_flight = {r["session_id"] for d in later_runs for r in load(d / "moments.jsonl") if isinstance(r, dict)}
-    print(f"read: {len(triaged)} triaged moments; {len(built)} sessions with a task built here; {len(v1)} of v1's; "
-          f"{len(elsewhere)} from {len(args.exclude_sessions)} exclusion file(s); later batches "
-          f"{[d.name for d in later_runs]} holding {len(in_flight)} sessions")
+    own = (RUNS / f"{args.name}-later").resolve()
+    batches: dict[Path, set[str]] = {}
+    for root in roots:
+        for f in sorted(root.glob("*/moments.jsonl")):
+            if f.parent.resolve() != own:
+                held = {r["session_id"] for r in load(f) if isinstance(r, dict) and r.get("later")}
+                if held:
+                    batches[f.parent] = held
+    in_flight = set().union(*batches.values())
+    print(f"read: {len(triaged)} triaged moments from {len(triaged_files)} runs; {len(built)} sessions with a task "
+          f"built; {len(v1)} of v1's; {len(elsewhere)} from {len(args.exclude_sessions)} exclusion file(s); later "
+          f"batches {sorted(d.name for d in batches)} holding {len(in_flight)} sessions")
 
     lists: dict[str, list[dict]] = {}
     for name, later in ((f"{args.name}-later", True), (f"{args.name}-first", False)):
         print(f"{name}:")
-        moments = collect(later)
+        seen = list(triaged_files)
+        if not later:
+            # The later list as drawn, so a first pushback that is a copy of one
+            # of its moments in another session is left out (G-91). The later
+            # copy is the one kept: a session whose first pushback is another's
+            # later one began after that one's first, and holds less of it.
+            drawn = Path(tempfile.mkdtemp()) / "later.jsonl"
+            for m in lists[f"{args.name}-later"]:
+                append(drawn, m)
+            seen.append(drawn)
+        moments = collect(later, seen)
         steps = [("not triaged by any run", lambda m: (m["session_id"], m["turn_number"]) not in triaged),
                  ("no task built from the session in any run", lambda m: m["session_id"] not in built),
                  ("not one of v1's sessions", lambda m: m["session_id"] not in v1),
@@ -147,6 +191,7 @@ def main(argv: list[str]) -> int:
     for name, moments in lists.items():
         target = RUNS / name / "moments.jsonl"
         target.parent.mkdir(parents=True, exist_ok=True)
+        target.touch()      # an empty list is written too, so the run and a later draw see it was drawn
         for m in moments:
             append(target, m)
         print(f"wrote {len(moments)} to {target}")

@@ -605,8 +605,13 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
     # than asked for is re-screened; one screened at more is left alone.
     # And a row screened before the gates read the candidate's view (G-81), which
     # carries no `text_recovered`, is screened again: the build refuses it.
+    # A row the free pre-check set aside (`scripts/prescreen_buildable.py`)
+    # asked no gate, and is done at any pass count: read as one pass, it was
+    # screened again at three, paying back what the pre-check saved (review,
+    # 10-03).
     done = {
-        key_of(r): r.get("screen_passes", 1) for r in completed(paths.screened) if "text_recovered" in r
+        key_of(r): (float("inf") if r.get("prescreened") else r.get("screen_passes", 1))
+        for r in completed(paths.screened) if "text_recovered" in r
     }
     due = [r for r in rows if done.get(key_of(r), 0) < passes]
     # Only when asked: each such row is read again whole, at the gates' price,

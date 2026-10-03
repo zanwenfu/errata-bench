@@ -409,12 +409,14 @@ d = run_dir()
 d.screened.write_text(json.dumps({"session_id": "s", "turn_number": 1}) + "\n")
 class _Built:
     tasks = [mktask()]
-    rejected = [type("R", (), {"repo_id": "r/r", "complaint_turn": 7, "reason": "no commit before the session"})()]
+    rejected = [Rejection("r/r", 7, "no commit before the session", "s-149")]
 B.build = lambda rows_: _Built()
 stage_build(d, 10**9)
 rej = load(d.rejections)
-check("B-149", "why each row was rejected is on disk, not only on screen",
-      rej == [{"repo_id": "r/r", "complaint": 7, "reason": "no commit before the session"}])
+# With its session (10-03): the stored row, not only the object, names the
+# session the rejected task would have been named by.
+check("B-149", "why each row was rejected is on disk, not only on screen, with its session",
+      rej == [{"repo_id": "r/r", "complaint": 7, "reason": "no commit before the session", "session_id": "s-149"}])
 
 # ======================================================================
 # Found by a second round of review, after the first twenty-eight were fixed.
@@ -515,10 +517,13 @@ from errata_bench.release.v1_names import V1_NAMES
 
 _mine = V1_NAMES["entireio-cli-24"]
 _twins = {task_name("r/r", "s1-aaaaaaaa", 7), task_name("r/r", "s2-bbbbbbbb", 7)}
+import hashlib
+
 check("B-153", "two sessions at one (repository, turn) get two names, and a v1 name listed with another session "
                "gets the session's",
       len(_twins) == 2 and task_name("entireio/cli", _mine, 24) == "entireio-cli-24"
-      and task_name("entireio/cli", "ffffffff-other", 24) == "entireio-cli-ffffffff-24")
+      and task_name("entireio/cli", "ffffffff-other", 24)
+      == f"entireio-cli-{hashlib.sha256(b'ffffffff-other').hexdigest()[:8]}-24")
 
 # ---- B-154: the stamp covers the conversation -------------------------
 import dataclasses

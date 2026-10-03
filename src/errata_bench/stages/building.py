@@ -208,7 +208,7 @@ def stage_build(paths: Paths, limit: int) -> Progress:
     # build.
     with held(paths.rejections):
         replace(paths.rejections, [
-            {"repo_id": r.repo_id, "complaint": r.complaint_turn, "reason": r.reason}
+            {"repo_id": r.repo_id, "complaint": r.complaint_turn, "reason": r.reason, "session_id": r.session_id}
             for r in result.rejected
         ])
     p.produced = len(result.tasks)

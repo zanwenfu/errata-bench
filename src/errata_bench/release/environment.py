@@ -135,12 +135,20 @@ def _no_packages(workspace: str) -> bool:
     taken for no packages, and its image got pnpm 10, which skips
     dependencies' install scripts by default.
     """
-    m = re.search(r"(?m)^packages\s*:(.*)$", workspace)
+    workspace = workspace.lstrip("\ufeff")
+    m = re.search(r"""(?m)^["']?packages["']?\s*:(.*)$""", workspace)
     if not m:
         return True
     rest = m.group(1).split("#")[0].strip()
+    if rest in ("~", "null"):
+        return True
+    if rest.startswith("["):
+        # A flow list, on one line or across several: empty if nothing but
+        # blanks and comments come before its closing bracket.
+        flow = (rest + workspace[m.end():]).split("]", 1)[0][1:]
+        return not "".join(line.split("#")[0] for line in flow.splitlines()).replace(",", "").strip()
     if rest:
-        return rest.replace(" ", "") == "[]"
+        return False
     for line in workspace[m.end():].splitlines():
         text = line.strip()
         if text and not text.startswith("#"):

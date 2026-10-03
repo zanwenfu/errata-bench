@@ -2,10 +2,18 @@
 """The Entire runs' admitted tasks, one per session, by v1's tally (`scripts/step2_tally.py`). No model calls.
 
     python scripts/tally_entire.py <out.json> <run>:<first|later>[:dev] ...
+    python scripts/tally_entire.py --short <run> <calibration|gate|controls>
 
 Admission is `score.rejudge.admitted` under gpt-6-astra, as v1's: the task held all seven of the gate's readings of
-its known pair (`run.py gate --passes 7`), and all three controls behaved at three readings each. A run the gate has
-never read is admitted on nothing, and said so: v1's admission is the gate's, not the single calibration reading.
+its known pair (`run.py gate --passes 7`), and all three controls behaved at three readings each
+(`--only control --passes 3`). Both counts are required here, since `admitted` calls a task read twice steady and a
+control read once complete. A run the gate has never read is admitted on nothing, and said so: v1's admission is
+the gate's, not the single calibration reading.
+
+- A run that is not `dev` and whose admission steps are part done is refused, naming what is short: a task with no
+  calibration reading by the judge, a built task read fewer than seven times by the gate, or a calibration-sound
+  task with a control read fewer than three times. A task short of its readings would otherwise go unadmitted
+  without a word. `--short` prints one step's shortfall and exits 1 if there is any (`scripts/run_entire.sh`).
 
 - A session with two admitted tasks keeps its first pushback (decided 09-24 for v1, and 10-03 for Entire, before
   any was read).
@@ -30,9 +38,41 @@ from errata_bench.spec import read  # noqa: E402
 from errata_bench.store import Paths, load  # noqa: E402
 
 JUDGE = "gpt-6-astra"
+GATE_READINGS, CONTROL_READINGS = 7, 3      # v1's: `run.py gate --passes 7`, `--only control --passes 3`
+
+
+def shortfall(run: Path) -> dict[str, list[str]]:
+    """What a run's admission steps have not yet read as often as v1 asked, by step; all empty when complete."""
+    from errata_bench.instrument.control import CONTROLS
+
+    p = Paths(run)
+    tasks = {t.task_id for t in read(p.tasks)} if p.tasks.exists() else set()
+    cal = [r for r in load(p.calibration) if not r.get("error") and r.get("judge_model") == JUDGE]
+    sound = {r["task_id"] for r in cal if can_be_scored(r)} & tasks
+    _, tally = stable(run, JUDGE, passing=PASSING)
+    readings = Counter((r.get("task_id"), r.get("control")) for r in load(p.controls)
+                       if not r.get("error") and r.get("judge_model") == JUDGE
+                       and not str(r.get("control", "")).startswith("probe:"))
+    return {
+        "calibration": sorted(tasks - {r["task_id"] for r in cal}),
+        "gate": sorted(t for t in tasks if tally.get(t, {}).get("asked", 0) < GATE_READINGS),
+        "controls": sorted(t for t in sound if any(readings[(t, c.name)] < CONTROL_READINGS for c in CONTROLS)),
+    }
 
 
 def main(argv: list[str]) -> int:
+    if argv[:1] == ["--short"]:
+        if len(argv) != 3 or argv[2] not in ("calibration", "gate", "controls"):
+            print("usage: tally_entire.py --short <run> <calibration|gate|controls>")
+            return 2
+        run = Path(argv[1])
+        if not (run / "moments.jsonl").exists():
+            print(f"refused: {run} holds no moments.jsonl; is the name right?")      # Paths() would create it
+            return 2
+        short = shortfall(run)[argv[2]]         # a run that built nothing is short of nothing
+        print(f"{run.name}: {len(short)} task(s) short of their {argv[2]} readings"
+              + (f": {', '.join(short[:6])}{' ...' if len(short) > 6 else ''}" if short else ""))
+        return 1 if short else 0
     if len(argv) < 2:
         print(__doc__)
         return 2
@@ -44,15 +84,25 @@ def main(argv: list[str]) -> int:
             print(f"refused: {spec!r} is not <run>:<first|later>[:dev]")
             return 2
         run, kind, dev = Path(parts[0]), parts[1], len(parts) == 3
+        if not (run / "moments.jsonl").exists():
+            print(f"refused: {run} holds no moments.jsonl; is the name right?")      # Paths() would create it
+            return 2
         p = Paths(run)
         tasks = {t.task_id: t for t in read(p.tasks)} if p.tasks.exists() else {}
         sound = {r["task_id"] for r in load(p.calibration) if not r.get("error") and can_be_scored(r)} & set(tasks)
         steady, tally = stable(run, JUDGE, passing=PASSING)
         # Seven readings, as v1's gate asked: `admitted` calls a task read
-        # twice steady, so the count is required here too.
-        gated = {t for t, x in tally.items() if x["asked"] >= 7} & set(tasks)
+        # twice steady, so the count is required here too; and three of each
+        # control, which `admitted` takes from what the rows say was asked.
+        gated = {t for t, x in tally.items() if x["asked"] >= GATE_READINGS} & set(tasks)
         held = {t for t in gated if tally[t]["held"] == tally[t]["asked"]}
-        adm = (admitted(run, p, JUDGE, PASSING) & held) if gated else set()
+        short = shortfall(run) if tasks else {"calibration": [], "gate": [], "controls": []}
+        if not dev and any(short.values()):
+            print(f"refused: {run.name} is part done: " + "; ".join(
+                f"{len(v)} short of their {k} readings ({', '.join(v[:3])}{' ...' if len(v) > 3 else ''})"
+                for k, v in short.items() if v) + ". Finish it first: scripts/run_entire.sh resumes")
+            return 1
+        adm = (admitted(run, p, JUDGE, PASSING) & held) - set(short["controls"]) if gated else set()
         n = lambda f: sum(1 for _ in open(run / f)) if (run / f).exists() else 0
         funnel.append({"run": run.name, "kind": kind, "dev": dev, "moments": n("moments.jsonl"),
                        "screened": n("screened.jsonl"), "built": len(tasks), "sound": len(sound),
@@ -82,10 +132,10 @@ def main(argv: list[str]) -> int:
           f"(dropped: {[d['task_id'] + ' in ' + d['run'] for d in dropped]})")
     print(f"kept: {len(kept)}; development tasks among them: {len(dev)}; without them: {len(kept) - len(dev)}")
     print(f"repositories: {len(repos)}; most tasks: {repos.most_common(6)}")
-    json.dump({"funnel": funnel, "kept": kept, "dropped": dropped}, open(out, "w"), indent=1)
     if twice:
-        print(f"refused: task names used twice: {twice}")
+        print(f"refused: task names used twice: {twice}; nothing was written")
         return 1
+    json.dump({"funnel": funnel, "kept": kept, "dropped": dropped}, open(out, "w"), indent=1)
     return 0
 
 

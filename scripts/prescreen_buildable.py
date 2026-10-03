@@ -19,8 +19,9 @@ screened. For each that fails it writes a screened row: unusable, with the
 build's own words for why. `stage_screen` then passes the moment by, and
 `stage_build` rejects it with that reason. No model is called. Run it after
 `--through signature` and before `--only screen`; it needs `ERRATA_CORPUS` set
-to the corpus the run was drawn from. Its rows count as screened once:
-`--passes 3` would screen them again, and the build would still refuse them.
+to the corpus the run was drawn from. Its rows are done at any pass count:
+`--passes 3` passes them by, as the build would refuse them whatever a
+screening said (`stage_screen`; until 10-03 it screened them again).
 """
 
 from __future__ import annotations

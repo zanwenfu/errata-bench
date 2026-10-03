@@ -346,7 +346,8 @@ class Rejection:
     complaint_turn: int
     reason: str
     # The session too, so the task it would have been can be named
-    # (`construct.build.task_name`); empty on rows written before 10-03.
+    # (`construct.build.task_name`), and stored with it in rejections.jsonl;
+    # absent from rows written before 10-03.
     session_id: str = ""
 
 
