@@ -14750,9 +14750,13 @@ async def _triage163(excerpt, **kw):
 
 
 async def _read163(ts, turn, **kw):
+    # A reading that validates, every check answered: one that raised would be
+    # stored as an error and asked again on the next run.
     _asked163.append(ts[0]["content"])
     return _Reading43(what_user_asked="a", what_agent_did="b", what_user_objected_to="c",
-                      objection_kind="real_error", benchmark_viable=True, context_sufficient=True)
+                      objection_kind="real_error", benchmark_viable=True, context_sufficient=True,
+                      pushback_is_the_developers=True, knowable_at_the_failing_turn=True,
+                      visible_from_the_repository=True, consistent_with_instructions=True)
 
 
 _keep163b = (turns_mod.load_session_turns, _tr163.triage, _rd163.read_pushback, _sessions_mod.CORPUS)
@@ -14814,7 +14818,8 @@ check(_capped163[0] == ["s-y", "s-z"] and len(_capped163[1]) == 1 and "said in s
       and _read_only163 == ["said in s-y"] and any("shell command" in n for n in _rpz163.notes)
       and _read_capped163 == ["said in s-y"],
       f"a shell command first in line under --max-rows 1 is written down without a model, and the moment behind "
-      f"it is triaged next; reading the moments themselves passes over one: {_capped163}, {_read_only163}")
+      f"it is triaged next; reading the moments themselves passes over one, under the cap too: {_capped163}, "
+      f"{_read_only163}, {_read_capped163}")
 # Nor located: a viable reading of a listed session, read before the list.
 _located163: list[str] = []
 
