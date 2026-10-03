@@ -5,8 +5,12 @@ AI reviewer have flagged the problem the developer then pushed back on? And what
 does each one catch that the other misses? This is the question Bhuwan suggested
 on 10-01: the developer's reply is a rough gold label that no benchmark has.
 
-Status, 10-03: built, checked and smoke-tested on 3 sessions. The 40-session
-pilot is ready to run and waits for the user's go.
+Status, 10-03:
+- built and checked, and smoke-tested on 3 sessions;
+- reviewed twice by an independent reader before any larger run (the first
+  review's findings are fixed; the second's are below once in);
+- the 40-session pilot runs next, on the budget the user set: up to $400 of
+  Azure credits over 12 hours.
 
 ## Design
 
@@ -16,27 +20,63 @@ Two lists, made independently, then merged (the user's design, 10-03):
   agent's work between two developer messages, a reviewer reads a **window**
   and lists what a careful developer would push back on. Each problem must
   quote the agent's work. The reviewer never sees the developer's reply.
-- **Thread B, the human** (`study/human.py`). Every reply the developer wrote
-  is classified: pushback or not, by SWE-chat's own codebook (correction,
-  rejection, failure report); and if pushback, what it objects to, in the
-  reader's categories (real error, unwanted but defensible, preference,
-  unclear). SWE-chat's label is kept beside each reading.
+- **Thread B, the human** (`study/human.py`). Everything the developer said
+  next is classified. Pushback or not follows SWE-chat's own codebook
+  (correction, rejection, failure report, takeover). If pushback, what it
+  objects to follows the reader's categories (real error, unwanted but
+  defensible, preference, unclear). SWE-chat's label is kept beside each
+  reading.
 - **The merge** (`study/merge.py`). Each pushback in reply k is compared with
   the reviewer's problems at reports k-2, k-1 and k: same, related or
-  different. A pushback with a 'same' problem was caught by both. A pushback
-  with none was the developer's alone. A problem no pushback matched is the
-  reviewer's alone: either a real problem the developer let pass, or a false
-  alarm.
+  different. Then:
+  - a pushback with a 'same' problem was caught by both;
+  - a pushback with none was the developer's alone;
+  - a problem no pushback matched is the reviewer's alone: either a real
+    problem the developer let pass, or a false alarm.
 - **The hand check.** The user labels about 150 merge decisions blind
   (`labels.csv`; the model's verdicts are in `key.csv`) and about 50 of the
   reviewer's unmatched problems (`alone.md`). The merge is trusted only if it
   agrees with the user at κ ≥ 0.7. This is where "Plans They Abandon, Reports
   They Author" (arXiv 2609.12205) failed: its claim judge agreed with its
   authors' hand checks at κ = 0.19.
+- **Two further arms**, the same pipeline:
+  - `review --framing self`: the same model told the work is its own, which is
+    Bhuwan's "self-reflect" example as far as this study can go without the
+    original agent, mostly Claude;
+  - `prepare --random N`: sessions drawn without regard to pushback, whose
+    rates hold for sessions in general.
 
-`scripts/study.py` runs it (`prepare`, `estimate`, `review`, `human`, `merge`,
-`tally`, `sheet`). `checks/study_holds.py` checks the rules with the model
-faked: 32 checks, plus 7 single-rule mutants, all caught (10-03).
+`scripts/study.py` runs it: `prepare`, `estimate`, `review`, `human`, `merge`,
+`tally` and `sheet`. `checks/study_holds.py` checks the rules with the model
+faked: 45 checks, plus 17 single-rule mutants, all caught (10-03).
+
+## Who spoke: the rule both threads depend on
+
+A report ends, and a reply begins, wherever the developer speaks. SWE-chat's
+table files a great deal under `user_prompt` that the developer never wrote.
+Both reviews found it, and it is the study's most important rule, because each
+error moves a report boundary and invents or loses a reply. Where the session's
+raw transcript exists (38 of the pilot's 40 sessions), the transcript's own
+marks decide (`sessions.row_kinds`).
+
+**The developer speaking:**
+- a prompt they typed, matched in order to the transcript's typed entries,
+  each entry used by one message;
+- a slash command, with its arguments;
+- a message typed while the agent was working (queued), counted where it was
+  typed, once;
+- a tool call they refused, with any words they gave.
+
+**Never the developer:**
+- compaction summaries, Claude Code's notices and command echoes;
+- a skill's or a command's expanded text;
+- a teammate agent's message, or a sub-agent's prompt;
+- tool output;
+- a copy of an earlier message that the table re-inserts later;
+- a /loop's timed prompt or re-run, and a background task's notice;
+- a row the transcript does not hold at all.
+
+In the pilot's sessions, 839 prompt rows count as typed by the developer.
 
 ## What the reviewer sees
 
@@ -49,110 +89,125 @@ sessions, a median of 187,000 tokens, and over 750,000 at the 90th percentile
 | the session's first developer message (the task) | 6,000 |
 | the agent's last message before the request | 4,000 |
 | the developer's request | 8,000 |
-| the agent's work since, ending with its report | 60,000 |
+| the agent's work since: its messages, calls and results | 60,000 |
 
 In the work, every message is whole. Each call's input and each result is cut
 to 4,000 characters, or less if the work would not fit otherwise (2,000, 800,
 300, then 100). Past that, the start of the stretch goes, and the window says
-how much. Every cut is marked.
+how much. Every cut is marked. When the stretch ends on a call or a result, for
+example a call the developer refused, the window says the agent had not
+written a report.
 
-Measured on the pilot's 381 windows: median 10,900 characters (about 3,100
-tokens), 90th percentile 41,600, longest 66,800. 97% kept the 4,000-character
-cap, and no window lost the start of its stretch.
+Measured on the pilot's 398 windows:
+- median 10,400 characters (about 3,000 tokens), 90th percentile 41,500,
+  longest 66,600;
+- 377 kept the 4,000-character cap, and none lost the start of its stretch;
+- 350 end with the agent's report.
 
 ## Assumptions, each with its trade-off
 
 1. **Sessions.** The pilot's 40 sessions are drawn, with a fixed seed, from
    sessions that have at least one developer pushback a model has already read
-   as a real agent error, at most 2 per repository (40 sessions, 37
-   repositories). That guarantees each session has a human pushback to compare
-   against. *Trade-off:* sessions chosen for having an error are not a random
-   sample, so a rate such as "how often a reviewer raises a false alarm" holds
-   for these sessions, not for all sessions. A random-session arm is a later
-   decision.
-2. **Who wrote a message.** SWE-chat's table files a skill's text, a command's
-   expansion, a hook, a sub-agent's prompt and tool output as developer
-   messages too. In the pilot's sessions that was 156 of 1,070 rows. The raw
-   transcript's own marks decide (`recover._prompt`: not meta, not a result,
-   not a notice); it exists for 38 of the 40 sessions. Rows the table splits
-   out of one long typed message count as one message. *Trade-off:* for the 2
-   sessions without a transcript, and for 15 rows found nowhere in theirs, the
-   table's word stands.
-3. **Messages in a row.** Two developer messages with no agent work between
-   them (a split, or a message typed while the agent was working) are one
-   message.
-4. **The window** (above). *Trade-off:* the reviewer can miss something said
-   many turns earlier, which the developer remembers. The window keeps the
-   task and the agent's previous message to soften this.
-5. **What is left out.** The agent's thinking (the developer did not see it;
-   `recover.with_text`, as for v1.1's candidates); notices, command output,
-   compaction summaries and a skill's text. Images the developer attached
-   cannot be shown; the window says "[Image: ...]".
-6. **Long sessions.** Each session gives at most its first 40 reports, which
-   trims 3 sessions (110, 141 and 426 reports). Without the cap, one session
+   as a real agent error. At most 2 come from one repository (40 sessions, 37
+   repositories). *Trade-off:* sessions chosen for having an error are not a
+   random sample. The random arm measures sessions in general. One session,
+   fc7511ca, qualified only through a reading of a re-inserted copy: it stays,
+   with whatever real pushback it holds.
+2. **Who spoke** (above). *Trade-offs:*
+   - for the 2 sessions without a transcript, the table's rows decide, with
+     notices, summaries and teammates left out;
+   - a developer who types the same queued text twice is counted once;
+   - a queued message the developer deleted before it was sent still counts.
+3. **The window** (above). *Trade-off:* the reviewer can miss something said
+   many turns earlier, which the developer remembers. The window keeps the task
+   and the agent's previous message to soften this.
+4. **What is left out of the window:**
+   - the agent's thinking: the developer did not see it, as with v1.1's
+     candidates (`recover.with_text`);
+   - notices, command output and compaction summaries;
+   - a refusal's text, which is the developer's reply.
+
+   Images the developer attached cannot be shown; the window says
+   "[Image: ...]".
+5. **Long sessions.** Each session gives at most its first 40 reports, which
+   trims 3 sessions (94, 129 and 507 reports). Without the cap, one session
    would be half the pilot.
-7. **One reviewer.** An outside reviewer, gpt-6-astra. True self-review needs
-   the original agent, mostly Claude Opus 4.5 and 4.6, and there is no Claude
-   budget. A "this is your own work" framing of the same model is a possible
-   second arm, not built.
-8. **The reviewer judges only the work after the request.** A problem counts
+6. **The reviewer judges only the work after the request.** A problem counts
    only if its quote is in that work (`quote_in_work`). One quoting only the
    agent's previous message would be the previous report's problem counted
    twice.
-9. **Pushback is SWE-chat's codebook.** A failure report counts even when the
+7. **Pushback is SWE-chat's codebook.** A failure report counts even when the
    failing code is earlier work the window does not show (the agent may have
    built it before). Its objection kind is then often 'unclear'. *Trade-off:*
    the main measure, real errors caught, counts only pushbacks read as real
    errors; the others are reported apart.
-10. **The merge looks back two reports.** A developer often objects a turn or
-    two after the work, once they have tried it. *Trade-off:* a pushback about
-    work from further back is the developer's alone, and the merge cannot know
-    the reviewer caught it earlier.
-11. **"Caught" means 'same'.** 'Related' (the same work, but a cause, symptom
-    or neighbour of the fault) is reported apart, never counted as caught.
-12. **Quotes are checked** with the judge's own `quote_appears`. A reviewer
-    problem whose quote is not in the window is kept on its row but left out
-    of the merge and the counts.
+8. **An approved plan is never pushback.** It gets no call.
+9. **The merge looks back two reports.** A developer often objects a turn or
+   two after the work, once they have tried it. *Trade-off:* a pushback about
+   work from further back is the developer's alone.
+10. **"Caught" means a valid 'same'.** The verdict must be known, and the
+    overlap must be quoted on both sides and found there. 'Related' is
+    reported apart, never counted as caught. A pushback whose merge has not run
+    is left out of the share, not counted as missed.
+11. **Quotes are checked** with the judge's own `quote_appears`. A reviewer
+    problem whose quote is not in the window is kept on its row but left out of
+    the merge and the counts.
+12. **Shares come with 95% intervals** that resample whole sessions
+    (`study/stats.py`): moments of one session are not independent.
 13. **One model throughout:** gpt-6-astra, on the Azure credits. Claude is
     refused by the client.
-14. **Spend is priced as the spend guard prices it** (`harbor_spend.priced`):
-    uncached input at the cache-write rate, an upper bound. The smoke runs
-    cost $0.03 to $0.05 a call, about half the estimate.
+14. **The self framing** is the same model told "this is your own work". After
+    its first sentence it still describes the work in the third person: a
+    design note, not a defect.
+15. **Spend is priced as the spend guard prices it** (`harbor_spend.priced`):
+    uncached input at the cache-write rate, an upper bound. The line covers the
+    whole run directory, every stage and framing, and is re-read before every
+    call. Each stage holds a lock, so a second copy is refused.
 
-## The smoke runs (10-03)
+## The smoke runs and the first review (10-03)
 
-Three sessions, 12 handbacks, about $3 of Azure credits in all
-(`runs/study-smoke*`). They found two defects, both fixed before the pilot:
+**The smoke runs.** Three sessions and 12 handbacks, about $3 of Azure credits
+in all (`runs/study-smoke*`). They found:
+- rows the developer did not write ending reports;
+- a reply classifier that read "onboarding a new repo gives an error with the
+  db push" as no pushback. It now uses SWE-chat's codebook.
 
-- Rows SWE-chat files as the developer's that the developer did not write
-  ended reports and became replies (assumption 2).
-- The reply classifier read "onboarding a new repo gives an error with the db
-  push" as no pushback, because a first wording of our own took a bug report
-  for a new request. It now uses SWE-chat's codebook (assumption 9). On the
-  smoke replies it agrees with SWE-chat's label on pushback or not 10 times
-  in 12.
+**The first independent review** found, before any larger run:
+- **Rows the developer did not write still became messages:** teammates,
+  re-inserted copies (49 rows; only 11 were real splits), summaries that quote
+  a meta entry, agent text found nowhere, /loop re-runs.
+- **The developer speaking inside a stretch was lost or shown to the
+  reviewer:**
+  - refused calls, 13 windows, some with the developer's words;
+  - queued messages, about 15 reports;
+  - slash commands.
+- **The spend line was read once per stage.**
+- **The tally miscounted:** unmerged pushbacks counted as missed, and a 'same'
+  without its words trusted.
+- **The random arm left out every session with a real error.**
 
-What a run looks like (smoke 3, too small to mean anything):
-- 6 of 12 replies were pushback, and 4 of those were real errors;
-- the reviewer caught 2 of the 4 as 'same';
-- the reviewer listed 19 problems, of which 17 matched no pushback.
+Each was fixed, given a check, and the check broken once to see it fail.
 
 ## The pilot
 
-    .venv/bin/python scripts/study.py prepare --out runs/study-pilot        # free
-    .venv/bin/python scripts/study.py estimate --run runs/study-pilot       # free
-    # paid, gpt-6-astra on the Azure credits; source the .env first, ERRATA_PROVIDER=azure
-    .venv/bin/python scripts/study.py review --run runs/study-pilot --max-usd 120 --concurrency 8
-    .venv/bin/python scripts/study.py human  --run runs/study-pilot --max-usd 120 --concurrency 8
-    .venv/bin/python scripts/study.py merge  --run runs/study-pilot --max-usd 120 --concurrency 8
+    .venv/bin/python scripts/study.py prepare  --out runs/study-pilot         # free
+    .venv/bin/python scripts/study.py estimate --run runs/study-pilot --self-framing
+    # paid, gpt-6-astra on the Azure credits: source the .env first, ERRATA_PROVIDER=azure
+    .venv/bin/python scripts/study.py review --run runs/study-pilot --max-usd 150 --concurrency 8
+    .venv/bin/python scripts/study.py human  --run runs/study-pilot --max-usd 150 --concurrency 8
+    .venv/bin/python scripts/study.py merge  --run runs/study-pilot --max-usd 150 --concurrency 8
     .venv/bin/python scripts/study.py tally  --run runs/study-pilot
     .venv/bin/python scripts/study.py sheet  --run runs/study-pilot
 
-Size and cost: 40 sessions, 381 reports, about 220 pushbacks to merge. The
-estimate is $80 as an upper bound, with real spend likely nearer $40. --max-usd
-is the whole run's line, across all three stages. Review and human are
-independent and can run side by side. Each stage resumes after an interruption
-and asks errored rows again.
+Size and cost:
+- 40 sessions and 398 reports, with about 204 pushbacks to merge.
+- Estimated upper bounds: $84 for the outside reviewer, the replies and the
+  merge, and $131 with the self framing. The smoke runs cost about half their
+  estimates.
+- Review and human are independent and can run side by side.
 
-Then the hand check, then the full run (all 520 sessions with a real-error
-pushback, or SWE-chat v2's), decided after the pilot.
+Then:
+1. the hand check;
+2. more sessions within the budget (`prepare --batch N`; 160 sessions at 2 a
+   repository, 521 in all);
+3. the random arm (`prepare --random 40`).
