@@ -1,6 +1,6 @@
 # Checks
 
-Twelve scripts, no network and no model calls; `verifier_in_container.py` needs Docker and `harbor_agents.py` Harbor's environment. Run them from the
+Thirteen scripts, no network and no model calls; `verifier_in_container.py` needs Docker and `harbor_agents.py` Harbor's environment. Run them from the
 repository root with the project's own interpreter:
 
     .venv/bin/python checks/imports_resolve.py
@@ -9,6 +9,7 @@ repository root with the project's own interpreter:
     .venv/bin/python checks/guards_hold.py
     .venv/bin/python checks/split_changes_nothing.py
     .venv/bin/python checks/crawl_holds.py
+    .venv/bin/python checks/study_holds.py
     .venv/bin/python checks/oracle_over_real_runs.py     # needs runs/
     .venv/bin/python checks/renderer_effect.py           # needs runs/, a one-off measurement
     .venv/bin/python checks/checkout_election_over_corpus.py   # needs data/, ~6 min, a measurement
@@ -33,6 +34,8 @@ reverts against the sections written that day; 4 left the suite fully green.
 Each exits non-zero on failure and prints one line per assertion.
 
 **`crawl_holds.py`** holds the collector of Entire sessions (#16) to its rules on fixture repositories served over file://, laid out as Entire lays out a real one: the v1 branch, per-checkpoint refs, a reverted v2 ref, a separate checkpoint repository named in settings. Each session is taken whole from its latest checkpoint. Imported history and ids unsafe as file names are left out and counted. No git data is left behind. Commit search is a fake holding more results than one query may return: every trailer commit is read once, and a resumed run asks nothing it already knows. It goes on to link code commits across branches, assemble SWE-chat's six tables, and read them back through the pipeline's own readers with `ERRATA_CORPUS`, including a Claude Code 2.1 transcript and a sub-agent's edits read from its own transcript. Each of its 39 rules was broken one at a time on 09-30, and each time a check failed.
+
+**`study_holds.py`** holds the study (docs/study.md) to its rules, on a session built for the purpose, with the three readings faked and the model client raising if reached. The reviewer's window never holds the developer's reply or anything after it. A notice, a compaction summary or a skill's text is never the developer's and ends no report; the raw transcript decides who wrote a row, and parts of one typed message are one message. Every quote is checked where it claims to come from, and a reviewer's problem counts only if its quote is in the work it judged. The merge looks back two reports. The runner writes an errored call as an errored row and asks it again, asks nothing finished again, and stops starting calls at its spend line. Seven of its rules were broken one at a time on 10-03, and each time a check failed.
 
 **`recover_over_corpus.py`** holds the recovery readers changed for newer Claude Code (#16) to SWE-chat, on every one of its 5,850 transcripts: `has_transcript` answers as it did at 8a7817dc1 on all of them, `subagent_edits` returns the same edits on all of them (400 sessions have some), and the new sub-agent gate never fires.
 
