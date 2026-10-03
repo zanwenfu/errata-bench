@@ -188,6 +188,51 @@ in all (`runs/study-smoke*`). They found:
 
 Each was fixed, given a check, and the check broken once to see it fail.
 
+## The hand check: how to label
+
+Three files, written by `scripts/study.py sheet` into the run's folder. Label them without looking at `key.csv`.
+
+### labels.csv: did the reviewer find the developer's problem?
+
+Each row pairs one developer pushback (the reply) with one problem the reviewer
+listed before it. Write one word in `your_label`:
+
+- **same:** the reviewer names the fault the developer raised, in the same
+  piece of work, even if it is worded differently or less specifically.
+  Developer: "the tests still fail". Reviewer: "claims the tests pass but never
+  ran them". Same.
+- **related:** the reviewer points at the same piece of work, or a cause or
+  symptom of the fault, but not the fault itself. Developer: "the button does
+  nothing on mobile". Reviewer: "the click handler was not tested on touch
+  devices". Related.
+- **different:** another problem.
+
+A catch-all such as "there may be bugs" or "it should test more" is **different**,
+unless it names the fault. Use `note` for anything odd, e.g. "the reply is not
+really pushback".
+
+### alone.md: the reviewer's problems that no pushback matched
+
+For each, read the problem, its quote, and if needed the work it read (folded).
+Decide from the work; what the developer said next is folded below it, to open only after. After **Your call:** write one of:
+
+- **real:** the problem is there in the work. The developer let it pass, or
+  had not noticed yet.
+- **false alarm:** the work does not have this problem, or it is too minor for
+  a careful developer to push back on.
+- **can't tell:** the material does not show enough to decide.
+
+### What it is for
+
+- The merge's verdicts are trusted only if they agree with yours at κ ≥ 0.7 on
+  labels.csv. Below that, the matching rules are fixed and run again before the
+  full run.
+- alone.md says how often the reviewer finds real problems the developer let
+  pass, and how often it raises false alarms. That is the "machines catch what
+  humans miss" side of the result.
+
+It takes about 2 to 3 hours for 150 rows and 50 problems.
+
 ## The pilot
 
     .venv/bin/python scripts/study.py prepare  --out runs/study-pilot         # free
