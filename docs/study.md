@@ -9,9 +9,10 @@ Status, 10-03:
 - built and checked, and smoke-tested on 3 sessions;
 - reviewed twice by an independent reader before any larger run (the first
   review's findings are fixed; the second's are below once in);
-- the 40-session pilot and the 40-session random arm have run (first results
-  below), and an 80-session second batch is running, on the budget the user
-  set: up to $400 of Azure credits over 12 hours.
+- the pilot (40 sessions, with a self-review framing), the random arm (40
+  sessions) and a second batch (80 sessions) have run, for about $347 of the $400
+  of Azure credits the user set for 12 hours. Results below; about $50 is kept
+  for re-running the merges after the hand check.
 
 ## Design
 
@@ -193,6 +194,29 @@ in all (`runs/study-smoke*`). They found:
 - **The random arm left out every session with a real error.**
 
 Each was fixed, given a check, and the check broken once to see it fail.
+
+## Pooled results: 120 sessions with a real-error pushback (10-03; provisional)
+
+The pilot and an 80-session second batch drawn the same way
+(`runs/study-pushback-120`, from `scripts/study.py combine`). Outside reviewer,
+gpt-6-astra. Provisional until the hand check.
+
+| | Pooled, 120 sessions |
+|---|---|
+| Handbacks | 1,246 |
+| Pushbacks (our reading; SWE-chat's label) | 530; 669 |
+| Caught, any pushback | 28% [24–33] |
+| **Caught, real errors** | **50% [43–57]**, n=195 |
+| Caught, pushback that is no error (intent, preference, unclear) | 12–22% |
+| Caught, by kind: correction / failure report / rejection | 35% / 24% / 7% |
+| Caught, by the developer's failure mode: false claim / ignored instruction / shallow investigation / unverified assumption | 61% / 74% / 57% / 54% |
+| Reviewer's problems per handback; handbacks flagged | 1.79; 78% |
+| Reviewer's problems no pushback matched | 92% |
+| SWE-chat's label against ours (pushback or not) | κ = 0.52 |
+
+The pilot alone caught 37% [27–48] of its 65 real errors, and the second
+batch 56% [48–65] of its 130. The two intervals barely overlap. Sessions differ
+a great deal, which is why the intervals resample whole sessions.
 
 ## First results (pilot and random arm, 10-03; provisional)
 
