@@ -28,7 +28,9 @@ import argparse
 import asyncio
 import csv
 import importlib.util
+import io
 import json
+import math
 import random
 import re
 import sys
@@ -532,6 +534,12 @@ def caught_sheet(args) -> int:
         print(f"refused: {len(strata['not merged alike under both'])} real-error pushbacks are not merged under both "
               f"versions over the same problems", file=sys.stderr)
         return 2
+    widest = max((len(m1[k]["verdicts"]) for name in ("disputed", "caught by both", "caught by neither")
+                  for k in strata.get(name, [])), default=0)
+    if widest > len(LETTERS):
+        print(f"refused: a pushback has {widest} problems to call, more than the {len(LETTERS)} letters",
+              file=sys.stderr)
+        return 2
     rng = random.Random(20261006)
     take = []
     for name in ("disputed", "caught by both", "caught by neither"):
@@ -549,8 +557,11 @@ def caught_sheet(args) -> int:
             p = reviews[(k[0], j)]["problems"][i]
             lines.append(f"**{letter}** (handback {j}): {p['what_is_wrong']}\n\n{_fenced(p['quote'])}")
         rep = reports[k]
+        reply = rep["reply"] if len(rep["reply"]) <= 4000 else (
+            rep["reply"][:4000] + f"\n[... {len(rep['reply']) - 4000:,} more characters, not shown; the merge read "
+                                  f"them]")
         parts.append(f"\n---\n\n## {n}. session {k[0][:8]}, reply {k[1]}\n\n**The developer replied:**\n\n"
-                     f"{_fenced(rep['reply'][:4000])}\n\n**The reviewer's problems before this reply:**\n\n"
+                     f"{_fenced(reply)}\n\n**The reviewer's problems before this reply:**\n\n"
                      + "\n\n".join(lines) + "\n\n**Your call:** \n\n<details><summary>The end of the agent's "
                      f"work before the reply</summary>\n\n{_fenced(rep['window'][-3000:])}\n\n</details>\n")
         items.append({"item": n, "session": k[0], "reply": k[1], "stratum": name, "letters": letters,
@@ -647,8 +658,10 @@ def combine(args) -> int:
 # --------------------------------------------------------------------------- the hand check's numbers (free)
 
 CALLS = {"real": "real", "false alarm": "false alarm", "can't tell": "can't tell", "cant tell": "can't tell"}
-ALONE_HEAD = re.compile(r"^## (\d+)\. session (\w+), handback (\d+) \((r\d+p\d+)\)$", re.M)
-CAUGHT_HEAD = re.compile(r"^## (\d+)\. session (\w+), reply (\d+)$", re.M)
+ALONE_HEAD = re.compile(r"^## (\d+)\. session (\w+), handback (\d+) \((r\d+p\d+)\).*$", re.M)
+CAUGHT_HEAD = re.compile(r"^## (\d+)\. session (\w+), reply (\d+)\b.*$", re.M)
+MIN_CALLS = 10   # calls a sampled stratum needs before a figure weighed back to all the pushbacks is given
+SAMPLED = ("disputed", "caught by both", "caught by neither")
 
 
 def _call(body: str) -> str | None:
@@ -657,7 +670,7 @@ def _call(body: str) -> str | None:
         return None
     for line in body.split("**Your call:**", 1)[1].splitlines():
         line = line.strip()
-        if line.startswith("<details>"):
+        if line.startswith(("<details>", "## ")) or line == "---":   # the fold, or the next item: no call
             return ""
         if line:
             return line.strip(".").lower().replace("’", "'")
@@ -665,7 +678,9 @@ def _call(body: str) -> str | None:
 
 
 def _letters(text: str, allowed) -> set | None:
-    """The letters in a call such as 'A, C' or 'a and c'; None unless every part is one of `allowed`."""
+    """The letters in a call such as 'A, C', '`a` and `c`' or 'A (the build)'; None unless every part is one of
+    `allowed`. Backticks are dropped, and anything after a bracket, a spaced dash, a colon or # is a comment."""
+    text = re.split(r"[(#:]| [-–—] ", text.replace("`", ""), maxsplit=1)[0]
     parts = [x for x in re.split(r"[\s,;/&+]+|\band\b", text) if x]
     if parts and all(len(x) == 1 and x.upper() in allowed for x in parts):
         return {x.upper() for x in parts}
@@ -673,17 +688,17 @@ def _letters(text: str, allowed) -> set | None:
 
 
 def _rows(path_: Path) -> list[dict]:
-    """A CSV the person may have saved from a spreadsheet: with or without a byte-order mark, comma or semicolon."""
+    """A CSV the person may have saved from a spreadsheet: with or without a byte-order mark, comma, semicolon or
+    tab. Only the separator is guessed, from the header line, and quotes are read the standard way: csv.Sniffer
+    guessed doublequote=False on the replies sheet and split its 40 rows into 1,169 (10-03 review)."""
     text = path_.read_text(encoding="utf-8-sig")
-    try:
-        dialect = csv.Sniffer().sniff(text[:4096], delimiters=",;\t")
-    except csv.Error:
-        dialect = csv.excel
-    return list(csv.DictReader(text.splitlines(keepends=True), dialect=dialect))
+    header = text.split("\n", 1)[0]
+    delimiter = max((",", ";", "\t"), key=header.count)
+    return list(csv.DictReader(io.StringIO(text, newline=""), delimiter=delimiter))
 
 
 def _kappa2(cells: dict) -> float | None:
-    """Cohen's kappa from a weighted 2x2 table {(person, model): weight}."""
+    """Cohen's kappa from a 2x2 table {(person, model): weight}, here weighed by stratum."""
     total = sum(cells.values())
     if not total:
         return None
@@ -694,8 +709,21 @@ def _kappa2(cells: dict) -> float | None:
     return 1.0 if pe == 1 else round((po - pe) / (1 - pe), 3)
 
 
+def _interval(draws: list[float]) -> dict:
+    draws = sorted(draws)
+    return {"low": round(draws[int(0.025 * len(draws))], 4), "high": round(draws[int(0.975 * len(draws)) - 1], 4)}
+
+
 def _caught(run: Path) -> dict | None:
-    """caught.md against the merge under both versions of the rules, each stratum weighed back to its size."""
+    """caught.md against the merge under both versions of the rules (docs/study.md, the hand check).
+
+    The person's calls give the share of real errors caught as a person judges it, over all the run's real-error
+    pushbacks: each sampled stratum is weighed back to its size, and its uncalled pushbacks are drawn from the
+    calls (a Jeffreys Beta for the stratum's share, then a binomial for the uncalled), so a stratum called in full
+    counts exactly. A version of the merge is consistent with the person when the 95% interval of its share minus
+    the person's holds 0, with every item called. Kappa, weighed by stratum, is reported beside it with an interval
+    from resampling the calls within each stratum.
+    """
     md_path, key_path = run / "caught.md", run / "caught-key.json"
     if not md_path.exists():
         return None
@@ -703,8 +731,12 @@ def _caught(run: Path) -> dict | None:
     items = {str(i["item"]): i for i in key_["items"]}
     md = md_path.read_text(encoding="utf-8")
     heads = list(CAUGHT_HEAD.finditer(md))
-    person, unread = {}, []
+    found = {h.group(1) for h in heads}
+    person, unread, not_called = {}, [], []
     for j, h in enumerate(heads):
+        if h.group(1) not in items:
+            unread.append(h.group(1))
+            continue
         item = items[h.group(1)]
         v = _call(md[h.end(): heads[j + 1].start() if j + 1 < len(heads) else len(md)])
         if v in ("none", "no", "none of them"):
@@ -717,50 +749,94 @@ def _caught(run: Path) -> dict | None:
                 person[h.group(1)] = letters
         elif v is None:
             unread.append(h.group(1))   # the mark itself was edited away
+        else:
+            not_called.append(h.group(1))
     pop = key_["population"]
-    labelled = Counter(items[i]["stratum"] for i in person)
-    weight = {s: pop[s] / labelled[s] for s in labelled}
-    out = {"called": len(person), "of": len(heads), "unreadable": unread, "population": pop,
-           "called_by_stratum": dict(labelled), "versions": {}}
-    sampled = ("disputed", "caught by both", "caught by neither")
-    complete = all(labelled.get(s) for s in sampled if pop.get(s))
+    called = Counter(items[i]["stratum"] for i in person)
+    sampled = [s for s in SAMPLED if pop.get(s)]
+    size = Counter(i["stratum"] for i in items.values())   # items on the sheet, by stratum
+    enough = all(called.get(s, 0) >= min(MIN_CALLS, size[s]) for s in sampled)
+    every = enough and len(person) == len(items)
+    weight = {s: pop[s] / called[s] for s in called}
+    n_all = sum(pop.values())
+    out = {"called": len(person), "of": len(items), "unreadable": sorted(unread, key=int),
+           "not_called": sorted(not_called, key=int),
+           "missing_from_the_sheet": sorted(set(items) - found, key=int),
+           "called_by_stratum": dict(called), "population": pop, "enough_calls": enough, "every_item_called": every,
+           "versions": {}}
+    # The merge's own share over all the real-error pushbacks, exact: its strata are its own verdicts.
+    merge_share = {}
+    for version, field in (("rules_1", "rules_1_same"), ("rules_2", "rules_2_same")):
+        caught_n = 0.0
+        for s in sampled:
+            members = [i for i in items.values() if i["stratum"] == s]
+            caught_n += pop[s] * sum(bool(i[field]) for i in members) / len(members)
+        merge_share[version] = caught_n / n_all
+    rng = random.Random(20261003)
+    person_draws = []
+    if enough:
+        k = {s: sum(bool(person[i]) for i in person if items[i]["stratum"] == s) for s in sampled}
+        for _ in range(4000):
+            total = 0
+            for s in sampled:
+                rest = pop[s] - called[s]
+                p = rng.betavariate(k[s] + 0.5, called[s] - k[s] + 0.5)
+                total += k[s] + (rng.binomialvariate(rest, p) if rest else 0)
+            person_draws.append(total / n_all)
+        point = sum(pop[s] * k[s] / called[s] for s in sampled) / n_all
+        out["real_errors_caught_by_the_persons_calls"] = {
+            "share": round(point, 4), **_interval(person_draws), "n": n_all,
+            "interval": "these pushbacks only: the calls' uncertainty, not the sessions' (see the tally for that)"}
+    by_stratum_items = {s: [i for i in person if items[i]["stratum"] == s] for s in sampled}
     for version in ("rules_1", "rules_2"):
         name = f"rules {key_['rules']['run' if version == 'rules_1' else 'also']}"
-        cells, strata, which = Counter(), {}, []
-        for i, letters in person.items():
-            item = items[i]
-            pc, model = bool(letters), set(item[f"{version}_same"])
-            cells[(pc, bool(model))] += weight[item["stratum"]]
-            s = strata.setdefault(item["stratum"], {"called": 0, "person_caught": 0, "model_caught": 0, "agree": 0})
-            s["called"] += 1
-            s["person_caught"] += pc
-            s["model_caught"] += bool(model)
-            s["agree"] += pc == bool(model)
-            if pc and model:
-                which.append(bool(letters & model))
-        cells[(False, False)] += pop.get("no problems", 0)   # nothing to call: neither caught
-        total = sum(cells.values())
-        out["versions"][name] = {
-            "by_stratum": strata,
-            "agreement_weighted": round((cells[(True, True)] + cells[(False, False)]) / total, 4) if total else None,
-            "kappa_weighted": _kappa2(cells) if complete else None,
-            "trusted (weighted kappa at least 0.7)": complete and (_kappa2(cells) or 0) >= 0.7,
-            "same_problem_when_both_caught": T.share(sum(which), len(which)),
-        }
-    if complete:
-        n_all = sum(pop.values())
-        by = {s: [bool(person[i]) for i in person if items[i]["stratum"] == s] for s in sampled if labelled.get(s)}
-        rate = lambda b: sum(pop[s] * sum(v) / len(v) for s, v in b.items()) / n_all  # noqa: E731
-        rng = random.Random(20261003)
-        draws = sorted(rate({s: [rng.choice(v) for _ in v] for s, v in by.items()}) for _ in range(2000))
-        out["caught_by_the_persons_calls"] = {"share": round(rate(by), 4), "low": round(draws[50], 4),
-                                              "high": round(draws[1949], 4), "n": n_all,
-                                              "interval": "resampling the called items within each stratum"}
-        for version, field in (("rules_1", "rules_1_same"), ("rules_2", "rules_2_same")):
-            caught_pop = sum(pop[s] * sum(bool(items[i][field]) for i in items if items[i]["stratum"] == s)
-                             / max(1, sum(1 for i in items if items[i]["stratum"] == s)) for s in sampled if pop.get(s))
-            out["versions"][f"rules {key_['rules']['run' if version == 'rules_1' else 'also']}"][
-                "caught_by_the_merge"] = round(caught_pop / n_all, 4)
+        field = f"{version}_same"
+
+        def table(chosen):
+            count = Counter(items[i]["stratum"] for i in chosen)
+            cells = Counter()
+            for i in chosen:
+                s = items[i]["stratum"]
+                cells[(bool(person[i]), bool(items[i][field]))] += pop[s] / count[s]
+            cells[(False, False)] += pop.get("no problems", 0)   # nothing to call: neither caught
+            return cells
+        strata = {}
+        for s in sampled:
+            members = by_stratum_items[s]
+            strata[s] = {"called": len(members), "person_caught": sum(bool(person[i]) for i in members),
+                         "model_caught": sum(bool(items[i][field]) for i in members),
+                         "agree": sum(bool(person[i]) == bool(items[i][field]) for i in members)}
+        result = {"by_stratum": strata, "merge_share": round(merge_share[version], 4)}
+        if enough:
+            chosen = list(person)
+            cells = table(chosen)
+            total = sum(cells.values())
+            kappas = []
+            for _ in range(2000):
+                draw = [i for s in sampled for i in ([rng.choice(by_stratum_items[s]) for _ in by_stratum_items[s]]
+                                                       if called[s] < pop[s] else by_stratum_items[s])]
+                kappas.append(_kappa2(table(draw)) or 0.0)
+            bias = [merge_share[version] - d for d in person_draws]
+            both = [i for i in person if person[i] and items[i][field]]
+            w_both = sum(weight[items[i]["stratum"]] for i in both)
+            result.update({
+                "merge_minus_person": {"share": round(merge_share[version] - point, 4), **_interval(bias)},
+                "consistent_with_the_person": every and _interval(bias)["low"] <= 0 <= _interval(bias)["high"],
+                "agreement_by_stratum_weight": round((cells[(True, True)] + cells[(False, False)]) / total, 4),
+                "kappa_by_stratum_weight": {"kappa": _kappa2(cells), **_interval(kappas)},
+                "same_problem_when_both_caught": round(sum(weight[items[i]["stratum"]] for i in both
+                                                           if person[i] & set(items[i][field])) / w_both, 4)
+                if w_both else None,
+            })
+        out["versions"][name] = result
+    disputed = by_stratum_items.get("disputed", [])
+    if disputed:
+        agree = {v: sum(bool(person[i]) == bool(items[i][f"{v}_same"]) for i in disputed)
+                 for v in ("rules_1", "rules_2")}
+        n, top = len(disputed), max(agree.values())
+        p = min(1.0, 2 * sum(math.comb(n, x) for x in range(top, n + 1)) / 2 ** n)
+        out["disputed"] = {"called": n, "agree_with_rules_1": agree["rules_1"], "agree_with_rules_2": agree["rules_2"],
+                           "two_sided_p": round(p, 4)}
     return out
 
 
