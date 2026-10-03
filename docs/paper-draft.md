@@ -19,20 +19,23 @@ reply is classified as pushback or not, following SWE-chat's own codebook. A
 third model then matches each pushback against the reviewer's problems, and
 every match must quote both sides.
 
-The reviewer names the developer's problem for 28% [24–32] of all pushbacks and
-for 50% [43–57] of pushbacks about real agent errors. It catches 80% of ignored
-instructions and 60% of false claims. It catches only 40% of failure reports,
-which describe what happened when the developer ran the software. Often it had
-flagged the very claim the developer found false, but only as unverified.
-Counting those as caught raises the share for real errors to 59% [51–67]. A
-hand check will decide which reading matches a person. The reviewer also raises
-1.8 problems per handback, and developers raise none of 92% of them.
+The reviewer names the developer's problem for 28% [24–33] of all pushbacks and
+for 50% [43–57] of pushbacks about real agent errors. Among real errors, it
+catches 80% of ignored instructions and 60% of false claims, but only 40% of
+failure reports, which describe what happened when the developer ran the
+software. Often it had flagged the very claim the developer found false, but
+only as unverified. Counting those as caught raises the share for real errors
+to 59% [51–67]. A hand check of 60 pushbacks, including all 20 on which the two
+readings disagree, will measure which matches a person. The reviewer also raises
+1.8 problems per handback. 92% of them match no pushback as the same fault,
+though a quarter of those were judged related to one.
 
 A second GPT-6 reviewer gives the same picture, and so does a second matching
 model (κ = 0.87 on which pushbacks were caught). A reviewer from another model
 family, DeepSeek-V4-Pro, catches half as many. Telling the reviewer the work is
-its own catches more: 45% of real errors against 37%, on the same pushbacks. In
-sessions drawn without regard to pushback, it catches 32% [15–48].
+its own catches somewhat more (45% of real errors against 37%, on the same
+pushbacks), while it also raises more problems. In sessions drawn without regard
+to pushback, it catches 32% [15–48].
 
 ## 1. Introduction
 
@@ -75,17 +78,17 @@ Our contributions:
 1. **A method** that puts an automated reviewer at each handback of a real
    session, blind to the developer's reply. It builds the two lists
    independently and matches them with quotes checked on both sides.
-2. **A reconstruction of who spoke in SWE-chat.** Only 68% of the rows SWE-chat
-   files as user prompts were typed by the developer. Each error moves a
-   handback boundary and invents or loses a reply, so we decide each row from
-   the session's raw transcript.
+2. **A reconstruction of who spoke in SWE-chat.** Of the rows SWE-chat files as
+   user prompts, the developer typed only 68% in our pushback-drawn sessions,
+   and 54% in random ones. Each error moves a handback boundary and invents or
+   loses a reply, so we decide each row from the session's raw transcript.
 3. **Results.** A transcript-reading reviewer catches about half of the
    developer's real-error pushbacks, mostly false claims and ignored
    instructions. It misses most of what only running the software shows, and
    raises many problems developers never raise.
-4. **Code and run data** for every number, with 58 checks of the method's rules
-   (each rule broken once to see a check fail), and a hand-labelling protocol
-   for the matching.
+4. **Code and run data** for every number, with 86 checks of the method's rules
+   (72 rules broken one at a time, each caught by a check). There is also a
+   hand-check protocol that weighs a stratified sample back to the whole.
 
 ## 2. Related work
 
@@ -137,11 +140,14 @@ mostly Claude Code [SWE-chat]. Its raw transcripts are kept as well.
 **Pushback-drawn sessions** (main sample). We draw sessions with at least one
 developer reply that an earlier reading had judged a pushback about a real agent
 error, at most two from any repository. The order is shuffled with a fixed seed.
-The pilot takes the first 40 and a second batch the next 80: 120 sessions from
-86 repositories. 112 have a raw transcript.
+The pilot takes the first 40, and a second batch the next 80 that no other
+study run held: 120 sessions from 86 repositories. 112 have a raw transcript.
+By agent: 112 Claude Code, 6 OpenCode, 1 Copilot CLI and 1 Cursor.
 
-**Random sessions** (comparison arm). We draw 40 sessions without regard to
-pushback, at most two from any repository: 40 sessions from 33 repositories.
+**Random sessions** (comparison arm). We draw 40 Claude Code sessions without
+regard to pushback: sessions with at least two developer prompts and a raw
+transcript, at most two from any repository, and none already in another arm.
+That gives 40 sessions from 33 repositories.
 
 **Handbacks.** A handback (or report) is the agent's work between two developer
 messages, ending with its report. Each session contributes at most its first 40
@@ -153,10 +159,11 @@ handbacks, which trims 6 of the 120 sessions. The pushback-drawn sample has
 A handback ends wherever the developer speaks, so the study depends on knowing
 which rows the developer typed. SWE-chat files much under `user_prompt` that the
 developer never wrote. In the 112 pushback-drawn sessions with a transcript, the
-developer typed 1,629 of 2,386 such rows (68%). Rules on the table alone,
-dropping notices, compaction summaries and teammate messages by their opening
-words, keep 1,930. Of those, 16% are still not the developer's: copies the logger
-re-inserts later, expanded commands and skills, and scheduled prompts.
+developer typed 1,629 of 2,386 such rows (68%); in the 40 random sessions, 307 of
+572 (54%). Rules on the table alone, dropping notices, compaction summaries and
+teammate messages by their opening words, keep 1,930. The transcript's rules keep
+301 fewer of them (16%): they drop copies the logger re-inserts later, expanded
+commands and skills, and scheduled prompts.
 
 We therefore decide each row from the raw transcript. A row is the developer's
 if it matches, in order, a prompt the transcript records as typed (each typed
@@ -181,7 +188,7 @@ At each handback, the reviewer reads a window:
 
 Each tool input and result is cut to 4,000 characters, less if needed to fit,
 and every cut is marked. The agent's hidden reasoning is left out, since the
-developer did not see it. On the pilot, the median window is 10,400 characters,
+developer did not see it. On the pilot, the median window is 11,242 characters,
 where the whole history before a handback has a median of 187,000 tokens.
 
 The reviewer lists every problem a careful developer would push back on before
@@ -242,12 +249,26 @@ so the reviewer is never the agent that did the work.
 ### 3.7 Validation of the merge
 
 The match is the study's measuring instrument, so it is checked twice.
-- **By hand** (pending): one author labels 150 merge decisions blind, sampled
-  uniformly, against the model's verdicts. The merge is trusted only at κ ≥ 0.7.
-  The labelling guide gives the claim-level rules' worked examples. The hand
-  check therefore also says which of the two readings matches a person.
-  The same author labels 50 of the reviewer's unmatched problems as real, false
-  alarm or can't tell. The protocol is in `docs/study.md`.
+- **By hand** (pending). One author calls 60 real-error pushbacks, blind to
+  the merge. Each item shows the reply and every problem the reviewer raised
+  before it, and the author says which problems, if any, name the
+  developer's fault. The sample is stratified by the merge's outcome:
+  - all 20 pushbacks the two readings decide differently;
+  - 20 of the 96 both call caught;
+  - 20 of the 73 neither does;
+  - the 6 with no problem to compare count as not caught.
+
+  Weighing each stratum back to its size gives the share of real errors caught
+  by the author's calls. It also gives each reading's agreement with the author
+  on the same items. The merge is trusted only at a weighted κ ≥ 0.7, and the
+  disputed 20 decide between the readings. The guide gives both the author and
+  the merge the claim-level rules' worked examples: it is the study's definition
+  of 'same'. The author also calls 50 of the reviewer's unmatched problems real,
+  false alarm or can't tell. The protocol is in `docs/study.md`.
+
+  A uniform sample of single merge decisions, planned first, was dropped before
+  any labelling. Most decisions are plainly 'different', so its κ could pass
+  with every 'same' wrong.
 - **By a second model:** gpt-6-sol re-matches the pilot's 252 pushbacks on the
   same inputs (section 4.4).
 
@@ -264,11 +285,11 @@ over sessions (`scripts/study_figures.py`).*
 |---|---|
 | Handbacks | 1,246 |
 | Pushbacks (our reading) | 530 |
-| Caught, all pushbacks | 28.3% [24–32] |
+| Caught, all pushbacks | 28.3% [24–33] |
 | **Caught, real errors** | **49.7% [43–57]**, n = 195 |
 | Caught, real errors, claim-level rules | 59.0% [51–67] |
-| Caught, pushback by SWE-chat's label | 21.8% [18–26], n = 669 |
-| Caught, both readings say pushback | 29.2% [24–34], n = 428 |
+| Caught, pushback by SWE-chat's label | 21.8% [19–26], n = 669 |
+| Caught, both readings say pushback | 29.2% [24–35], n = 428 |
 | 'Same' or 'related', real errors | 84.6% [78–90] |
 
 The reviewer names the developer's fault for half of the real-error pushbacks
@@ -279,7 +300,7 @@ little: the reviewer flags 78% of all handbacks, so it usually has something to
 say about any handback a developer objects to.
 
 Three quarters of the catches (112 of 150) come from the reviewer's problems at
-the handback the developer answered. Counting only those gives 40% [33–47] of
+the handback the developer answered. Counting only those gives 39% [33–47] of
 real errors; one handback back gives 46%, and two give 50%.
 
 ### 4.2 RQ2: which problems does it catch, and which does it miss?
@@ -298,8 +319,8 @@ strict (blue) and claim-level (pink) rules.*
 | Failure mode of the real error | Caught | Claim-level | n |
 |---|---|---|---|
 | Ignored instruction | 80% [63–95] | 85% [68–100] | 20 |
-| False claim | 60% [46–74] | 74% [58–89] | 43 |
-| Shallow investigation | 60% [49–70] | 78% [66–88] | 74 |
+| False claim | 60% [45–74] | 74% [58–89] | 43 |
+| Shallow investigation | 59% [49–70] | 78% [66–88] | 74 |
 | Unverified assumption | 57% [46–68] | 66% [56–76] | 95 |
 
 A real error can have more than one failure mode.
@@ -307,7 +328,7 @@ A real error can have more than one failure mode.
 | By what the developer objects to | Caught | n |
 |---|---|---|
 | Real error | 49.7% [43–57] | 195 |
-| Unwanted but defensible | 21.7% [15–30] | 143 |
+| Unwanted but defensible | 21.7% [15–29] | 143 |
 | Preference | 11.8% [0–28] | 17 |
 | Unclear | 11.4% [7–17] | 175 |
 
@@ -318,8 +339,8 @@ ran the software. The claim-level rules close much of that gap (40% to 54%).
 For a failure report, the reviewer often could not know the fault, but it had
 flagged the claim of success as unverified.
 
-From a reading of 16 of the 36 real-error pushbacks that both framings missed
-(the authors' reading, not yet checked):
+From a preliminary reading of 16 of the pilot's 36 real-error pushbacks that
+both framings missed (not yet checked by the authors):
 - Most are outcomes only someone running the software sees: "the panel opens
   but it is blank", "the build still fails", "the import still returns a 404".
   In many, the reviewer flagged the same handback for not verifying its fix
@@ -331,7 +352,13 @@ From a reading of 16 of the 36 real-error pushbacks that both framings missed
 ### 4.3 RQ3: what does the reviewer raise that developers do not?
 
 The reviewer raises 1.79 problems per handback and flags 78% [75–81] of
-handbacks. Of its 2,232 problems, 2,052 (92%) match no pushback. By kind, its
+handbacks. Of its 2,232 problems, 2,052 (92%) match no pushback as the same
+fault:
+- 565 were judged related to one;
+- 263 had no pushback within two handbacks to compare with;
+- 1,224 were judged different from every pushback they were compared with.
+
+By kind, its
 problems are unverified assumptions (30%), other (18%), shallow investigation
 (17%), false claims (15%) and ignored instructions (11%).
 
@@ -353,21 +380,28 @@ developer's silence is not a label. The hand check of 50 unmatched problems
 | Problems unmatched | 93% | 93% | 93% | 96% | 94% |
 
 **Reviewer model.** A second GPT-6 reviewer, gpt-6-sol, gives the same
-picture: 39% of real errors. DeepSeek-V4-Pro, from another family, catches half
+picture: 38% of real errors. DeepSeek-V4-Pro, from another family, catches half
 as many: 18% [10–28]. On the same 65 real errors, 10 are caught by both, 14 by
 gpt-6-astra only and 2 by DeepSeek only. DeepSeek raises as many problems, but
 flags fewer handbacks.
 
-Part of the gap may lie in the matching, not the reviewing. DeepSeek's problems
-more often call the claim the developer found false unverified, without saying
-it is wrong, and the matching model often counts those as 'related' (section
-4.5). The matching model is also a GPT-6 model and might favour its own family's
-wording. Either way, which reviewer is used changes how much it catches.
+Part of the gap may lie in the matching, not the reviewing.
+- In one case we read, DeepSeek's reviewer flagged the claim the developer
+  found false as unverified, where gpt-6-astra's said the fix did not hold.
+  Only the latter counted as 'same' under the strict rules (section 3.5).
+- We did not measure how often this happens. Merging DeepSeek's real errors
+  under the claim-level rules would.
+- The matching model is also a GPT-6 model, and might favour its own family's
+  wording.
+
+Either way, which reviewer is used changes how much it catches.
 
 **Self framing.** The same model is told the work is its own. On the same 180
 pushbacks, 38 are caught by both framings, 12 by the self framing only and 3 by
 the outside framing only (exact binomial on the 15 discordant pairs, p ≈ 0.035,
-not adjusted for sessions). On real errors: 24 both, 5 self only, 0 outside only.
+not adjusted for sessions). On real errors: 24 both, 5 self only, 0 outside only
+(p = 0.0625). The self framing also raises more problems (2.01 against 1.83 per
+handback), so part of its gain may be volume.
 
 **Matching model.** gpt-6-sol re-matched the pilot's pushbacks on the same
 inputs. The two models agree on whether a pushback was caught for 95% of
@@ -379,11 +413,16 @@ verdict they agree 89% (κ = 0.75; κ = 0.86 for 'same' against the rest).
 real-error pushbacks (28 in 40 sessions).
 
 **Batches.** The pilot caught 37% [27–48] of its 65 real errors, and the second
-batch 56% [48–65] of its 130. The pipeline, the model's behaviour and the mix of
-failure modes, agents and developer personas are alike in the two. Shuffling
-whole sessions between them gives a gap this large 1.8% of the time (a test run
-after the gap was seen). Sessions differ a great deal, which is why every
-interval resamples sessions and the pooled figure is the one reported.
+batch 56% [47–65] of its 130.
+- The two are random draws from one shuffled pool, processed by the same code
+  and model.
+- Their mix of failure modes, agents and developer personas is alike.
+- A gap this large arises by chance about 1 time in 55 (shuffling whole
+  sessions between the batches, p = 0.018), by a test chosen after the gap was
+  seen.
+
+We found no processing difference, so we report the pooled figure, whose
+interval resamples sessions.
 
 ## 5. Discussion
 
@@ -404,8 +443,8 @@ handback, a developer shown every flag would read many that no developer raised.
 Whether these are problems developers miss or noise decides whether such a
 reviewer helps or adds review load. This is the hand check's second question.
 
-**Self-review.** Telling the reviewer the work is its own made it catch more,
-not less. We cannot test the original agent reviewing itself, since the sessions'
+**Self-review.** Telling the reviewer the work is its own made it catch somewhat
+more, not less, while it also raised more problems. We cannot test the original agent reviewing itself, since the sessions'
 agents were mostly Claude models we did not run. The framing is the closest
 proxy we have.
 
@@ -418,11 +457,14 @@ is context, not a ranking.
 ## 6. Threats to validity
 
 - **The match is a model's.** Two matching models agree (κ = 0.87), but they
-  could share a blind spot. The hand check (κ ≥ 0.7 required) is the test.
+  could share a blind spot. The hand check (a weighted κ ≥ 0.7 required) is the
+  test.
+- **One coder.** The hand check is one author's. A second coder would give the
+  agreement between people, which bounds how well any merge can do.
 - **Where 'same' ends.** Whether flagging the claim the developer found false
   as unverified counts as catching the fault moves the main measure by 9
-  points (50% against 59%). We report both readings until the hand check
-  settles which matches a person.
+  points (50% against 59%). We report both readings until the hand check's
+  20 disputed pushbacks settle which matches a person.
 - **Pushback and real error are a model's reading.** It agrees with SWE-chat's
   label at κ = 0.52 and is stricter. The main measure counts only real errors,
   and we also report every share under SWE-chat's label.
