@@ -12,7 +12,7 @@ from collections import defaultdict
 
 
 def share(hits: int, total: int) -> float | None:
-    return round(hits / total, 3) if total else None
+    return round(hits / total, 4) if total else None
 
 
 def bootstrap(items: list[tuple[str, bool]], *, n: int = 2000, seed: int = 20261003) -> dict:
@@ -40,8 +40,8 @@ def bootstrap(items: list[tuple[str, bool]], *, n: int = 2000, seed: int = 20261
         if t:
             shares.append(h / t)
     shares.sort()
-    out["low"] = round(shares[int(0.025 * len(shares))], 3)
-    out["high"] = round(shares[min(len(shares) - 1, int(0.975 * len(shares)))], 3)
+    out["low"] = round(shares[int(0.025 * len(shares))], 4)
+    out["high"] = round(shares[min(len(shares) - 1, int(0.975 * len(shares)))], 4)
     return out
 
 

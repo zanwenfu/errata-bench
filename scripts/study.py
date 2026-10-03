@@ -7,9 +7,10 @@
     .venv/bin/python scripts/study.py human    --run runs/study-pilot --max-usd N [--concurrency 8] [--limit N]
     .venv/bin/python scripts/study.py merge    --run runs/study-pilot --max-usd N [--concurrency 8] [--limit N] [--rules 2]
     .venv/bin/python scripts/study.py tally    --run runs/study-pilot
-    .venv/bin/python scripts/study.py sheet    --run runs/study-pilot [--matches 150] [--alone 50]
+    .venv/bin/python scripts/study.py sheet    --run runs/study-pilot [--alone 50]
+    .venv/bin/python scripts/study.py caught-sheet  --run runs/study-pushback-120 --also runs/study-pushback-120-rules2
     .venv/bin/python scripts/study.py replies-sheet --run runs/study-pushback-120 [--n 40]
-    .venv/bin/python scripts/study.py agreement --run runs/study-pushback-120 [--also runs/study-pushback-120-rules2]
+    .venv/bin/python scripts/study.py agreement --run runs/study-pushback-120
 
 `prepare` and `estimate` make no model call. `review` (thread A) and `human`
 (thread B) are independent and can run side by side; `merge` reads both. Each
@@ -122,23 +123,29 @@ def prepare(args) -> int:
 
 # --------------------------------------------------------------------------- estimate (free)
 
-def estimate(args) -> int:
-    run = Path(args.run)
-    reports = load(path(run, "reports"))
-    instr = {"review": len(A.INSTRUCTIONS), "human": len(B.INSTRUCTIONS), "merge": len(M.INSTRUCTIONS)}
+def estimate_rows(reports: list[dict], self_framing: bool = False) -> list[tuple[str, int, float, int]]:
+    """Each paid stage's (name, calls, input tokens, output tokens), estimated before any call."""
+    instr = {"review": len(A.INSTRUCTIONS), "human": len(B.INSTRUCTIONS), "merge": len(M.INSTRUCTIONS[M.RULES])}
     tok = lambda chars: chars / CHARS_PER_TOKEN  # noqa: E731
     a_in = sum(tok(len(r["window"]) + instr["review"] + 1500) for r in reports)
     b_in = sum(tok(len(r["window"]) + len(r["reply"]) + instr["human"] + 1500) for r in reports)
-    # The merge: about as many calls as SWE-chat's labelled pushbacks, each a few problems long.
-    labelled = sum(r.get("reply_label") in S.PUSHBACK_KINDS for r in reports)
+    # The merge: one call for each pushback by either reading, each a few problems long. Before thread B has
+    # run only SWE-chat's label is known; our reading adds about a fifth (pilot 10-03: 252 merged, 215 by label).
+    labelled = round(1.2 * sum(r.get("reply_label") in S.PUSHBACK_KINDS for r in reports))
     m_in = labelled * tok(instr["merge"] + 3000)
-    model = _model()
     rows = [("review (thread A)", len(reports), a_in, OUTPUT_GUESS["review"]),
             ("human (thread B)", len(reports), b_in, OUTPUT_GUESS["human"]),
             ("merge (about)", labelled, m_in, OUTPUT_GUESS["merge"])]
-    if getattr(args, "self_framing", False):
+    if self_framing:
         rows += [("review, self framing", len(reports), a_in, OUTPUT_GUESS["review"]),
                  ("merge, self (about)", labelled, m_in, OUTPUT_GUESS["merge"])]
+    return rows
+
+
+def estimate(args) -> int:
+    run = Path(args.run)
+    rows = estimate_rows(load(path(run, "reports")), getattr(args, "self_framing", False))
+    model = _model()
     total = 0.0
     for name, calls, tin, tout in rows:
         usage = {"input_tokens": int(tin), "output_tokens": int(calls * tout), "cached_tokens": 0}
@@ -350,10 +357,10 @@ def tally(args) -> int:
         elif any(v.get("missing") or not v.get("match_known", True) for v in vs):
             # A verdict missing or unknown, and no valid 'same': not read in full, so not a miss.
             outcome[k] = "incomplete"
-        elif any(v.get("match") == "same" for v in vs):
-            outcome[k] = "same, words not found"
         elif any(v.get("match") == "related" and not v.get("missing") for v in vs):
             outcome[k] = "related"
+        elif any(v.get("match") == "same" for v in vs):
+            outcome[k] = "same, words not found"
         else:
             outcome[k] = "none"
         matched |= {(k[0], v["report"], v["problem_id"]) for v in vs if _valid_same(v)}
@@ -438,44 +445,26 @@ def _fenced(text: str) -> str:
 
 
 def sheet(args) -> int:
-    """The hand check's files: labels.csv to fill in blind, key.csv with the model's verdicts, alone.md."""
+    """The hand check's alone.md: the reviewer's problems that no pushback matched, to call real or false alarm.
+
+    It also wrote labels.csv, a uniform sample of single merge decisions, until the 10-03 review: most were
+    plain 'different', and its kappa could pass with every 'same' wrong. caught-sheet replaced it. The sample
+    is still drawn, unwritten, so alone.md draws the same problems it always has.
+    """
     run = Path(args.run)
     framing = getattr(args, "framing", "outside")
     tag = "" if framing == "outside" else f"-{framing}"
-    # A sheet may already hold a person's labels, or translations added to it: never written over.
-    held = [p for p in (run / f"labels{tag}.csv", run / f"alone{tag}.md") if p.exists()]
-    if held:
-        print(f"refused: {', '.join(map(str, held))} exists and may hold labels; move it away to write a new sheet",
+    # A sheet may already hold a person's calls, or translations added to it: never written over.
+    if (run / f"alone{tag}.md").exists():
+        print(f"refused: {run / f'alone{tag}.md'} exists and may hold calls; move it away to write a new sheet",
               file=sys.stderr)
         return 2
     reports = {key(r): r for r in load(path(run, "reports"))}
     reviews = {key(r): r for r in completed(path(run, "review", framing))}
     merges = completed(path(run, "merge", framing))
     rng = random.Random(20261003)
-    pairs = []
-    for m in merges:
-        rep = reports[key(m)]
-        for v in m.get("verdicts") or []:
-            if v.get("missing"):
-                continue
-            j, i = v["report"], int(v["problem_id"].split("p")[1])
-            p = (reviews.get((m["session_id"], j)) or {}).get("problems", [])[i]
-            pairs.append((v, rep, p))
-    # A uniform sample, not one stratified by the model's verdict: kappa on it is the
-    # kappa of the merge as it runs (10-03 review).
-    rng.shuffle(pairs)
-    take = pairs[: args.matches]
-    with open(run / f"labels{tag}.csv", "w", newline="") as f, open(run / f"key{tag}.csv", "w", newline="") as g:
-        w, kw = csv.writer(f), csv.writer(g)
-        w.writerow(["item", "developer_reply", "reviewer_problem", "reviewer_quote",
-                    "your_label (same / related / different)", "note"])
-        kw.writerow(["item", "session", "handback", "problem_id", "model_match", "model_reason"])
-        for n, (v, rep, p) in enumerate(take, 1):
-            w.writerow([n, rep["reply"][:6000], p["what_is_wrong"], p["quote"][:2000], "", ""])
-            kw.writerow([n, rep["session_id"], rep["index"], v["problem_id"], v.get("match"), v.get("reason")])
-    print(f"wrote {len(take)} merge decisions to label blind: {run / f'labels{tag}.csv'} "
-          f"(the model's: {run / f'key{tag}.csv'})")
-
+    pairs = [v for m in merges for v in m.get("verdicts") or [] if not v.get("missing")]
+    rng.shuffle(pairs)   # the old labels.csv draw, kept for alone.md's sake (see the docstring)
     matched = {(m["session_id"], v["report"], v["problem_id"]) for m in merges for v in m.get("verdicts") or []
                if _valid_same(v)}
     alone = [((k[0], k[1]), f"r{k[1]}p{i}", p) for k, r in reviews.items()
@@ -497,6 +486,88 @@ def sheet(args) -> int:
                     f"(open only after you decide)</summary>\n\n" + "\n\n".join(_fenced(r) for r in later)
                     + "\n\n</details>\n")
     print(f"wrote {len(alone)} of the reviewer's unmatched problems to check: {run / f'alone{tag}.md'}")
+    return 0
+
+
+LETTERS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+
+
+def caught_sheet(args) -> int:
+    """The hand check of the main measure: real-error pushbacks, each with every problem the reviewer raised
+    before it, for the person to say which name the developer's fault, if any.
+
+    Drawn by what the merge decided under the rules of --run and of --also (another version): every pushback
+    the two decide differently, and --per-stratum each of those both call caught and of those neither does, in
+    one random order. caught-key.json holds each item's letters, both versions' verdicts and the strata's sizes,
+    so `agreement` can weigh each stratum back to its size (docs/study.md).
+    """
+    run, other = Path(args.run), Path(args.also)
+    out_path, key_path = run / "caught.md", run / "caught-key.json"
+    if out_path.exists():
+        print(f"refused: {out_path} exists and may hold calls; move it away to write a new sheet", file=sys.stderr)
+        return 2
+    reports = {key(r): r for r in load(path(run, "reports"))}
+    reviews = {key(r): r for r in completed(path(run, "review"))}
+    replies = {key(r): r for r in completed(path(run, "human"))}
+    m1 = {key(m): m for m in completed(path(run, "merge"))}
+    m2 = {key(m): m for m in completed(path(other, "merge"))}
+    rules = (sorted({m.get("rules", 1) for m in m1.values()}), sorted({m.get("rules", 1) for m in m2.values()}))
+    if len(rules[0]) != 1 or len(rules[1]) != 1 or rules[0] == rules[1]:
+        print(f"refused: --run and --also must each hold one version of the merge's rules, and differ: {rules}",
+              file=sys.stderr)
+        return 2
+    same = lambda m: {v["problem_id"] for v in m.get("verdicts") or [] if _valid_same(v)}  # noqa: E731
+    strata: dict[str, list] = defaultdict(list)
+    for k in sorted(k for k, r in replies.items() if r.get("is_pushback") and r.get("objection_kind") == "real_error"):
+        a, b = m1.get(k), m2.get(k)
+        ids = [v["problem_id"] for v in (a or {}).get("verdicts") or []]
+        if a is None or b is None or ids != [v["problem_id"] for v in b.get("verdicts") or []]:
+            strata["not merged alike under both"].append(k)
+        elif not ids:
+            strata["no problems"].append(k)
+        else:
+            ca, cb = bool(same(a)), bool(same(b))
+            strata["disputed" if ca != cb else "caught by both" if ca else "caught by neither"].append(k)
+    if strata.get("not merged alike under both"):
+        print(f"refused: {len(strata['not merged alike under both'])} real-error pushbacks are not merged under both "
+              f"versions over the same problems", file=sys.stderr)
+        return 2
+    rng = random.Random(20261006)
+    take = []
+    for name in ("disputed", "caught by both", "caught by neither"):
+        ks = strata.get(name, [])[:]
+        rng.shuffle(ks)
+        take += [(name, k) for k in (ks if name == "disputed" else ks[: args.per_stratum])]
+    rng.shuffle(take)   # mixed, so an item's place does not give its stratum away
+    items, parts = [], []
+    for n, (name, k) in enumerate(take, 1):
+        ids = [v["problem_id"] for v in m1[k]["verdicts"]]
+        letters = dict(zip(LETTERS, ids))
+        lines = []
+        for letter, pid in letters.items():
+            j, i = int(pid[1:].split("p")[0]), int(pid.split("p")[1])
+            p = reviews[(k[0], j)]["problems"][i]
+            lines.append(f"**{letter}** (handback {j}): {p['what_is_wrong']}\n\n{_fenced(p['quote'])}")
+        rep = reports[k]
+        parts.append(f"\n---\n\n## {n}. session {k[0][:8]}, reply {k[1]}\n\n**The developer replied:**\n\n"
+                     f"{_fenced(rep['reply'][:4000])}\n\n**The reviewer's problems before this reply:**\n\n"
+                     + "\n\n".join(lines) + "\n\n**Your call:** \n\n<details><summary>The end of the agent's "
+                     f"work before the reply</summary>\n\n{_fenced(rep['window'][-3000:])}\n\n</details>\n")
+        items.append({"item": n, "session": k[0], "reply": k[1], "stratum": name, "letters": letters,
+                      "rules_1_same": [x for x, pid in letters.items() if pid in same(m1[k])],
+                      "rules_2_same": [x for x, pid in letters.items() if pid in same(m2[k])]})
+    out_path.write_text(
+        "# Did the reviewer name the developer's fault?\n\nEach item is a developer's pushback about a real agent "
+        "error, then every problem the reviewer raised in the handbacks before it, lettered. After **Your call:** "
+        "write the letters of the problems that name the fault the developer raised (same, by the guide in "
+        "docs/study.md), for example `A` or `A, C`, or `none`.\n" + "".join(parts))
+    key_path.write_text(json.dumps({"rules": {"run": rules[0][0], "also": rules[1][0]}, "also": str(other),
+                                    "population": {s: len(v) for s, v in strata.items()}, "items": items},
+                                   indent=1, ensure_ascii=False))
+    print(f"wrote {len(items)} pushbacks to call: {out_path} (the merge's: {key_path}); "
+          + ", ".join(f"{s} {sum(1 for x, _ in take if x == s)} of {len(strata.get(s, []))}"
+                      for s in ("disputed", "caught by both", "caught by neither"))
+          + f"; {len(strata.get('no problems', []))} with no problem to call")
     return 0
 
 
@@ -542,12 +613,20 @@ def replies_sheet(args) -> int:
 
 
 def combine(args) -> int:
-    """One run folder from several, for a pooled tally: every stage's finished rows, sessions never shared."""
+    """One run folder from several, for a pooled tally: every stage's finished rows, sessions never shared.
+
+    The outside reviewer's rows only (not the self framing's), and one version of the merge's rules.
+    """
     out = Path(args.into)
     if out.exists():
         print(f"refused: {out} exists", file=sys.stderr)
         return 2
     sources = [Path(x) for x in args.sources]
+    rules = {src: {m.get("rules", 1) for m in completed(path(src, "merge"))} for src in sources}
+    if len(set().union(*rules.values())) > 1:
+        print(f"refused: the sources' merges were made under different versions of the rules: "
+              f"{ {str(k): sorted(v) for k, v in rules.items()} }", file=sys.stderr)
+        return 2
     held: dict[str, Path] = {}
     for src in sources:
         for sid in {r["session_id"] for r in load(path(src, "reports"))}:
@@ -567,65 +646,133 @@ def combine(args) -> int:
 
 # --------------------------------------------------------------------------- the hand check's numbers (free)
 
-LABELS = ("same", "related", "different")
 CALLS = {"real": "real", "false alarm": "false alarm", "can't tell": "can't tell", "cant tell": "can't tell"}
 ALONE_HEAD = re.compile(r"^## (\d+)\. session (\w+), handback (\d+) \((r\d+p\d+)\)$", re.M)
+CAUGHT_HEAD = re.compile(r"^## (\d+)\. session (\w+), reply (\d+)$", re.M)
 
 
-def _call(body: str) -> str:
-    """What the person wrote after **Your call:**, on that line or the next one with text."""
-    after = body.split("**Your call:**", 1)[1] if "**Your call:**" in body else ""
-    for line in after.splitlines():
+def _call(body: str) -> str | None:
+    """What the person wrote after **Your call:**, on that line or the next with text; None if the mark is gone."""
+    if "**Your call:**" not in body:
+        return None
+    for line in body.split("**Your call:**", 1)[1].splitlines():
         line = line.strip()
         if line.startswith("<details>"):
             return ""
         if line:
-            return line.strip(".").lower().replace("\u2019", "'")
+            return line.strip(".").lower().replace("’", "'")
     return ""
 
 
-def agreement(args) -> int:
-    """The person's labels against the merge's verdicts (this run's, and any --also run's), and their calls on
-    the reviewer's unmatched problems. Run once the hand check is done (docs/study.md)."""
-    run = Path(args.run)
-    tag = "" if args.framing == "outside" else f"-{args.framing}"
-    with open(run / f"labels{tag}.csv", newline="", encoding="utf-8") as fh:
-        rows = list(csv.DictReader(fh))
-    with open(run / f"key{tag}.csv", newline="", encoding="utf-8") as fh:
-        keys = {r["item"]: r for r in csv.DictReader(fh)}
-    column = next(c for c in rows[0] if c.startswith("your_label"))
-    person, unreadable = {}, []
-    for r in rows:
-        v = (r.get(column) or "").strip().strip(".").lower()
-        if v in LABELS:
-            person[r["item"]] = v
+def _letters(text: str, allowed) -> set | None:
+    """The letters in a call such as 'A, C' or 'a and c'; None unless every part is one of `allowed`."""
+    parts = [x for x in re.split(r"[\s,;/&+]+|\band\b", text) if x]
+    if parts and all(len(x) == 1 and x.upper() in allowed for x in parts):
+        return {x.upper() for x in parts}
+    return None
+
+
+def _rows(path_: Path) -> list[dict]:
+    """A CSV the person may have saved from a spreadsheet: with or without a byte-order mark, comma or semicolon."""
+    text = path_.read_text(encoding="utf-8-sig")
+    try:
+        dialect = csv.Sniffer().sniff(text[:4096], delimiters=",;\t")
+    except csv.Error:
+        dialect = csv.excel
+    return list(csv.DictReader(text.splitlines(keepends=True), dialect=dialect))
+
+
+def _kappa2(cells: dict) -> float | None:
+    """Cohen's kappa from a weighted 2x2 table {(person, model): weight}."""
+    total = sum(cells.values())
+    if not total:
+        return None
+    po = (cells.get((True, True), 0) + cells.get((False, False), 0)) / total
+    p_yes = (cells.get((True, True), 0) + cells.get((True, False), 0)) / total
+    m_yes = (cells.get((True, True), 0) + cells.get((False, True), 0)) / total
+    pe = p_yes * m_yes + (1 - p_yes) * (1 - m_yes)
+    return 1.0 if pe == 1 else round((po - pe) / (1 - pe), 3)
+
+
+def _caught(run: Path) -> dict | None:
+    """caught.md against the merge under both versions of the rules, each stratum weighed back to its size."""
+    md_path, key_path = run / "caught.md", run / "caught-key.json"
+    if not md_path.exists():
+        return None
+    key_ = json.loads(key_path.read_text(encoding="utf-8"))
+    items = {str(i["item"]): i for i in key_["items"]}
+    md = md_path.read_text(encoding="utf-8")
+    heads = list(CAUGHT_HEAD.finditer(md))
+    person, unread = {}, []
+    for j, h in enumerate(heads):
+        item = items[h.group(1)]
+        v = _call(md[h.end(): heads[j + 1].start() if j + 1 < len(heads) else len(md)])
+        if v in ("none", "no", "none of them"):
+            person[h.group(1)] = set()
         elif v:
-            unreadable.append(r["item"])
-    verdicts = {f"{run.name} (rules {sorted({m.get('rules', 1) for m in completed(path(run, 'merge', args.framing))})})":
-                {i: keys[i]["model_match"] for i in person}}
-    for other in args.also or []:
-        merges = {key(m): m for m in completed(path(Path(other), "merge", args.framing))}
-        found = {}
-        for i in person:
-            k = keys[i]
-            for v in (merges.get((k["session"], int(k["handback"]))) or {}).get("verdicts") or []:
-                if v["problem_id"] == k["problem_id"] and not v.get("missing"):
-                    found[i] = v.get("match")
-        found_rules = sorted({m.get("rules", 1) for m in merges.values()})
-        verdicts[f"{Path(other).name} (rules {found_rules})"] = found
-    out = {"labelled": len(person), "of": len(rows), "unreadable_labels": unreadable, "merge": {}}
-    for name, by_item in verdicts.items():
-        pairs = [(person[i], by_item[i]) for i in person if by_item.get(i) in LABELS]
-        k3 = T.kappa(pairs)
-        out["merge"][name] = {
-            "items": len(pairs),
-            "agreement": T.share(sum(a == b for a, b in pairs), len(pairs)),
-            "kappa": k3,
-            "kappa_same_or_not": T.kappa([(str(a == "same"), str(b == "same")) for a, b in pairs]),
-            "trusted (kappa at least 0.7)": k3 is not None and k3 >= 0.7,
-            "person / model": {f"{a} / {b}": n for (a, b), n in sorted(Counter(pairs).items())},
+            letters = _letters(v, item["letters"])
+            if letters is None:
+                unread.append(h.group(1))
+            else:
+                person[h.group(1)] = letters
+        elif v is None:
+            unread.append(h.group(1))   # the mark itself was edited away
+    pop = key_["population"]
+    labelled = Counter(items[i]["stratum"] for i in person)
+    weight = {s: pop[s] / labelled[s] for s in labelled}
+    out = {"called": len(person), "of": len(heads), "unreadable": unread, "population": pop,
+           "called_by_stratum": dict(labelled), "versions": {}}
+    sampled = ("disputed", "caught by both", "caught by neither")
+    complete = all(labelled.get(s) for s in sampled if pop.get(s))
+    for version in ("rules_1", "rules_2"):
+        name = f"rules {key_['rules']['run' if version == 'rules_1' else 'also']}"
+        cells, strata, which = Counter(), {}, []
+        for i, letters in person.items():
+            item = items[i]
+            pc, model = bool(letters), set(item[f"{version}_same"])
+            cells[(pc, bool(model))] += weight[item["stratum"]]
+            s = strata.setdefault(item["stratum"], {"called": 0, "person_caught": 0, "model_caught": 0, "agree": 0})
+            s["called"] += 1
+            s["person_caught"] += pc
+            s["model_caught"] += bool(model)
+            s["agree"] += pc == bool(model)
+            if pc and model:
+                which.append(bool(letters & model))
+        cells[(False, False)] += pop.get("no problems", 0)   # nothing to call: neither caught
+        total = sum(cells.values())
+        out["versions"][name] = {
+            "by_stratum": strata,
+            "agreement_weighted": round((cells[(True, True)] + cells[(False, False)]) / total, 4) if total else None,
+            "kappa_weighted": _kappa2(cells) if complete else None,
+            "trusted (weighted kappa at least 0.7)": complete and (_kappa2(cells) or 0) >= 0.7,
+            "same_problem_when_both_caught": T.share(sum(which), len(which)),
         }
-    md_path = run / f"alone{tag}.md"
+    if complete:
+        n_all = sum(pop.values())
+        by = {s: [bool(person[i]) for i in person if items[i]["stratum"] == s] for s in sampled if labelled.get(s)}
+        rate = lambda b: sum(pop[s] * sum(v) / len(v) for s, v in b.items()) / n_all  # noqa: E731
+        rng = random.Random(20261003)
+        draws = sorted(rate({s: [rng.choice(v) for _ in v] for s, v in by.items()}) for _ in range(2000))
+        out["caught_by_the_persons_calls"] = {"share": round(rate(by), 4), "low": round(draws[50], 4),
+                                              "high": round(draws[1949], 4), "n": n_all,
+                                              "interval": "resampling the called items within each stratum"}
+        for version, field in (("rules_1", "rules_1_same"), ("rules_2", "rules_2_same")):
+            caught_pop = sum(pop[s] * sum(bool(items[i][field]) for i in items if items[i]["stratum"] == s)
+                             / max(1, sum(1 for i in items if items[i]["stratum"] == s)) for s in sampled if pop.get(s))
+            out["versions"][f"rules {key_['rules']['run' if version == 'rules_1' else 'also']}"][
+                "caught_by_the_merge"] = round(caught_pop / n_all, 4)
+    return out
+
+
+def agreement(args) -> int:
+    """The hand check's numbers: caught.md against the merge under each version of the rules, the calls on the
+    reviewer's unmatched problems (alone.md), and replies.csv against thread B. Run once the hand check is done."""
+    run = Path(args.run)
+    out = {}
+    caught = _caught(run)
+    if caught is not None:
+        out["caught"] = caught
+    md_path = run / "alone.md"
     if md_path.exists():
         md = md_path.read_text(encoding="utf-8")
         heads = list(ALONE_HEAD.finditer(md))
@@ -634,18 +781,16 @@ def agreement(args) -> int:
             v = _call(md[h.end(): heads[j + 1].start() if j + 1 < len(heads) else len(md)])
             if v in CALLS:
                 calls[h.group(1)] = (h.group(2), CALLS[v])
-            elif v:
+            elif v or v is None:
                 unread.append(h.group(1))
         out["alone"] = {"called": len(calls), "of": len(heads), "unreadable_calls": unread,
                         "counts": dict(Counter(c for _, c in calls.values())),
                         # Of the problems the person could decide, the share that are real.
                         "real_of_decided": T.bootstrap([(s, c == "real") for s, c in calls.values()
                                                         if c != "can't tell"])}
-    if tag == "" and (run / "replies.csv").exists():
-        with open(run / "replies.csv", newline="", encoding="utf-8") as fh:
-            sheet_rows = list(csv.DictReader(fh))
-        with open(run / "replies-key.csv", newline="", encoding="utf-8") as fh:
-            stratum = {r["item"]: r["stratum"] for r in csv.DictReader(fh)}
+    if (run / "replies.csv").exists():
+        sheet_rows = _rows(run / "replies.csv")
+        stratum = {r["item"]: r["stratum"] for r in _rows(run / "replies-key.csv")}
         push_col = next(c for c in sheet_rows[0] if c.startswith("pushback?"))
         real_col = next(c for c in sheet_rows[0] if c.startswith("about a real agent error?"))
         by = defaultdict(lambda: {"labelled": 0, "pushback": 0, "real_error": 0, "unclear": 0})
@@ -663,9 +808,12 @@ def agreement(args) -> int:
             s["pushback"] += p == "yes"
             s["real_error"] += p == "yes" and e == "yes"
             s["unclear"] += p == "yes" and e == "unclear"
+        for s in by.values():
+            s["pushback_share"] = T.share(s["pushback"], s["labelled"])
+            s["real_error_share"] = T.share(s["real_error"], s["labelled"])
         out["replies"] = {"by_reading": dict(by), "unreadable": unread_replies}
     print(json.dumps(out, indent=1, ensure_ascii=False))
-    (run / f"agreement{tag}.json").write_text(json.dumps(out, indent=1, ensure_ascii=False))
+    (run / "agreement.json").write_text(json.dumps(out, indent=1, ensure_ascii=False))
     return 0
 
 
@@ -707,23 +855,24 @@ def main() -> int:
     c.add_argument("sources", nargs="+")
     s = sub.add_parser("sheet")
     s.add_argument("--run", required=True)
-    s.add_argument("--matches", type=int, default=150)
     s.add_argument("--alone", type=int, default=50)
     s.add_argument("--framing", choices=("outside", "self"), default="outside")
     rs = sub.add_parser("replies-sheet")
     rs.add_argument("--run", required=True)
     rs.add_argument("--n", type=int, default=40)
+    cs = sub.add_parser("caught-sheet")
+    cs.add_argument("--run", required=True)
+    cs.add_argument("--also", required=True, help="a run folder with the same pushbacks merged under another version "
+                                                  "of the rules")
+    cs.add_argument("--per-stratum", type=int, default=20)
     g = sub.add_parser("agreement")
     g.add_argument("--run", required=True)
-    g.add_argument("--also", action="append", help="another run folder whose merges of the same pushbacks to compare "
-                                                    "(e.g. one under another version of the rules)")
-    g.add_argument("--framing", choices=("outside", "self"), default="outside")
     args = ap.parse_args()
     if getattr(args, "concurrency", 1) < 1:
         ap.error("--concurrency must be at least 1")
     return {"prepare": prepare, "estimate": estimate, "review": review, "human": human, "merge": merge,
             "tally": tally, "sheet": sheet, "combine": combine, "agreement": agreement,
-            "replies-sheet": replies_sheet}[args.cmd](args)
+            "replies-sheet": replies_sheet, "caught-sheet": caught_sheet}[args.cmd](args)
 
 
 if __name__ == "__main__":

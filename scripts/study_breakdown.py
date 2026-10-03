@@ -55,7 +55,7 @@ def main() -> int:
         vs = [v for v in every if max_offset is None or k[1] - int(v["report"]) <= max_offset]
         if any(study._valid_same(v) for v in vs):
             return "same"
-        if any(v.get("missing") or not v.get("match_known", True) for v in every):
+        if any(v.get("missing") or not v.get("match_known", True) for v in vs):
             return "incomplete"
         if any(v.get("match") == "related" for v in vs):
             return "related"
