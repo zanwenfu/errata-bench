@@ -5,7 +5,7 @@ AI reviewer have flagged the problem the developer then pushed back on? And what
 does each one catch that the other misses? This is the question Bhuwan suggested
 on 10-01: the developer's reply is a rough gold label that no benchmark has.
 
-Status, 10-03 (15:00 UTC):
+Status, 10-03 (16:00 UTC):
 - built and checked, and smoke-tested on 3 sessions;
 - reviewed twice by an independent reader before any larger run, with every
   finding fixed;
@@ -18,10 +18,13 @@ Status, 10-03 (15:00 UTC):
     a second merge model;
   - the 195 real errors merged again under the claim-level rules
     (assumption 17);
-- two independent reviews of the day's code and numbers (10-03, afternoon)
-  found that the planned hand check could not test the main measure, and then
-  that its first replacement's trust rule could pass the wrong version. Both
-  were fixed before anyone labelled anything (below);
+- three independent reviews of the day's code and numbers (10-03, afternoon)
+  shaped the hand check:
+  - the planned sample could not test the main measure;
+  - a κ ≥ 0.7 rule could pass the wrong version;
+  - a "consistent with the person" rule was too weak to tell 5 points apart.
+
+  All were fixed before anyone labelled anything (below);
 - waiting for the user's hand check (the guide is near the end of this page).
 
 Results are below. A first draft of the paper built from them is in
@@ -52,15 +55,20 @@ Two lists, made independently, then merged (the user's design, 10-03):
   every pushback the two versions of the merge's rules decide differently, and
   20 each that both call caught and that neither does. For each, the user says
   which of the reviewer's problems, if any, name the developer's fault.
-  - Weighed back to each group's size, this gives the person's own share of
-    real errors caught, with an interval.
-  - With every item called, a version of the merge is consistent with the
-    person when the interval of its share minus the person's holds 0. κ,
-    weighed by group, is reported beside it with an interval, as agreement,
-    not as the rule. (A κ ≥ 0.7 rule was planned first. The review showed it
-    would pass version 1 at κ 0.80 even with the person agreeing exactly with
-    version 2, 9 points away.)
+  - **The headline:** the person's own share of real errors caught. Each
+    group is weighed back to its size, with an exact interval.
+  - **The version:** picked by the disputed 20, the only pushbacks the two
+    versions decide differently, with an exact sign test.
+  - **Good enough:** the picked version is good enough if its share is within
+    10 points of the person's at 95%. That is about what 60 calls can resolve.
+  - κ is reported with an exact interval, not as the rule.
+  - Nothing is shown until all 60 are called.
   - The user also calls 50 of the reviewer's unmatched problems (`alone.md`).
+
+  Earlier rules were dropped before any labelling:
+  - **κ ≥ 0.7:** it passed version 1 at κ 0.80 while 9 points off.
+  - **"Interval of the gap holds 0":** it caught a 5-point gap a third of the
+    time, often accepted both versions, and could contradict the sign test.
 
   A hand check is where "Plans They Abandon, Reports They Author" (arXiv
   2609.12205) failed: its claim judge agreed with its authors' hand checks at
@@ -75,7 +83,7 @@ Two lists, made independently, then merged (the user's design, 10-03):
 `scripts/study.py` runs it: `prepare`, `estimate`, `review`, `human`, `merge`,
 `tally`, `combine`, and for the hand check `caught-sheet`, `sheet`,
 `replies-sheet` and `agreement`. `checks/study_holds.py` checks the rules with
-the model faked: 97 checks. `checks/study_mutants.py` breaks 87 rules one at a
+the model faked: 106 checks. `checks/study_mutants.py` breaks 96 rules one at a
 time, and a check fails for each (10-03).
 
 ## Who spoke: the rule both threads depend on
@@ -385,8 +393,8 @@ share a blind spot, so this does not replace the hand check. Real cost: $2.61.
 
 ## First results (pilot and random arm, 10-03; provisional)
 
-Provisional until the hand check confirms the merge (its share consistent
-with the user's calls in `caught.md`). The shares are of merged pushbacks, with 95%
+Provisional until the hand check (`caught.md`): the person's share is the
+headline, and the picked version is used if it is within 10 points of it. The shares are of merged pushbacks, with 95%
 intervals resampling whole sessions.
 
 | | Pilot, outside reviewer | Pilot, self framing | Random sessions, outside |
@@ -448,10 +456,9 @@ So the first answer to Bhuwan's question has two halves:
 
 **Label the pooled run's files, in `runs/study-pushback-120/`:** `caught.md`
 first, then `alone.md`, then `replies.csv` if there is time. Each is in random
-order, so label from the top:
-- the figures weighed back to all 195 pushbacks appear once each group in
-  `caught.md` has 10 calls (or all it has);
-- the verdict on each version needs all 60.
+order, so label from the top. Nothing is shown until every item of a sheet
+is called: a figure shown part-way would give away an item's group, and with
+it the merge's verdict.
 
 Do not open `caught-key.json` or `replies-key.csv`.
 
@@ -495,8 +502,9 @@ before it, lettered A, B, C and on. The end of the agent's work is folded below.
 
 After **Your call:**, on that line or the next, write the letters of the
 problems that are the **same** fault, for example `A` or `A, C`, or `a and c`.
-If none is, write `none`. A comment after the letters is fine, for example
-`B (the build claim)`. Leave the mark `**Your call:**` as it is.
+If none is, write `none` (`n/a` is read as none too). A comment after the
+call is fine, for example `B (the build claim)`, and a call may run onto a
+second line. Leave the mark `**Your call:**` as it is.
 
 ### alone.md: the reviewer's problems that no pushback matched
 
@@ -531,38 +539,43 @@ A spreadsheet may save it with semicolons or a byte-order mark; both are read.
     .venv/bin/python scripts/study.py agreement --run runs/study-pushback-120
 
 It prints, and writes to `agreement.json`:
-- **caught.md, under each version of the merge's rules, on the same items:**
+- **caught.md, once all 60 are called:**
   - the share of real errors caught by your calls, over all 195 pushbacks,
-    with an interval. It covers your calls' uncertainty only; the tally's
-    intervals cover the sessions';
-  - each version's share, its share minus yours with an interval, and whether
-    the two are consistent (with all 60 called);
-  - κ and agreement weighed by group. κ comes with a median and an interval
-    that allow for disagreement among the pushbacks you did not call. When
-    every call in a group agrees, they sit below the calls' own κ, which
-    assumes no such disagreement;
-  - how many of the disputed 20 agree with each version, with a sign test;
-  - whether you and the merge name the same problem when both call it caught;
-  - each group's counts, and the items still uncalled or unreadable.
+    with an exact interval. It covers your calls' uncertainty only; the
+    tally's intervals cover the sessions';
+  - the disputed 20: how many agree with each version, the exact sign test,
+    and the version picked (decisive at p < 0.05);
+  - each version's share, its gap to yours with an exact interval, the largest
+    gap the interval allows, and whether it lies within the 10-point margin;
+  - κ, with an exact interval;
+  - the merge's own errors where both versions agree: caught by the merge but
+    not by you, and the reverse, each with an interval;
+  - whether you and the merge name the same problem when both call it caught.
 
-  The figures weighed back to all 195 are given once each group has its
-  calls.
+  Before then it lists only the items still uncalled or unreadable.
 - **alone.md:** your calls, with the share that are real among those you could
   decide.
-- **replies.csv:** for each group thread B's reading came from, how often you
-  call it pushback and a real error.
+- **replies.csv, once every row is filled in:** for each group thread B's
+  reading came from, how often you call it pushback and a real error.
 
 A call it cannot read (a letter the item does not have, or a deleted mark) is
 listed, not guessed.
 
 ### What it is for
 
-- **The main measure.** Your calls give the share of real errors caught as a
-  person judges it. A version of the merge is accepted if its share is
-  consistent with yours: the interval of the difference holds 0, with all 60
-  called. κ is reported beside it.
-- **The disputed 20.** These decide between the two versions: on how many of
-  them you agree with each, with a sign test.
+In this order:
+1. **The main measure.** Your calls give the share of real errors caught as
+   a person judges it. This is the paper's headline.
+2. **The version.** The disputed 20 pick it, by how many agree with each. The
+   sign test says whether the pick is decisive. It treats the 20 as
+   independent, though they come from 15 sessions.
+3. **Good enough.** The picked version's figures (by kind, by failure mode,
+   and the other arms) are used if its share is within 10 points of yours.
+   Otherwise the paper reports your share and the merge's measured errors
+   beside its figures. To tighten the 10 points, call more pushbacks (a second
+   sheet with `--per-stratum 40`).
+
+κ is reported, not decisive.
 - **The other side of the result.** alone.md says how often the reviewer finds
   real problems the developer let pass, and how often it raises false alarms.
   That is the "machines catch what humans miss" side.

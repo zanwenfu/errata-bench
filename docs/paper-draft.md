@@ -260,14 +260,18 @@ The match is the study's measuring instrument, so it is checked twice.
   - the 6 with no problem to compare count as not caught.
 
   Weighing each stratum back to its size gives the share of real errors caught
-  by the author's calls. Each stratum's share is drawn from a Jeffreys Beta,
-  and its uncalled pushbacks from a binomial, so a stratum called in full is
-  exact.
-  - A reading of the merge is accepted if its share is consistent with the
-    author's: with every item called, the 95% interval of the difference holds
-    0.
-  - κ, weighed by stratum and with an interval, is reported as agreement.
-  - The disputed 20 decide between the readings, with a sign test.
+  by the author's calls. The interval is exact: each sampled stratum's uncalled
+  pushbacks follow a Beta-binomial on its calls (a Jeffreys prior), convolved
+  over the strata. The analysis has three steps, in order:
+  - the author's share is the headline;
+  - the disputed 20, the only pushbacks the two readings decide differently,
+    pick the reading, with an exact sign test;
+  - the picked reading's figures are used if its share is within 10 points of
+    the author's at 95%. That is about the resolution 60 calls allow.
+
+  κ is reported with an exact interval, not as the rule. Nothing is shown
+  until all 60 are called, so the author cannot learn an item's stratum while
+  labelling.
 
   The guide gives both the author and the merge the claim-level rules' worked
   examples: it is the study's definition of 'same'. Agreement with the
@@ -277,12 +281,15 @@ The match is the study's measuring instrument, so it is checked twice.
   The author also calls 50 of the reviewer's unmatched problems real, false
   alarm or can't tell. The protocol is in `docs/study.md`.
 
-  Two earlier designs were dropped before any labelling.
+  Three earlier designs were dropped before any labelling.
   - A uniform sample of single merge decisions: most are plainly 'different',
     so its κ could pass with every 'same' wrong.
   - A κ ≥ 0.7 rule on this sample: it would pass the strict reading at κ 0.80
     even if the author agreed exactly with the claim-level reading, 9 points
     away.
+  - Accepting a reading whenever the interval of its gap held 0: it caught a
+    5-point gap about a third of the time, and could contradict the sign
+    test.
 - **By a second model:** gpt-6-sol re-matches the pilot's 252 pushbacks on the
   same inputs (section 4.4).
 
@@ -478,8 +485,9 @@ is context, not a ranking.
 ## 6. Threats to validity
 
 - **The match is a model's.** Two matching models agree (κ = 0.87), but they
-  could share a blind spot. The hand check is the test: the merge's share must
-  be consistent with the author's.
+  could share a blind spot. The hand check is the test. The author's share is
+  the headline, and the merge's figures are used only within 10 points of it.
+  A 60-pushback check resolves no finer.
 - **One coder.** The hand check is one author's. A second coder would give the
   agreement between people, which bounds how well any merge can do.
 - **Where 'same' ends.** Whether flagging the claim the developer found false
