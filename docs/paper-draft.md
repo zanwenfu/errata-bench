@@ -255,6 +255,11 @@ The match is the study's measuring instrument, so it is checked twice.
 
 ### 4.1 RQ1: how often does the reviewer name the developer's problem?
 
+![Real-error pushbacks caught, by arm](img/study-arms.svg)
+
+*Figure 1. Real-error pushbacks the reviewer caught, by arm, with 95% intervals
+over sessions (`scripts/study_figures.py`).*
+
 | | Pushback-drawn, 120 sessions |
 |---|---|
 | Handbacks | 1,246 |
@@ -278,6 +283,11 @@ the handback the developer answered. Counting only those gives 40% [33–47] of
 real errors; one handback back gives 46%, and two give 50%.
 
 ### 4.2 RQ2: which problems does it catch, and which does it miss?
+
+![Real errors caught by kind and failure mode](img/study-modes.svg)
+
+*Figure 2. Real errors caught by kind of pushback and failure mode, under the
+strict (blue) and claim-level (pink) rules.*
 
 | Kind of pushback | Caught, all pushbacks | Caught, real errors | Real errors, claim-level |
 |---|---|---|---|
