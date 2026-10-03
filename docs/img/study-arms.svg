@@ -15,33 +15,33 @@
 <text x="712.0" y="334" fill="#6e7781" text-anchor="middle">100%</text>
 <text x="12" y="66" fill="#6e7781" font-size="12" font-weight="600">120 SESSIONS DRAWN FOR PUSHBACK</text>
 <text x="288" y="87" fill="#1f2328" text-anchor="end">gpt-6-astra, strict rules</text>
-<line x1="475.5" y1="82.0" x2="535.3" y2="82.0" stroke="#0969da" stroke-width="2"/>
-<circle cx="504.8" cy="82.0" r="4.5" fill="#0969da"><title>strict rules (version 1): 50%, n = 195</title></circle>
+<line x1="475.6" y1="82.0" x2="535.1" y2="82.0" stroke="#0969da" stroke-width="2"/>
+<circle cx="504.9" cy="82.0" r="4.5" fill="#0969da"><title>strict rules (version 1): 50%, n = 195</title></circle>
 <text x="718" y="87" fill="#6e7781" font-size="11">n=195</text>
 <text x="288" y="113" fill="#1f2328" text-anchor="end">gpt-6-astra, claim-level rules</text>
-<line x1="510.5" y1="108.0" x2="575.2" y2="108.0" stroke="#bf3989" stroke-width="2"/>
-<circle cx="543.1" cy="108.0" r="4.5" fill="#bf3989"><title>claim-level rules (version 2): 59%, n = 195</title></circle>
+<line x1="510.5" y1="108.0" x2="575.3" y2="108.0" stroke="#bf3989" stroke-width="2"/>
+<circle cx="543.0" cy="108.0" r="4.5" fill="#bf3989"><title>claim-level rules (version 2): 59%, n = 195</title></circle>
 <text x="718" y="113" fill="#6e7781" font-size="11">n=195</text>
 <text x="12" y="140" fill="#6e7781" font-size="12" font-weight="600">PILOT, 40 SESSIONS (STRICT RULES)</text>
 <text x="288" y="161" fill="#1f2328" text-anchor="end">gpt-6-astra</text>
-<line x1="411.7" y1="156.0" x2="497.3" y2="156.0" stroke="#0969da" stroke-width="2"/>
-<circle cx="452.0" cy="156.0" r="4.5" fill="#0969da"><title>strict rules (version 1): 37%, n = 65</title></circle>
+<line x1="411.7" y1="156.0" x2="497.4" y2="156.0" stroke="#0969da" stroke-width="2"/>
+<circle cx="452.1" cy="156.0" r="4.5" fill="#0969da"><title>strict rules (version 1): 37%, n = 65</title></circle>
 <text x="718" y="161" fill="#6e7781" font-size="11">n=65</text>
 <text x="288" y="187" fill="#1f2328" text-anchor="end">gpt-6-astra, told the work is its own</text>
-<line x1="443.0" y1="182.0" x2="534.4" y2="182.0" stroke="#0969da" stroke-width="2"/>
+<line x1="442.9" y1="182.0" x2="534.3" y2="182.0" stroke="#0969da" stroke-width="2"/>
 <circle cx="483.8" cy="182.0" r="4.5" fill="#0969da"><title>strict rules (version 1): 45%, n = 65</title></circle>
 <text x="718" y="187" fill="#6e7781" font-size="11">n=65</text>
 <text x="288" y="213" fill="#1f2328" text-anchor="end">gpt-6-sol reviewing</text>
-<line x1="418.2" y1="208.0" x2="501.1" y2="208.0" stroke="#0969da" stroke-width="2"/>
-<circle cx="458.6" cy="208.0" r="4.5" fill="#0969da"><title>strict rules (version 1): 38%, n = 65</title></circle>
+<line x1="418.4" y1="208.0" x2="501.2" y2="208.0" stroke="#0969da" stroke-width="2"/>
+<circle cx="458.5" cy="208.0" r="4.5" fill="#0969da"><title>strict rules (version 1): 38%, n = 65</title></circle>
 <text x="718" y="213" fill="#6e7781" font-size="11">n=65</text>
 <text x="288" y="239" fill="#1f2328" text-anchor="end">DeepSeek-V4-Pro reviewing</text>
-<line x1="339.6" y1="234.0" x2="415.8" y2="234.0" stroke="#0969da" stroke-width="2"/>
-<circle cx="376.2" cy="234.0" r="4.5" fill="#0969da"><title>strict rules (version 1): 18%, n = 65</title></circle>
+<line x1="339.5" y1="234.0" x2="415.6" y2="234.0" stroke="#0969da" stroke-width="2"/>
+<circle cx="376.1" cy="234.0" r="4.5" fill="#0969da"><title>strict rules (version 1): 18%, n = 65</title></circle>
 <text x="718" y="239" fill="#6e7781" font-size="11">n=65</text>
 <text x="12" y="266" fill="#6e7781" font-size="12" font-weight="600">40 SESSIONS DRAWN AT RANDOM</text>
 <text x="288" y="287" fill="#1f2328" text-anchor="end">gpt-6-astra, strict rules</text>
 <line x1="363.4" y1="282.0" x2="499.4" y2="282.0" stroke="#0969da" stroke-width="2"/>
-<circle cx="432.3" cy="282.0" r="4.5" fill="#0969da"><title>strict rules (version 1): 32%, n = 28</title></circle>
+<circle cx="432.4" cy="282.0" r="4.5" fill="#0969da"><title>strict rules (version 1): 32%, n = 28</title></circle>
 <text x="718" y="287" fill="#6e7781" font-size="11">n=28</text>
 </svg>
