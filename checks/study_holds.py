@@ -104,8 +104,33 @@ def section_reports():
     print("\n2. reports: the agent's work between two developer messages")
     reps = S.reports("s1", SESSION, "r/r")
     got = [(r.index, r.request_turn, r.handoff_turn, r.reply_label, r.interrupted) for r in reps]
-    check(got == [(1, 1, 7, "failure_report", False), (2, 7, 13, None, True), (3, 14, 18, "correction", False)],
-          f"three reports, a notice ends none, two messages in a row make none, an interruption is marked: {got}")
+    check(got == [(1, 1, 7, "failure_report", False), (2, 7, 13, None, True), (3, 13, 18, "correction", False)],
+          f"three reports, a notice ends none, two messages in a row are one, an interruption is marked: {got}")
+    check(reps[1].reply == "Thanks REPLY-TWO.\n\nAlso add a retry REQUEST-THREE." and reps[2].request == reps[1].reply
+          and reps[2].request_end == 14, "two developer rows with no work between are one message, the reply and the "
+          "next request")
+
+    # With the raw transcript: a skill's text is not the developer's; parts of one typed message are.
+    typed = S.Typed(typed=[S._norm("Fix the login timeout TASK-TOKEN."), S._norm("No, the tests still fail REPLY-ONE."),
+                           S._norm("Part one of a long pasted plan with many words. Part two of the same plan, "
+                                   "split by the table."), S._norm("ok REPLY-THREE")],
+                    other=[S._norm("Base directory for this skill: /x # A skill's instructions for the agent")])
+    split = [row(1, "user_prompt", "Fix the login timeout TASK-TOKEN."),
+             row(2, "assistant_response", "Working on it."),
+             row(3, "user_prompt", "Base directory for this skill: /x # A skill's instructions for the agent"),
+             row(4, "assistant_response", "Using the skill, done SKILL-WORK."),
+             row(5, "user_prompt", "Part one of a long pasted plan with many words."),
+             row(6, "user_prompt", "Part two of the same plan, split by the table."),
+             row(7, "assistant_response", "Done PLAN-WORK."),
+             row(8, "user_prompt", "a short reply nowhere in the transcript")]
+    kinds = [S.prompt_kind(t, typed) for t in split if t["turn_type"] == "user_prompt"]
+    check(kinds == ["developer", None, "developer", "developer", "developer"],
+          f"the transcript decides: a skill's text is not the developer's, a split message's parts are, a row in "
+          f"neither keeps the table's word: {kinds}")
+    rs = S.reports("s1", split, transcript=typed)
+    check([(r.request_turn, r.request_end, r.handoff_turn) for r in rs] == [(1, 1, 5), (5, 6, 8)]
+          and "SKILL-WORK" in S.window(rs[0], split)[0] and "Base directory" not in S.window(rs[0], split)[0],
+          "the skill's text ends no report and is not shown; its work stays in the stretch")
     return reps
 
 
@@ -116,9 +141,9 @@ def section_windows(reps):
     check("REPORT-ONE" in w1 and "TASK-TOKEN" in w1 and "REPLY-ONE" not in w1 and "NOTICE-TOKEN" not in w1
           and "AFTER-TOKEN" not in w1, "report 1 shows the request and the work, not the reply or the notice")
     check(w1.count("TASK-TOKEN") == 1, "when the request is the first message it is shown once")
-    check(all(t in w3 for t in ("TASK-TOKEN", "REPORT-TWO", "REQUEST-THREE", "WORK-THREE", "REPORT-THREE",
-                                 "rows between them not shown"))
-          and not any(t in w3 for t in ("REPLY-THREE", "REPLY-TWO", "COMPACT-TOKEN", "AFTER-TOKEN", "REPLY-ONE",
+    check(all(t in w3 for t in ("TASK-TOKEN", "REPORT-TWO", "REPLY-TWO", "REQUEST-THREE", "WORK-THREE",
+                                 "REPORT-THREE", "rows between them not shown"))
+          and not any(t in w3 for t in ("REPLY-THREE", "COMPACT-TOKEN", "AFTER-TOKEN", "REPLY-ONE",
                                         "PREVIOUS-TOKEN")),
           "report 3 shows the task, the agent's last message before the request, the request and the work; "
           "no reply, no summary, no earlier work")
@@ -161,14 +186,17 @@ def section_quotes():
     got = [(p["quote_found"], p["quote_in_work"], p["kind_known"]) for p in A.checked(rv, window)]
     check(got == [(True, True, True), (False, False, False), (True, False, True)],
           f"a quote in the work counts; an invented one, an unknown kind, and one quoting only the context do not: {got}")
-    rp = B.Reply(is_pushback=True, what_developer_objects_to="tests fail", developer_quote="still fail",
+    rp = B.Reply(pushback_kind="failure_report", what_developer_objects_to="tests fail", developer_quote="still fail",
                  objection_kind="real_error", failure_modes=["false_claim"], target_shown=True, target_turn=5,
                  target_quote="tests are green")
     c = B.checked(rp, window, "No, the tests still fail.")
     check(c["developer_quote_found"] and not c["target_quote_found"] and c["labels_known"],
           "the developer's quote is checked in the reply, the target in the window")
-    bad = B.checked(B.Reply(is_pushback=True, objection_kind="annoyed"), window, "x")
-    check(not bad["labels_known"], "an objection kind outside the four is marked")
+    bad = B.checked(B.Reply(pushback_kind="failure_report", objection_kind="annoyed"), window, "x")
+    odd = B.checked(B.Reply(pushback_kind="complaint"), window, "x")
+    check(not bad["labels_known"] and not odd["labels_known"] and not odd["is_pushback"]
+          and B.checked(B.Reply(pushback_kind="non_pushback"), window, "x")["labels_known"],
+          "an objection kind outside the four, or a pushback kind outside SWE-chat's, is marked, and is not pushback")
     cands = [{"problem_id": "r1p0", "report": 1, "what_is_wrong": "claims tests pass", "quote": "All tests pass"},
              {"problem_id": "r1p1", "report": 1, "what_is_wrong": "no retry", "quote": "x"}]
     mg = M.Merge(verdicts=[M.Verdict(problem_id="r1p0", match="same", developer_words="", reviewer_words="tests pass",
@@ -221,7 +249,8 @@ def section_runner(reps):
     async def fake_classify(window_text, reply, handoff_turn, *, model, max_turns=3):
         records("classify")
         push = "REPLY-ONE" in reply or "REPLY-THREE" in reply
-        return fake_result(B.Reply(is_pushback=push, what_developer_objects_to="tests fail" if push else "",
+        return fake_result(B.Reply(pushback_kind="failure_report" if push else "non_pushback",
+                                   what_developer_objects_to="tests fail" if push else "",
                                    developer_quote="tests still fail" if "REPLY-ONE" in reply else "",
                                    objection_kind="real_error" if push else ""))
 

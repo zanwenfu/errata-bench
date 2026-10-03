@@ -82,10 +82,15 @@ def prepare(args) -> int:
             continue
         repo = p["repo_id"] or ""
         view = S.view_turns(sid, raw)
-        reps = S.reports(sid, view, repo)
+        transcript = S.transcript_prompts(sid)
+        reps = S.reports(sid, view, repo, transcript)
+        users = [t for t in raw if t.get("turn_type") == "user_prompt"]
+        by_table = sum(1 for t in users if S.prompt_kind(t))
+        by_transcript = sum(1 for t in users if S.prompt_kind(t, transcript))
         kept = reps[: args.max_reports] if args.max_reports else reps
         append(path(out, "sessions"), {**p, "turns": len(raw), "reports_found": len(reps), "reports": len(kept),
-                                       "transcript": has_transcript(sid)})
+                                       "transcript": has_transcript(sid), "developer_rows_by_table": by_table,
+                                       "developer_rows_by_transcript": by_transcript})
         for r in kept:
             text, stats = S.window(r, view)
             append(path(out, "reports"), S.report_row(r, text, stats))
@@ -287,7 +292,7 @@ def tally(args) -> int:
     problems = [(k[0], k[1], f"r{k[1]}p{i}", p) for k, r in reviews.items()
                 for i, p in enumerate(r.get("problems") or []) if p.get("quote_in_work")]
     alone = [p for p in problems if (p[0], p[1], p[2]) not in matched_problems]
-    label = Counter((r.get("reply_label") in S.PUSHBACK_KINDS, bool(r.get("is_pushback"))) for r in replies.values())
+    label = Counter((r.get("reply_label") or "none", r.get("pushback_kind") or "?") for r in replies.values())
     out = {
         "reports": len(reports), "reviewed": len(reviews), "replies_read": len(replies),
         "pushbacks": len(pushbacks),
@@ -298,7 +303,7 @@ def tally(args) -> int:
         "reviewer_problems_quoting_context_only": sum(1 for r in reviews.values() for p in r.get("problems") or []
                                                       if p.get("quote_found") and not p.get("quote_in_work")),
         "reviewer_problems_alone": len(alone),
-        "swe_chat_label_vs_reading": {f"label={a},read={b}": n for (a, b), n in sorted(label.items())},
+        "swe_chat_label_vs_reading": {f"swe-chat={a} read={b}": n for (a, b), n in sorted(label.items())},
     }
     real = by_kind.get("real_error", Counter())
     if sum(real.values()):

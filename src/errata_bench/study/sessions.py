@@ -25,6 +25,7 @@ from __future__ import annotations
 
 import json
 import random
+import re
 from collections import defaultdict
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -96,14 +97,112 @@ def view_turns(session_id: str, turns: list[dict]) -> list[dict]:
     return whole_results(session_id, with_text(session_id, recover(session_id, turns)))
 
 
-def prompt_kind(t: dict) -> str | None:
-    """What a row is, if the developer wrote it: 'developer', 'plan' (approved), or None (not the developer)."""
+IMAGE = re.compile(r"\[Image[^\]]*\]")
+
+
+def _norm(text: str) -> str:
+    """A prompt's words, for matching the table against the transcript: image markers out, whitespace collapsed."""
+    return " ".join(IMAGE.sub(" ", text or "").split())
+
+
+@dataclass
+class Typed:
+    """What a session's raw transcript says about its user entries."""
+
+    typed: list[str]   # entries the developer typed (`recover._prompt`), normalised
+    other: list[str]   # user entries that are not: meta (a skill's or a command's text, a hook), results, sub-agents'
+
+
+def transcript_prompts(session_id: str) -> Typed | None:
+    """Which user entries the developer typed, from the raw transcript. None when the session has none here.
+
+    SWE-chat's table files a skill's text, a command's expansion, a hook's
+    message, a sub-agent's prompt and a tool's output under `user_prompt` too. In
+    the 40 pilot sessions, 156 of the 1,070 rows the table alone would have taken
+    for the developer's matched no typed entry (10-03): 78 were meta entries
+    (skills, commands, hooks), 3 results, 15 nowhere in the transcript, and 60
+    parts of one long typed message that the table splits into several rows. The
+    transcript's own marks decide (`_prompt`: not meta, not a result, not a notice).
+    """
+    from ..corpus.recover import _prompt, has_transcript, transcript_path
+
+    if not has_transcript(session_id):
+        return None
+    typed, other = [], []
+    with transcript_path(session_id).open(errors="replace") as fh:
+        for line in fh:
+            try:
+                e = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(e, dict) or e.get("type") != "user":
+                continue
+            content = (e.get("message") or {}).get("content")
+            if isinstance(content, list):
+                text = " ".join(str(b.get("text") or b.get("content") or "") for b in content if isinstance(b, dict))
+            else:
+                text = content if isinstance(content, str) else ""
+            (typed if not e.get("isSidechain") and _prompt(e) else other).append(_norm(text))
+    return Typed(typed, other)
+
+
+def prompt_kind(t: dict, transcript: Typed | None = None) -> str | None:
+    """What a row is, if the developer wrote it: 'developer', 'plan' (approved), or None (not the developer).
+
+    Without a transcript, the table's row and its text decide. With one, a row is
+    the developer's only if its words are a typed entry's, or part of one (the
+    table splits a long message); a row whose opening is in an entry that is not
+    typed (a skill's text, a command's expansion, a result) is not. A row in
+    neither keeps the table's word.
+    """
     if t.get("turn_type") != "user_prompt":
         return None
-    text = str(t.get("content") or "").lstrip()
-    if not text or t.get("is_continuation") or text.startswith(COMPACTED) or text.startswith(NOT_A_PROMPT):
+    raw = str(t.get("content") or "").lstrip()
+    if not raw or t.get("is_continuation") or raw.startswith(COMPACTED) or raw.startswith(NOT_A_PROMPT):
         return None
-    return "plan" if text.startswith(PLAN) else "developer"
+    kind = "plan" if raw.startswith(PLAN) else "developer"
+    if transcript is None:
+        return kind
+    text = _norm(raw)
+    if any(text == p or (len(text) >= 30 and text in p) for p in transcript.typed):
+        return kind
+    head = text[:60]
+    if head and any(head in o for o in transcript.other):
+        return None
+    return kind
+
+
+@dataclass
+class Message:
+    """One message from the developer: one row, or several in a row with no work between (a split or a queue)."""
+
+    first: float
+    last: float
+    kind: str
+    text: str
+    label: str | None
+
+
+def messages(turns: list[dict], transcript: Typed | None = None) -> list[Message]:
+    """The developer's messages in order. Rows with no agent work between them are one message."""
+    out: list[Message] = []
+    since_work = True
+    for t in turns:
+        kind = prompt_kind(t, transcript)
+        if kind:
+            text, label = str(t.get("content") or "").strip(), t.get("prompt_pushback")
+            if out and not since_work:
+                m = out[-1]
+                m.last, m.text = t["turn_number"], f"{m.text}\n\n{text}"
+                m.kind = "developer" if "developer" in (m.kind, kind) else m.kind
+                if m.label not in PUSHBACK_KINDS and label:
+                    m.label = label
+            else:
+                out.append(Message(t["turn_number"], t["turn_number"], kind, text, label))
+            since_work = False
+        elif t.get("turn_type") not in NOISE and t.get("turn_type") != "user_prompt":
+            since_work = True
+    return out
 
 
 @dataclass
@@ -113,34 +212,35 @@ class Report:
     session_id: str
     repo_id: str
     index: int                # 1 for the first report after the session's first developer message
-    task_turn: float          # the session's first developer message
-    request_turn: float       # the developer message the agent was answering
-    handoff_turn: float       # the developer's reply, which ends the report
+    task: str                 # the session's first developer message
+    task_turn: float
+    task_end: float
+    request: str              # the developer message the agent was answering
+    request_turn: float
+    request_end: float
+    handoff_turn: float       # where the developer's reply begins, which ends the report
     reply_kind: str           # 'developer' or 'plan'
     reply: str                # the reply's text
-    reply_label: str | None   # SWE-chat's pushback label on the reply, if any
+    reply_label: str | None   # SWE-chat's pushback label on the reply (any of its rows), if any
     work_turns: int           # rows of the agent's work in the stretch
     interrupted: bool         # the developer interrupted the agent during the stretch
 
 
-def reports(session_id: str, turns: list[dict], repo_id: str = "") -> list[Report]:
-    """The session's reports, in order. Two developer messages with no work between them make none."""
-    marks = [(t, prompt_kind(t)) for t in turns]
-    marks = [(t, k) for t, k in marks if k]
-    if not marks:
+def reports(session_id: str, turns: list[dict], repo_id: str = "", transcript: Typed | None = None) -> list[Report]:
+    """The session's reports, in order: one for each developer message after the first."""
+    msgs = messages(turns, transcript)
+    if not msgs:
         return []
-    task_turn = marks[0][0]["turn_number"]
+    task = msgs[0]
     out: list[Report] = []
-    for (request, _), (reply, kind) in zip(marks, marks[1:]):
-        lo, hi = request["turn_number"], reply["turn_number"]
-        inside = [t for t in turns if lo < (t.get("turn_number") or 0) < hi]
+    for request, reply in zip(msgs, msgs[1:]):
+        inside = [t for t in turns if request.last < (t.get("turn_number") or 0) < reply.first]
         work = [t for t in inside if t.get("turn_type") not in NOISE and t.get("turn_type") != "user_prompt"]
-        if not work:
-            continue
         out.append(Report(
-            session_id=session_id, repo_id=repo_id, index=len(out) + 1, task_turn=task_turn,
-            request_turn=lo, handoff_turn=hi, reply_kind=kind, reply=str(reply.get("content") or ""),
-            reply_label=reply.get("prompt_pushback"), work_turns=len(work),
+            session_id=session_id, repo_id=repo_id, index=len(out) + 1, task=task.text, task_turn=task.first,
+            task_end=task.last, request=request.text, request_turn=request.first, request_end=request.last,
+            handoff_turn=reply.first, reply_kind=reply.kind, reply=reply.text, reply_label=reply.label,
+            work_turns=len(work),
             interrupted=any(str(t.get("content") or "").lstrip().startswith("[Request interrupted")
                             for t in inside if t.get("turn_type") == "user_prompt")))
     return out
@@ -159,32 +259,29 @@ def window(report: Report, turns: list[dict]) -> tuple[str, dict]:
     ``turns`` are the session's view turns (`view_turns`). Nothing at or after
     the developer's reply is rendered, and no row the developer did not write is
     shown as theirs: rows that are not the developer writing (notices, command
-    output, compaction summaries) are left out of the stretch.
+    output, compaction summaries, a skill's text) are left out of the stretch.
     """
-    by_turn = {t.get("turn_number"): t for t in turns}
     parts: list[str] = []
-    task = by_turn.get(report.task_turn)
-    if task is not None and report.task_turn != report.request_turn:
+    if report.task_turn != report.request_turn:
         parts.append(f"THE DEVELOPER'S FIRST MESSAGE IN THIS SESSION (turn {report.task_turn:g}):\n"
-                     f"{_capped(str(task.get('content') or ''), TASK_CHARS)}")
-        earlier = [t for t in turns if report.task_turn < (t.get("turn_number") or 0) < report.request_turn
+                     f"{_capped(report.task, TASK_CHARS)}")
+        earlier = [t for t in turns if report.task_end < (t.get("turn_number") or 0) < report.request_turn
                    and t.get("turn_type") not in NOISE]
         if earlier:
             last = next((t for t in reversed(earlier) if t.get("turn_type") == "assistant_response"
                          and str(t.get("content") or "").strip()), None)
             parts.append(f"[... {len(earlier):,} rows between them not shown: the session's earlier work ...]")
             if last is not None:
-                parts.append(f"THE AGENT'S LAST MESSAGE BEFORE THE REQUEST (turn {last.get('shown_as', last['turn_number']):g}):\n"
+                parts.append(f"THE AGENT'S LAST MESSAGE BEFORE THE REQUEST "
+                             f"(turn {last.get('shown_as', last['turn_number']):g}):\n"
                              f"{_capped(str(last.get('content') or ''), PREVIOUS_CHARS)}")
-    request = by_turn[report.request_turn]
-    parts.append(f"THE DEVELOPER'S REQUEST (turn {report.request_turn:g}):\n"
-                 f"{_capped(str(request.get('content') or ''), REQUEST_CHARS)}")
+    parts.append(f"THE DEVELOPER'S REQUEST (turn {report.request_turn:g}):\n{_capped(report.request, REQUEST_CHARS)}")
 
-    work = [t for t in turns if report.request_turn < (t.get("turn_number") or 0) < report.handoff_turn
+    work = [t for t in turns if report.request_end < (t.get("turn_number") or 0) < report.handoff_turn
             and t.get("turn_type") != "user_prompt"]
     assert all((t.get("turn_number") or 0) < report.handoff_turn for t in work)
-    cut = max((t["turn_number"] for t in work), default=report.request_turn)
-    stats = {"tool_cap": None, "work_chars_left_out": 0, "rows_left_out_before_request": 0}
+    cut = max((t["turn_number"] for t in work), default=report.request_end)
+    stats = {"tool_cap": None, "work_chars_left_out": 0}
     shown = ""
     for cap in TOOL_CAPS:
         shown = build_excerpt(work, cut, max_chars=10**12, record=3, tool_cap=cap).strip()
@@ -195,7 +292,7 @@ def window(report: Report, turns: list[dict]) -> tuple[str, dict]:
         stats["work_chars_left_out"] = len(shown) - WORK_CHARS
         shown = (f"[... the first {len(shown) - WORK_CHARS:,} characters of this stretch not shown ...]\n"
                  + shown[-WORK_CHARS:])
-    parts.append(f"{WORK_HEADER} (turns after {report.request_turn:g}), ending with its report:\n{shown}")
+    parts.append(f"{WORK_HEADER} (turns after {report.request_end:g}), ending with its report:\n{shown}")
     parts.append("[The agent's turn ends here. The developer has not replied yet.]")
     text = "\n\n".join(parts)
     stats["chars"] = len(text)
