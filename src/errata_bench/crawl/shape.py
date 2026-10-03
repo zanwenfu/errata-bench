@@ -282,16 +282,18 @@ def rewound(entries: list[dict]) -> int:
     other, and a build would replay the abandoned branch's edits. A branch
     point is an entry with two or more children that are the developer's own
     messages; one is abandoned when the path from the session's last entry
-    back to its root does not pass through it and the agent answered it. 85
-    of the corpus's 6,449 sessions hold one (185 in all). Two first messages
+    back to its root does not pass through it and the agent answered it. 79
+    of the corpus's 6,449 sessions hold one (153 in all). Two first messages
     -- two roots -- are not one: the one session with them ran a command,
     finished, and three hours later ran it again in a new conversation, and
     the first conversation's work was done.
 
-    Counted without a compaction's link (below), the path stopped at the
+    Counted without a compaction's link (below), the walk stopped at the
     boundary and 147 sessions were listed: in 62 of them every "abandoned"
     message was the one kept, edited seconds after its first version and
-    before any answer, and its thousands of entries were under it.
+    before any answer, its thousands of entries under it. Counted without
+    the fallback for a boundary naming an entry the file lacks, 85 were, 6
+    of them for the same reason.
     """
     # A compaction's boundary has no parent, and names the entry it follows in
     # `logicalParentUuid`: without it the conversation's path stopped there,
