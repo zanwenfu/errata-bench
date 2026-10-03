@@ -8,6 +8,7 @@
     .venv/bin/python scripts/study.py merge    --run runs/study-pilot --max-usd N [--concurrency 8] [--limit N] [--rules 2]
     .venv/bin/python scripts/study.py tally    --run runs/study-pilot
     .venv/bin/python scripts/study.py sheet    --run runs/study-pilot [--matches 150] [--alone 50]
+    .venv/bin/python scripts/study.py replies-sheet --run runs/study-pushback-120 [--n 40]
     .venv/bin/python scripts/study.py agreement --run runs/study-pushback-120 [--also runs/study-pushback-120-rules2]
 
 `prepare` and `estimate` make no model call. `review` (thread A) and `human`
@@ -441,6 +442,12 @@ def sheet(args) -> int:
     run = Path(args.run)
     framing = getattr(args, "framing", "outside")
     tag = "" if framing == "outside" else f"-{framing}"
+    # A sheet may already hold a person's labels, or translations added to it: never written over.
+    held = [p for p in (run / f"labels{tag}.csv", run / f"alone{tag}.md") if p.exists()]
+    if held:
+        print(f"refused: {', '.join(map(str, held))} exists and may hold labels; move it away to write a new sheet",
+              file=sys.stderr)
+        return 2
     reports = {key(r): r for r in load(path(run, "reports"))}
     reviews = {key(r): r for r in completed(path(run, "review", framing))}
     merges = completed(path(run, "merge", framing))
@@ -490,6 +497,47 @@ def sheet(args) -> int:
                     f"(open only after you decide)</summary>\n\n" + "\n\n".join(_fenced(r) for r in later)
                     + "\n\n</details>\n")
     print(f"wrote {len(alone)} of the reviewer's unmatched problems to check: {run / f'alone{tag}.md'}")
+    return 0
+
+
+def replies_sheet(args) -> int:
+    """A blind sheet of developer replies, to check thread B's reading by hand: is it pushback, and is it about a
+    real agent error? Half are replies read as real-error pushback, a quarter other pushback, a quarter none."""
+    run = Path(args.run)
+    out_path, key_path = run / "replies.csv", run / "replies-key.csv"
+    if out_path.exists():
+        print(f"refused: {out_path} exists and may hold labels; move it away to write a new sheet", file=sys.stderr)
+        return 2
+    reports = {key(r): r for r in load(path(run, "reports"))}
+    replies = [r for r in completed(path(run, "human")) if not r.get("approved_plan") and key(r) in reports
+               and (reports[key(r)].get("reply") or "").strip()]
+    strata = {
+        "real error": [r for r in replies if r.get("is_pushback") and r.get("objection_kind") == "real_error"],
+        "other pushback": [r for r in replies if r.get("is_pushback") and r.get("objection_kind") != "real_error"],
+        "not pushback": [r for r in replies if not r.get("is_pushback")],
+    }
+    sizes = {"real error": args.n // 2, "other pushback": args.n // 4}
+    sizes["not pushback"] = args.n - sum(sizes.values())
+    rng = random.Random(20261005)
+    take = []
+    for name, rows in strata.items():
+        rows = sorted(rows, key=key)
+        rng.shuffle(rows)
+        take += [(name, r) for r in rows[: sizes[name]]]
+    rng.shuffle(take)   # the strata are mixed, so an item's place does not give its reading away
+    with open(out_path, "w", newline="") as f, open(key_path, "w", newline="") as g:
+        w, kw = csv.writer(f), csv.writer(g)
+        w.writerow(["item", "developer_request", "end_of_the_agents_work", "developer_reply",
+                    "pushback? (yes / no)", "about a real agent error? (yes / no / unclear)", "note"])
+        kw.writerow(["item", "session", "handback", "stratum", "pushback_kind", "objection_kind", "swe_chat_label"])
+        for n, (name, r) in enumerate(take, 1):
+            rep = reports[key(r)]
+            w.writerow([n, (rep.get("request") or "")[:1500], (rep.get("window") or "")[-2500:],
+                        rep["reply"][:6000], "", "", ""])
+            kw.writerow([n, r["session_id"], r["index"], name, r.get("pushback_kind"), r.get("objection_kind"),
+                         r.get("reply_label")])
+    print(f"wrote {len(take)} replies to label blind: {out_path} (the reading's: {key_path}); "
+          + ", ".join(f"{name} {sum(1 for s, _ in take if s == name)}" for name in strata))
     return 0
 
 
@@ -593,6 +641,29 @@ def agreement(args) -> int:
                         # Of the problems the person could decide, the share that are real.
                         "real_of_decided": T.bootstrap([(s, c == "real") for s, c in calls.values()
                                                         if c != "can't tell"])}
+    if tag == "" and (run / "replies.csv").exists():
+        with open(run / "replies.csv", newline="", encoding="utf-8") as fh:
+            sheet_rows = list(csv.DictReader(fh))
+        with open(run / "replies-key.csv", newline="", encoding="utf-8") as fh:
+            stratum = {r["item"]: r["stratum"] for r in csv.DictReader(fh)}
+        push_col = next(c for c in sheet_rows[0] if c.startswith("pushback?"))
+        real_col = next(c for c in sheet_rows[0] if c.startswith("about a real agent error?"))
+        by = defaultdict(lambda: {"labelled": 0, "pushback": 0, "real_error": 0, "unclear": 0})
+        unread_replies = []
+        for r in sheet_rows:
+            p = (r.get(push_col) or "").strip().strip(".").lower()
+            e = (r.get(real_col) or "").strip().strip(".").lower()
+            if not p:
+                continue
+            if p not in ("yes", "no") or (p == "yes" and e not in ("yes", "no", "unclear")):
+                unread_replies.append(r["item"])
+                continue
+            s = by[stratum[r["item"]]]
+            s["labelled"] += 1
+            s["pushback"] += p == "yes"
+            s["real_error"] += p == "yes" and e == "yes"
+            s["unclear"] += p == "yes" and e == "unclear"
+        out["replies"] = {"by_reading": dict(by), "unreadable": unread_replies}
     print(json.dumps(out, indent=1, ensure_ascii=False))
     (run / f"agreement{tag}.json").write_text(json.dumps(out, indent=1, ensure_ascii=False))
     return 0
@@ -639,6 +710,9 @@ def main() -> int:
     s.add_argument("--matches", type=int, default=150)
     s.add_argument("--alone", type=int, default=50)
     s.add_argument("--framing", choices=("outside", "self"), default="outside")
+    rs = sub.add_parser("replies-sheet")
+    rs.add_argument("--run", required=True)
+    rs.add_argument("--n", type=int, default=40)
     g = sub.add_parser("agreement")
     g.add_argument("--run", required=True)
     g.add_argument("--also", action="append", help="another run folder whose merges of the same pushbacks to compare "
@@ -648,7 +722,8 @@ def main() -> int:
     if getattr(args, "concurrency", 1) < 1:
         ap.error("--concurrency must be at least 1")
     return {"prepare": prepare, "estimate": estimate, "review": review, "human": human, "merge": merge,
-            "tally": tally, "sheet": sheet, "combine": combine, "agreement": agreement}[args.cmd](args)
+            "tally": tally, "sheet": sheet, "combine": combine, "agreement": agreement,
+            "replies-sheet": replies_sheet}[args.cmd](args)
 
 
 if __name__ == "__main__":

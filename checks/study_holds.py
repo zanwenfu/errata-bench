@@ -556,6 +556,11 @@ def section_runner(reps):
                   and "~~~~" in alone_md and "open only after you decide" in alone_md,
                   "the hand-label sheet is written blind, the model's verdicts apart, and alone.md fences each window")
             check(study._fenced("a\n~~~~~\nb").startswith("~~~~~~\n"), "a fence is longer than any run of tildes it holds")
+            before = (run / "labels.csv").read_text()
+            with contextlib.redirect_stdout(quiet), contextlib.redirect_stderr(quiet):
+                rc_again = study.sheet(SimpleNamespace(run=str(run), matches=150, alone=50))
+            check(rc_again == 2 and (run / "labels.csv").read_text() == before,
+                  "a second sheet is refused: one already written may hold a person's labels")
 
             # The spend line: every call priced at the guard's rate, stopping before the next once reached.
             run2 = Path(tmp) / "run2"
@@ -720,7 +725,50 @@ def section_agreement():
         (run / "alone.md").write_text("# The reviewer's problems that no pushback matched\n" + item(1, "aaaa", "real")
                                       + item(2, "bbbb", "\n\nFalse alarm.") + item(3, "cccc", "maybe")
                                       + item(4, "dddd", "can\u2019t tell") + item(5, "eeee", ""))
+        # Thread B's sheet: 8 replies, 4 read as real-error pushback, 2 as other pushback, 2 as none, 1 approved plan.
+        readings = [("real_error", True)] * 4 + [("preference", True)] * 2 + [("", False)] * 2
+        for i, (kind, push) in enumerate(readings, 1):
+            append(run / "reports.jsonl", {"session_id": f"t{i}", "index": 2, "request": f"REQUEST-{i}",
+                                           "window": f"WORK-{i} ends with the agent's report", "reply": f"REPLY-{i}"})
+            append(run / "replies.jsonl", {"session_id": f"t{i}", "index": 2, "is_pushback": push,
+                                           "pushback_kind": "correction" if push else "non_pushback",
+                                           "objection_kind": kind, "reply_label": "correction", "model": "m",
+                                           "usage": None})
+        append(run / "reports.jsonl", {"session_id": "t9", "index": 2, "request": "R", "window": "W",
+                                       "reply": "Implement the following plan: P"})
+        append(run / "replies.jsonl", {"session_id": "t9", "index": 2, "is_pushback": False, "approved_plan": True,
+                                       "pushback_kind": "non_pushback", "model": None, "usage": None})
         quiet = io.StringIO()
+        with contextlib.redirect_stdout(quiet), contextlib.redirect_stderr(quiet):
+            # Asked for 12, more than there are, so every reply the sheet may take is taken: an approved plan let in
+            # would show.
+            rcs = study.replies_sheet(SimpleNamespace(run=str(run), n=12))
+            rcs2 = study.replies_sheet(SimpleNamespace(run=str(run), n=12))
+        with open(run / "replies-key.csv", newline="") as fh:
+            rkey = list(csv.DictReader(fh))
+        sheet_text = (run / "replies.csv").read_text()
+        check(rcs == 0 and sorted(r["stratum"] for r in rkey) == ["not pushback"] * 2 + ["other pushback"] * 2
+              + ["real error"] * 4
+              and "REPLY-" in sheet_text and "REQUEST-" in sheet_text and "WORK-" in sheet_text
+              and not any(w in sheet_text for w in ("real_error", "preference", "correction", "stratum", "plan: P",
+                                                    "real error", "other pushback", "not pushback")),
+              f"thread B's sheet: half real-error pushback, a quarter each of the rest, no approved plan, and blind: "
+              f"{sorted(r['stratum'] for r in rkey)}")
+        check(rcs2 == 2, "a second replies sheet is refused, like the first sheet")
+        with open(run / "replies.csv", newline="") as fh:
+            rrows = list(csv.reader(fh))
+        stratum_of = {r["item"]: r["stratum"] for r in rkey}
+        answers = {"real error": ("yes", "yes"), "other pushback": ("Yes", "no."), "not pushback": ("no", "")}
+        first_real = True
+        for r in rrows[1:]:
+            st = stratum_of[r[0]]
+            push, real = answers[st]
+            if st == "real error" and not first_real:
+                push, real = "yes", "unclear"
+            first_real = first_real and st != "real error"
+            r[4], r[5] = push, real
+        with open(run / "replies.csv", "w", newline="") as fh:
+            csv.writer(fh).writerows(rrows)
         with contextlib.redirect_stdout(quiet):
             rc = study.agreement(SimpleNamespace(run=str(run), also=[str(other)], framing="outside"))
         out = json.loads((run / "agreement.json").read_text())
@@ -733,6 +781,11 @@ def section_agreement():
         check(second["items"] == 2 and second["agreement"] == 1.0,
               f"against another run's merge of the same pushbacks, by the same problem id, on the items it holds: "
               f"{second['items']} items, agreement {second['agreement']}")
+        by = out["replies"]["by_reading"]
+        check(by["real error"] == {"labelled": 4, "pushback": 4, "real_error": 1, "unclear": 3}
+              and by["other pushback"] == {"labelled": 2, "pushback": 2, "real_error": 0, "unclear": 0}
+              and by["not pushback"] == {"labelled": 2, "pushback": 0, "real_error": 0, "unclear": 0},
+              f"thread B's sheet is scored by the reading each reply came from: {dict(by)}")
         a = out["alone"]
         check(a["counts"] == {"real": 1, "false alarm": 1, "can't tell": 1} and a["unreadable_calls"] == ["3"]
               and a["real_of_decided"]["n"] == 2 and a["real_of_decided"]["share"] == 0.5,

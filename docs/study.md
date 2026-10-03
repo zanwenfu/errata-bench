@@ -51,7 +51,7 @@ Two lists, made independently, then merged (the user's design, 10-03):
 
 `scripts/study.py` runs it: `prepare`, `estimate`, `review`, `human`, `merge`,
 `tally`, `sheet` and `combine`. `checks/study_holds.py` checks the rules with
-the model faked: 68 checks, plus 44 single-rule mutants, all caught (10-03).
+the model faked: 72 checks, plus 50 single-rule mutants, all caught (10-03).
 
 ## Who spoke: the rule both threads depend on
 
@@ -433,6 +433,24 @@ Decide from the work; what the developer said next is folded below it, to open o
   a careful developer to push back on.
 - **can't tell:** the material does not show enough to decide.
 
+### replies.csv (optional): is thread B's reading right?
+
+The main measure counts only pushbacks that thread B read as real agent errors,
+and that reading agrees with SWE-chat's own label only at κ = 0.52. These 40
+replies check it by hand. Half were read as real-error pushback, a quarter as
+other pushback, a quarter as none, mixed in random order (the reading is in
+`replies-key.csv`).
+
+Each row has the developer's request, the end of the agent's work, and the
+developer's reply. For each, write:
+- **pushback?** `yes` or `no`, by SWE-chat's codebook: a correction, a
+  rejection, a failure report or a takeover;
+- **about a real agent error?** if pushback: `yes` (the agent got something
+  wrong), `no` (a preference or a change of mind), or `unclear`.
+
+10 rows have an English column. This takes about 30 minutes. Do it after the
+two files above, if at all.
+
 ### When you are done
 
     .venv/bin/python scripts/study.py agreement --run runs/study-pushback-120 --also runs/study-pushback-120-rules2
@@ -442,7 +460,9 @@ It prints, and writes to `agreement.json`:
 - your labels against rules version 2 (the items whose pushback is a real
   error: the rest were not merged under version 2);
 - your calls on the unmatched problems, with the share that are real among
-  those you could decide.
+  those you could decide;
+- if `replies.csv` is filled in, how often you agree with thread B's reading,
+  for each group it came from.
 
 Labels may be in any case, with a full stop. A label it cannot read is listed,
 not guessed.
