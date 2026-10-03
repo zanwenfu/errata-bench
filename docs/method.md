@@ -408,22 +408,26 @@ the differences:
 
 - **Collection.** Repositories are found by GitHub's search for Entire's
   checkpoint trailers and kept by v1's licence policy. Each session's latest
-  transcript is kept, with its sub-agents'. The corpus holds 6,449 Claude Code
-  sessions from 202 repositories; other agents' sessions are kept for later.
-  1,724 of the 6,449 are also SWE-chat sessions, under the same ids, and 36
-  of those hold a task built from SWE-chat, 16 of them v1's. No session with a
-  task built from either corpus is drawn. The labelled sessions include none
-  of the 1,724, so no draw so far has held one. *[SWE-chat v2 (10-03) is not
-  yet measured.]*
+  transcript is kept, with its sub-agents'. The crawl collected 6,464 Claude
+  Code sessions. The corpus holds the 6,449 with a developer message, from 202
+  repositories. 2,970 sessions from other agents are kept but not read, since
+  the pipeline reads Claude Code's transcripts only (#21). 1,724 of the 6,449
+  are also SWE-chat sessions, under the same ids, and 36 of those hold a task
+  built from SWE-chat, 16 of them v1's. No session with a task built from
+  either corpus is drawn.
 - **Who wrote a message** is read from Claude Code's marks on each transcript
   entry (G-90, G-94):
   - another agent's message is shown as ANOTHER AGENT;
   - Claude Code's notices and its own `<synthetic>` text are Claude Code's;
   - the expansion of a command the developer ran is the developer's.
 - **Labels.** These sessions have no SWE-chat labels. gpt-5.6-luna labels each
-  developer message with SWE-chat's codebook. On SWE-chat's own moments it
-  calls 95.2% of triage's pushbacks pushback, and all 55 of v1's task moments.
-  As in step 2, a label is only a first filter.
+  developer message with SWE-chat's codebook. It labels the 3,759 sessions
+  outside SWE-chat whose language the pipeline can sandbox. On SWE-chat's own
+  moments it calls 95.2% of triage's pushbacks pushback, and all 55 of v1's
+  task moments. As in step 2, a label is only a first filter. The 1,724
+  sessions SWE-chat also holds are not labelled, so none is drawn. v1 drew
+  from their SWE-chat moments, and whatever they hold beyond SWE-chat's copy
+  is not read (#20).
 - **The draw** (`scripts/draw_entire.py`) follows v1's step 2
   (`scripts/draw_step2.py`), read over the runs of both sources:
   - first and later pushbacks;

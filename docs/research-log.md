@@ -12606,3 +12606,29 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     - Public `main` holds transcript excerpts and developers' home paths in
       337 files under `results/` and in three checks. #17 is putting the
       options to the user; nothing on `main` is changed here.
+- **10-03, 08:5x UTC** — **The Entire work paused by the user before the
+  second pilot. The parts of the Entire data outside the pool are documented
+  (#20, #21) (#16).**
+  - *Decided.* The user paused the rest of the Entire work, with new work to
+    follow. The second pilot was not run, and nothing was spent. A VM start
+    for it (06:48) ran two hours idle and was deallocated.
+  - *Measured on the corpus,* for the docs:
+    - It holds 6,449 Claude Code sessions from 202 repositories. The 09-30
+      collection's 6,464 and 203 came before two corrections: a duplicate
+      repository credited to entireio/cli, and 15 sessions with no
+      developer message.
+    - 3,759 sessions carry pushback labels. That is every session outside
+      SWE-chat in a language the pipeline can sandbox.
+    - Without labels, so never drawn:
+      - the 1,724 sessions SWE-chat also holds (#20);
+      - 7 sessions outside SWE-chat that could be sandboxed (#20);
+      - 959 sessions in languages the pipeline cannot sandbox.
+    - The 2,970 sessions from other agents are kept but not read (#21).
+  - *Corrects the 03:0x entry,* which said the labels cover only the later
+    sessions: they cover every sandboxable session outside SWE-chat, 567
+    created before 20 April among them.
+  - *Where the work stands.*
+    - Gate 3 is next: the second pilot at v1's settings, then its audit.
+    - The code is ready and checked, `entire-label` is pushed, and nothing
+      is admitted yet by v1's rule.
+    - The method draft (`docs/method.md`) now gives these figures.
