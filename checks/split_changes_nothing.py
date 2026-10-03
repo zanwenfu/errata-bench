@@ -457,7 +457,7 @@ check(len(seen["judge"]) == 1, f"the errored grade is retried, the good one is n
 # ------------------------------- 7. rebuilding tasks does not orphan answers
 
 print("\n7. a rebuild prunes answers with their tasks")
-from errata_bench.spec import read as read_tasks
+from errata_bench.spec import Rejection, read as read_tasks
 import errata_bench.build as build_mod
 
 surviving = [t for t in read_tasks(after.tasks) if t.task_id != "task-0"]
@@ -465,7 +465,7 @@ surviving = [t for t in read_tasks(after.tasks) if t.task_id != "task-0"]
 
 class FakeBuild:
     tasks = surviving
-    rejected = [type("R", (), {"repo_id": "r/r", "complaint_turn": 1, "reason": "nothing to answer"})()]
+    rejected = [Rejection("r/r", 1, "nothing to answer", "s")]
 
 
 build_mod.build = lambda rows_: FakeBuild()

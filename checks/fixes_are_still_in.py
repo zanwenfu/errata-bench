@@ -665,7 +665,7 @@ asyncio.run(stage_attempt(d, 10**9, concurrency=2, repeats=1))
 d.screened.write_text(json.dumps({"session_id": "s", "turn_number": 1}) + "\n")
 class _B2:
     tasks = [mktask(defect="rebuilt")]
-    rejected = [type("R", (), {"repo_id": "r/r", "complaint_turn": 2, "reason": "out of scope"})()]
+    rejected = [Rejection("r/r", 2, "out of scope", "s")]
 B.build = lambda rows_: _B2()
 pb = stage_build(d, 10**9)
 check("B-141", f"a rebuild keeps both what it deleted and why it rejected: {pb.notes}",
