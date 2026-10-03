@@ -254,6 +254,18 @@ therefore counts them again, and prices gpt-6-sol at gpt-6-astra's placeholder
 rate (scripts/d40_spend.PRICE on main). The arm's real cost was $8.49 for the
 reviews and $12.12 for the merges.
 
+**A second merge model** (pilot, 10-03; `runs/study-pilot-merge-sol`):
+gpt-6-sol merged the same 252 pushbacks against the same gpt-6-astra problems.
+- Whether a pushback was caught: the two agree on 95% of the 180 pushbacks
+  (κ = 0.87), and on 64 of the 65 real errors (κ = 0.97). gpt-6-sol catches 48
+  and 25, gpt-6-astra 41 and 24.
+- Each candidate's verdict: 89% agree (κ = 0.75 over same, related and
+  different; κ = 0.86 for same against the rest). Most disagreements are
+  'different' against 'related' (104 of 137), where gpt-6-sol is more lenient.
+
+So the measure does not hang on the model that merges. Two models can still
+share a blind spot, so this does not replace the hand check. Real cost: $2.61.
+
 ## First results (pilot and random arm, 10-03; provisional)
 
 Provisional until the hand check confirms the merge (κ ≥ 0.7 with the user's
