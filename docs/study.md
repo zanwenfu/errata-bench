@@ -220,6 +220,28 @@ The pilot alone caught 37% [27–48] of its 65 real errors, and the second
 batch 56% [48–65] of its 130. The two intervals barely overlap. Sessions differ
 a great deal, which is why the intervals resample whole sessions.
 
+**Why the two batches differ** (`scripts/study_breakdown.py`, 10-03; no model
+call):
+- **Not the pipeline.** The pilot was prepared one minute after the second
+  review's fixes were committed, and no rule changed before batch 2's stages ran.
+  The model behaved the same in both: the same tokens in and out, and the same
+  reasoning per call, at every stage.
+- **Not the mix.** Batch 2 catches more in every failure mode and kind of
+  pushback. Agent, developer persona, month, session length, window size and
+  problems per handback are all alike.
+- **Sessions differ.** Shuffling whole sessions between the two batches gives a
+  gap this large 1.8% of the time (p = 0.018). That test was run after the gap
+  was seen.
+
+So the pooled share, with its interval over sessions, is the number to report,
+and both batches are reported with it.
+
+**How much the look-back adds.** Three quarters of the catches (112 of 150) are
+at the handback the developer answered. Counting only those, the reviewer
+catches 40% [33–47] of real errors. Looking back one report gives 46%, and two
+gives 50%. The merge saw all three reports' problems together, so a cut-down
+count is a sensitivity check, not a re-run.
+
 **A second reviewer model** (pilot, 10-03; `runs/study-pilot-sol`): gpt-6-sol
 reviewing, the merge still gpt-6-astra.
 - It catches 27% [21–31] of pushbacks and 39% [29–49] of real errors,
