@@ -160,7 +160,12 @@ Measured on the pilot's 398 windows:
 14. **The self framing** is the same model told "this is your own work". After
     its first sentence it still describes the work in the third person: a
     design note, not a defect.
-15. **Spend is priced as the spend guard prices it** (`harbor_spend.priced`):
+15. **A provider's content-filter refusal** is written as an errored row, so a
+    resumed stage asks it again, and gets the same refusal. It stays unread and
+    is counted under the tally's `not_yet` (1 of 844 replies in the second
+    batch). A refusal could be recorded as final, as the reference agent does
+    (`_filtered`); not done, given how rare it is.
+16. **Spend is priced as the spend guard prices it** (`harbor_spend.priced`):
     uncached input at the cache-write rate, an upper bound. The line covers the
     whole run directory, every stage and framing, and is re-read before every
     call. Each stage holds a lock, so a second copy is refused.
