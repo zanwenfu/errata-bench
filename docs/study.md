@@ -197,6 +197,20 @@ Measured on the pilot's 398 windows:
     Which version matches a person is the hand check's question, so the
     pushbacks behind the hand-check items should be merged under both.
 
+    *Measured* (`runs/study-pushback-120-rules2`: the 195 real errors under
+    version 2, $9.54):
+    - caught: 59% [51–67], against 50% [43–57] under version 1;
+    - 19 pushbacks went from related to same, 1 the other way, and 'same or
+      related' stayed at 85%;
+    - failure reports gained most (40% to 54%), corrections little (64% to 66%);
+    - by failure mode: shallow investigation 60% to 78%, false claim 60% to 74%,
+      unverified assumption 57% to 66%, ignored instruction 80% to 85%;
+    - the pilot rose from 37% to 49%, and batch 2 from 56% to 64%.
+
+    The two versions agree on caught or not at κ = 0.80. The pushbacks behind
+    the hand-check items that are not real errors were not merged under
+    version 2 (about $7, over what was left).
+
 ## The smoke runs and the first review (10-03)
 
 **The smoke runs.** Three sessions and 12 handbacks, about $3 of Azure credits
@@ -233,6 +247,7 @@ gpt-6-astra. Provisional until the hand check.
 | Pushbacks (our reading; SWE-chat's label) | 530; 669 |
 | Caught, any pushback | 28% [24–33] |
 | **Caught, real errors** | **50% [43–57]**, n=195 |
+| Caught, real errors, merge rules version 2 (assumption 17) | 59% [51–67] |
 | Caught, pushback that is no error (intent, preference, unclear) | 12–22% |
 | Caught, by kind: correction / failure report / rejection | 35% / 24% / 7% |
 | The same, real errors only: correction / failure report | 64% [53–74] / 40% [30–51] |

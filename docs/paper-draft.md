@@ -20,16 +20,19 @@ third model then matches each pushback against the reviewer's problems, and
 every match must quote both sides.
 
 The reviewer names the developer's problem for 28% [24–32] of all pushbacks and
-for 50% [43–57] of pushbacks about real agent errors. Among real errors, it
-catches 80% of ignored instructions and 60% of false claims. It catches only 40%
-of failure reports, which describe what happened when the developer ran the
-software, something no transcript shows. It also raises 1.8 problems per
-handback, and developers raise none of 92% of them.
+for 50% [43–57] of pushbacks about real agent errors. It catches 80% of ignored
+instructions and 60% of false claims. It catches only 40% of failure reports,
+which describe what happened when the developer ran the software. Often it had
+flagged the very claim the developer found false, but only as unverified.
+Counting those as caught raises the share for real errors to 59% [51–67]. A
+hand check will decide which reading matches a person. The reviewer also raises
+1.8 problems per handback, and developers raise none of 92% of them.
 
-A second reviewer model gives the same picture, and so does a second matching
-model (κ = 0.87 on which pushbacks were caught). Telling the reviewer the work is
-its own catches more (45% of real errors against 37%, paired). In sessions drawn
-without regard to pushback, it catches 32% [15–48].
+A second GPT-6 reviewer gives the same picture, and so does a second matching
+model (κ = 0.87 on which pushbacks were caught). A reviewer from another model
+family, DeepSeek-V4-Pro, catches half as many. Telling the reviewer the work is
+its own catches more: 45% of real errors against 37%, on the same pushbacks. In
+sessions drawn without regard to pushback, it catches 32% [15–48].
 
 ## 1. Introduction
 
@@ -212,6 +215,18 @@ A 'same' counts only if the matcher quotes the overlap from both the reply and
 the problem, and both quotes are found. A pushback is **caught** if any problem
 is a valid 'same'. A problem matched by no pushback is the reviewer's alone.
 
+The line between 'same' and 'related' is drawn two ways.
+- **Strict** (rules version 1): the definitions above.
+- **Claim-level** (rules version 2): the definitions plus the hand-check
+  guide's two worked examples. In the first, a reviewer that said "claims the
+  tests pass but never ran them" caught a developer who said "the tests still
+  fail": the reviewer flagged the very claim the developer found false. In the
+  second, "the click handler was not tested on touch devices" is only related
+  to "the button does nothing on mobile".
+
+All runs used the strict rules. The 195 real-error pushbacks were merged again
+under the claim-level rules.
+
 ### 3.6 Measures and statistics
 
 The main measure is the share of pushbacks about real errors that were caught.
@@ -229,6 +244,8 @@ so the reviewer is never the agent that did the work.
 The match is the study's measuring instrument, so it is checked twice.
 - **By hand** (pending): one author labels 150 merge decisions blind, sampled
   uniformly, against the model's verdicts. The merge is trusted only at κ ≥ 0.7.
+  The labelling guide gives the claim-level rules' worked examples. The hand
+  check therefore also says which of the two readings matches a person.
   The same author labels 50 of the reviewer's unmatched problems as real, false
   alarm or can't tell. The protocol is in `docs/study.md`.
 - **By a second model:** gpt-6-sol re-matches the pilot's 252 pushbacks on the
@@ -244,13 +261,17 @@ The match is the study's measuring instrument, so it is checked twice.
 | Pushbacks (our reading) | 530 |
 | Caught, all pushbacks | 28.3% [24–32] |
 | **Caught, real errors** | **49.7% [43–57]**, n = 195 |
+| Caught, real errors, claim-level rules | 59.0% [51–67] |
 | Caught, pushback by SWE-chat's label | 21.8% [18–26], n = 669 |
 | Caught, both readings say pushback | 29.2% [24–34], n = 428 |
 | 'Same' or 'related', real errors | 84.6% [78–90] |
 
-The reviewer names the developer's fault for half of the real-error pushbacks.
-Counting 'related' as well says little: the reviewer flags 78% of all handbacks,
-so it usually has something to say about any handback a developer objects to.
+The reviewer names the developer's fault for half of the real-error pushbacks
+under the strict rules, and for 59% under the claim-level rules. The claim-level
+rules turn 19 'related' pushbacks into 'same', and one the other way. The two
+readings agree on caught or not at κ = 0.80. Counting 'related' as well says
+little: the reviewer flags 78% of all handbacks, so it usually has something to
+say about any handback a developer objects to.
 
 Three quarters of the catches (112 of 150) come from the reviewer's problems at
 the handback the developer answered. Counting only those gives 40% [33–47] of
@@ -258,18 +279,18 @@ real errors; one handback back gives 46%, and two give 50%.
 
 ### 4.2 RQ2: which problems does it catch, and which does it miss?
 
-| Kind of pushback | Caught, all pushbacks | Caught, real errors |
-|---|---|---|
-| Correction | 34.7% [29–40], n = 271 | 64% [53–74], n = 80 |
-| Failure report | 23.5% [17–30], n = 230 | 40% [30–51], n = 114 |
-| Rejection | 6.9% [0–17], n = 29 | n = 1 |
+| Kind of pushback | Caught, all pushbacks | Caught, real errors | Real errors, claim-level |
+|---|---|---|---|
+| Correction | 34.7% [29–40], n = 271 | 64% [53–74], n = 80 | 66% [56–76] |
+| Failure report | 23.5% [17–30], n = 230 | 40% [30–51], n = 114 | 54% [43–66] |
+| Rejection | 6.9% [0–17], n = 29 | n = 1 | |
 
-| Failure mode of the real error | Caught | n |
-|---|---|---|
-| Ignored instruction | 80% [63–95] | 20 |
-| False claim | 60% [46–74] | 43 |
-| Shallow investigation | 60% [49–70] | 74 |
-| Unverified assumption | 57% [46–68] | 95 |
+| Failure mode of the real error | Caught | Claim-level | n |
+|---|---|---|---|
+| Ignored instruction | 80% [63–95] | 85% [68–100] | 20 |
+| False claim | 60% [46–74] | 74% [58–89] | 43 |
+| Shallow investigation | 60% [49–70] | 78% [66–88] | 74 |
+| Unverified assumption | 57% [46–68] | 66% [56–76] | 95 |
 
 A real error can have more than one failure mode.
 
@@ -283,7 +304,9 @@ A real error can have more than one failure mode.
 The reviewer does best where the evidence is in the transcript: the agent said
 something its own calls do not show, or skipped part of the request. It does
 worst on failure reports, where the developer describes what happened when they
-ran the software.
+ran the software. The claim-level rules close much of that gap (40% to 54%).
+For a failure report, the reviewer often could not know the fault, but it had
+flagged the claim of success as unverified.
 
 From a reading of 16 of the 36 real-error pushbacks that both framings missed
 (the authors' reading, not yet checked):
@@ -354,13 +377,17 @@ interval resamples sessions and the pooled figure is the one reported.
 
 ## 5. Discussion
 
-**What a transcript-reading reviewer can and cannot do.** Half of developers'
-real-error pushbacks were visible in the transcript, and the reviewer found
-them: claims the agent's own calls do not support, and parts of the request it
-skipped. A reviewer like this could raise them before the developer has to.
-Most of the rest are outcomes of running the software, or facts only the
-developer has. A reviewer that runs the code, or asks the developer, would be
-needed for those. We did not test one.
+**What a transcript-reading reviewer can and cannot do.** Half or more of
+developers' real-error pushbacks were visible in the transcript, and the
+reviewer found them: claims the agent's own calls do not support, and parts of
+the request it skipped. A reviewer like this could raise them before the
+developer has to.
+
+For failure reports, the reviewer often could not know what would go wrong. But
+it had flagged the agent's claim of success as unverified, and that warning
+alone would have sent a developer to check. The rest need running the software,
+or facts only the developer has. A reviewer that runs the code, or asks the
+developer, would be needed for those. We did not test one.
 
 **The reviewer says much more than developers do.** At 1.8 problems per
 handback, a developer shown every flag would read many that no developer raised.
@@ -382,6 +409,10 @@ is context, not a ranking.
 
 - **The match is a model's.** Two matching models agree (κ = 0.87), but they
   could share a blind spot. The hand check (κ ≥ 0.7 required) is the test.
+- **Where 'same' ends.** Whether flagging the claim the developer found false
+  as unverified counts as catching the fault moves the main measure by 9
+  points (50% against 59%). We report both readings until the hand check
+  settles which matches a person.
 - **Pushback and real error are a model's reading.** It agrees with SWE-chat's
   label at κ = 0.52 and is stricter. The main measure counts only real errors,
   and we also report every share under SWE-chat's label.
@@ -402,8 +433,10 @@ is context, not a ranking.
 ## 7. Conclusion
 
 At the moment a coding agent hands its work back, an AI reviewer reading the
-transcript would have named the developer's problem for about half of the
-pushbacks about real errors, and about a quarter of all pushbacks. It catches
+transcript would have named the developer's problem for half to three fifths of
+the pushbacks about real errors (50–59%, depending on where 'same' ends), and
+about a quarter of all pushbacks. How much it catches depends on the reviewer
+model. It catches
 what the transcript shows: claims without evidence, and ignored instructions. It
 misses what only running the software or knowing the project shows. It also
 raises many problems no developer raised. The developer's reply makes these
