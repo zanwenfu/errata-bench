@@ -121,15 +121,17 @@ mutant("the merge ignores the rules it is given", MER,
        "instructions=with_field_guide(INSTRUCTIONS[RULES], Merge)")
 mutant("the merge's call does not pass its rules on", MER,
        "    agent = agent_for(model, rules)", "    agent = agent_for(model)")
-mutant("a call on the next line is missed", RUN,
-       "        if line:\n            return line.strip",
-       "        if True:\n            return line.strip")
+SOURCE = (REPO / RUN).read_text().splitlines()
+SRC_JOIN = next(line for line in SOURCE if line.startswith('    text = " ".join(lines)'))
+SRC_RETURN = next(line for line in SOURCE if line.startswith("    return re.split("))
+mutant("a call across two lines loses its second line", RUN, SRC_JOIN, SRC_JOIN.replace('" ".join(lines)', '" ".join(lines[:1])'))
+mutant("backticks make a call unreadable", RUN, SRC_JOIN, SRC_JOIN.replace('.replace("`", "")', ""))
+mutant("a curly apostrophe is not read", RUN, SRC_JOIN, '    text = " ".join(lines).replace("`", "")')
+mutant("a call keeps its full stop", RUN, SRC_RETURN, SRC_RETURN.replace('.strip(".")', "", 1))
+mutant("a comment after the call makes it unreadable", RUN, SRC_RETURN, '    return text.strip().strip(".").strip().lower()')
 mutant("can't tell counts in the share", RUN,
        'for s, c in calls.values()\n                                                        if c != "can\'t tell"])}',
        'for s, c in calls.values()])}')
-SRC_CALL = '            return line.strip(".").lower().replace("' + chr(0x2019) + '", "' + "'" + '")'
-mutant("a call keeps its full stop", RUN, SRC_CALL, SRC_CALL.replace('.strip(".")', "", 1))
-mutant("a curly apostrophe is not read", RUN, SRC_CALL, SRC_CALL.split(".replace(")[0])
 mutant("a call whose mark is deleted is no call", RUN,
        "            elif v or v is None:\n                unread.append(h.group(1))",
        "            elif v:\n                unread.append(h.group(1))")
@@ -152,14 +154,16 @@ mutant("unclear counts as a real error", RUN,
 mutant("the replies' real-error share counts pushback", RUN,
        's["real_error_share"] = T.share(s["real_error"], s["labelled"])',
        's["real_error_share"] = T.share(s["pushback"], s["labelled"])')
+mutant("the replies' shares are shown part-way", RUN,
+       "        if blank or unread_replies:   # part-way, a share by reading would tell each new row's reading",
+       "        if False:")
 mutant("a spreadsheet's byte-order mark breaks the header", RUN,
        'text = path_.read_text(encoding="utf-8-sig")', 'text = path_.read_text(encoding="utf-8")')
-SRC_LETTERS = next(l for l in (REPO / RUN).read_text().splitlines() if l.startswith("    text = re.split("))
 mutant("semicolons are not read", RUN,
        '    delimiter = max((",", ";", "\\t"), key=header.count)', '    delimiter = ","')
 mutant("the caught sheet takes only part of the disputed", RUN,
-       'take += [(name, k) for k in (ks if name == "disputed" else ks[: args.per_stratum])]',
-       'take += [(name, k) for k in ks[: args.per_stratum]]')
+       'take += [(name, k) for k in (ks if name == "disputed" else ks[: max(1, args.per_stratum)])]',
+       'take += [(name, k) for k in ks[: max(1, args.per_stratum)]]')
 mutant("the caught sheet shows the stratum", RUN,
        'reply {k[1]}\\n\\n**The developer replied:**\\n\\n"',
        'reply {k[1]}\\n\\n({name}) **The developer replied:**\\n\\n"')
@@ -184,43 +188,54 @@ mutant("an annotated alone heading hides its item", RUN,
 mutant("the next item is read as a call", RUN,
        '        if line.startswith(("<details>", "## ")) or line == "---":',
        '        if line.startswith("<details>"):')
-mutant("backticks make a call unreadable", RUN, SRC_LETTERS, SRC_LETTERS.replace('.replace("`", "")', ""))
-mutant("a comment after the letters makes a call unreadable", RUN, SRC_LETTERS,
-       '    text = text.replace("`", "")')
 mutant("a call may name a letter the item does not have", RUN,
        "    if parts and all(len(x) == 1 and x.upper() in allowed for x in parts):",
        "    if parts and all(len(x) == 1 for x in parts):")
-mutant("a stratum is not weighed back to its size", RUN,
-       "                cells[(bool(person[i]), bool(items[i][field]))] += pop[s] / count[s]",
-       "                cells[(bool(person[i]), bool(items[i][field]))] += 1")
-mutant("the pushbacks with no problem are left out", RUN,
-       '            cells[(False, False)] += pop.get("no problems", 0)   # nothing to call: neither caught',
-       "            pass")
-mutant("figures are given before every stratum has its calls", RUN,
-       "    enough = all(called.get(s, 0) >= min(MIN_CALLS, size[s]) for s in sampled)",
-       "    enough = bool(person)")
-mutant("a version is consistent before every item is called", RUN,
-       '"consistent_with_the_person": every and _interval(bias)["low"] <= 0 <= _interval(bias)["high"],',
-       '"consistent_with_the_person": _interval(bias)["low"] <= 0 <= _interval(bias)["high"],')
-mutant("the uncalled pushbacks are not drawn", RUN,
-       "                total += k[s] + (rng.binomialvariate(rest, p) if rest else 0)",
-       "                total += k[s] * pop[s] / called[s]")
-mutant("a stratum called in full is drawn as if part were uncalled", RUN,
-       "                    left = pop[s] - called[s]", "                    left = max(1, pop[s] - called[s])")
-mutant("kappa's interval ignores the uncalled", RUN,
-       "                        drawn[c] += counts[s].get(c, 0) + (left * gammas[n_c] / sum(gammas) if left else 0)",
-       "                        drawn[c] += counts[s].get(c, 0) * pop[s] / called[s]")
-mutant("the bias is taken from the rounded share", RUN,
-       '"merge_minus_person": {"share": round(merge_share[version] - point, 4), **_interval(bias)},',
-       '"merge_minus_person": {"share": round(merge_share[version] - round(point, 4), 4), **_interval(bias)},')
+mutant("n/a is read as letters", RUN,
+       'NONE = ("none", "no", "none of them", "n/a", "na", "nothing")', 'NONE = ("none", "no", "none of them")')
+mutant("figures are shown before every item is called", RUN, "    if len(person) < len(items):", "    if False:")
+mutant("the person's share is not weighed by stratum", RUN,
+       "    point = sum(pop[s] * sum(bool(person[i]) for i in on_sheet[s]) / len(on_sheet[s])",
+       "    point = sum(len(on_sheet[s]) * sum(bool(person[i]) for i in on_sheet[s]) / len(on_sheet[s])")
+mutant("the uncalled are not drawn", RUN,
+       "    pmfs = [_beta_binomial(r, k, c) for _, r, k, c, _ in open_]",
+       "    pmfs = [[1.0 if m == round(r * k / c) else 0.0 for m in range(r + 1)] for _, r, k, c, _ in open_]")
+mutant("a uniform prior instead of Jeffreys", RUN, "    a, b = k + 0.5, c - k + 0.5", "    a, b = k + 1, c - k + 1")
+mutant("kappa puts the uncalled in cells the merge rules out", RUN,
+       "                cells[(True, said)] += m", "                cells[(True, not said)] += m")
+mutant("the gap's sign is flipped", RUN,
+       "            gap_dist[v][round(merge_share[v] - caught_all / n_all, 10)] += prob",
+       "            gap_dist[v][round(caught_all / n_all - merge_share[v], 10)] += prob")
+mutant("the margin is checked on one side", RUN,
+       '            "within_margin": -MARGIN <= gap["low"] and gap["high"] <= MARGIN,',
+       '            "within_margin": gap["high"] <= MARGIN,')
+mutant("the margin is 0.20", RUN, "MARGIN = 0.10 ", "MARGIN = 0.20 ")
+mutant("the interval is 80%, not 95%", RUN,
+       "        if low is None and acc >= 0.025 - 1e-12:", "        if low is None and acc >= 0.1 - 1e-12:")
+mutant("the interval's top is cut short", RUN,
+       "        if high is None and acc >= 0.975 - 1e-12:", "        if high is None and acc >= 0.9 - 1e-12:")
+mutant("the merge's share counts only an open stratum's calls", RUN,
+       '                       + sum(r + c for _, r, _, c, verdict in open_ if verdict[0 if v == "rules_1" else 1]))',
+       '                       + sum(c for _, r, _, c, verdict in open_ if verdict[0 if v == "rules_1" else 1]))')
+mutant("the pushbacks with no problem are left out of kappa", RUN,
+       '            cells[(False, False)] += pop.get("no problems", 0)\n            for (s, r, k, c, verdict), m in zip',
+       '            for (s, r, k, c, verdict), m in zip')
+mutant("the merge's errors are counted the wrong way round", RUN,
+       "        wrong = sum(bool(person[i]) != merge_said for i in on_sheet[s])",
+       "        wrong = sum(bool(person[i]) == merge_said for i in on_sheet[s])")
 mutant("which problem is not weighed", RUN,
-       "                \"same_problem_when_both_caught\": round(sum(weight[items[i][\"stratum\"]] for i in both\n"
-       "                                                           if person[i] & set(items[i][field])) / w_both, 4)",
-       "                \"same_problem_when_both_caught\": round(sum(1 for i in both\n"
-       "                                                           if person[i] & set(items[i][field])) / len(both), 4)")
-mutant("the disputed sign test is one-sided", RUN,
-       "        p = min(1.0, 2 * sum(math.comb(n, x) for x in range(top, n + 1)) / 2 ** n)",
-       "        p = min(1.0, sum(math.comb(n, x) for x in range(top, n + 1)) / 2 ** n)")
+       '            "same_problem_when_both_caught": round(sum(weight[items[i]["stratum"]] for i in both\n'
+       '                                                       if person[i] & set(items[i][f"{v}_same"])) / w_both, 4)',
+       '            "same_problem_when_both_caught": round(sum(1 for i in both\n'
+       '                                                       if person[i] & set(items[i][f"{v}_same"])) / len(both), 4)')
+mutant("the sign test is one-sided", RUN,
+       "        p = 1.0 if 2 * top == n else min(1.0, 2 * sum(math.comb(n, x) for x in range(top, n + 1)) / 2 ** n)",
+       "        p = 1.0 if 2 * top == n else min(1.0, sum(math.comb(n, x) for x in range(top, n + 1)) / 2 ** n)")
+mutant("a tie picks a version", RUN,
+       "        picked = ranked[0] if agree[ranked[0]] > agree[ranked[1]] else None", "        picked = ranked[0]")
+mutant("a pick is decisive whatever its p", RUN,
+       '        out["picked"] = {"version": picked, "decisive": picked is not None and p < 0.05, "margin": MARGIN,',
+       '        out["picked"] = {"version": picked, "decisive": picked is not None, "margin": MARGIN,')
 mutant("the merge drops SWE-chat's label", RUN,
        'if rr.get("approved_plan") or not (rr.get("is_pushback") or rr.get("reply_label") in S.PUSHBACK_KINDS):',
        'if rr.get("approved_plan") or not rr.get("is_pushback"):')

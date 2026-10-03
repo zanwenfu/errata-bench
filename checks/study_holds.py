@@ -23,9 +23,11 @@ import contextlib
 import importlib.util
 import io
 import json
+import math
 import os
 import sys
 import tempfile
+from collections import defaultdict
 from pathlib import Path
 from types import SimpleNamespace
 
@@ -927,83 +929,57 @@ def section_agreement():
             return
         out = json.loads((run / "agreement.json").read_text())
         cg = out["caught"]
-        v1, v2 = cg["versions"]["rules 1"], cg["versions"]["rules 2"]
         check(cg["called"] == 8 and cg["unreadable"] == [neither[0]] and cg["not_called"] == [neither[1]]
               and cg["missing_from_the_sheet"] == [],
               f"every call is read, in the forms people write them, an annotated heading included; one naming no "
               f"problem of its item is listed, not guessed, and so is one not yet made: {cg['called']} called, "
               f"unreadable {cg['unreadable']}, not called {cg['not_called']}")
-        check(v2["by_stratum"]["disputed"] == {"called": 4, "person_caught": 3, "model_caught": 3, "agree": 4}
-              and v1["by_stratum"]["disputed"] == {"called": 4, "person_caught": 3, "model_caught": 1, "agree": 0},
-              f"each version is scored on the same items, stratum by stratum: rules 1 {v1['by_stratum']['disputed']}")
-        check(not cg["enough_calls"] and "real_errors_caught_by_the_persons_calls" not in cg
-              and "kappa_by_stratum_weight" not in v1 and "agreement_by_stratum_weight" not in v2
-              and v2.get("consistent_with_the_person") is None,
-              "until every stratum has its calls, nothing weighed back to the whole is given, and nothing is judged "
-              "consistent")
-        # With the minimum lowered to one call a stratum, a partly called sheet is weighed back to the whole: the
-        # uncalled pushbacks are drawn, so the share has a width, and nothing is consistent before every call.
-        partial = dict(calls)
-        partial[next(i for i, it in by_item.items() if it["session"] == "c3")] = ""
-        fill(partial)
-        kept_min, study.MIN_CALLS = study.MIN_CALLS, 1
-        try:
-            with contextlib.redirect_stdout(quiet):
-                study.agreement(SimpleNamespace(run=str(run)))
-        finally:
-            study.MIN_CALLS = kept_min
-        part = json.loads((run / "agreement.json").read_text())["caught"]
-        ps = part.get("real_errors_caught_by_the_persons_calls") or {}
-        pv1, pv2 = part["versions"]["rules 1"], part["versions"]["rules 2"]
-        check(part["enough_calls"] and not part["every_item_called"] and ps.get("low", 1) < ps.get("high", 0)
-              and pv1.get("consistent_with_the_person") is False and pv2.get("consistent_with_the_person") is False,
-              f"a partly called sheet: the uncalled are drawn, so the share has a width {ps}, and no version is "
-              f"consistent before every item is called")
-        # Weighed (disputed 4/4, caught by both 3/2, neither 3/1), rules 1's table is the same as with every call:
-        # kappa 0.29; counted one call one vote, it would be 0.06.
-        pk = pv1.get("kappa_by_stratum_weight") or {}
-        check(pk.get("kappa") == 0.29 and pk.get("low", 1) < pk.get("high", 0),
-              f"kappa weighs each call by its stratum's size, and its interval allows for the uncalled: {pk}")
-        # Weighed: d1 (another problem, weight 1), d3 and d4 (1 each), c1 and c2 (3/2 each): 5 of 6, not 4 of 5.
-        check(pv2.get("same_problem_when_both_caught") == round(5 / 6, 4),
-              f"whether both name the same problem is weighed by stratum: {pv2.get('same_problem_when_both_caught')}")
-        # Call the rest and score again: now every stratum is called in full, so every figure is exact.
-        calls[neither[0]] = calls[neither[1]] = "none"
+        check("withheld" in cg and not any(k in cg for k in ("versions", "disputed", "picked",
+                                                               "real_errors_caught_by_the_persons_calls")),
+              "until every item is called, no figure is shown: one shown part-way would tell an item's stratum")
+        # Call the rest, in more of the forms people use (n/a, `none`, a call across two lines), and score again.
+        calls[neither[0]], calls[neither[1]] = "n/a", "`none` (nothing like it)"
+        calls[next(i for i, it in by_item.items() if it["session"] == "c3")] = "A,\nB"
         fill(calls)
         try:
             with contextlib.redirect_stdout(quiet):
                 study.agreement(SimpleNamespace(run=str(run)))
         except Exception as e:
-            check(False, f"agreement reads the sheets once every stratum is called: {type(e).__name__}: {e}")
+            check(False, f"agreement reads the sheets once every item is called: {type(e).__name__}: {e}")
             return
         out = json.loads((run / "agreement.json").read_text())
         cg = out["caught"]
-        v1, v2 = cg["versions"]["rules 1"], cg["versions"]["rules 2"]
-        check(cg["every_item_called"], f"every call is read once the rest are made: unreadable {cg['unreadable']}, "
-                                       f"not called {cg['not_called']}")
-        if not cg["every_item_called"]:
+        check(cg["called"] == 10 and not cg["unreadable"] and "withheld" not in cg,
+              f"every call is read once the rest are made: unreadable {cg['unreadable']}, not called "
+              f"{cg['not_called']}")
+        if "versions" not in cg:
             return
-        # By hand, all strata called in full (11 pushbacks): the person calls 3 + 3 + 0 caught = 6/11; the merge
+        v1, v2 = cg["versions"]["rules 1"], cg["versions"]["rules 2"]
+        # By hand, every stratum called in full (11 pushbacks): the person calls 3 + 3 + 0 caught = 6/11; the merge
         # 4/11 under rules 1 and 6/11 under rules 2. Rules 1's table (person, merge): yes/yes 3, yes/no 3,
-        # no/yes 1, no/no 4: kappa 18/62 = 0.29; rules 2 agrees everywhere.
+        # no/yes 1, no/no 4: kappa 18/62 = 0.29; rules 2 agrees everywhere. Nothing is left to draw.
         share = cg["real_errors_caught_by_the_persons_calls"]
-        check(cg["every_item_called"] and share["share"] == round(6 / 11, 4)
-              and share["low"] == share["high"] == round(6 / 11, 4),
+        check(share == {"share": round(6 / 11, 4), "low": round(6 / 11, 4), "high": round(6 / 11, 4), "n": 11},
               f"the person's share over all the pushbacks, exact when every stratum is called in full: {share}")
         check(v1["merge_share"] == round(4 / 11, 4) and v2["merge_share"] == round(6 / 11, 4)
-              and v1["merge_minus_person"]["share"] == round(4 / 11 - 6 / 11, 4)
-              and v1["consistent_with_the_person"] is False and v2["consistent_with_the_person"] is True,
-              f"a version is consistent with the person only if its share minus the person's can be 0: rules 1 "
-              f"{v1['merge_minus_person']}, rules 2 {v2['merge_minus_person']}")
-        check(v1["kappa_by_stratum_weight"] == {"kappa": 0.29, "median": 0.29, "low": 0.29, "high": 0.29}
-              and v2["kappa_by_stratum_weight"]["kappa"] == 1.0 and v1["agreement_by_stratum_weight"] == round(7 / 11, 4),
-              f"kappa and agreement weighed by stratum, the pushbacks with no problem counted as neither caught: "
-              f"{v1['kappa_by_stratum_weight']}, {v2['kappa_by_stratum_weight']}")
+              and v1["merge_minus_person"] == {"share": -0.1818, "low": -0.1818, "high": -0.1818}
+              and v1["largest_gap_allowed"] == 0.1818 and not v1["within_margin"] and v2["within_margin"],
+              f"each version's share, its gap to the person's with an interval, and whether it lies within the "
+              f"margin: rules 1 {v1['merge_minus_person']}, rules 2 {v2['merge_minus_person']}")
+        check(v1["kappa"] == {"kappa": 0.29, "low": 0.29, "high": 0.29}
+              and v2["kappa"] == {"kappa": 1.0, "low": 1.0, "high": 1.0},
+              f"kappa, the pushbacks with no problem counted as neither caught: {v1['kappa']}, {v2['kappa']}")
         check(v2["same_problem_when_both_caught"] == round(5 / 6, 4) and v1["same_problem_when_both_caught"] == 1.0,
               f"when the person and the merge both call it caught, whether they name the same problem: rules 2 "
               f"{v2['same_problem_when_both_caught']} (5 of 6), rules 1 {v1['same_problem_when_both_caught']}")
-        check(cg["disputed"] == {"called": 4, "agree_with_rules_1": 0, "agree_with_rules_2": 4, "two_sided_p": 0.125},
-              f"the disputed pushbacks decide between the versions, with a sign test: {cg['disputed']}")
+        check(cg["disputed"] == {"called": 4, "agree": {"rules 1": 0, "rules 2": 4}, "two_sided_p": 0.125}
+              and cg["picked"] == {"version": "rules 2", "decisive": False, "margin": 0.1, "within_margin": True},
+              f"the disputed pushbacks pick the version, with an exact sign test (4 of 4: p = 0.125, not decisive): "
+              f"{cg['disputed']}, {cg['picked']}")
+        errs = cg["merge_errors_where_both_versions_agree"]
+        check(errs["caught_by_the_merge_not_by_the_person"]["share_of_the_stratum"] == 0.0
+              and errs["caught_by_the_person_not_by_the_merge"]["high"] == 0.0,
+              f"the merge's errors where both versions agree, with intervals: {errs}")
         a = out["alone"]
         check(a["counts"] == {"real": 1, "false alarm": 2, "can't tell": 1} and a["unreadable_calls"] == ["3", "5"]
               and a["real_of_decided"]["n"] == 3,
@@ -1063,6 +1039,152 @@ def section_agreement():
             small = sorted(r["stratum"] for r in csv.DictReader(fh))
         check(small == ["not pushback", "other pushback", "real error", "real error"],
               f"asked for 4: 2 real-error pushback, 1 other, 1 none: {small}")
+
+    # A sheet that samples, as the real one does, small enough to work out by hand: two pushbacks disputed (both
+    # on the sheet), two caught by both and two by neither (one of each on the sheet).
+    with tempfile.TemporaryDirectory() as tmp:
+        run, other = Path(tmp) / "run", Path(tmp) / "other"
+        run.mkdir()
+        other.mkdir()
+        ok_same = {"match": "same", "match_known": True, "developer_words_found": True,
+                   "reviewer_words_found": True, "missing": False}
+        rel, dif = {**ok_same, "match": "related"}, {**ok_same, "match": "different"}
+        plan = {"d1": (rel, ok_same), "d2": (ok_same, rel), "c1": (ok_same, ok_same), "c2": (ok_same, ok_same),
+                "n1": (rel, rel), "n2": (rel, rel)}
+        for sid, verdicts in plan.items():
+            append(run / "reports.jsonl", {"session_id": sid, "index": 2, "reply": f"R-{sid}", "window": "W"})
+            append(run / "reviews.jsonl", {"session_id": sid, "index": 2, "problems": [
+                {"what_is_wrong": f"P-{sid}-{i}", "kind": "false_claim", "turn_number": 3, "quote": "q",
+                 "quote_found": True, "quote_in_work": True} for i in range(2)]})
+            append(run / "replies.jsonl", {"session_id": sid, "index": 2, "is_pushback": True,
+                                           "objection_kind": "real_error"})
+            for folder, rules, j in ((run, None, 0), (other, 2, 1)):
+                row = {"session_id": sid, "index": 2, "verdicts": [{"problem_id": "r2p0", "report": 2, **dif},
+                                                                   {"problem_id": "r2p1", "report": 2, **verdicts[j]}]}
+                if rules:
+                    row["rules"] = rules
+                append(folder / "merges.jsonl", row)
+        quiet = io.StringIO()
+        with contextlib.redirect_stdout(quiet), contextlib.redirect_stderr(quiet):
+            study.caught_sheet(SimpleNamespace(run=str(run), also=str(other), per_stratum=1))
+        key_ = json.loads((run / "caught-key.json").read_text())
+        md = (run / "caught.md").read_text()
+        say = {"d1": "B", "d2": "none", "c1": "B", "c2": "B", "n1": "none", "n2": "none"}
+        by_item = {str(i["item"]): i for i in key_["items"]}
+        parts, last = [], 0
+        for h in study.CAUGHT_HEAD.finditer(md):
+            at = md.index("**Your call:** ", h.end()) + len("**Your call:** ")
+            parts.append(md[last:at] + say[by_item[h.group(1)]["session"]])
+            last = at
+        (run / "caught.md").write_text("".join(parts) + md[last:])
+        # replies.csv with a row not yet labelled: its shares are withheld.
+        (run / "replies.csv").write_text("item,developer_reply,pushback? (yes / no),"
+                                         "about a real agent error? (yes / no / unclear)\n1,r,yes,yes\n2,r,,\n")
+        (run / "replies-key.csv").write_text("item,session,handback,stratum\n1,a,2,real error\n2,b,2,not pushback\n")
+        with contextlib.redirect_stdout(quiet):
+            study.agreement(SimpleNamespace(run=str(run)))
+        out = json.loads((run / "agreement.json").read_text())
+        cg = out["caught"]
+        v1, v2 = cg["versions"]["rules 1"], cg["versions"]["rules 2"]
+        # By hand. Called: 1 disputed caught of 2, the both item caught, the neither item not. Each uncalled item
+        # is caught with Beta-binomial odds: 0.75 in caught-by-both (1 of 1 called), 0.25 in neither (0 of 1). So
+        # the person's 6 come to 2, 3 or 4 caught with 0.1875, 0.625, 0.1875: share 0.5 [1/3, 2/3]. Both versions
+        # call 3 of 6 caught, so each gap is 0 [-1/6, +1/6]: outside the 0.10 margin, a sheet this small cannot tell.
+        check(cg["real_errors_caught_by_the_persons_calls"] == {"share": 0.5, "low": 0.3333, "high": 0.6667, "n": 6},
+              f"on a sampled sheet, the person's share with its exact interval: "
+              f"{cg['real_errors_caught_by_the_persons_calls']}")
+        check(v1["merge_minus_person"] == v2["merge_minus_person"] == {"share": 0.0, "low": -0.1667, "high": 0.1667}
+              and not v1["within_margin"] and not v2["within_margin"] and v2["largest_gap_allowed"] == 0.1667,
+              f"each gap's exact interval, and a margin no sheet this small can meet: {v2['merge_minus_person']}")
+        # Kappa under rules 2 is 1, 2/3, 2/3 or 1/3 as the two uncalled fall (0.5625, 0.1875, 0.1875, 0.0625);
+        # under rules 1, 1/3, 0, 0 or -1/3.
+        check(v2["kappa"] == {"kappa": 1.0, "low": 0.333, "high": 1.0}
+              and v1["kappa"] == {"kappa": 0.333, "low": -0.333, "high": 0.333},
+              f"kappa's exact interval, drawing only the person's uncalled calls: rules 2 {v2['kappa']}, "
+              f"rules 1 {v1['kappa']}")
+        check(cg["disputed"] == {"called": 2, "agree": {"rules 1": 0, "rules 2": 2}, "two_sided_p": 0.5}
+              and cg["picked"] == {"version": "rules 2", "decisive": False, "margin": 0.1, "within_margin": False},
+              f"two disputed calls pick a version but decide nothing: {cg['disputed']}, {cg['picked']}")
+        errs = cg["merge_errors_where_both_versions_agree"]
+        check(errs["caught_by_the_merge_not_by_the_person"] == {"share_of_the_stratum": 0.0, "low": 0.0, "high": 0.5,
+                                                               "stratum": "caught by both", "of": 2},
+              f"the merge's errors where both versions agree, with exact intervals: {errs}")
+        check("withheld" in out["replies"] and "by_reading" not in out["replies"]
+              and out["replies"]["not_labelled"] == ["2"],
+              f"replies.csv's shares are withheld until every row is labelled: {out['replies']}")
+
+    # A sheet shaped like the real one (20 disputed of 20, 20 caught by both of 96, 20 by neither of 73, 6 with
+    # no problem), the person siding with rules 2 everywhere. The share's interval is checked against a
+    # Beta-binomial worked out here another way (each term from the last), convolved over the two open strata.
+    def pmf(r, k, c):
+        a, b = k + 0.5, c - k + 0.5
+        p0 = math.exp(math.lgamma(b + r) + math.lgamma(a + b) - math.lgamma(b) - math.lgamma(a + b + r))
+        out = [p0]
+        for m in range(r):
+            out.append(out[-1] * (r - m) / (m + 1) * (a + m) / (b + r - m - 1))
+        return out
+
+    with tempfile.TemporaryDirectory() as tmp:
+        run = Path(tmp)
+        items = []
+        for n in range(1, 61):
+            stratum = "disputed" if n <= 20 else "caught by both" if n <= 40 else "caught by neither"
+            r2 = (["B"] if n != 20 else []) if stratum == "disputed" else ["B"] if stratum == "caught by both" else []
+            r1 = (["B"] if n == 20 else []) if stratum == "disputed" else ["B"] if stratum == "caught by both" else []
+            items.append({"item": n, "session": f"s{n}", "reply": 2, "stratum": stratum,
+                          "letters": {"A": "r2p0", "B": "r2p1"}, "rules_1_same": r1, "rules_2_same": r2})
+        (run / "caught-key.json").write_text(json.dumps({"rules": {"run": 1, "also": 2}, "items": items,
+                                                         "population": {"disputed": 20, "caught by both": 96,
+                                                                        "caught by neither": 73, "no problems": 6}}))
+        # Item 15: the person calls it caught, but by another problem (A) than the merge's (B).
+        (run / "caught.md").write_text("# x\n" + "".join(
+            f"\n---\n\n## {i['item']}. session {i['session']}, reply 2\n\n**Your call:** "
+            f"{'A' if i['item'] == 15 else ', '.join(i['rules_2_same']) or 'none'}\n" for i in items))
+        got = study._caught(run)
+        check("withheld" not in got and got["called"] == 60,
+              f"every call on the real-shaped sheet is read: unreadable {got['unreadable']}")
+        if "withheld" in got:
+            return
+        # By hand: called caught 19 + 20 + 0; uncalled caught-by-both 76 (20 of 20 called caught), neither 53 (0
+        # of 20). The share is (39 + x + y) / 195.
+        px, py = pmf(76, 20, 20), pmf(53, 0, 20)
+        dist = defaultdict(float)
+        for x, p in enumerate(px):
+            for y, q in enumerate(py):
+                dist[round((39 + x + y) / 195, 10)] += p * q
+        acc, low, high = 0.0, None, None
+        for value in sorted(dist):
+            acc += dist[value]
+            low = value if low is None and acc >= 0.025 - 1e-12 else low
+            high = value if high is None and acc >= 0.975 - 1e-12 else high
+        share = got["real_errors_caught_by_the_persons_calls"]
+        check(share == {"share": round(115 / 195, 4), "low": round(low, 4), "high": round(high, 4), "n": 195},
+              f"on a sheet shaped like the real one, the person's share and its interval match a Beta-binomial "
+              f"worked out another way: {share}, by hand [{low:.4f}, {high:.4f}]")
+        g1, g2 = got["versions"]["rules 1"], got["versions"]["rules 2"]
+        check(g1["merge_minus_person"]["high"] < 0 and not g1["within_margin"] and g2["within_margin"]
+              and g2["merge_minus_person"]["low"] <= 0 <= g2["merge_minus_person"]["high"]
+              and got["picked"] == {"version": "rules 2", "decisive": True, "margin": 0.1, "within_margin": True}
+              and got["disputed"]["two_sided_p"] == float(f"{2 / 2 ** 20:.3g}"),
+              f"the person siding with rules 2: rules 1 falls outside the margin {g1['merge_minus_person']}, rules 2 "
+              f"inside it {g2['merge_minus_person']}, and the disputed 20 pick rules 2 (p = 2/2^20)")
+        # Weighed (disputed 1, caught by both 96/20): (18 + 20 x 4.8) / (19 + 20 x 4.8) = 114/115, not 38/39.
+        check(g2["same_problem_when_both_caught"] == round(114 / 115, 4),
+              f"whether both name the same problem is weighed by stratum: {g2['same_problem_when_both_caught']}")
+        check(g2["kappa"]["low"] < g2["kappa"]["kappa"] == g2["kappa"]["high"] == 1.0
+              and g1["kappa"]["low"] < g1["kappa"]["high"] <= g1["kappa"]["kappa"] + 1e-9,
+              f"kappa's interval holds its own value when every call agrees: {g2['kappa']}, {g1['kappa']}")
+        # A tie on the disputed pushbacks picks no version.
+        text = (run / "caught.md").read_text()
+        for n in range(1, 11):
+            text = text.replace(f"## {n}. session s{n}, reply 2\n\n**Your call:** B\n",
+                                f"## {n}. session s{n}, reply 2\n\n**Your call:** none\n")
+        (run / "caught.md").write_text(text)
+        # Ten of rules 2's catches now called none: 10 agree with each version.
+        even = study._caught(run)
+        check(even["disputed"]["agree"] == {"rules 1": 10, "rules 2": 10} and even["picked"]["version"] is None
+              and not even["picked"]["decisive"] and even["disputed"]["two_sided_p"] == 1.0,
+              f"a tie on the disputed pushbacks picks no version: {even['disputed']}, {even['picked']}")
 
     # The sheet's own limits, on a pushback with 27 problems: refused, never a letter silently dropped.
     with tempfile.TemporaryDirectory() as tmp:
