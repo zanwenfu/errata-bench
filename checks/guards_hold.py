@@ -15548,6 +15548,21 @@ if len(_base169) >= 5:
           f"batch holds, one built from the other corpus and one of v1's: {_base169[:5]} out, {_kept169} kept")
 else:
     check(False, f"the draw's fixture gives too few sessions to test its rules: {_base169}")
+# The cap counts what the rules leave: a moment some run triaged takes no
+# place under it (10-03: a dry run drew 814 later moments and kept 479).
+_m169 = [{"session_id": sid, "repo_id": repo, "turn_number": 5}
+         for sid, repo in (("a", "r1"), ("b", "r1"), ("c", "r2"))]
+_draw169.collect = lambda later: [dict(m) for m in _m169]
+_cr169 = Path(tempfile.mkdtemp())
+append(_cr169 / "x" / "triaged.jsonl", {"session_id": "a", "turn_number": 5})
+_draw169.RUNS = _cr169
+with _contextlib38.redirect_stdout(_io38.StringIO()):
+    _draw169.main(["c", "--cap", "1"])
+_capped169 = [r["session_id"] for r in load(_cr169 / "c-first" / "moments.jsonl")]
+_draw169.collect = _script169("draw_entire").collect
+check(_capped169 == ["b", "c"] and [m["session_id"] for m in _draw169.capped(_m169, 1)] == ["a", "c"],
+      f"the per-repository cap counts what the rules leave, a triaged moment taking no place under it: "
+      f"{_capped169}")
 try:
     with _contextlib38.redirect_stderr(_io38.StringIO()):
         _draw169.main(["d"])

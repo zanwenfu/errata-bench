@@ -18,8 +18,8 @@ model calls. The rules, as v1's step 2 drew (#16, agreed with #17, 10-03):
 - first: no session whose later moment a batch already holds (the later-pushback runs under runs/, named below).
 - a session can be in both lists. If both moments become admitted tasks, the first pushback is kept (the tally),
   and the first list's locate finishes before the later list's, so a failed answer the two share is the first's.
-- --cap: the most moments from one repository in each list, 0 for none. Required: v1 drew with 20
-  (later-cap20) and with none (step 2), and the choice is said, not defaulted.
+- --cap: the most moments from one repository in each list, 0 for none, counted after the rules above. Required:
+  v1 drew with 20 (later-cap20) and with none (step 2), and the choice is said, not defaulted.
 - --limit: how many of each list to keep, in `find_moments`' order (a pilot); every moment otherwise.
 """
 
@@ -44,16 +44,39 @@ from errata_bench.store import append, load  # noqa: E402
 RUNS = ROOT / "runs"
 
 
-def collect(later: bool, cap: int) -> list[dict]:
-    """Every moment `find_moments` gives, in its order, and what it said it left out."""
+def collect(later: bool) -> list[dict]:
+    """Every moment `find_moments` gives, uncapped, and what it said it left out."""
     out = Path(tempfile.mkdtemp()) / "moments.jsonl"
     said = io.StringIO()
     with contextlib.redirect_stdout(said):
-        run_mod.find_moments(10**6, out, later=later, max_per_repo=cap)
+        run_mod.find_moments(10**6, out, later=later, max_per_repo=0)
     for line in said.getvalue().splitlines():
         if line.strip():
             print(f"  {line.strip()}")
     return load(out)
+
+
+def capped(moments: list[dict], cap: int) -> list[dict]:
+    """The moments as `find_moments` spreads them -- within a repository by session id, then one repository at a
+    time in name order -- with at most ``cap`` from one repository (0 for none).
+
+    Applied after the rules, not by `find_moments` before them: there a moment some run had already triaged took a
+    place under the cap and was then removed, and the 20 a repository could give fell to what was left (a dry run
+    on 10-03 drew 814 later moments and kept 479). v1's step 2 drew with no cap, where the order makes no difference.
+    """
+    by_repo: dict[str, list[dict]] = {}
+    for m in moments:
+        by_repo.setdefault(m["repo_id"], []).append(m)
+    for ms in by_repo.values():
+        ms.sort(key=lambda m: m["session_id"])
+    if cap:
+        by_repo = {r: ms[:cap] for r, ms in by_repo.items()}
+    spread: list[dict] = []
+    while by_repo:
+        for repo in sorted(by_repo):
+            spread.append(by_repo[repo].pop(0))
+        by_repo = {r: ms for r, ms in by_repo.items() if ms}
+    return spread
 
 
 def sessions_in(files: list[Path]) -> set[str]:
@@ -92,7 +115,7 @@ def main(argv: list[str]) -> int:
     lists: dict[str, list[dict]] = {}
     for name, later in ((f"{args.name}-later", True), (f"{args.name}-first", False)):
         print(f"{name}:")
-        moments = collect(later, args.cap)
+        moments = collect(later)
         steps = [("not triaged by any run", lambda m: (m["session_id"], m["turn_number"]) not in triaged),
                  ("no task built from the session in any run", lambda m: m["session_id"] not in built),
                  ("not one of v1's sessions", lambda m: m["session_id"] not in v1),
@@ -104,6 +127,10 @@ def main(argv: list[str]) -> int:
             before = len(moments)
             moments = [m for m in moments if keep(m)]
             print(f"  {why}: -{before - len(moments)} -> {len(moments)}")
+        before = len(moments)
+        moments = capped(moments, args.cap)
+        if args.cap:
+            print(f"  at most {args.cap} from one repository: -{before - len(moments)} -> {len(moments)}")
         if args.limit:
             moments = moments[:args.limit]
             print(f"  the first {args.limit} kept: {len(moments)}")
