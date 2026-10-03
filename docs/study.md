@@ -10,9 +10,10 @@ Status, 10-03:
 - reviewed twice by an independent reader before any larger run (the first
   review's findings are fixed; the second's are below once in);
 - the pilot (40 sessions, with a self-review framing), the random arm (40
-  sessions) and a second batch (80 sessions) have run, for about $347 of the $400
-  of Azure credits the user set for 12 hours. Results below; about $50 is kept
-  for re-running the merges after the hand check.
+  sessions), a second batch (80 sessions) and a second reviewer model on the
+  pilot have run, for about $368 of the $400 of Azure credits the user set for
+  12 hours. Results are below. About $32 is left, for re-running the merges
+  after the hand check.
 
 ## Design
 
@@ -49,8 +50,8 @@ Two lists, made independently, then merged (the user's design, 10-03):
     rates hold for sessions in general.
 
 `scripts/study.py` runs it: `prepare`, `estimate`, `review`, `human`, `merge`,
-`tally` and `sheet`. `checks/study_holds.py` checks the rules with the model
-faked: 45 checks, plus 17 single-rule mutants, all caught (10-03).
+`tally`, `sheet` and `combine`. `checks/study_holds.py` checks the rules with
+the model faked: 57 checks, plus 31 single-rule mutants, all caught (10-03).
 
 ## Who spoke: the rule both threads depend on
 
@@ -156,8 +157,9 @@ Measured on the pilot's 398 windows:
     the merge and the counts.
 12. **Shares come with 95% intervals** that resample whole sessions
     (`study/stats.py`): moments of one session are not independent.
-13. **One model throughout:** gpt-6-astra, on the Azure credits. Claude is
-    refused by the client.
+13. **One model throughout:** gpt-6-astra, on the Azure credits. The exception
+    is the second-model arm, where gpt-6-sol reviews. Claude is refused by the
+    client.
 14. **The self framing** is the same model told "this is your own work". After
     its first sentence it still describes the work in the third person: a
     design note, not a defect.
