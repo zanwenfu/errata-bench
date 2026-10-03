@@ -9,8 +9,9 @@ Status, 10-03:
 - built and checked, and smoke-tested on 3 sessions;
 - reviewed twice by an independent reader before any larger run (the first
   review's findings are fixed; the second's are below once in);
-- the 40-session pilot runs next, on the budget the user set: up to $400 of
-  Azure credits over 12 hours.
+- the 40-session pilot and the 40-session random arm have run (first results
+  below), and an 80-session second batch is running, on the budget the user
+  set: up to $400 of Azure credits over 12 hours.
 
 ## Design
 
@@ -187,6 +188,56 @@ in all (`runs/study-smoke*`). They found:
 - **The random arm left out every session with a real error.**
 
 Each was fixed, given a check, and the check broken once to see it fail.
+
+## First results (pilot and random arm, 10-03; provisional)
+
+Provisional until the hand check confirms the merge (κ ≥ 0.7 with the user's
+labels). The shares are of merged pushbacks, with 95% intervals resampling whole
+sessions.
+
+| | Pilot, outside reviewer | Pilot, self framing | Random sessions, outside |
+|---|---|---|---|
+| Handbacks | 402 (40 sessions) | 402 | 308 (40 sessions) |
+| Pushbacks (our reading) | 180 | 180 | 117 |
+| Caught, any pushback | 23% [16–29] | 28% [21–34] | 19% [12–29] |
+| Caught, real errors | 37% [27–48], n=65 | 45% [35–57], n=65 | 32% [15–48], n=28 |
+| Caught, by SWE-chat's label instead | 18% [14–22], n=215 | 23% [19–27] | 19% [12–27], n=155 |
+| Same work, another fault ('related') | 87 of 180 | 80 | 57 of 117 |
+| Reviewer's problems per handback | 1.83 | 2.01 | 1.88 |
+| Handbacks with a problem flagged | 77% | 80% | 79% |
+| Reviewer's problems no pushback matched | 93% | 93% | 94% |
+
+- **By kind of pushback** (pilot, outside): corrections 30% caught, failure
+  reports 14%, rejections 11% (n=9).
+- **Self framing, paired on the same 180 pushbacks:** 38 caught by both, 12 by
+  the self framing only, 3 by the outside framing only (exact binomial on the 15
+  discordant pairs: p ≈ 0.035, not adjusted for sessions). On real errors: 24
+  both, 5 self only, 0 outside only. Either framing catches 29 of the 65.
+- **SWE-chat's label and ours agree** on whether a reply is pushback at κ =
+  0.54 (pilot) and 0.40 (random). Ours is stricter: 72 replies SWE-chat calls
+  pushback are not, and 14 the other way. In a sample, most of the 72 were new
+  requests, questions or answers to the agent's question.
+
+**What the reviewer missed** (the author's reading of 16 of the 36 real-error
+pushbacks both framings missed, not yet the user's):
+- Most are outcomes only someone running the software sees: "the panel opens
+  but it is blank", "the build still fails", "the dropdown still does not
+  appear", "the import still returns a 404". In many of these the reviewer did
+  flag the same handback for not verifying its fix, but it could not know the
+  fault. The merge counts that as related, not caught.
+- The rest need context only the developer has:
+  - norms or authority: "why was PR #45 merged without my approval";
+  - their environment: "the API key is already in your .env";
+  - personal facts: their background;
+  - an image the reviewer cannot see.
+
+So the first answer to Bhuwan's question has two halves:
+- The developer catches what running the software shows and what only they
+  know. An AI reviewer reading the transcript catches about a quarter of what
+  developers object to, and about a third to a half of their real errors.
+- The reviewer raises many more problems than developers ever do, about 1.8 a
+  handback, and most go unmatched. Whether those are real problems the
+  developer let pass or false alarms is the hand check's alone.md.
 
 ## The hand check: how to label
 
