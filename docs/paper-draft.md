@@ -413,8 +413,9 @@ Part of the gap may lie in the matching, not the reviewing.
   wrote "claims 'Processes Now Showing' but never verified that processes
   actually appear". The strict merge called the first 'same' and the second
   'related' (section 3.5): the strict line is applied unevenly.
-- We did not measure how often this happens. Merging DeepSeek's real errors
-  under the claim-level rules would.
+- Under the claim-level rules DeepSeek catches 32% [19–44] and gpt-6-astra
+  49%, against 18% and 37% under the strict rules. The line moves both about
+  equally, so it explains little of the gap.
 - The matching model is also a GPT-6 model, and might favour its own family's
   wording.
 

@@ -375,9 +375,16 @@ case, not measured:
   to fix.
 
 The matcher is also a GPT-6 model, which could favour its family's wording.
-DeepSeek's real errors under rules version 2 were not merged (about $3.50, over
-what was left). That run would measure how much of the gap the line accounts
-for. Real cost: $3.81 for the reviews and $11.37 for the merges.
+Real cost: $3.81 for the reviews and $11.37 for the merges.
+
+*Measured afterwards* (`runs/study-pilot-deepseek-rules2`, $3.77, approved by
+the user): DeepSeek's 65 real errors under rules version 2.
+- DeepSeek rises from 18% [10–28] to 32% [19–44]: 9 pushbacks went from not
+  caught to caught, none the other way.
+- On the same pushbacks, gpt-6-astra's reviewer rises from 37% to 49%.
+
+The line moves both reviewers about equally, so it accounts for little of the
+gap: DeepSeek catches less under either reading.
 
 **A second merge model** (pilot, 10-03; `runs/study-pilot-merge-sol`):
 gpt-6-sol merged the same 252 pushbacks against the same gpt-6-astra problems.
