@@ -683,6 +683,63 @@ def section_runner(reps):
     check(all(CALLED.get(k) for k in ("review", "classify", "merge")), f"every stand-in ran: {CALLED}")
 
 
+def section_agreement():
+    print("\n7. the hand check's numbers: the person's labels against the merge, and their calls")
+    import csv
+    study = load_script()
+    with tempfile.TemporaryDirectory() as tmp:
+        run, other = Path(tmp) / "run", Path(tmp) / "other"
+        run.mkdir()
+        other.mkdir()
+        # Five merge decisions; the person labels four, one of them unreadably.
+        labels = [("1", "Same "), ("2", "related"), ("3", "maybe"), ("4", ""), ("5", "different.")]
+        model = {"1": "same", "2": "different", "3": "same", "4": "related", "5": "different"}
+        with open(run / "labels.csv", "w", newline="") as fh:
+            w = csv.writer(fh)
+            w.writerow(["item", "developer_reply", "reviewer_problem", "reviewer_quote", "in English",
+                        "your_label (same / related / different)", "note"])
+            for item, label in labels:
+                w.writerow([item, "reply", "problem", "quote", "", label, ""])
+        with open(run / "key.csv", "w", newline="") as fh:
+            w = csv.writer(fh)
+            w.writerow(["item", "session", "handback", "problem_id", "model_match", "model_reason"])
+            for item, _ in labels:
+                w.writerow([item, f"s{item}", 3, "r3p1", model[item], "why"])
+        for item in ("1", "2", "3", "4", "5"):
+            append(run / "merges.jsonl", {"session_id": f"s{item}", "index": 3, "verdicts": [
+                {"problem_id": "r3p1", "report": 3, "match": model[item], "missing": False}], "model": "m", "usage": None})
+        # The same pushbacks under rules 2: item 2 now 'related'; item 1's other problem says 'different'; item 5 absent.
+        append(other / "merges.jsonl", {"session_id": "s1", "index": 3, "rules": 2, "verdicts": [
+            {"problem_id": "r3p1", "report": 3, "match": "same", "missing": False},
+            {"problem_id": "r3p0", "report": 3, "match": "different", "missing": False}], "model": "m", "usage": None})
+        append(other / "merges.jsonl", {"session_id": "s2", "index": 3, "rules": 2, "verdicts": [
+            {"problem_id": "r3p1", "report": 3, "match": "related", "missing": False}], "model": "m", "usage": None})
+        item = lambda n, sid, call: (f"\n---\n\n## {n}. session {sid}, handback 3 (r3p1)\n\n**The reviewer:** x\n\n"
+                                     f"**Your call:** {call}\n\n<details><summary>The work it read</summary>\n\n"
+                                     f"~~~~\nwork\n~~~~\n\n</details>\n")
+        (run / "alone.md").write_text("# The reviewer's problems that no pushback matched\n" + item(1, "aaaa", "real")
+                                      + item(2, "bbbb", "\n\nFalse alarm.") + item(3, "cccc", "maybe")
+                                      + item(4, "dddd", "can\u2019t tell") + item(5, "eeee", ""))
+        quiet = io.StringIO()
+        with contextlib.redirect_stdout(quiet):
+            rc = study.agreement(SimpleNamespace(run=str(run), also=[str(other)], framing="outside"))
+        out = json.loads((run / "agreement.json").read_text())
+        first, second = out["merge"]["run (rules [1])"], out["merge"]["other (rules [2])"]
+        check(rc == 0 and out["labelled"] == 3 and out["unreadable_labels"] == ["3"],
+              f"labels are read whatever their case, spaces or full stop, and an unreadable one is named: "
+              f"{out['labelled']} labelled, unreadable {out['unreadable_labels']}")
+        check(first["items"] == 3 and abs(first["agreement"] - 2 / 3) < 0.01 and first["trusted (kappa at least 0.7)"] is False,
+              f"the person against this run's merge, item by item: {first['items']} items, agreement {first['agreement']}")
+        check(second["items"] == 2 and second["agreement"] == 1.0,
+              f"against another run's merge of the same pushbacks, by the same problem id, on the items it holds: "
+              f"{second['items']} items, agreement {second['agreement']}")
+        a = out["alone"]
+        check(a["counts"] == {"real": 1, "false alarm": 1, "can't tell": 1} and a["unreadable_calls"] == ["3"]
+              and a["real_of_decided"]["n"] == 2 and a["real_of_decided"]["share"] == 0.5,
+              f"the calls on unmatched problems, on the line or the next, and can't tell left out of the share: "
+              f"{a['counts']}, unreadable {a['unreadable_calls']}, {a['real_of_decided']}")
+
+
 def main():
     section_kinds()
     reps = section_reports()
@@ -690,6 +747,7 @@ def main():
     section_quotes()
     section_candidates()
     section_runner(reps)
+    section_agreement()
     total = sum(1 for _ in FAIL)
     print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{total} FAILED"))
     for f in FAIL:

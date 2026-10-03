@@ -8,6 +8,7 @@
     .venv/bin/python scripts/study.py merge    --run runs/study-pilot --max-usd N [--concurrency 8] [--limit N] [--rules 2]
     .venv/bin/python scripts/study.py tally    --run runs/study-pilot
     .venv/bin/python scripts/study.py sheet    --run runs/study-pilot [--matches 150] [--alone 50]
+    .venv/bin/python scripts/study.py agreement --run runs/study-pushback-120 [--also runs/study-pushback-120-rules2]
 
 `prepare` and `estimate` make no model call. `review` (thread A) and `human`
 (thread B) are independent and can run side by side; `merge` reads both. Each
@@ -27,6 +28,7 @@ import csv
 import importlib.util
 import json
 import random
+import re
 import sys
 from collections import Counter, defaultdict
 from pathlib import Path
@@ -515,6 +517,87 @@ def combine(args) -> int:
     return 0
 
 
+# --------------------------------------------------------------------------- the hand check's numbers (free)
+
+LABELS = ("same", "related", "different")
+CALLS = {"real": "real", "false alarm": "false alarm", "can't tell": "can't tell", "cant tell": "can't tell"}
+ALONE_HEAD = re.compile(r"^## (\d+)\. session (\w+), handback (\d+) \((r\d+p\d+)\)$", re.M)
+
+
+def _call(body: str) -> str:
+    """What the person wrote after **Your call:**, on that line or the next one with text."""
+    after = body.split("**Your call:**", 1)[1] if "**Your call:**" in body else ""
+    for line in after.splitlines():
+        line = line.strip()
+        if line.startswith("<details>"):
+            return ""
+        if line:
+            return line.strip(".").lower().replace("\u2019", "'")
+    return ""
+
+
+def agreement(args) -> int:
+    """The person's labels against the merge's verdicts (this run's, and any --also run's), and their calls on
+    the reviewer's unmatched problems. Run once the hand check is done (docs/study.md)."""
+    run = Path(args.run)
+    tag = "" if args.framing == "outside" else f"-{args.framing}"
+    with open(run / f"labels{tag}.csv", newline="", encoding="utf-8") as fh:
+        rows = list(csv.DictReader(fh))
+    with open(run / f"key{tag}.csv", newline="", encoding="utf-8") as fh:
+        keys = {r["item"]: r for r in csv.DictReader(fh)}
+    column = next(c for c in rows[0] if c.startswith("your_label"))
+    person, unreadable = {}, []
+    for r in rows:
+        v = (r.get(column) or "").strip().strip(".").lower()
+        if v in LABELS:
+            person[r["item"]] = v
+        elif v:
+            unreadable.append(r["item"])
+    verdicts = {f"{run.name} (rules {sorted({m.get('rules', 1) for m in completed(path(run, 'merge', args.framing))})})":
+                {i: keys[i]["model_match"] for i in person}}
+    for other in args.also or []:
+        merges = {key(m): m for m in completed(path(Path(other), "merge", args.framing))}
+        found = {}
+        for i in person:
+            k = keys[i]
+            for v in (merges.get((k["session"], int(k["handback"]))) or {}).get("verdicts") or []:
+                if v["problem_id"] == k["problem_id"] and not v.get("missing"):
+                    found[i] = v.get("match")
+        found_rules = sorted({m.get("rules", 1) for m in merges.values()})
+        verdicts[f"{Path(other).name} (rules {found_rules})"] = found
+    out = {"labelled": len(person), "of": len(rows), "unreadable_labels": unreadable, "merge": {}}
+    for name, by_item in verdicts.items():
+        pairs = [(person[i], by_item[i]) for i in person if by_item.get(i) in LABELS]
+        k3 = T.kappa(pairs)
+        out["merge"][name] = {
+            "items": len(pairs),
+            "agreement": T.share(sum(a == b for a, b in pairs), len(pairs)),
+            "kappa": k3,
+            "kappa_same_or_not": T.kappa([(str(a == "same"), str(b == "same")) for a, b in pairs]),
+            "trusted (kappa at least 0.7)": k3 is not None and k3 >= 0.7,
+            "person / model": {f"{a} / {b}": n for (a, b), n in sorted(Counter(pairs).items())},
+        }
+    md_path = run / f"alone{tag}.md"
+    if md_path.exists():
+        md = md_path.read_text(encoding="utf-8")
+        heads = list(ALONE_HEAD.finditer(md))
+        calls, unread = {}, []
+        for j, h in enumerate(heads):
+            v = _call(md[h.end(): heads[j + 1].start() if j + 1 < len(heads) else len(md)])
+            if v in CALLS:
+                calls[h.group(1)] = (h.group(2), CALLS[v])
+            elif v:
+                unread.append(h.group(1))
+        out["alone"] = {"called": len(calls), "of": len(heads), "unreadable_calls": unread,
+                        "counts": dict(Counter(c for _, c in calls.values())),
+                        # Of the problems the person could decide, the share that are real.
+                        "real_of_decided": T.bootstrap([(s, c == "real") for s, c in calls.values()
+                                                        if c != "can't tell"])}
+    print(json.dumps(out, indent=1, ensure_ascii=False))
+    (run / f"agreement{tag}.json").write_text(json.dumps(out, indent=1, ensure_ascii=False))
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -556,11 +639,16 @@ def main() -> int:
     s.add_argument("--matches", type=int, default=150)
     s.add_argument("--alone", type=int, default=50)
     s.add_argument("--framing", choices=("outside", "self"), default="outside")
+    g = sub.add_parser("agreement")
+    g.add_argument("--run", required=True)
+    g.add_argument("--also", action="append", help="another run folder whose merges of the same pushbacks to compare "
+                                                    "(e.g. one under another version of the rules)")
+    g.add_argument("--framing", choices=("outside", "self"), default="outside")
     args = ap.parse_args()
     if getattr(args, "concurrency", 1) < 1:
         ap.error("--concurrency must be at least 1")
     return {"prepare": prepare, "estimate": estimate, "review": review, "human": human, "merge": merge,
-            "tally": tally, "sheet": sheet, "combine": combine}[args.cmd](args)
+            "tally": tally, "sheet": sheet, "combine": combine, "agreement": agreement}[args.cmd](args)
 
 
 if __name__ == "__main__":

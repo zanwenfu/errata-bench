@@ -51,7 +51,7 @@ Two lists, made independently, then merged (the user's design, 10-03):
 
 `scripts/study.py` runs it: `prepare`, `estimate`, `review`, `human`, `merge`,
 `tally`, `sheet` and `combine`. `checks/study_holds.py` checks the rules with
-the model faked: 64 checks, plus 38 single-rule mutants, all caught (10-03).
+the model faked: 68 checks, plus 44 single-rule mutants, all caught (10-03).
 
 ## Who spoke: the rule both threads depend on
 
@@ -432,6 +432,20 @@ Decide from the work; what the developer said next is folded below it, to open o
 - **false alarm:** the work does not have this problem, or it is too minor for
   a careful developer to push back on.
 - **can't tell:** the material does not show enough to decide.
+
+### When you are done
+
+    .venv/bin/python scripts/study.py agreement --run runs/study-pushback-120 --also runs/study-pushback-120-rules2
+
+It prints, and writes to `agreement.json`:
+- your labels against the merge under rules version 1 (every item);
+- your labels against rules version 2 (the items whose pushback is a real
+  error: the rest were not merged under version 2);
+- your calls on the unmatched problems, with the share that are real among
+  those you could decide.
+
+Labels may be in any case, with a full stop. A label it cannot read is listed,
+not guessed.
 
 ### What it is for
 
