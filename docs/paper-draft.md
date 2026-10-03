@@ -40,9 +40,9 @@ to pushback, it catches 32% [15–48].
 ## 1. Introduction
 
 Developers using coding agents work in a loop: they ask, the agent works and
-reports, and they reply. Many replies are pushback. In 40 sessions drawn at
-random from SWE-chat, a public dataset of real sessions [SWE-chat], 38% of
-handbacks drew pushback by our reading. Tang et al. label 22.58% of failure
+reports, and they reply. Many replies are pushback. In 40 Claude Code sessions
+drawn at random from SWE-chat, a public dataset of real sessions [SWE-chat],
+38% of handbacks drew pushback by our reading. Tang et al. label 22.58% of failure
 episodes as the agent misreporting its own work [Tang]. Transluce finds
 "overselling" in 34.7% of SWE-chat sessions [Transluce].
 
@@ -83,9 +83,10 @@ Our contributions:
    and 54% in random ones. Each error moves a handback boundary and invents or
    loses a reply, so we decide each row from the session's raw transcript.
 3. **Results.** A transcript-reading reviewer catches about half of the
-   developer's real-error pushbacks, mostly false claims and ignored
-   instructions. It misses most of what only running the software shows, and
-   raises many problems developers never raise.
+   developer's real-error pushbacks, across the failure modes the transcript
+   can show, and ignored instructions most. It misses most of what only
+   running the software shows, and raises many problems developers never
+   raise.
 4. **Code and run data** for every number, with 86 checks of the method's rules
    (72 rules broken one at a time, each caught by a check). There is also a
    hand-check protocol that weighs a stratified sample back to the whole.
@@ -259,16 +260,29 @@ The match is the study's measuring instrument, so it is checked twice.
   - the 6 with no problem to compare count as not caught.
 
   Weighing each stratum back to its size gives the share of real errors caught
-  by the author's calls. It also gives each reading's agreement with the author
-  on the same items. The merge is trusted only at a weighted κ ≥ 0.7, and the
-  disputed 20 decide between the readings. The guide gives both the author and
-  the merge the claim-level rules' worked examples: it is the study's definition
-  of 'same'. The author also calls 50 of the reviewer's unmatched problems real,
-  false alarm or can't tell. The protocol is in `docs/study.md`.
+  by the author's calls. Each stratum's share is drawn from a Jeffreys Beta,
+  and its uncalled pushbacks from a binomial, so a stratum called in full is
+  exact.
+  - A reading of the merge is accepted if its share is consistent with the
+    author's: with every item called, the 95% interval of the difference holds
+    0.
+  - κ, weighed by stratum and with an interval, is reported as agreement.
+  - The disputed 20 decide between the readings, with a sign test.
 
-  A uniform sample of single merge decisions, planned first, was dropped before
-  any labelling. Most decisions are plainly 'different', so its κ could pass
-  with every 'same' wrong.
+  The guide gives both the author and the merge the claim-level rules' worked
+  examples: it is the study's definition of 'same'. Agreement with the
+  claim-level reading is therefore partly built in, and the hand check tests
+  whether each reading applies the definition as a person does.
+
+  The author also calls 50 of the reviewer's unmatched problems real, false
+  alarm or can't tell. The protocol is in `docs/study.md`.
+
+  Two earlier designs were dropped before any labelling.
+  - A uniform sample of single merge decisions: most are plainly 'different',
+    so its κ could pass with every 'same' wrong.
+  - A κ ≥ 0.7 rule on this sample: it would pass the strict reading at κ 0.80
+    even if the author agreed exactly with the claim-level reading, 9 points
+    away.
 - **By a second model:** gpt-6-sol re-matches the pilot's 252 pushbacks on the
   same inputs (section 4.4).
 
@@ -332,8 +346,8 @@ A real error can have more than one failure mode.
 | Preference | 11.8% [0–28] | 17 |
 | Unclear | 11.4% [7–17] | 175 |
 
-The reviewer does best where the evidence is in the transcript: the agent said
-something its own calls do not show, or skipped part of the request. It does
+Ignored instructions stand out (80%). False claims, shallow investigation and
+unverified assumptions are caught at similar rates (57–60%). The reviewer does
 worst on failure reports, where the developer describes what happened when they
 ran the software. The claim-level rules close much of that gap (40% to 54%).
 For a failure report, the reviewer often could not know the fault, but it had
@@ -386,9 +400,12 @@ gpt-6-astra only and 2 by DeepSeek only. DeepSeek raises as many problems, but
 flags fewer handbacks.
 
 Part of the gap may lie in the matching, not the reviewing.
-- In one case we read, DeepSeek's reviewer flagged the claim the developer
-  found false as unverified, where gpt-6-astra's said the fix did not hold.
-  Only the latter counted as 'same' under the strict rules (section 3.5).
+- In one case we read, both reviewers flagged the same unverified claim in
+  nearly the same words. gpt-6-astra's wrote "claims processes now appear
+  without checking ... does not establish a fix for an empty list". DeepSeek's
+  wrote "claims 'Processes Now Showing' but never verified that processes
+  actually appear". The strict merge called the first 'same' and the second
+  'related' (section 3.5): the strict line is applied unevenly.
 - We did not measure how often this happens. Merging DeepSeek's real errors
   under the claim-level rules would.
 - The matching model is also a GPT-6 model, and might favour its own family's
@@ -421,7 +438,11 @@ batch 56% [47–65] of its 130.
   sessions between the batches, p = 0.018), by a test chosen after the gap was
   seen.
 
-We found no processing difference, so we report the pooled figure, whose
+- The pilot's 40 sessions were the development set: the rules for who spoke
+  were fixed while preparing exactly those sessions. That is a candidate
+  explanation we have not tested.
+
+We found no other processing difference, so we report the pooled figure, whose
 interval resamples sessions.
 
 ## 5. Discussion
@@ -457,8 +478,8 @@ is context, not a ranking.
 ## 6. Threats to validity
 
 - **The match is a model's.** Two matching models agree (κ = 0.87), but they
-  could share a blind spot. The hand check (a weighted κ ≥ 0.7 required) is the
-  test.
+  could share a blind spot. The hand check is the test: the merge's share must
+  be consistent with the author's.
 - **One coder.** The hand check is one author's. A second coder would give the
   agreement between people, which bounds how well any merge can do.
 - **Where 'same' ends.** Whether flagging the claim the developer found false
@@ -488,8 +509,7 @@ At the moment a coding agent hands its work back, an AI reviewer reading the
 transcript would have named the developer's problem for half to three fifths of
 the pushbacks about real errors (50–59%, depending on where 'same' ends), and
 about a quarter of all pushbacks. How much it catches depends on the reviewer
-model. It catches
-what the transcript shows: claims without evidence, and ignored instructions. It
+model. It catches what the transcript shows, ignored instructions most. It
 misses what only running the software or knowing the project shows. It also
 raises many problems no developer raised. The developer's reply makes these
 numbers possible: real sessions record what a person who cared about the

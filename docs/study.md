@@ -5,7 +5,7 @@ AI reviewer have flagged the problem the developer then pushed back on? And what
 does each one catch that the other misses? This is the question Bhuwan suggested
 on 10-01: the developer's reply is a rough gold label that no benchmark has.
 
-Status, 10-03 (13:30 UTC):
+Status, 10-03 (15:00 UTC):
 - built and checked, and smoke-tested on 3 sessions;
 - reviewed twice by an independent reader before any larger run, with every
   finding fixed;
@@ -18,9 +18,10 @@ Status, 10-03 (13:30 UTC):
     a second merge model;
   - the 195 real errors merged again under the claim-level rules
     (assumption 17);
-- an independent review of the day's code and numbers (10-03, afternoon) found
-  that the planned hand check could not test the main measure. It was
-  replaced before anyone labelled it (below);
+- two independent reviews of the day's code and numbers (10-03, afternoon)
+  found that the planned hand check could not test the main measure, and then
+  that its first replacement's trust rule could pass the wrong version. Both
+  were fixed before anyone labelled anything (below);
 - waiting for the user's hand check (the guide is near the end of this page).
 
 Results are below. A first draft of the paper built from them is in
@@ -52,9 +53,13 @@ Two lists, made independently, then merged (the user's design, 10-03):
   20 each that both call caught and that neither does. For each, the user says
   which of the reviewer's problems, if any, name the developer's fault.
   - Weighed back to each group's size, this gives the person's own share of
-    real errors caught.
-  - It also gives each version's agreement with the person on the same items.
-    The merge is trusted only at a weighted κ ≥ 0.7.
+    real errors caught, with an interval.
+  - With every item called, a version of the merge is consistent with the
+    person when the interval of its share minus the person's holds 0. κ,
+    weighed by group, is reported beside it with an interval, as agreement,
+    not as the rule. (A κ ≥ 0.7 rule was planned first. The review showed it
+    would pass version 1 at κ 0.80 even with the person agreeing exactly with
+    version 2, 9 points away.)
   - The user also calls 50 of the reviewer's unmatched problems (`alone.md`).
 
   A hand check is where "Plans They Abandon, Reports They Author" (arXiv
@@ -70,7 +75,8 @@ Two lists, made independently, then merged (the user's design, 10-03):
 `scripts/study.py` runs it: `prepare`, `estimate`, `review`, `human`, `merge`,
 `tally`, `combine`, and for the hand check `caught-sheet`, `sheet`,
 `replies-sheet` and `agreement`. `checks/study_holds.py` checks the rules with
-the model faked: 86 checks, plus 72 single-rule mutants, all caught (10-03).
+the model faked: 97 checks. `checks/study_mutants.py` breaks 86 rules one at a
+time, and a check fails for each (10-03).
 
 ## Who spoke: the rule both threads depend on
 
@@ -301,10 +307,18 @@ call): not found.
 - **Not the mix.** Batch 2 catches more in every failure mode and kind with
   more than a handful of cases (not in the smallest: rejections, 5% against
   11% across all pushbacks). Agent, developer persona, month, session length,
-  window size and problems per handback are all alike.
+  window size and problems per handback are all alike. The mix would predict
+  batch 2 catching less, not more.
+- **A candidate, not tested: the pilot was the development set.**
+  - `runs/study-dev` to `study-dev6` each prepared exactly the pilot's 40
+    sessions while the who-spoke rules were being fixed, and the smoke runs
+    used 3 of them. Batch 2 shares none.
+  - Rules tuned on the pilot's sessions may handle them better than batch 2's,
+    and errors left in batch 2's report boundaries could move its numbers.
+  - A check of who spoke on a sample of batch 2's sessions would test this.
 
-The batches were assigned at random, so the gap is chance or a processing
-difference we did not find. Shuffling whole sessions between them gives a gap
+The batches were drawn at random, so the gap is chance, a processing
+difference we did not find, or the development history above. Shuffling whole sessions between them gives a gap
 this large 1.8% of the time (p = 0.018), about 1 in 55, by a test chosen after
 the gap was seen. The pooled share, with its interval over sessions, is the
 number to report, and both batches are reported with it.
@@ -344,10 +358,13 @@ merge's line between same and related (assumption 17). That was seen in one
 case, not measured:
 - On one session, the developer said the processes and the cycle count were
   "still the same issues".
-- gpt-6-astra's reviewer had written "does not establish a fix for an empty
-  list", judged same.
-- DeepSeek's had written "claims 'Processes Now Showing' but never verified
-  that processes actually appear", judged related.
+- Both reviewers had flagged the same unverified claim in nearly the same
+  words. gpt-6-astra's: "claims processes now appear without checking ...
+  does not establish a fix for an empty list", judged same. DeepSeek's:
+  "claims 'Processes Now Showing' but never verified that processes actually
+  appear", judged related.
+- So the strict line is applied unevenly, which version 2's examples are meant
+  to fix.
 
 The matcher is also a GPT-6 model, which could favour its family's wording.
 DeepSeek's real errors under rules version 2 were not merged (about $3.50, over
@@ -368,8 +385,8 @@ share a blind spot, so this does not replace the hand check. Real cost: $2.61.
 
 ## First results (pilot and random arm, 10-03; provisional)
 
-Provisional until the hand check confirms the merge (a weighted κ ≥ 0.7 with
-the user's calls in `caught.md`). The shares are of merged pushbacks, with 95%
+Provisional until the hand check confirms the merge (its share consistent
+with the user's calls in `caught.md`). The shares are of merged pushbacks, with 95%
 intervals resampling whole sessions.
 
 | | Pilot, outside reviewer | Pilot, self framing | Random sessions, outside |
@@ -431,8 +448,12 @@ So the first answer to Bhuwan's question has two halves:
 
 **Label the pooled run's files, in `runs/study-pushback-120/`:** `caught.md`
 first, then `alone.md`, then `replies.csv` if there is time. Each is in random
-order: label from the top, and stop anywhere. Do not open `caught-key.json`
-or `replies-key.csv`.
+order, so label from the top:
+- the figures weighed back to all 195 pushbacks appear once each group in
+  `caught.md` has 10 calls (or all it has);
+- the verdict on each version needs all 60.
+
+Do not open `caught-key.json` or `replies-key.csv`.
 
 The earlier `labels.csv` is in `superseded/`. It was a uniform sample of 150
 single merge decisions, and the 10-03 review showed it could not test the main
@@ -472,9 +493,10 @@ same fault unless it names it.
 developer's reply, then every problem the reviewer raised in the handbacks
 before it, lettered A, B, C and on. The end of the agent's work is folded below.
 
-After **Your call:** write the letters of the problems that are the **same**
-fault, for example `A` or `A, C`. If none is, write `none`. Leave the mark
-`**Your call:**` as it is.
+After **Your call:**, on that line or the next, write the letters of the
+problems that are the **same** fault, for example `A` or `A, C`, or `a and c`.
+If none is, write `none`. A comment after the letters is fine, for example
+`B (the build claim)`. Leave the mark `**Your call:**` as it is.
 
 ### alone.md: the reviewer's problems that no pushback matched
 
@@ -510,12 +532,18 @@ A spreadsheet may save it with semicolons or a byte-order mark; both are read.
 
 It prints, and writes to `agreement.json`:
 - **caught.md, under each version of the merge's rules, on the same items:**
-  - each stratum's agreement with you;
-  - the weighted agreement and κ, each stratum weighed back to its size;
+  - the share of real errors caught by your calls, over all 195 pushbacks,
+    with an interval. It covers your calls' uncertainty only; the tally's
+    intervals cover the sessions';
+  - each version's share, its share minus yours with an interval, and whether
+    the two are consistent (with all 60 called);
+  - κ and agreement weighed by group, κ with an interval;
+  - how many of the disputed 20 agree with each version, with a sign test;
   - whether you and the merge name the same problem when both call it caught;
-  - the share of real errors caught by your calls, with an interval.
+  - each group's counts, and the items still uncalled or unreadable.
 
-  The weighted figures are given once every stratum has a call.
+  The figures weighed back to all 195 are given once each group has its
+  calls.
 - **alone.md:** your calls, with the share that are real among those you could
   decide.
 - **replies.csv:** for each group thread B's reading came from, how often you
@@ -527,10 +555,11 @@ listed, not guessed.
 ### What it is for
 
 - **The main measure.** Your calls give the share of real errors caught as a
-  person judges it, and each version's κ against you on the same items. The
-  merge is trusted only at a weighted κ ≥ 0.7.
-- **The disputed 20.** These decide between the two versions: how many you
-  call caught.
+  person judges it. A version of the merge is accepted if its share is
+  consistent with yours: the interval of the difference holds 0, with all 60
+  called. κ is reported beside it.
+- **The disputed 20.** These decide between the two versions: on how many of
+  them you agree with each, with a sign test.
 - **The other side of the result.** alone.md says how often the reviewer finds
   real problems the developer let pass, and how often it raises false alarms.
   That is the "machines catch what humans miss" side.
