@@ -27,7 +27,9 @@ export ERRATA_PROVIDER=azure ERRATA_MODEL="$JUDGE" ERRATA_JUDGE_MODEL="$JUDGE" \
 [ -n "${ERRATA_CORPUS:-}" ] || { echo "refused: ERRATA_CORPUS names no corpus"; exit 2; }
 PY="${PY:-$HOME/errata-bench/.venv/bin/python}"
 step() { echo "== $(date -u +%H:%M:%S) $*"; }
-stages() { "$PY" run.py stages --run "$@" --concurrency "$CONCURRENCY"; }
+# Every paid command names its provider and model on the command itself (guard 121, D-45's lesson).
+stages() { ERRATA_PROVIDER=azure ERRATA_MODEL="$JUDGE" ERRATA_JUDGE_MODEL="$JUDGE" \
+    "$PY" run.py stages --run "$@" --concurrency "$CONCURRENCY"; }
 
 step "finding: $first through locate, $later through reading, side by side"
 stages "$first" --through locate & a=$!
@@ -51,7 +53,8 @@ for run in "$first" "$later"; do
     step "$run: calibration"
     stages "$run" --only calibrate || { step "stopped: calibration exited $?"; exit 1; }
     step "$run: the gate, $GATE_PASSES readings of every built task"
-    "$PY" run.py gate --run "$run" --judge "$JUDGE" --passes "$GATE_PASSES" --concurrency "$CONCURRENCY" \
+    ERRATA_PROVIDER=azure ERRATA_JUDGE_MODEL="$JUDGE" \
+        "$PY" run.py gate --run "$run" --judge "$JUDGE" --passes "$GATE_PASSES" --concurrency "$CONCURRENCY" \
         || { step "stopped: the gate exited $?"; exit 1; }
     step "$run: the controls at $CONTROL_PASSES readings"
     stages "$run" --only control --passes "$CONTROL_PASSES" || { step "stopped: the controls exited $?"; exit 1; }

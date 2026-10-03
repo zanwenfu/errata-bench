@@ -15505,6 +15505,115 @@ if _rel168.is_dir():
 else:
     print(f"  skip  the frozen names against the release: {_rel168} is not here (as in CI)")
 
+print("\n169. the Entire runs' draw and tally keep v1's rules (scripts/draw_entire.py, tally_entire.py; 10-03)")
+import importlib.util as _ilu169
+
+
+def _script169(name):
+    spec = _ilu169.spec_from_file_location(f"_s169_{name}", Path("scripts") / f"{name}.py")
+    mod = _ilu169.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+# The draw: each of its exclusions removes a session the unfiltered draw holds.
+_draw169 = _script169("draw_entire")
+_draw169.V1_NAMES = {}
+
+
+def _drawn169(runs, extra=()):
+    _draw169.RUNS = runs
+    _sessions_mod.CORPUS, _sessions_mod.load_repos = _corpus163, REAL_LOAD_REPOS
+    try:
+        with _contextlib38.redirect_stdout(_io38.StringIO()), _transcripts_at(_corpus163):
+            code = _draw169.main(["d", "--cap", "0", *(["--exclude-sessions", *extra] if extra else [])])
+    finally:
+        _sessions_mod.CORPUS, _sessions_mod.load_repos = _keep163
+    return code, sorted(r["session_id"] for r in load(runs / "d-first" / "moments.jsonl"))
+
+
+_base169 = _drawn169(Path(tempfile.mkdtemp()))[1]
+_runs169 = Path(tempfile.mkdtemp())
+if len(_base169) >= 5:
+    _tri169, _built169, _batch169, _else169, _v1s169 = _base169[:5]
+    append(_runs169 / "a" / "triaged.jsonl", {"session_id": _tri169, "turn_number": 5})
+    append(_runs169 / "b" / "tasks.jsonl", {"session_id": _built169, "task_id": "o-b-x-5"})
+    append(_runs169 / "c-later" / "moments.jsonl", {"session_id": _batch169, "turn_number": 9})
+    (_runs169 / "elsewhere.json").write_text(json.dumps([_else169]))
+    _draw169.V1_NAMES = {"o-v-5": _v1s169}
+    _code169, _kept169 = _drawn169(_runs169, [str(_runs169 / "elsewhere.json")])
+    _draw169.V1_NAMES = {}
+    check(_code169 == 0 and _kept169 == _base169[5:],
+          f"the draw leaves out a moment any run triaged, a session with a built task, one whose later moment a "
+          f"batch holds, one built from the other corpus and one of v1's: {_base169[:5]} out, {_kept169} kept")
+else:
+    check(False, f"the draw's fixture gives too few sessions to test its rules: {_base169}")
+try:
+    with _contextlib38.redirect_stderr(_io38.StringIO()):
+        _draw169.main(["d"])
+    _nocap169 = "drew"
+except SystemExit:
+    _nocap169 = "refused"
+check(_nocap169 == "refused", f"and it will not draw without a per-repository cap named: {_nocap169}")
+# The tally: seven readings, the first pushback, a development run, a repeated name.
+_tally169 = _script169("tally_entire")
+_tr169 = Path(tempfile.mkdtemp())
+_plan169 = {"f": (("t-1", "S1", 7, 7), ("t-2", "S2", 3, 3)), "l": (("t-3", "S1", 7, 7),), "dv": (("t-4", "S4", 7, 7),),
+            "dup": (("t-1", "S5", 7, 7),)}
+for _run169, _ts169 in _plan169.items():
+    _p169 = Paths(_tr169 / _run169)
+    for _tid169, _sid169, _, _ in _ts169:
+        _t169 = _task49(_tid169)
+        _t169.session_id, _t169.repo_id = _sid169, "o/r"
+        append(_p169.tasks, _t169.to_json())
+_tally169.can_be_scored = lambda r: True
+_tally169.stable = lambda run, judge, passing=None: (
+    set(), {t: {"asked": a, "held": h} for t, _, a, h in _plan169[Path(run).name]})
+_tally169.admitted = lambda run, p, judge, passing: {t for t, _, _, _ in _plan169[Path(run).name]}
+with _contextlib38.redirect_stdout(_io38.StringIO()):
+    _ok169 = _tally169.main([str(_tr169 / "o.json"), f"{_tr169 / 'f'}:first", f"{_tr169 / 'l'}:later",
+                             f"{_tr169 / 'dv'}:later:dev"])
+    _out169 = json.loads((_tr169 / "o.json").read_text())
+    _dup169 = _tally169.main([str(_tr169 / "o2.json"), f"{_tr169 / 'f'}:first", f"{_tr169 / 'dup'}:later"])
+_kept169t = sorted((r["task_id"], r["dev"]) for r in _out169["kept"])
+check(_ok169 == 0 and _kept169t == [("t-1", False), ("t-4", True)]
+      and [d["task_id"] for d in _out169["dropped"]] == ["t-3"] and _dup169 == 1,
+      f"the tally admits only a task read seven times, keeps a session's first pushback, marks a development run, "
+      f"and refuses a name used twice: kept {_kept169t}, dropped {[d['task_id'] for d in _out169['dropped']]}, "
+      f"repeated name exit {_dup169}")
+
+# The run script carries v1's settings and uses each where it belongs.
+_sh169 = Path("scripts/run_entire.sh").read_text()
+_cmds169 = [c for c in _commands121(_sh169) if not c.lstrip().startswith("#")]
+check("JUDGE=gpt-6-astra; SCREEN_PASSES=3; GATE_PASSES=7; CONTROL_PASSES=3" in _sh169
+      and any("--only screen" in c and '--passes "$SCREEN_PASSES"' in c for c in _cmds169)
+      and any("run.py gate" in c and '--passes "$GATE_PASSES"' in c and '--judge "$JUDGE"' in c for c in _cmds169)
+      and any("--only control" in c and '--passes "$CONTROL_PASSES"' in c for c in _cmds169)
+      and any("--only calibrate" in c for c in _cmds169) and any("preflight_entire.py" in c for c in _cmds169),
+      "the Entire run script screens at three readings, gates at seven, controls at three, all with gpt-6-astra, "
+      "and runs the preflight before admission")
+# The preflight stops on a task whose conversation names the overclaim's invented file.
+_pre169 = _script169("preflight_entire")
+_pr169 = Path(tempfile.mkdtemp())
+_pp169 = Paths(_pr169 / "run")
+for _tid169, _sid169 in (("t-clean", "S1"), ("t-named", "S2")):
+    _t169 = _task49(_tid169)
+    _t169.session_id, _t169.criterion_calls = _sid169, [{"name": "Read"}]
+    _t169.calls_recovered = _t169.text_recovered = True
+    append(_pp169.tasks, _t169.to_json())
+_pre169.load_session_turns = lambda ids: {i: [] for i in ids}
+_pre169.recovered = lambda turns: turns
+_pre169.transcript_path = lambda sid: _pr169 / "none" / f"{sid}.jsonl"
+_pre169.transcript_for = lambda task, turns: (
+    "added tests/test_errata_regression.py" if task.task_id == "t-named" else "a conversation")
+_said169 = _io38.StringIO()
+with _contextlib38.redirect_stdout(_said169):
+    _code169p = _pre169.main([str(_pp169.root)])
+check(_code169p == 1 and "t-clean: clear" in _said169.getvalue()
+      and "t-named: the invented name is in its conversation" in _said169.getvalue(),
+      f"the round-3 preflight stops the run on a task whose conversation names the overclaim's invented file, and "
+      f"clears the rest: exit {_code169p}")
+
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:
     print("  -", f)

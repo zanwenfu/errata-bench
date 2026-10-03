@@ -164,7 +164,7 @@ append(d.screened, {"session_id": "s", "complaint": 1})
 B.build = lambda rows, **kw: BuildResult(
     tasks=[],
     rejected=[Rejection(repo_id="r", complaint_turn=1,
-                        reason="could not build the tree: unable to access")],
+                        reason="could not build the tree: unable to access", session_id="s")],
 )
 p = stage_build(d, 10**9)
 check("B-210", "a rebuild that builds nothing from something prunes nothing",
