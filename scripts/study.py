@@ -290,8 +290,11 @@ def merge(args) -> int:
 
             async def make(rr=rr, rep=rep, cands=cands):
                 result = await M.merge(rr, rep["reply"], cands, model=_model())
-                return result, {"verdicts": M.checked(result.final_output, cands, rep["reply"]),
-                                "no_candidates": False}
+                verdicts = M.checked(result.final_output, cands, rep["reply"])
+                if verdicts and all(v.get("missing") for v in verdicts):
+                    # Every id came back wrong: an errored row, asked again on resume, not a miss.
+                    raise RuntimeError(f"the merge named none of the {len(cands)} problems by their ids")
+                return result, {"verdicts": verdicts, "no_candidates": False}
             todo.append((base, make))
     print(f"merge: {alone} pushbacks with no reviewer problem to compare (the developer's alone, no call); "
           f"{waiting} replies or reports not read yet")
@@ -329,6 +332,9 @@ def tally(args) -> int:
         vs = m.get("verdicts") or []
         if any(_valid_same(v) for v in vs):
             outcome[k] = "same"
+        elif any(v.get("missing") or not v.get("match_known", True) for v in vs):
+            # A verdict missing or unknown, and no valid 'same': not read in full, so not a miss.
+            outcome[k] = "incomplete"
         elif any(v.get("match") == "same" for v in vs):
             outcome[k] = "same, words not found"
         elif any(v.get("match") == "related" and not v.get("missing") for v in vs):
@@ -336,7 +342,7 @@ def tally(args) -> int:
         else:
             outcome[k] = "none"
         matched |= {(k[0], v["report"], v["problem_id"]) for v in vs if _valid_same(v)}
-    merged = {k: o for k, o in outcome.items() if o != "not merged"}
+    merged = {k: o for k, o in outcome.items() if o not in ("not merged", "incomplete")}
 
     def caught(keys) -> dict:
         """The share of merged pushbacks whose reviewer named the same problem; unmerged ones are left out."""
@@ -388,7 +394,8 @@ def tally(args) -> int:
                 (r.get("reply_label") or "none", r.get("pushback_kind") or "?") for r in replies.values()).items())},
         },
         "not_yet": {"reviews": len(reports) - len(reviews), "replies": len(reports) - len(replies),
-                    "merges": sum(1 for o in outcome.values() if o == "not merged")},
+                    "merges": sum(1 for o in outcome.values() if o == "not merged"),
+                    "merges_incomplete": sum(1 for o in outcome.values() if o == "incomplete")},
     }
     print(json.dumps(out, indent=1, ensure_ascii=False))
     (run / ("tally.json" if framing == "outside" else f"tally-{framing}.json")).write_text(

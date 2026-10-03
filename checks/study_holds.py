@@ -156,7 +156,7 @@ def section_reports():
              row(8, "tool_result", "a b c", call="l"),
              row(9, "user_prompt", "<command-message>review</command-message>\n<command-name>/review</command-name>\n"
                                    "<command-args>check the tests</command-args>")]
-    said = S.row_kinds(inner, typed)
+    said = {n: v[:2] for n, v in S.row_kinds(inner, typed).items()}
     check([said.get(n) for n in (3, 5, 6, 9)] == [("rejection", "no, not git checkout REJECT-WORDS"), None,
                                                   ("queued", "wait, use port 8080 QUEUED-TOKEN"),
                                                   ("command", "/review check the tests")],
@@ -172,7 +172,7 @@ def section_reports():
                              row(8.7, "user_prompt", "wait, use port 8080 QUEUED-TOKEN")] + inner[8:]
     typed2 = S.Typed(typed=typed.typed[:1] + [S._norm("wait, use port 8080 QUEUED-TOKEN")] + typed.typed[1:],
                      commands=typed.commands, queued=typed.queued, other=typed.other)
-    said2 = S.row_kinds(delivered, typed2)
+    said2 = {n: v[:2] for n, v in S.row_kinds(delivered, typed2).items()}
     check(6 in said2 and 8.7 not in said2 and said2.get(9) == ("command", "/review check the tests"),
           "a queued message delivered later as a prompt is one message, counted where it was typed")
     loop = [row(1, "user_prompt", "Fix the login timeout TASK-TOKEN."), row(2, "assistant_response", "w"),
@@ -194,9 +194,116 @@ def section_reports():
             row(6, "assistant_response", "w"), row(7, "user_prompt", "<command-name>/commit</command-name>")]
     said4 = S.row_kinds(cmds)
     check(sorted(said4) == [1, 5, 7], f"a /loop's re-runs are not typed, but a /commit typed twice is: {sorted(said4)}")
+    # An anonymised copy: the email the transcript replaced, an environment line the table redacted.
+    anon = S.Typed(typed=[S._key("Fix the login timeout TASK-TOKEN."),
+                          S._key("can you send a terse email to <PRESIDIO_ANONYMIZED_EMAIL_ADDRESS> about the release"),
+                          S._key("Implement the following plan: set VITE_ANTHROPIC_API_KEY=abc and also update every "
+                                 "config file in the repository so the client reads it at start"),
+                          S._key("a message much further ahead that is ninety percent alike to the next row we send")],
+                   commands=set(), queued=set(), other=set(), automatic=set())
+    arows = [row(1, "user_prompt", "Fix the login timeout TASK-TOKEN."), row(2, "assistant_response", "w"),
+             row(3, "user_prompt", "can you send a terse email to someone@example.com about the release"),
+             row(4, "assistant_response", "w"),
+             row(5, "user_prompt", "Implement the following plan: set [REDACTED:ENV]=abc and also update every config "
+                                   "file in the repository so the client reads it at start"),
+             row(6, "assistant_response", "w")]
+    said5 = S.row_kinds(arows, anon)
+    check(sorted(said5) == [1, 3, 5] and said5[5][0] == "plan",
+          f"a copy that differs only where one side was anonymised is still the developer's: {sorted(said5)}")
+    far = S.Typed(typed=anon.typed[:1] + [S._key("an unrelated message in between")] + anon.typed[3:],
+                  commands=set(), queued=set(), other=set(), automatic=set())
+    said6 = S.row_kinds([arows[0], arows[1], row(3, "user_prompt",
+                         "a message much further ahead that is ninety percent alike to the next row we sent")], far)
+    check(sorted(said6) == [1], f"a near match is tried against the next expected entry only, never further ahead: "
+          f"{sorted(said6)}")
+
+    # A message that is only an image: kept when it opens a message the transcript holds as empty, or joins one.
+    img = S.Typed(typed=[S._key("Fix the login timeout TASK-TOKEN."), "", S._key("and? IMG-REPLY")],
+                  commands=set(), queued=set(), other={""}, automatic=set())
+    irows = [row(1, "user_prompt", "Fix the login timeout TASK-TOKEN."), row(2, "assistant_response", "w"),
+             row(3, "user_prompt", "[Image: image/png]"), row(4, "assistant_response", "w"),
+             row(5, "user_prompt", "and? IMG-REPLY"), row(6, "user_prompt", "[Image: image/png]"),
+             row(7, "assistant_response", "w")]
+    said7 = S.row_kinds(irows, img)
+    check(sorted(said7) == [1, 3, 5, 6], f"an image-only message is the developer's, alone or as part of one: "
+          f"{sorted(said7)}")
+
+    # Queued: the table's whole queue entry as JSON; Claude Code's own notices and UI commands; a label carried.
+    qtyped = S.Typed(typed=[S._key("Fix the login timeout TASK-TOKEN."), S._key("you didnt check the issue QJSON")],
+                     commands=set(), queued={S._key("you didnt check the issue QJSON"), S._key("/model"),
+                                             S._key("◇ ultraplan Starting Claude Code on the web")},
+                     other=set(), automatic=set())
+    qrows = [row(1, "user_prompt", "Fix the login timeout TASK-TOKEN."), row(2, "assistant_response", "w"),
+             row(3, "queue_operation", json.dumps({"type": "queue-operation", "operation": "enqueue",
+                                                   "content": "you didnt check the issue QJSON"})),
+             row(4, "queue_operation", "/model"), row(5, "queue_operation", "◇ ultraplan Starting Claude Code on the web"),
+             row(6, "assistant_response", "w"),
+             row(7, "user_prompt", "you didnt check the issue QJSON", label="correction"),
+             row(8, "assistant_response", "w")]
+    said8 = S.row_kinds(qrows, qtyped)
+    check(sorted(said8) == [1, 3] and said8[3] == ("queued", "you didnt check the issue QJSON", "correction"),
+          f"a queued message kept as JSON is the developer's and takes its delivery's label; a queued UI command and "
+          f"Claude Code's notice are not: {said8}")
+
+    # Refusals: Claude Code's appended note is not the developer's words. A synthetic message is not a report.
+    note = S.row_kinds([row(1, "tool_result", "The user doesn't want to proceed with this tool use. To tell you how to "
+                                              "proceed, the user said:\nuse main NOTE-WORDS\n\nNote: The user's next "
+                                              "message may contain a correction or preference.", call="z")])
+    words = note.get(1, (None, None, None))[1]
+    check(words == "use main NOTE-WORDS", f"a refusal's words stop before Claude Code's note: {words!r}")
+    ultra = S.row_kinds([row(1, "tool_result", "The user doesn't want to proceed with this tool use. To tell you how "
+                                               "to proceed, the user said:\nPlan being refined via Ultraplan, please "
+                                               "wait", call="u"),
+                         row(2, "assistant_response", "w"),
+                         row(3, "queue_operation", "Ultraplan approved in browser. Here is the plan: ULTRA-PLAN")])
+    check(sorted(ultra) == [3] and ultra[3][0] == "plan",
+          f"Claude Code's own Ultraplan refusal is not the developer's, and a plan approved in the browser is a plan: "
+          f"{ultra}")
+    syn = [row(1, "user_prompt", "go"), row(2, "tool_use", '{"command": "x"}', tool_name="Bash", call="s"),
+           row(3, "tool_result", "ok", call="s"), row(4, "assistant_response", "Prompt is too long", model="<synthetic>"),
+           row(5, "user_prompt", "and?")]
+    rsyn = S.reports("s1", syn)
+    check(len(rsyn) == 1 and not rsyn[0].ends_with_report and "Prompt is too long" not in S.window(rsyn[0], syn)[0],
+          "Claude Code's own message is neither the agent's work nor its report")
+    check(not S._automatic(S._key("continue, but use the v2 API"), {"continue"})
+          and S._automatic(S._key("Check the run log for new progress since last check, then report"),
+                           {S._key("Check the run log for new progress since last check")}),
+          "a short automatic text drops only itself; a long one also its longer firings")
+
+    # transcript_prompts reads Claude Code's own marks: a team session's developer, the agent's scheduled prompts.
+    import errata_bench.corpus.recover as recover_mod
+    entries = [
+        {"type": "user", "message": {"content": "Fix it TEAM-DEV"}, "teamName": "t", "permissionMode": "default",
+         "uuid": "1"},
+        {"type": "user", "message": {"content": '<teammate-message teammate_id="w">done</teammate-message>'},
+         "teamName": "t", "uuid": "2"},
+        {"type": "user", "message": {"content": "This session is being continued SUMMARY"}, "isCompactSummary": True,
+         "uuid": "3"},
+        {"type": "assistant", "message": {"content": [{"type": "tool_use", "name": "ScheduleWakeup", "id": "w1",
+                                                        "input": {"prompt": "/loop Check the run log for new progress"}}]},
+         "uuid": "4"},
+        {"type": "queue-operation", "operation": "enqueue", "content": "typed while busy"},
+    ]
+    with tempfile.TemporaryDirectory() as tdir:
+        tpath = Path(tdir) / "t.jsonl"
+        tpath.write_text("\n".join(json.dumps(e) for e in entries))
+        kept_paths = (recover_mod.transcript_path, recover_mod.has_transcript)
+        recover_mod.transcript_path, recover_mod.has_transcript = (lambda sid: tpath), (lambda sid: True)
+        try:
+            tp = S.transcript_prompts("s1")
+        finally:
+            recover_mod.transcript_path, recover_mod.has_transcript = kept_paths
+    check(tp.typed == [S._key("Fix it TEAM-DEV")] and S._key("typed while busy") in tp.queued
+          and S._key("Check the run log for new progress") in tp.automatic
+          and S._key("/loop Check the run log for new progress") in tp.automatic
+          and not any("SUMMARY" in x for x in tp.typed),
+          "in a team session the developer's own message is typed and a teammate's is not; a summary is never "
+          "typed; a wake-up the agent scheduled is nobody's typing")
+
     plain = S.row_kinds([row(1, "user_prompt", "<teammate-message teammate_id='a'>hi</teammate-message>"),
                          row(2, "user_prompt", "<command-name>/clear</command-name>")])
-    check(plain == {2: ("command", "/clear")}, f"without a transcript, a teammate is not the developer and a command is: {plain}")
+    check({n: v[:2] for n, v in plain.items()} == {2: ("command", "/clear")},
+          f"without a transcript, a teammate is not the developer and a command is: {plain}")
     return reps
 
 
@@ -392,6 +499,32 @@ def section_runner(reps):
                   and t2["caught_same"]["real_error"]["n"] == 1 and t2["caught_same"]["real_error"]["share"] == 0.0,
                   f"a 'same' without its words is not caught, and an unmerged pushback is not counted: "
                   f"{t2['pushback_outcomes']}, n={t2['caught_same']['real_error']['n']}")
+            replace_rows(run / "merges.jsonl", mrows)
+            # A merge whose verdicts all lost their ids is incomplete: left out of the share, not a miss.
+            mrows2 = load(run / "merges.jsonl")
+            for v in mrows2[0]["verdicts"]:
+                v["missing"], v["match"] = True, None
+            replace_rows(run / "merges.jsonl", mrows2)
+            with contextlib.redirect_stdout(quiet):
+                study.tally(SimpleNamespace(run=str(run)))
+            t3 = json.loads((run / "tally.json").read_text())
+            check(t3["pushback_outcomes"].get("incomplete") == 1 and t3["caught_same"]["real_error"]["n"] == 1,
+                  f"a merge whose verdicts went missing is incomplete, not a miss: {t3['pushback_outcomes']}")
+            replace_rows(run / "merges.jsonl", mrows)
+            real_merge = M.merge
+
+            async def wrong_ids(reply_row, reply_text, cands, *, model, max_turns=3):
+                return fake_result(M.Merge(verdicts=[M.Verdict(problem_id="p0", match="same", reason="r")]))
+            M.merge = wrong_ids
+            try:
+                (run / "merges.jsonl").unlink()
+                with contextlib.redirect_stdout(quiet), contextlib.redirect_stderr(quiet):
+                    rcw = study.merge(SimpleNamespace(run=str(run), max_usd=100.0, concurrency=1, limit=0))
+            finally:
+                M.merge = real_merge
+            wrong = load(run / "merges.jsonl")
+            check(rcw == 1 and wrong and all(r.get("error") for r in wrong),
+                  "a merge that names no problem by its id is written as an errored row, asked again on resume")
             replace_rows(run / "merges.jsonl", mrows)
             with contextlib.redirect_stdout(quiet):
                 study.sheet(SimpleNamespace(run=str(run), matches=150, alone=50))

@@ -44,10 +44,23 @@ NOISE = ("progress", "file_snapshot", "system_event", "queue_operation", "system
 # Prompt rows that are never the developer speaking: Claude Code's notices and
 # command echoes (NOT_A_PROMPT), and another agent's message to this one.
 NOT_THE_DEVELOPER = (*NOT_A_PROMPT, "<teammate-message")
-# A tool call the developer refused, as Claude Code writes the call's result.
+# A tool call the developer refused, as Claude Code writes the call's result, and
+# the note newer versions append to the developer's words (10-03 second review).
 REJECTED = "The user doesn't want to"
 SAID = "To tell you how to proceed, the user said:"
-COLUMNS = [*TURN_COLUMNS, "is_continuation"]
+NOTE = "Note: The user's next message may contain"
+# Claude Code's own text, filed as the developer's or the agent's: an Ultraplan
+# notice, and a message it writes for the agent ("Prompt is too long", a rate limit,
+# "No response requested."), which the table records under model "<synthetic>".
+NOTICES = ("◇ ultraplan", "Plan being refined via Ultraplan")
+PLANS = (PLAN, "Ultraplan approved in browser")
+SYNTHETIC = "<synthetic>"
+
+
+def _synthetic(t: dict) -> bool:
+    """A message Claude Code wrote, not the agent's model: never the agent's work or its report."""
+    return t.get("turn_type") == "assistant_response" and t.get("model") == SYNTHETIC
+COLUMNS = [*TURN_COLUMNS, "is_continuation", "model"]
 
 # The window's parts, in characters (about 3.5 to a token).
 TASK_CHARS = 6_000        # the session's first developer message
@@ -107,22 +120,31 @@ def view_turns(session_id: str, turns: list[dict]) -> list[dict]:
 
 
 IMAGE = re.compile(r"\[Image[^\]]*\]")
+# Two copies of one message can differ only where one was anonymised: SWE-chat's
+# table keeps an email the transcript anonymised, or redacts an environment line the
+# transcript keeps (515dde7d's task, 95583c67's email, 10-03 second review).
+PLACEHOLDER = re.compile(r"<PRESIDIO_ANONYMIZED_[A-Z_]+>|\[REDACTED(?::[^\]]*)?\]|\bREDACTED\b|[\w.+-]+@[\w-]+\.[\w.-]+")
 
 
 def _norm(text: str) -> str:
-    """A prompt's words, for matching the table against the transcript: image markers out, whitespace collapsed."""
+    """A prompt's words: image markers out, whitespace collapsed."""
     return " ".join(IMAGE.sub(" ", text or "").split())
+
+
+def _key(text: str) -> str:
+    """What two copies of one message share: `_norm`, with every anonymised span one token."""
+    return PLACEHOLDER.sub("<X>", _norm(text))
 
 
 @dataclass
 class Typed:
     """What a session's raw transcript says the developer said."""
 
-    typed: list[str]      # prompts the developer typed (`recover._prompt`), in the transcript's order
-    commands: set[str]    # slash commands they typed, as name and arguments (`_command`), normalised
-    queued: set[str]      # messages they typed while the agent was working (enqueued)
-    other: set[str]       # every other user entry: meta, notices, results, summaries, teammates, sub-agents
-    automatic: set[str] = None   # queued prompts nobody typed: a /loop's prompt, or one enqueued again and again
+    typed: list[str]      # prompts the developer typed (`recover._prompt`), as `_key`, in the transcript's order
+    commands: set[str]    # slash commands they typed, as name and arguments (`_command`), `_key`
+    queued: set[str]      # messages they typed while the agent was working (enqueued), `_key`
+    other: set[str]       # every other user entry, `_key`: meta, notices, results, summaries, teammates, sub-agents
+    automatic: set[str] = None   # prompts nobody typed: a /loop's or a scheduled wake-up's, one enqueued again and again
 
 
 def transcript_prompts(session_id: str) -> Typed | None:
@@ -130,9 +152,10 @@ def transcript_prompts(session_id: str) -> Typed | None:
 
     A typed prompt is a main-thread user entry `recover._prompt` accepts (not
     meta, not a result, not a notice), and not a compaction summary
-    (`isCompactSummary`, `isVisibleInTranscriptOnly`) or a teammate agent's
-    message (`<teammate-message`, `teamName`), which `_prompt` would let through
-    (10-03 review: 15 of one session's 22 "replies" were teammates').
+    (`isCompactSummary`, `isVisibleInTranscriptOnly`) or a teammate agent's message
+    (wrapped in `<teammate-message`, or written while a team runs, `teamName`,
+    without the `permissionMode` every typed entry carries: the developer's own
+    messages in a team session have `teamName` too).
     """
     from ..corpus.recover import _prompt, has_transcript, transcript_path
 
@@ -142,6 +165,7 @@ def transcript_prompts(session_id: str) -> Typed | None:
     commands: set[str] = set()
     queued: set[str] = set()
     other: set[str] = set()
+    scheduled: set[str] = set()
     times: dict[str, int] = defaultdict(int)
     with transcript_path(session_id).open(errors="replace") as fh:
         for line in fh:
@@ -153,33 +177,42 @@ def transcript_prompts(session_id: str) -> Typed | None:
                 continue
             if e.get("type") == "queue-operation":
                 if e.get("operation") == "enqueue" and isinstance(e.get("content"), str):
-                    queued.add(_norm(e["content"]))
-                    times[_norm(e["content"])] += 1
+                    queued.add(_key(e["content"]))
+                    times[_key(e["content"])] += 1
+                continue
+            message = e.get("message") or {}
+            content = message.get("content") if isinstance(message, dict) else None
+            if e.get("type") == "assistant" and isinstance(content, list):
+                # The agent can schedule its own prompt: a wake-up or a cron job, often a /loop (bb028fb8).
+                for b in content:
+                    if (isinstance(b, dict) and b.get("type") == "tool_use"
+                            and b.get("name") in ("ScheduleWakeup", "CronCreate")
+                            and isinstance((b.get("input") or {}).get("prompt"), str)):
+                        scheduled.add(b["input"]["prompt"])
                 continue
             if e.get("type") != "user":
                 continue
-            content = (e.get("message") or {}).get("content")
             if isinstance(content, list):
                 text = " ".join(str(b.get("text") or b.get("content") or "") for b in content if isinstance(b, dict))
             else:
                 text = content if isinstance(content, str) else ""
-            text = _norm(text)
-            if (e.get("isSidechain") or e.get("isCompactSummary") or e.get("isVisibleInTranscriptOnly")
-                    or e.get("teamName") or text.startswith("<teammate-message")):
-                other.add(text)
+            key = _key(text)
+            teammate = key.startswith("<teammate-message") or (e.get("teamName") and not e.get("permissionMode"))
+            if e.get("isSidechain") or e.get("isCompactSummary") or e.get("isVisibleInTranscriptOnly") or teammate:
+                other.add(key)
             elif _prompt(e):
-                typed.append(text)
+                typed.append(key)
             elif not e.get("isMeta") and "<command-name>" in text:
-                commands.add(_norm(_command(text)))
+                commands.add(_key(_command(text)))
             else:
-                other.add(text)
-    # A /loop re-sends its prompt on a timer (bb028fb8: the same "Check <log> for new
-    # progress" queued 3 times in the pilot's reports, 10-03): those firings are not the
-    # developer typing. The /loop command itself is.
-    # The /loop may have been run as a command, typed as a prompt, or queued while the agent worked.
-    loops = {re.sub(r"^\d+\s*[smhd]\w*\s+", "", c.split(" ", 1)[1]) for c in (*commands, *typed, *queued)
-             if c.startswith("/loop ") and " " in c}
-    automatic = {q for q, k in times.items() if k > 1} | {_norm(x) for x in loops if x.strip()}
+                other.add(key)
+    # A /loop re-sends its prompt on a timer, and the agent can schedule its own: those
+    # firings are not the developer typing. The /loop the developer typed is.
+    loops = {c.split(" ", 1)[1] for c in (*commands, *typed, *queued) if c.startswith("/loop ") and " " in c}
+    loops |= {_key(x) for x in scheduled}
+    loops |= {_key(x.split(" ", 1)[1]) for x in scheduled if x.startswith("/loop ") and " " in x}
+    loops = {re.sub(r"^\d+\s*[smhd]\w*\s+", "", x) for x in loops} | loops
+    automatic = {q for q, k in times.items() if k > 1} | {x for x in loops if x.strip()}
     return Typed(typed, commands, queued, other, automatic)
 
 
@@ -190,30 +223,45 @@ def _command(raw: str) -> str:
     return " ".join(x for x in ((name.group(1).strip() if name else ""), (args.group(1).strip() if args else "")) if x)
 
 
-def _match(text: str, typed: list[str], after: int, same_message: bool) -> int | None:
-    """The first typed entry, in order, that this prompt row is or is part of. None if there is none.
+def _match(key: str, typed: list[str], after: int, same_message: bool) -> int | None:
+    """The typed entry, in order, that this prompt row is or is part of. None if there is none.
 
-    In order, each entry used by one message only: SWE-chat's table re-inserts
-    an earlier message later, cut into sections (49 rows in the pilot's sessions,
-    10-03 review), and a copy matches only an entry an earlier message used. Rows
-    of one message, with no work between them, may share its entry (a split).
+    In order, each entry used by one message only: SWE-chat's table re-inserts an
+    earlier message later, cut into sections (49 rows in the pilot's sessions,
+    10-03 review), and a copy matches only an entry an earlier message used. Rows of
+    one typed message, with no work between them, may share its entry (a split).
+    Exactly, or as part of an entry, searching ahead; failing that, the next
+    expected entry alone, if it opens the same way and is at least 90% alike (an
+    anonymisation differing). Never a near match further ahead.
     """
     for j in range(after if same_message else after + 1, len(typed)):
         if j < 0:
             continue
-        if text == typed[j] or (len(text) >= 30 and text in typed[j]):
+        if key == typed[j] or (len(key) >= 30 and key in typed[j]):
+            return j
+    j = after + 1
+    if 0 <= j < len(typed) and len(key) >= 30 and key[:30] == typed[j][:30]:
+        from difflib import SequenceMatcher
+
+        if SequenceMatcher(None, key[:3000], typed[j][:3000], autojunk=False).ratio() >= 0.9:
             return j
     return None
 
 
-def _automatic(text: str, automatic: set[str]) -> bool:
-    """Whether a queued prompt is one nobody typed: a /loop's prompt, or one enqueued more than once."""
-    head = text[:60]
-    return bool(head) and any(a == text or a.startswith(head) or text.startswith(a[:60]) for a in automatic if a)
+def _automatic(key: str, automatic: set[str]) -> bool:
+    """Whether a prompt is one nobody typed. Exactly, or for texts of 30 characters or more, by their opening."""
+    for a in automatic:
+        if not a:
+            continue
+        if a == key:
+            return True
+        if len(a) >= 30 and len(key) >= 30 and (a.startswith(key[:60]) or key.startswith(a[:60])):
+            return True
+    return False
 
 
 def row_kinds(turns: list[dict], transcript: Typed | None = None) -> dict:
-    """Which rows are the developer speaking, and what they said: {turn_number: (kind, text)}.
+    """Which rows are the developer speaking: {turn_number: (kind, text, SWE-chat's label)}.
 
     Kinds: 'developer' (a typed prompt), 'plan' (a plan approved), 'command' (a
     slash command and its arguments), 'queued' (typed while the agent worked),
@@ -223,64 +271,96 @@ def row_kinds(turns: list[dict], transcript: Typed | None = None) -> dict:
     """
     out: dict = {}
     at = -1               # the last typed entry a message used
-    open_message = False  # no agent work since the developer last spoke
+    open_typed = False    # the developer's last row was a typed prompt, and no agent work since
+    open_message = False  # the developer spoke, and no agent work since
     # A message queued while the agent worked is counted where it was typed. Delivered
-    # later as a prompt, its second row is not a second message: in the pilot's
-    # sessions 13 of 49 queued messages came again that way (10-03).
-    waiting: list[str] = []
-    fired: set[str] = set()   # queued texts already counted: the same text again is a timer's, not the developer's
+    # later as a prompt or a command, its second row is not a second message (13 of 49
+    # queued messages in the pilot's sessions came again that way, 10-03); its label is.
+    waiting: dict[str, float] = {}
+    fired: set[str] = set()   # queued texts and /loop commands already counted
+    typed_keys = set(transcript.typed) if transcript is not None else set()
+    automatic = (transcript.automatic or set()) if transcript is not None else set()
     for t in turns:
         n, kind, raw = t.get("turn_number"), t.get("turn_type"), str(t.get("content") or "")
         if kind == "tool_result" and raw.startswith(REJECTED):
-            said = raw.split(SAID, 1)[1].strip() if SAID in raw else ""
-            out[n] = ("rejection", said or "[The developer rejected this tool call.]")
-            open_message = True
+            said = raw.split(SAID, 1)[1] if SAID in raw else ""
+            said = said.split(NOTE, 1)[0].strip()
+            if said.startswith(NOTICES):
+                continue   # Claude Code refused it for its own flow (Ultraplan), not the developer (9b0c44bf)
+            out[n] = ("rejection", said or "[The developer rejected this tool call.]", None)
+            open_message, open_typed = True, False
             continue
         if kind == "queue_operation":
             text = raw.strip()
-            norm = _norm(text)
-            if norm in fired or (transcript is not None and _automatic(norm, transcript.automatic or set())):
+            if text.startswith("{"):
+                try:
+                    obj = json.loads(text)
+                except ValueError:
+                    obj = None
+                # The table can keep the whole queue entry; only an enqueue's content was typed.
+                text = (obj.get("content") or "").strip() if (isinstance(obj, dict) and obj.get("type") == "queue-operation"
+                                                              and obj.get("operation") == "enqueue") else ""
+            key = _key(text)
+            if (not text or text.startswith(("<", *NOTICES)) or key in fired or re.fullmatch(r"/[\w:.-]+", text)
+                    or _automatic(key, automatic)):
                 continue
-            if text and not text.startswith(("{", "<")) and (transcript is None or norm in transcript.queued):
-                fired.add(norm)
-                out[n] = ("queued", text)
-                waiting.append(_norm(text))
-                open_message = True
+            if transcript is not None and (key not in transcript.queued or (key in transcript.other
+                                                                           and key not in typed_keys)):
+                continue   # not enqueued, or enqueued by Claude Code itself and delivered as meta
+            fired.add(key)
+            out[n] = ("plan" if text.startswith(PLANS) else "queued", text, None)
+            waiting[key] = n
+            open_message, open_typed = True, False
             continue
         if kind != "user_prompt":
-            if kind not in NOISE:
-                open_message = False
+            if kind not in NOISE and not _synthetic(t):
+                open_message = open_typed = False
             continue
         s = raw.strip()
         if not s or t.get("is_continuation") or s.startswith(COMPACTED):
             continue
+        label = t.get("prompt_pushback")
         if "<command-name>" in s[:300]:
             said = _command(s)
-            # A /loop fires again on its timer under the same command: the first is typed, its
-            # re-runs are not (bb028fb8 held 9 in the pilot's reports, 10-03). Other commands
-            # typed twice, such as /commit, are the developer's each time.
-            if said.startswith("/loop") and _norm(said) in fired:
+            key = _key(said)
+            if key in waiting:   # the delivery of a command queued while the agent worked
+                q = waiting.pop(key)
+                out[q] = (out[q][0], out[q][1], out[q][2] or label)
                 continue
-            if said and (transcript is None or _norm(said) in transcript.commands):
-                fired.add(_norm(said))
-                out[n] = ("command", said)
-                open_message = True
-            continue
-        if s.startswith(NOT_THE_DEVELOPER):
-            continue
-        text = _norm(s)
-        if transcript is not None:
-            if text in transcript.other:
+            if not said or (said.startswith("/loop") and key in fired) or _automatic(key, automatic):
                 continue
-            j = _match(text, transcript.typed, at, open_message)
-            if j is None:
-                continue
-            at = j
-        if text in waiting:
-            waiting.remove(text)
+            if transcript is None or key in transcript.commands:
+                fired.add(key)
+                out[n] = ("command", said, label)
+                open_message, open_typed = True, False
             continue
-        out[n] = ("plan" if s.startswith(PLAN) else "developer", s)
-        open_message = True
+        if s.startswith((*NOT_THE_DEVELOPER, *NOTICES)):
+            continue
+        key = _key(s)
+        if key == "":
+            # A message that is only an image: part of the message the developer is
+            # typing, or the next typed entry if that is empty too (3c9c6a1b, 10-03).
+            if transcript is not None and not open_typed:
+                if not (at + 1 < len(transcript.typed) and transcript.typed[at + 1] == ""):
+                    continue
+                at += 1
+        else:
+            if key in waiting:   # the delivery of a message queued while the agent worked
+                q = waiting.pop(key)
+                out[q] = (out[q][0], out[q][1], out[q][2] or label)
+                if transcript is not None:
+                    j = _match(key, transcript.typed, at, open_typed)
+                    at = j if j is not None else at
+                continue
+            if transcript is not None:
+                if key in transcript.other and key not in typed_keys:
+                    continue
+                j = _match(key, transcript.typed, at, open_typed)
+                if j is None:
+                    continue
+                at = j
+        out[n] = ("plan" if s.startswith(PLANS) else "developer", s, label)
+        open_message = open_typed = True
     return out
 
 
@@ -313,8 +393,7 @@ def messages(turns: list[dict], transcript: Typed | None = None) -> list[Message
     for t in turns:
         n = t.get("turn_number")
         if n in said:
-            kind, text = said[n]
-            label = t.get("prompt_pushback") if t.get("turn_type") == "user_prompt" else None
+            kind, text, label = said[n]
             if out and not since_work:
                 m = out[-1]
                 m.last, m.text = n, f"{m.text}\n\n{text}"
@@ -324,7 +403,7 @@ def messages(turns: list[dict], transcript: Typed | None = None) -> list[Message
             else:
                 out.append(Message(n, n, [kind], text, label))
             since_work = False
-        elif t.get("turn_type") not in NOISE and t.get("turn_type") != "user_prompt":
+        elif t.get("turn_type") not in NOISE and t.get("turn_type") != "user_prompt" and not _synthetic(t):
             since_work = True
     return out
 
@@ -362,7 +441,7 @@ def reports(session_id: str, turns: list[dict], repo_id: str = "", transcript: T
     for request, reply in zip(msgs, msgs[1:]):
         inside = [t for t in turns if request.last < (t.get("turn_number") or 0) < reply.first]
         work = [t for t in inside if t.get("turn_type") not in NOISE and t.get("turn_type") != "user_prompt"
-                and t.get("turn_number") not in said]
+                and t.get("turn_number") not in said and not _synthetic(t)]
         out.append(Report(
             session_id=session_id, repo_id=repo_id, index=len(out) + 1, task=task.text, task_turn=task.first,
             task_end=task.last, request=request.text, request_turn=request.first, request_end=request.last,
@@ -396,7 +475,7 @@ def window(report: Report, turns: list[dict]) -> tuple[str, dict]:
                    and t.get("turn_type") not in NOISE]
         if earlier:
             last = next((t for t in reversed(earlier) if t.get("turn_type") == "assistant_response"
-                         and str(t.get("content") or "").strip()), None)
+                         and str(t.get("content") or "").strip() and not _synthetic(t)), None)
             parts.append(f"[... {len(earlier):,} rows between them not shown: the session's earlier work ...]")
             if last is not None:
                 parts.append(f"THE AGENT'S LAST MESSAGE BEFORE THE REQUEST "
@@ -405,7 +484,7 @@ def window(report: Report, turns: list[dict]) -> tuple[str, dict]:
     parts.append(f"THE DEVELOPER'S REQUEST (turn {report.request_turn:g}):\n{_capped(report.request, REQUEST_CHARS)}")
 
     work = [t for t in turns if report.request_end < (t.get("turn_number") or 0) < report.handoff_turn
-            and t.get("turn_type") != "user_prompt"]
+            and t.get("turn_type") != "user_prompt" and not _synthetic(t)]
     assert all((t.get("turn_number") or 0) < report.handoff_turn for t in work)
     cut = max((t["turn_number"] for t in work), default=report.request_end)
     stats = {"tool_cap": None, "work_chars_left_out": 0}
