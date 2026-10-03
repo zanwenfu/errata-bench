@@ -3079,9 +3079,13 @@ _wasread43 = []
 
 async def _fake_read43(ts, turn, **kw):
     _wasread43.append(ts[0]["content"])
+    # Every check answered (gate 2 made them required): a reading that failed
+    # to validate was stored as an error row, not as what this stands for.
     return _Reading43(what_user_asked="a", what_agent_did="b", what_user_objected_to="c",
                       objection_kind="real_error", benchmark_viable=True,
-                      context_sufficient=True)
+                      context_sufficient=True, pushback_is_the_developers=True,
+                      knowable_at_the_failing_turn=True, visible_from_the_repository=True,
+                      consistent_with_instructions=True)
 
 
 _sessions43 = {
