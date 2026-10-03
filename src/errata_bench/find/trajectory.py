@@ -373,8 +373,9 @@ def reach(turns: list[dict], start: int, near: int, far: int, limit: int = FURTH
     """The furthest end of a view from ``start``, no further than ``far``, whose rendering fits in ``limit``
     characters; ``near`` when none past it does. A view only grows as its end moves on."""
     # Whole turns: a row put back from the transcript sits at a fraction, and
-    # a fractional bound never closed the search (review, 10-02).
-    lo, hi = int(near), math.floor(far)
+    # a fractional bound never closed the search (review, 10-02). Rounded up,
+    # so the last row is in reach.
+    lo, hi = int(near), math.ceil(far)
     if hi <= lo:
         return lo
     while lo < hi:

@@ -272,35 +272,31 @@ def queued_and_delivered(entries: list[dict]) -> set[int]:
 
 
 def rewound(entries: list[dict]) -> int:
-    """How many of the developer's messages were edited and sent again after the agent had answered them
-    (G-95, pilot audit 10-02).
+    """How many of the developer's messages the agent answered and the conversation then left (G-95, pilot audit
+    10-02): a message edited and sent again, or the conversation taken back to before it.
 
-    Claude Code keeps the abandoned branch in the transcript: the first
-    message, and everything the agent did in answer to it, under the same
-    parent as the message sent in its place. The rows are written in the
+    Claude Code keeps the abandoned branch in the transcript: the message, and
+    everything the agent did in answer to it. The rows are written in the
     file's order, so a conversation shows both, as if one had followed the
-    other, and a build would replay the abandoned branch's edits. A branch
-    point is an entry with two or more children that are the developer's own
-    messages; one is abandoned when the path from the session's last entry
-    back to its root does not pass through it and the agent answered it. 79
-    of the corpus's 6,449 sessions hold one (153 in all). Two first messages
-    -- two roots -- are not one: the one session with them ran a command,
-    finished, and three hours later ran it again in a new conversation, and
-    the first conversation's work was done.
+    other, and a build would replay the abandoned branch's edits.
 
-    Counted without a compaction's link (below), the walk stopped at the
-    boundary and 147 sessions were listed: in 62 of them every "abandoned"
-    message was the one kept, edited seconds after its first version and
-    before any answer, its thousands of entries under it. Counted without
-    the fallback for a boundary naming an entry the file lacks, 85 were, 6
-    of them for the same reason.
+    The conversation as it ended is the chain from the session's last
+    main-thread entry back to its root. A developer message is counted when a
+    real answer (not Claude Code's `<synthetic>` text) is under it, the
+    chain does not pass through it, and either the developer sent another
+    message from the same point or the chain goes on from that point by
+    another way -- a command, a compaction. Both: each alone missed rewinds
+    the other found. Two first messages, two roots, are no rewind: the one
+    session with them ran a command, finished, and three hours later ran it
+    again.
+
+    A compaction's boundary has no parent and names the entry it follows in
+    `logicalParentUuid`; an entry naming one the file does not hold -- 491 of
+    the corpus's 1,624 boundaries do -- follows the entry before it in the
+    file. Each of these, missed, listed sessions whose kept messages were
+    taken for abandoned: 147 listed at first, then 85, then 79, against 77
+    now (150 messages).
     """
-    # A compaction's boundary has no parent, and names the entry it follows in
-    # `logicalParentUuid`: without it the conversation's path stopped there,
-    # and both sides of an edit made before it were counted (review, 10-02).
-    # When that entry is not in the file -- 491 of the corpus's 1,624
-    # boundaries name one that is not -- the boundary follows the entry before
-    # it in the file, where the conversation it compacted ended.
     index: dict[str, int] = {}
     for i, entry in enumerate(entries):
         if entry.get("uuid"):
@@ -313,44 +309,59 @@ def rewound(entries: list[dict]) -> int:
 
     def parent_of(i: int) -> str | None:
         entry = entries[i]
-        if entry.get("parentUuid"):
-            return entry["parentUuid"]
-        logical = entry.get("logicalParentUuid")
-        if logical:
-            return logical if logical in index else before[i]
-        return None
+        named = entry.get("parentUuid") or entry.get("logicalParentUuid")
+        if not named:
+            return None
+        return named if named in index else before[i]
 
     children: dict[str | None, list[int]] = {}
     for i, entry in enumerate(entries):
         if entry.get("uuid") and ("parentUuid" in entry or "logicalParentUuid" in entry):
             children.setdefault(parent_of(i), []).append(i)
 
+    # The last entry of the main thread with a place in the tree: a
+    # sub-agent's entry, or one with no parent key, ends no conversation.
+    last = next((i for i in range(len(entries) - 1, -1, -1) if entries[i].get("uuid")
+                 and not entries[i].get("isSidechain")
+                 and ("parentUuid" in entries[i] or "logicalParentUuid" in entries[i])), None)
+    kept: set[int] = set()
+    at = last
+    while at is not None and at not in kept:
+        kept.add(at)
+        parent = parent_of(at)
+        at = index.get(parent) if parent else None
+
     def typed(i: int) -> bool:
         entry = entries[i]
         message = entry.get("message") if isinstance(entry.get("message"), dict) else {}
         content = message.get("content")
-        if entry.get("type") != "user" or entry.get("isMeta") or (isinstance(content, list) and any(
-                isinstance(b, dict) and b.get("type") == "tool_result" for b in content)):
+        if entry.get("type") != "user" or entry.get("isMeta") or entry.get("isSidechain") or (
+                isinstance(content, list) and any(isinstance(b, dict) and b.get("type") == "tool_result"
+                                                  for b in content)):
             return False
         text = _text(content)
         return bool(text.strip()) and user_kind(entry, text) == "user_prompt"
 
-    # The conversation as it ended runs from its last entry back to its root,
-    # so a message is abandoned exactly when that last entry is not under it.
-    last = next((i for i in range(len(entries) - 1, -1, -1) if entries[i].get("uuid")), None)
+    def answered(i: int) -> bool:
+        entry = entries[i]
+        message = entry.get("message") if isinstance(entry.get("message"), dict) else {}
+        return entry.get("type") == "assistant" and message.get("model") != SYNTHETIC
+
     count = 0
     for parent, kids in children.items():
-        typed_kids = [i for i in kids if typed(i)]
-        if parent is None or len(typed_kids) < 2:
+        if parent is None:
             continue
+        typed_kids = [i for i in kids if typed(i)]
         for i in typed_kids:
+            if i in kept:
+                continue
             below, todo = {i}, [entries[i].get("uuid")]
             while todo:
                 for j in children.get(todo.pop(), []):
                     if j not in below:
                         below.add(j)
                         todo.append(entries[j].get("uuid"))
-            if last not in below and any(entries[j].get("type") == "assistant" for j in below):
+            if any(answered(j) for j in below) and (len(typed_kids) >= 2 or index.get(parent) in kept):
                 count += 1
     return count
 

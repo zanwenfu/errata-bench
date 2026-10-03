@@ -53,9 +53,15 @@ def stage_build(paths: Paths, limit: int) -> Progress:
     from ..construct.build import build
     from ..spec import fingerprint, write
 
+    from .screening import unbranched
+
     p = Progress("build")
     t0 = time.monotonic()
     rows = [r for r in load(paths.screened) if not r.get("error")]
+    rows, branched = unbranched(rows)
+    if branched:
+        p.notes.append(f"{branched} screened rows are not built: their session's rows hold an abandoned branch, "
+                       "whose edits a build would replay")
     errored = sum(1 for r in load(paths.screened) if r.get("error"))
     if errored:
         # In neither tasks.jsonl nor rejections.jsonl, so said here: re-running

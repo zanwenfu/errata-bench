@@ -595,6 +595,43 @@ inside95 = [U90("e1", None, "add retries"), A90("f1", "e1", {"type": "text", "te
              "logicalParentUuid": "e2", "timestamp": T.format(2)},
             A90("f2", "cb2", {"type": "text", "text": "Tested."}),
             U90("e3", "f1", "now test it on Windows"), A90("f3", "e3", {"type": "text", "text": "On Windows: fine."})]
+# The shapes the third review found (10-03), each with the count it must give.
+cmd95 = [U90("e1", None, "add retries"), A90("f1", "e1", {"type": "text", "text": "Added."}),
+         U90("e2", "f1", "now test it"), A90("f2", "e2", {"type": "text", "text": "Tested."}),
+         U90("c3", "f1", "<command-name>/model</command-name>\n<command-message>model</command-message>"),
+         U90("e4", "c3", "now test it on Windows"), A90("f4", "e4", {"type": "text", "text": "Fine."})]
+side95 = [U90("e1", None, "add retries"), A90("f1", "e1", {"type": "text", "text": "Added."}),
+          U90("e2", "f1", "now test it"), A90("f2", "e2", {"type": "text", "text": "Tested."}),
+          U90("sc1", "f1", "survey the tests", isSidechain=True),
+          {**A90("sc2", "sc1", {"type": "text", "text": "Surveyed."}), "isSidechain": True}]
+missing95 = [U90("e1", None, "add retries"), A90("f1", "e1", {"type": "text", "text": "Added."}),
+             U90("e2b", "f1", "now test i"), U90("e2", "f1", "now test it"),
+             A90("f2", "e2", {"type": "text", "text": "Tested."}),
+             U90("e3", "gone", "and the docs"), A90("f3", "e3", {"type": "text", "text": "Docs."})]
+synthetic95 = [U90("e1", None, "add retries"), A90("f1", "e1", {"type": "text", "text": "Added."}),
+               U90("e2", "f1", "now test it"),
+               {**A90("s2", "e2", {"type": "text", "text": "API Error: overloaded"}),
+                "message": {"id": "m-s2", "model": "<synthetic>", "content": [{"type": "text", "text": "API Error"}]}},
+               U90("e3", "f1", "now test it, please"), A90("f3", "e3", {"type": "text", "text": "Tested."})]
+named95 = [U90("e1", None, "add retries"), A90("f1", "e1", {"type": "text", "text": "Added."}),
+           U90("e3", "f1", "now test it on Windows"), A90("f3", "e3", {"type": "text", "text": "Fine."}),
+           U90("e2", "f1", "now test it"),
+           {"type": "system", "subtype": "compact_boundary", "uuid": "cb", "parentUuid": None,
+            "logicalParentUuid": "f3", "timestamp": T.format(2)},
+           U90("e4", "cb", "now the docs"), A90("f4", "e4", {"type": "text", "text": "Docs."})]
+restarted95 = [U90("e1", None, "add retries"), A90("f1", "e1", {"type": "text", "text": "Added."}),
+               U90("e2a", "f1", "now test it"), A90("f2a", "e2a", {"type": "text", "text": "Tested."}),
+               U90("e2b", "f1", "now test it on Windows"), A90("f2b", "e2b", {"type": "text", "text": "Fine."}),
+               U90("e5", None, "start again"), A90("f5", "e5", {"type": "text", "text": "Started."})]
+got95 = {name: rewound(shape) for name, shape in (
+    ("a command in its place", cmd95), ("a sub-agent's entry last", side95), ("a parent missing", missing95),
+    ("only Claude Code's text", synthetic95), ("a boundary's named parent", named95),
+    ("an edit before a restart", restarted95))}
+check(got95 == {"a command in its place": 1, "a sub-agent's entry last": 0, "a parent missing": 0,
+                "only Claude Code's text": 0, "a boundary's named parent": 0, "an edit before a restart": 2},
+      f"a rewind replaced by a command counts; a sub-agent's last entry, a missing parent, an answer of Claude "
+      f"Code's own text, and a boundary's named parent make no count; an edit before a restart counts both "
+      f"sides: {got95}")
 check(rewound(dangling95) == 0 and rewound(inside95) == 1,
       f"a boundary naming an entry the file lacks follows the one before it, and an answer after a boundary "
       f"inside the abandoned branch is under it: {rewound(dangling95)}, {rewound(inside95)}")

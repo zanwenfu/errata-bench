@@ -40,6 +40,7 @@ from pathlib import Path
 
 sys.path.insert(0, "src")
 
+import errata_bench.corpus.sessions as sessions_mod
 import errata_bench.corpus.turns as turns_mod
 import errata_bench.find.answerable as answerable_mod
 import errata_bench.find.leakage as leakage_mod
@@ -49,6 +50,11 @@ import errata_bench.find.signature as signature_mod
 import errata_bench.find.trajectory as trajectory_mod
 import errata_bench.find.triage as triage_mod
 from errata_bench.find.answerable import Answerable
+
+# The stages ask the corpus for its list of edited sessions (G-95), which reads
+# `CORPUS`: an empty folder here, so whatever ERRATA_CORPUS names -- a collected
+# corpus assembled before the list, say -- neither stops nor steers this run.
+sessions_mod.CORPUS = Path(tempfile.mkdtemp())
 from errata_bench.find.leakage import Leakage
 from errata_bench.find.reading import Reading
 from errata_bench.find.scope import Scope

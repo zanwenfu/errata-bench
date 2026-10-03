@@ -68,11 +68,13 @@ class Repo:
 
 
 #: How `crawl.shape.rewound` counts, stamped on a collected corpus's
-#: `rewound.json`. 2 (10-02): a compaction's boundary is followed to the entry it
-#: names, or to the entry before it when that is not in the file (491 of the
-#: corpus's 1,624 boundaries name one that is not). Lists counted otherwise held
-#: 62 sessions wrongly, and are refused.
-REWOUND_RULES = 2
+#: `rewound.json`. 3 (10-03): a compaction's boundary is followed to the entry it
+#: names, or to the entry before it when that is not in the file, as is any
+#: missing parent; the conversation ends at its last main-thread entry; a
+#: message left when the conversation went on by a command or a compaction
+#: counts, and Claude Code's own text is no answer. Lists counted otherwise --
+#: 147, 85 and 79 sessions against 77 -- are refused.
+REWOUND_RULES = 3
 
 
 def edited_sessions() -> set[str]:

@@ -82,13 +82,25 @@ def unbranched(moments: list[dict]) -> tuple[list[dict], int]:
     `find_moments` leaves them out when it collects; asked again here, as
     `runnable` is, because a moments file drawn before the list existed is
     read too (review, 10-02), at triage, reading and locate. The list is read
-    by `corpus.sessions.edited_sessions`, which refuses a stale one.
+    by `corpus.sessions.edited_sessions`, which refuses a stale one. Signature,
+    screening and the build ask it too: rows written before the list carry
+    such a session on, and a build would replay its abandoned edits (review,
+    10-03).
     """
     from ..corpus.sessions import edited_sessions
 
     branched = edited_sessions()
     keep = [m for m in moments if m.get("session_id") not in branched]
     return keep, len(moments) - len(keep)
+
+
+def shell_commands(rows: list[dict], turns: dict) -> set[tuple]:
+    """The moments whose message is a shell command the developer ran (`<bash-input>`), not a message to the
+    agent: passed over when moments are drawn, and found again here for a moments file drawn before that."""
+    return {key_of(m) for m in rows if any(
+        t.get("turn_number") == m.get("turn_number") and t.get("turn_type") == "user_prompt"
+        and str(t.get("content") or "").lstrip().startswith("<bash-input>")
+        for t in turns.get(m.get("session_id"), []))}
 
 
 async def stage_triage(paths: Paths, limit: int, concurrency: int) -> Progress:
@@ -124,11 +136,16 @@ async def stage_triage(paths: Paths, limit: int, concurrency: int) -> Progress:
         return p
 
     turns = recovered(load_session_turns({m["session_id"] for m in todo}))
-    # A shell command the developer ran is no message to the agent: passed
-    # over when moments are drawn, and here for a moments file drawn before.
-    shell = {key_of(m) for m in todo if any(
-        t.get("turn_number") == m["turn_number"] and t.get("turn_type") == "user_prompt"
-        and (t.get("content") or "").lstrip().startswith("<bash-input>") for t in turns.get(m["session_id"], []))}
+    # A shell command the developer ran is no message to the agent. Its row is
+    # written with no model asked, so it is done: left unwritten, it stood
+    # first in line under `--max-rows` for ever, and reading, finding no
+    # triaged rows, read it at full price (review, 10-03).
+    shell = shell_commands(todo, turns)
+    for m in todo:
+        if key_of(m) in shell:
+            append(paths.triaged, {**m, "worth_reading": False, "agent_has_acted": None,
+                                   "objects_to_that_work": False, "find_model": None,
+                                   "triage_reason": "not a message to the agent: a shell command the developer ran"})
     if shell:
         todo = [m for m in todo if key_of(m) not in shell]
         p.notes.append(f"{len(shell)} moments are not read: each is a shell command the developer ran, not a "
@@ -227,6 +244,11 @@ async def stage_read(paths: Paths, limit: int, concurrency: int) -> Progress:
         return p
 
     turns = recovered(load_session_turns({m["session_id"] for m in todo}))
+    if not triaged:
+        shell = shell_commands(todo, turns)
+        if shell:
+            todo = [m for m in todo if key_of(m) not in shell]
+            p.notes.append(f"{len(shell)} moments are not read: each is a shell command the developer ran")
 
     async def one(m):
         try:
@@ -369,6 +391,9 @@ async def stage_signature(paths: Paths, limit: int, concurrency: int) -> Progres
     p = Progress("signature")
     t0 = time.monotonic()
     usable = [r for r in load(paths.trajectories) if r.get("usable")]
+    usable, branched = unbranched(usable)
+    if branched:
+        p.notes.append(f"{branched} trajectories are not signed: their session's rows hold an abandoned branch")
     done = already_done(paths.signatures)
     todo = p.cap([r for r in usable if key_of(r) not in done], limit, len(usable))
 
@@ -557,6 +582,9 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
     p = Progress("screen")
     t0 = time.monotonic()
     rows = [r for r in load(paths.signatures) if r.get("kind")]
+    rows, branched = unbranched(rows)
+    if branched:
+        p.notes.append(f"{branched} signatures are not screened: their session's rows hold an abandoned branch")
     # The pass count is part of what makes a screened row done. Without it,
     # `--only screen --passes 5` over a directory screened at one pass reported
     # "51 already done" and changed nothing, while the user believed the
