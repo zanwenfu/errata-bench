@@ -203,10 +203,15 @@ sessions.
 | Caught, real errors | 37% [27–48], n=65 | 45% [35–57], n=65 | 32% [15–48], n=28 |
 | Caught, by SWE-chat's label instead | 18% [14–22], n=215 | 23% [19–27] | 19% [12–27], n=155 |
 | Same work, another fault ('related') | 87 of 180 | 80 | 57 of 117 |
+| Same or related, real errors | 82% [67–92] | 86% [74–95] | 71% [45–89] |
 | Reviewer's problems per handback | 1.83 | 2.01 | 1.88 |
 | Handbacks with a problem flagged | 77% | 80% | 79% |
 | Reviewer's problems no pushback matched | 93% | 93% | 94% |
 
+- **'Same or related' says little.** It is near the share of handbacks the
+  reviewer flags at all (77–80%). The reviewer usually has something to say
+  about the handback the developer objects to, so naming the developer's fault,
+  'same', is the measure.
 - **By kind of pushback** (pilot, outside): corrections 30% caught, failure
   reports 14%, rejections 11% (n=9).
 - **Self framing, paired on the same 180 pushbacks:** 38 caught by both, 12 by

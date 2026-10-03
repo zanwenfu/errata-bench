@@ -352,6 +352,10 @@ def tally(args) -> int:
         """The share of merged pushbacks whose reviewer named the same problem; unmerged ones are left out."""
         return T.bootstrap([(k[0], merged[k] == "same") for k in keys if k in merged])
 
+    def flagged(keys) -> dict:
+        """The lenient share: the reviewer named the fault, or flagged the same work for another ('related')."""
+        return T.bootstrap([(k[0], merged[k] in ("same", "related")) for k in keys if k in merged])
+
     def grouped(field: str, many: bool = False) -> dict:
         groups: dict[str, list] = defaultdict(list)
         for k, r in pushbacks.items():
@@ -380,6 +384,9 @@ def tally(args) -> int:
             "by_swe_chat_label": caught(labelled),
             "both_say_pushback": caught([k for k in pushbacks if k in labelled]),
             "after_a_report": caught([k for k in pushbacks if reports.get(k, {}).get("ends_with_report")]),
+            "same_or_related_every_pushback": flagged(pushbacks),
+            "same_or_related_real_error": flagged([k for k, r in pushbacks.items()
+                                                   if r.get("objection_kind") == "real_error"]),
             "before_a_report": caught([k for k in pushbacks if not reports.get(k, {}).get("ends_with_report", True)]),
         },
         "reviewer": {
