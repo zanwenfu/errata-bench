@@ -111,12 +111,14 @@ def main() -> int:
             print(f"  {g:16s} {len(rows)} sessions, median {statistics.median(r[1] for r in rows)} each: "
                   + " ".join(f"{c}/{n}" for c, n in rows[:12]))
 
-    print("\n== caught, real errors by failure mode and by kind of pushback, per run")
+    print("\n== caught, real errors by failure mode and by kind of pushback: all runs, then each run")
     for field, many in (("failure_modes", True), ("pushback_kind", False)):
         values = lambda k: (replies[k].get(field) or ["(none)"]) if many else [replies[k].get(field) or "?"]
         for g in sorted({g for k in real for g in values(k)}):
-            cells = [f"{name} {fmt(caught([k for k in real if origin[k[0]] == name and g in values(k)]))}"
-                     for name in names]
+            cells = [f"all {fmt(caught([k for k in real if g in values(k)]))}"]
+            if len(names) > 1:
+                cells += [f"{name} {fmt(caught([k for k in real if origin[k[0]] == name and g in values(k)]))}"
+                          for name in names]
             print(f"  {g:24s} " + "   ".join(cells))
 
     print("\n== look-back: the report of each catch's nearest valid 'same' (0 is the report itself)")

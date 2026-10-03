@@ -218,7 +218,9 @@ gpt-6-astra. Provisional until the hand check.
 | **Caught, real errors** | **50% [43–57]**, n=195 |
 | Caught, pushback that is no error (intent, preference, unclear) | 12–22% |
 | Caught, by kind: correction / failure report / rejection | 35% / 24% / 7% |
-| Caught, by the developer's failure mode: false claim / ignored instruction / shallow investigation / unverified assumption | 61% / 74% / 57% / 54% |
+| The same, real errors only: correction / failure report | 64% [53–74] / 40% [30–51] |
+| Caught, by the developer's failure mode (any pushback): false claim / ignored instruction / shallow investigation / unverified assumption | 61% / 74% / 57% / 54% |
+| The same, real errors only | 60% / 80% / 60% / 57% |
 | Reviewer's problems per handback; handbacks flagged | 1.79; 78% |
 | Reviewer's problems no pushback matched | 92% |
 | SWE-chat's label against ours (pushback or not) | κ = 0.52 |
