@@ -51,7 +51,7 @@ Two lists, made independently, then merged (the user's design, 10-03):
 
 `scripts/study.py` runs it: `prepare`, `estimate`, `review`, `human`, `merge`,
 `tally`, `sheet` and `combine`. `checks/study_holds.py` checks the rules with
-the model faked: 57 checks, plus 31 single-rule mutants, all caught (10-03).
+the model faked: 58 checks, plus 32 single-rule mutants, all caught (10-03).
 
 ## Who spoke: the rule both threads depend on
 

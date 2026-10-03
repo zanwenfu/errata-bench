@@ -5,7 +5,7 @@
     .venv/bin/python scripts/study.py estimate --run runs/study-pilot
     .venv/bin/python scripts/study.py review   --run runs/study-pilot --max-usd N [--concurrency 8] [--limit N]
     .venv/bin/python scripts/study.py human    --run runs/study-pilot --max-usd N [--concurrency 8] [--limit N]
-    .venv/bin/python scripts/study.py merge    --run runs/study-pilot --max-usd N [--concurrency 8]
+    .venv/bin/python scripts/study.py merge    --run runs/study-pilot --max-usd N [--concurrency 8] [--limit N]
     .venv/bin/python scripts/study.py tally    --run runs/study-pilot
     .venv/bin/python scripts/study.py sheet    --run runs/study-pilot [--matches 150] [--alone 50]
 
@@ -300,6 +300,7 @@ def merge(args) -> int:
             todo.append((base, make))
     print(f"merge: {alone} pushbacks with no reviewer problem to compare (the developer's alone, no call); "
           f"{waiting} replies or reports not read yet")
+    todo = todo[: args.limit] if getattr(args, "limit", 0) else todo
     with only_one(run, f"running merge ({framing})", name=f"merge-{framing}.lock"):
         return asyncio.run(_run(run, "merge", todo, max_usd=args.max_usd, concurrency=args.concurrency,
                                 framing=framing))

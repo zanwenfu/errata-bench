@@ -526,6 +526,13 @@ def section_runner(reps):
             wrong = load(run / "merges.jsonl")
             check(rcw == 1 and wrong and all(r.get("error") for r in wrong),
                   "a merge that names no problem by its id is written as an errored row, asked again on resume")
+            # --limit caps the merge as it caps the other stages: a smoke merge once ran 66 calls (10-03).
+            (run / "merges.jsonl").unlink()
+            n_before = CALLED.get("merge", 0)
+            with contextlib.redirect_stdout(quiet), contextlib.redirect_stderr(quiet):
+                rcl = study.merge(SimpleNamespace(run=str(run), max_usd=100.0, concurrency=1, limit=1))
+            check(rcl == 0 and len(load(run / "merges.jsonl")) == 1 and CALLED.get("merge", 0) == n_before + 1,
+                  "--limit caps the merge's calls, as it caps the review's and the reply reader's")
             replace_rows(run / "merges.jsonl", mrows)
             with contextlib.redirect_stdout(quiet):
                 study.sheet(SimpleNamespace(run=str(run), matches=150, alone=50))
