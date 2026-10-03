@@ -12597,3 +12597,12 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
       check 7). They now make them as the build does.
   - *The pool by v1's rules,* over both sources' runs: 546 later and 547 first
     moments at a cap of 20, or 1,413 and 1,449 with none.
+  - *Mutants:*
+    - 29 single-fix mutants, each reverting one fix in its own copy, all
+      caught on 22d561429, with the four suites' controls.
+    - Two were caught only by a crash of a stand-in in the check. They now
+      fail as checks (4bd8dd1a8).
+    - #17 confirmed the hashed tag.
+    - Public `main` holds transcript excerpts and developers' home paths in
+      337 files under `results/` and in three checks. #17 is putting the
+      options to the user; nothing on `main` is changed here.
