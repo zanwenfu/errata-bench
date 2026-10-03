@@ -640,26 +640,29 @@ nokey95 = [U90("e1", None, "add retries"), A90("f1", "e1", {"type": "text", "tex
            U90("e2b", "f1", "now test it on Windows"), A90("f2b", "e2b", {"type": "text", "text": "Fine."}),
            {"type": "summary", "uuid": "sm", "summary": "Retries added and tested"}]
 cycle95 = [U90("x1", "x2", "hello"), A90("x2", "x1", {"type": "text", "text": "Hi."})]
+# A cycle below a message off the conversation, where the walk under it must end.
+looped95 = [U90("i", "c", "first"), A90("c", "i", {"type": "text", "text": "Answered."}), U90("i2", "c", "second"),
+            U90("e1", None, "go"), A90("f1", "e1", {"type": "text", "text": "Gone."})]
 copied95 = [U90("e1", None, "add retries"), A90("f1", "e1", {"type": "text", "text": "Added."}),
             U90("e2", "f1", "now test it"), A90("f2", "e2", {"type": "text", "text": "Tested."}),
             U90("e3", "f2", "and the docs"), A90("f3", "e3", {"type": "text", "text": "Docs."}),
             U90("e2", "f1", [{"type": "text", "text": "now test it"}])]
 import signal as signal95
-signal95.signal(signal95.SIGALRM, lambda *a: (_ for _ in ()).throw(TimeoutError("a walk did not end")))
+alarm95 = signal95.signal(signal95.SIGALRM, lambda *a: (_ for _ in ()).throw(TimeoutError("a walk did not end")))
 signal95.alarm(10)
 try:
     counted95 = tuple(rewound(shape) for shape in (
         branch95, unanswered95, said90, compacted95, dangling95, inside95, cmd95, side95, missing95, synthetic95,
-        named95, restarted95, nokey95, cycle95, copied95))
+        named95, restarted95, nokey95, cycle95, copied95, looped95))
 except TimeoutError as e95:
     counted95 = (str(e95),)
 finally:
     signal95.alarm(0)
-    signal95.signal(signal95.SIGALRM, signal95.SIG_DFL)
+    signal95.signal(signal95.SIGALRM, alarm95)
 from errata_bench.corpus.sessions import REWOUND_RULES as rules95
 # The number a list is stamped with goes with the rule that counted it: a
 # change to the rule changes these counts, and must change the number too.
-check((rules95, counted95) == (4, (1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 2, 1, 0, 0)),
+check((rules95, counted95) == (4, (1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 2, 1, 0, 0, 1)),
       f"every shape counts as the rule numbered {rules95} counts it: a last entry with no parent, a cycle and a "
       f"copy of a uuid among them: {counted95}")
 check(rewound(dangling95) == 0 and rewound(inside95) == 1,

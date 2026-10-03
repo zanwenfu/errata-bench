@@ -82,8 +82,9 @@ def stage_build(paths: Paths, limit: int) -> Progress:
         p.notes += [
             "refused: no screened rows to build from, but this directory already holds "
             f"{holds_paid_work(paths)}. "
-            + (f"Every one of its {branched} screened rows is in a session the corpus lists as holding an "
-               "abandoned branch; nothing was pruned." if branched else
+            + (f"Every one of its {branched} buildable screened rows is in a session the corpus lists as "
+               "holding an abandoned branch. Nothing was pruned, and tasks built from them before the list "
+               "stay in tasks.jsonl: set them aside before the later stages." if branched else
                "Re-run the earlier stages first, or use --only to name the stage you meant.")
         ]
         p.took_s = time.monotonic() - t0

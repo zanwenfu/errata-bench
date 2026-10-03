@@ -238,24 +238,25 @@ async def stage_read(paths: Paths, limit: int, concurrency: int) -> Progress:
     if branched:
         p.notes.append(f"{branched} moments are not read: their session's rows hold an abandoned branch")
     done = already_done(paths.readings)
-    pending = [m for m in moments if key_of(m) not in done]
-    turns = None
-    if not triaged and pending:
-        # Reading the moments themselves: a shell command among them is found
-        # before the cap, or under --max-rows it stood first in line for ever
-        # (review, 10-03).
-        turns = recovered(load_session_turns({m["session_id"] for m in pending}))
-        shell = shell_commands(pending, turns)
-        if shell:
-            pending = [m for m in pending if key_of(m) not in shell]
-            p.notes.append(f"{len(shell)} moments are not read: each is a shell command the developer ran")
-    todo = p.cap(pending, limit, len(moments))
+    todo = p.cap([m for m in moments if key_of(m) not in done], limit, len(moments))
     if not todo:
         p.took_s = time.monotonic() - t0
         return p
 
-    if turns is None:
-        turns = recovered(load_session_turns({m["session_id"] for m in todo}))
+    turns = recovered(load_session_turns({m["session_id"] for m in todo}))
+    if not triaged:
+        # Reading the moments themselves: a shell command among them is written
+        # down as not read, with no model asked, so it is done, as triage writes
+        # its verdict. Left unwritten, it stood first in line under --max-rows
+        # for ever, and each run loaded it again (reviews, 10-03).
+        shell = shell_commands(todo, turns)
+        for m in todo:
+            if key_of(m) in shell:
+                append(paths.readings, {**carried_forward(m), "reading": None, "find_model": None,
+                                        "not_read": "a shell command the developer ran, not a message to the agent"})
+        if shell:
+            todo = [m for m in todo if key_of(m) not in shell]
+            p.notes.append(f"{len(shell)} moments are not read: each is a shell command the developer ran")
 
     async def one(m):
         try:

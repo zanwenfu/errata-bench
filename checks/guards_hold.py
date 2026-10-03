@@ -14886,7 +14886,7 @@ finally:
 check(_signed163 == ["defect of s-y"] and any("not signed" in n for n in _sp163.notes)
       and any("not screened" in n for n in _scp163.notes)
       and _built163 == [[]] and any("not built" in n for n in _bp163.notes)
-      and _bq163.failed == 1 and any("abandoned branch; nothing was pruned" in n for n in _bq163.notes)
+      and _bq163.failed == 1 and any("abandoned branch. Nothing was pruned" in n for n in _bq163.notes)
       and _rows41(_pd163.calibration),
       f"signature, screening and the build pass over a listed session too: signed {_signed163}, built "
       f"{_built163}")
