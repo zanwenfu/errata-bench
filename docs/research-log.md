@@ -12436,3 +12436,91 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     might have passed. The hold never gives way, and that rare task is lost.
     That is the price of one task per failed answer and of reruns that give
     the same tasks.
+- **10-03, 03:0x–05:4x UTC** — **A self-review against v1's conventions: the
+  Entire runs had not followed v1's admission, and three more differences
+  (#16, synced with #17).**
+  - *Asked.* The user asked for a thorough self-review that compares every
+    choice with how v1 was built, syncs with #17 and reads the open issues
+    for past pitfalls, and that checks conventions rather than assuming
+    them.
+  - *How.*
+    - v1's conventions were read from its method, its scripts
+      (`draw_step2.py`, `step2_tally.py`, `admit_judge.py`) and its six run
+      folders' stored fields.
+    - #17 confirmed them from those folders, which hold all 55 tasks.
+    - All 18 issues were read.
+  - *Not followed by the Entire runs* (gate 3's pilot and the earlier runs
+    alike):
+    - **Screening** at 3 readings, settled by majority. The Entire runs used
+      1. Every v1 screened row has screen_passes 3 (all 301).
+    - **The gate**: `run.py gate --passes 7` on every built task, holding 7
+      of 7. The Entire runs never gated, and every v1 folder holds 7 gate
+      rows a task.
+    - **Controls** at 3 readings, on the tasks calibration passed. The
+      Entire runs used 1; all 576 v1 control rows have 3.
+    - So by v1's rule (`rejudge.admitted`) the pilot admitted nothing. Its
+      "2 admitted" was single readings. `scripts/tally_entire.py` over
+      every Entire run so far: 18 built, 4 calibration-sound, 0 gated,
+      0 admitted. The pilot's cost per task was not comparable either.
+    - **The draw.** v1's last draw (`draw_step2.py`) had no
+      per-repository cap. It kept moments no run had triaged and sessions
+      with no built task, and for first pushbacks dropped sessions whose
+      later moment a batch already held. The Entire draws used `--fresh`
+      with a cap of 20.
+    - **Round 3's preflight** (09-23) was not run: the overclaim's invented
+      name in no conversation or corpus row, and every accepted answer's
+      record holding its evidence. Nor was **D-21**: prompt assertions, the
+      trace check's probes, one task through every path, and every issue in
+      the diff fixed first.
+  - *Two more, from #17.*
+    - **Task names** were `{repo}-{turn}`. v1 built entireio-cli-24 from
+      two sessions, and refused three entireio/cli candidates only for a
+      taken name.
+    - **The SWE-chat overlap.** 1,724 of the Entire corpus's 6,449 sessions
+      are SWE-chat's. 36 hold a task built from SWE-chat, 16 of them v1's.
+      None has been drawn: the labels cover only later sessions, and no
+      Entire run drew one.
+  - *Fixed, agreed with #17:*
+    - `construct.build.task_name`. v1's 55 keep `{repo}-{turn}`
+      (`release/v1_names.py`, frozen with their sessions; it equals the
+      release, checked on the VM). Every other task is
+      `{repo}-{session[:8]}-{turn}`, always. A task with no session is
+      refused, and rejections carry their session.
+    - `scripts/draw_entire.py`: v1's draw rules. It leaves out sessions
+      with a task built from either corpus, v1's 55 included. The cap is a
+      named choice, counted after the rules: a first version capped
+      before them and lost places to moments already read (814 → 479).
+    - `scripts/run_entire.sh`:
+      - gpt-6-astra, named on every paid command (guard 121);
+      - screening at 3 readings;
+      - calibration, the gate at 7, the controls at 3;
+      - the first list's locate before the later list's;
+      - `scripts/preflight_entire.py` (round 3) before any admission call.
+    - `scripts/tally_entire.py`: v1's tally. On v1's six run folders it
+      gives v1's own result: 56 admitted, entireio-cli-128 giving way, 55
+      kept, 46 without the first grid.
+    - `release/environment.py` (#17's review): a pnpm workspace whose list
+      opens after a comment or a blank line, or at no indent, was read as
+      listing no packages.
+    - `docs/method.md`: a draft section for the second source, for #17's
+      review before the merge.
+  - *Decisions to state.*
+    - The Entire tasks are found under today's code, not v1.0's. The finding
+      stages are stricter, and the gates read the whole conversation.
+    - They are admitted under judge rules 4 and trace rules 7, as v1's 55
+      will be in v1.1.
+    - The first Entire runs and the first pilot are development tasks, since
+      their reading shaped the finding stages. They are reported apart.
+  - *Measured for the next step* (free):
+    - The pool by v1's rules: 549 later and 550 first moments at a cap of
+      20, or 1,416 and 1,452 with none.
+    - The pilot's two tasks clear the preflight. The invented name is in no
+      corpus row.
+    - Admission under v1's settings costs about $15–28 a built task,
+      against $6.30 at single readings. That makes a pilot of 100 moments
+      about $70–115, not $40.
+  - *Held.*
+    - All six suites pass on c9096383a: 1,088 checks in the guard suite.
+      Section 168 covers names and section 169 the draw, tally, run script
+      and preflight.
+    - Mutants: see the next entry.
