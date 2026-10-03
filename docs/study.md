@@ -75,7 +75,7 @@ Two lists, made independently, then merged (the user's design, 10-03):
 `scripts/study.py` runs it: `prepare`, `estimate`, `review`, `human`, `merge`,
 `tally`, `combine`, and for the hand check `caught-sheet`, `sheet`,
 `replies-sheet` and `agreement`. `checks/study_holds.py` checks the rules with
-the model faked: 97 checks. `checks/study_mutants.py` breaks 86 rules one at a
+the model faked: 97 checks. `checks/study_mutants.py` breaks 87 rules one at a
 time, and a check fails for each (10-03).
 
 ## Who spoke: the rule both threads depend on
@@ -537,7 +537,10 @@ It prints, and writes to `agreement.json`:
     intervals cover the sessions';
   - each version's share, its share minus yours with an interval, and whether
     the two are consistent (with all 60 called);
-  - κ and agreement weighed by group, κ with an interval;
+  - κ and agreement weighed by group. κ comes with a median and an interval
+    that allow for disagreement among the pushbacks you did not call. When
+    every call in a group agrees, they sit below the calls' own κ, which
+    assumes no such disagreement;
   - how many of the disputed 20 agree with each version, with a sign test;
   - whether you and the merge name the same problem when both call it caught;
   - each group's counts, and the items still uncalled or unreadable.

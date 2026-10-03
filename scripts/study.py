@@ -811,11 +811,21 @@ def _caught(run: Path) -> dict | None:
             chosen = list(person)
             cells = table(chosen)
             total = sum(cells.values())
+            # Kappa's interval: each stratum's uncalled pushbacks spread over the four cells by a Dirichlet on its
+            # calls (half a count added to each cell), so a stratum whose calls all agree still has a width; a
+            # stratum called in full counts exactly.
+            cell_keys = [(True, True), (True, False), (False, True), (False, False)]
+            counts = {s: Counter((bool(person[i]), bool(items[i][field])) for i in by_stratum_items[s])
+                      for s in sampled}
             kappas = []
             for _ in range(2000):
-                draw = [i for s in sampled for i in ([rng.choice(by_stratum_items[s]) for _ in by_stratum_items[s]]
-                                                       if called[s] < pop[s] else by_stratum_items[s])]
-                kappas.append(_kappa2(table(draw)) or 0.0)
+                drawn = Counter({(False, False): pop.get("no problems", 0)})
+                for s in sampled:
+                    left = pop[s] - called[s]
+                    gammas = [rng.gammavariate(counts[s].get(c, 0) + 0.5, 1) for c in cell_keys] if left else []
+                    for n_c, c in enumerate(cell_keys):
+                        drawn[c] += counts[s].get(c, 0) + (left * gammas[n_c] / sum(gammas) if left else 0)
+                kappas.append(_kappa2(drawn) or 0.0)
             bias = [merge_share[version] - d for d in person_draws]
             both = [i for i in person if person[i] and items[i][field]]
             w_both = sum(weight[items[i]["stratum"]] for i in both)
@@ -823,7 +833,10 @@ def _caught(run: Path) -> dict | None:
                 "merge_minus_person": {"share": round(merge_share[version] - point, 4), **_interval(bias)},
                 "consistent_with_the_person": every and _interval(bias)["low"] <= 0 <= _interval(bias)["high"],
                 "agreement_by_stratum_weight": round((cells[(True, True)] + cells[(False, False)]) / total, 4),
-                "kappa_by_stratum_weight": {"kappa": _kappa2(cells), **_interval(kappas)},
+                # The calls' own kappa, and the draws' median and interval, which allow for disagreement among the
+                # uncalled: when every call in a stratum agrees, they sit below the calls' kappa.
+                "kappa_by_stratum_weight": {"kappa": _kappa2(cells), "median": round(sorted(kappas)[len(kappas) // 2], 3),
+                                            **_interval(kappas)},
                 "same_problem_when_both_caught": round(sum(weight[items[i]["stratum"]] for i in both
                                                            if person[i] & set(items[i][field])) / w_both, 4)
                 if w_both else None,

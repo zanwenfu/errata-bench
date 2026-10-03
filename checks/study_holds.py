@@ -961,8 +961,9 @@ def section_agreement():
               f"consistent before every item is called")
         # Weighed (disputed 4/4, caught by both 3/2, neither 3/1), rules 1's table is the same as with every call:
         # kappa 0.29; counted one call one vote, it would be 0.06.
-        check((pv1.get("kappa_by_stratum_weight") or {}).get("kappa") == 0.29,
-              f"kappa weighs each call by its stratum's size: {pv1.get('kappa_by_stratum_weight')}")
+        pk = pv1.get("kappa_by_stratum_weight") or {}
+        check(pk.get("kappa") == 0.29 and pk.get("low", 1) < pk.get("high", 0),
+              f"kappa weighs each call by its stratum's size, and its interval allows for the uncalled: {pk}")
         # Weighed: d1 (another problem, weight 1), d3 and d4 (1 each), c1 and c2 (3/2 each): 5 of 6, not 4 of 5.
         check(pv2.get("same_problem_when_both_caught") == round(5 / 6, 4),
               f"whether both name the same problem is weighed by stratum: {pv2.get('same_problem_when_both_caught')}")
@@ -994,7 +995,7 @@ def section_agreement():
               and v1["consistent_with_the_person"] is False and v2["consistent_with_the_person"] is True,
               f"a version is consistent with the person only if its share minus the person's can be 0: rules 1 "
               f"{v1['merge_minus_person']}, rules 2 {v2['merge_minus_person']}")
-        check(v1["kappa_by_stratum_weight"] == {"kappa": 0.29, "low": 0.29, "high": 0.29}
+        check(v1["kappa_by_stratum_weight"] == {"kappa": 0.29, "median": 0.29, "low": 0.29, "high": 0.29}
               and v2["kappa_by_stratum_weight"]["kappa"] == 1.0 and v1["agreement_by_stratum_weight"] == round(7 / 11, 4),
               f"kappa and agreement weighed by stratum, the pushbacks with no problem counted as neither caught: "
               f"{v1['kappa_by_stratum_weight']}, {v2['kappa_by_stratum_weight']}")

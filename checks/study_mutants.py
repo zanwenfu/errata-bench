@@ -205,9 +205,11 @@ mutant("a version is consistent before every item is called", RUN,
 mutant("the uncalled pushbacks are not drawn", RUN,
        "                total += k[s] + (rng.binomialvariate(rest, p) if rest else 0)",
        "                total += k[s] * pop[s] / called[s]")
-mutant("a stratum called in full is resampled", RUN,
-       "                                                       if called[s] < pop[s] else by_stratum_items[s])]",
-       "                                                       if True else by_stratum_items[s])]")
+mutant("a stratum called in full is drawn as if part were uncalled", RUN,
+       "                    left = pop[s] - called[s]", "                    left = max(1, pop[s] - called[s])")
+mutant("kappa's interval ignores the uncalled", RUN,
+       "                        drawn[c] += counts[s].get(c, 0) + (left * gammas[n_c] / sum(gammas) if left else 0)",
+       "                        drawn[c] += counts[s].get(c, 0) * pop[s] / called[s]")
 mutant("the bias is taken from the rounded share", RUN,
        '"merge_minus_person": {"share": round(merge_share[version] - point, 4), **_interval(bias)},',
        '"merge_minus_person": {"share": round(merge_share[version] - round(point, 4), 4), **_interval(bias)},')
