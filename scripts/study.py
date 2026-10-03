@@ -482,6 +482,30 @@ def sheet(args) -> int:
     return 0
 
 
+def combine(args) -> int:
+    """One run folder from several, for a pooled tally: every stage's finished rows, sessions never shared."""
+    out = Path(args.into)
+    if out.exists():
+        print(f"refused: {out} exists", file=sys.stderr)
+        return 2
+    sources = [Path(x) for x in args.sources]
+    held: dict[str, Path] = {}
+    for src in sources:
+        for sid in {r["session_id"] for r in load(path(src, "reports"))}:
+            if sid in held:
+                print(f"refused: session {sid} is in both {held[sid]} and {src}", file=sys.stderr)
+                return 2
+            held[sid] = src
+    out.mkdir(parents=True)
+    for name in ("sessions", "reports", "review", "human", "merge"):
+        for src in sources:
+            rows = load(path(src, name)) if name in ("sessions", "reports") else completed(path(src, name))
+            for r in rows:
+                append(path(out, name), {**r, "from_run": src.name})
+    print(f"combined {len(sources)} runs, {len(held)} sessions, into {out}")
+    return 0
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     sub = ap.add_subparsers(dest="cmd", required=True)
@@ -511,6 +535,9 @@ def main() -> int:
         if name in ("review", "merge"):
             q.add_argument("--framing", choices=("outside", "self"), default="outside",
                            help="the outside reviewer (default) or the same model told the work is its own")
+    c = sub.add_parser("combine")
+    c.add_argument("--into", required=True)
+    c.add_argument("sources", nargs="+")
     s = sub.add_parser("sheet")
     s.add_argument("--run", required=True)
     s.add_argument("--matches", type=int, default=150)
@@ -520,7 +547,7 @@ def main() -> int:
     if getattr(args, "concurrency", 1) < 1:
         ap.error("--concurrency must be at least 1")
     return {"prepare": prepare, "estimate": estimate, "review": review, "human": human, "merge": merge,
-            "tally": tally, "sheet": sheet}[args.cmd](args)
+            "tally": tally, "sheet": sheet, "combine": combine}[args.cmd](args)
 
 
 if __name__ == "__main__":

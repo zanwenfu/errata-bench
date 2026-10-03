@@ -573,6 +573,13 @@ def section_runner(reps):
                   .replace("problem in this work", "problem in your work"),
                   "the self framing differs from the outside one only in who the work belongs to")
 
+            # Pooling runs: every stage's rows, and never one session in two runs.
+            pooled = Path(tmp) / "pooled"
+            with contextlib.redirect_stdout(quiet), contextlib.redirect_stderr(quiet):
+                rcc = study.combine(SimpleNamespace(into=str(pooled), sources=[str(run)]))
+                rcc2 = study.combine(SimpleNamespace(into=str(Path(tmp) / "pooled2"), sources=[str(run), str(run)]))
+            check(rcc == 0 and len(load(pooled / "reviews.jsonl")) == len(load(run / "reviews.jsonl")) and rcc2 == 2,
+                  "combine pools a run's stages, and refuses two runs sharing a session")
             # One process per stage: a second one is refused, before any call.
             lockargs = SimpleNamespace(run=str(run2), max_usd=100.0, concurrency=1, limit=0)
             from errata_bench.store.rows import only_one
