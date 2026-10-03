@@ -280,6 +280,31 @@ therefore counts them again, and prices gpt-6-sol at gpt-6-astra's placeholder
 rate (scripts/d40_spend.PRICE on main). The arm's real cost was $8.49 for the
 reviews and $12.12 for the merges.
 
+**A reviewer from another family** (pilot, 10-03; `runs/study-pilot-deepseek`):
+DeepSeek-V4-Pro reviewing, the merge still gpt-6-astra under rules version 1.
+- It catches 14% [9–19] of pushbacks and 18% [10–28] of real errors, half of
+  what the two GPT-6 reviewers catch (37% and 39%).
+- On the same 65 real errors: 10 caught by both, 14 by gpt-6-astra's reviewer
+  only, 2 by DeepSeek's only.
+- It raises as many problems (2.15 a handback) but flags fewer handbacks (66%),
+  and 96% of its problems match no pushback.
+- 57 of its 928 quotes were not found in the window (6%, against gpt-6-astra's
+  1 in 735), and 8 quote only the context. Those 65 problems are dropped, as for
+  any reviewer.
+
+So the catch rate depends on the reviewer model. Read the cases and part of the
+gap is the merge's line between same and related (assumption 17):
+- On one session, the developer said the processes and the cycle count were
+  "still the same issues".
+- gpt-6-astra's reviewer had written "does not establish a fix for an empty
+  list", judged same.
+- DeepSeek's had written "claims 'Processes Now Showing' but never verified
+  that processes actually appear", judged related.
+
+The matcher is also a GPT-6 model, which could favour its family's wording.
+DeepSeek's real errors under rules version 2 were not merged (about $3.50, over
+what was left). Real cost: $3.81 for the reviews and $11.37 for the merges.
+
 **A second merge model** (pilot, 10-03; `runs/study-pilot-merge-sol`):
 gpt-6-sol merged the same 252 pushbacks against the same gpt-6-astra problems.
 - Whether a pushback was caught: the two agree on 95% of the 180 pushbacks
@@ -350,6 +375,16 @@ So the first answer to Bhuwan's question has two halves:
 ## The hand check: how to label
 
 Three files, written by `scripts/study.py sheet` into the run's folder. Label them without looking at `key.csv`.
+
+**Label the pooled run's files: `runs/study-pushback-120/`.** They sample all
+120 sessions. The pilot's files in `runs/study-pilot/` are superseded.
+
+**Text not in English.** 38 of the 150 rows in `labels.csv` hold a reply or a
+quote in Japanese, Korean, Russian or Chinese. They have an English column, and
+13 items of `alone.md` have an English block for the problem, its quote and the
+request. Claude translated them literally in the session, without opening
+`key.csv`. Say in `note` if a translation looks wrong. The untranslated sheets
+are beside them (`labels-untranslated.csv`, `alone-untranslated.md`).
 
 ### labels.csv: did the reviewer find the developer's problem?
 

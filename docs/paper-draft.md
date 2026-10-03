@@ -313,14 +313,23 @@ developer's silence is not a label. The hand check of 50 unmatched problems
 |---|---|---|---|---|---|
 | Handbacks | 402 | 402 | 402 | 402 | 308 |
 | Pushbacks | 180 | 180 | 180 | 180 | 117 |
-| Caught, all pushbacks | 22.8% [16–29] | 27.8% [21–34] | 26.7% [21–31] | [DS] | 18.8% [12–29] |
-| Caught, real errors | 36.9% [27–48] | 44.6% [35–57] | 38.5% [29–49] | [DS] | 32.1% [15–48] (n = 28) |
-| Problems per handback | 1.83 | 2.01 | 2.28 | [DS] | 1.88 |
-| Handbacks flagged | 77% | 80% | 83% | [DS] | 79% |
-| Problems unmatched | 93% | 93% | 93% | [DS] | 94% |
+| Caught, all pushbacks | 22.8% [16–29] | 27.8% [21–34] | 26.7% [21–31] | 13.9% [9–19] | 18.8% [12–29] |
+| Caught, real errors | 36.9% [27–48] | 44.6% [35–57] | 38.5% [29–49] | 18.5% [10–28] | 32.1% [15–48] (n = 28) |
+| Problems per handback | 1.83 | 2.01 | 2.28 | 2.15 | 1.88 |
+| Handbacks flagged | 77% | 80% | 83% | 66% | 79% |
+| Problems unmatched | 93% | 93% | 93% | 96% | 94% |
 
-**Reviewer model.** gpt-6-sol and DeepSeek-V4-Pro, a model from another family,
-give [DS: same picture or not].
+**Reviewer model.** A second GPT-6 reviewer, gpt-6-sol, gives the same
+picture: 39% of real errors. DeepSeek-V4-Pro, from another family, catches half
+as many: 18% [10–28]. On the same 65 real errors, 10 are caught by both, 14 by
+gpt-6-astra only and 2 by DeepSeek only. DeepSeek raises as many problems, but
+flags fewer handbacks.
+
+Part of the gap may lie in the matching, not the reviewing. DeepSeek's problems
+more often call the claim the developer found false unverified, without saying
+it is wrong, and the matching model often counts those as 'related' (section
+4.5). The matching model is also a GPT-6 model and might favour its own family's
+wording. Either way, which reviewer is used changes how much it catches.
 
 **Self framing.** The same model is told the work is its own. On the same 180
 pushbacks, 38 are caught by both framings, 12 by the self framing only and 3 by
