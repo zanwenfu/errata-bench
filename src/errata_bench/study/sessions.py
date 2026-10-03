@@ -305,7 +305,8 @@ def work_part(window_text: str) -> str:
     return window_text[at:] if at >= 0 else ""
 
 
-def pilot_sessions(n: int = 40, per_repo: int = 2, seed: int = 20261003, runs: Path = Path("runs")) -> list[dict]:
+def pilot_sessions(n: int = 40, per_repo: int = 2, seed: int = 20261003, runs: Path = Path("runs"),
+                   skip: int = 0) -> list[dict]:
     """The pilot's sessions: ones with a developer pushback read as a real agent error, at most `per_repo` a repository.
 
     Drawn from every reading under runs/ (a moment read twice counts once), so
@@ -335,7 +336,41 @@ def pilot_sessions(n: int = 40, per_repo: int = 2, seed: int = 20261003, runs: P
         rng.shuffle(ids)
         pool += [(sid, repo) for sid in ids[:per_repo]]
     rng.shuffle(pool)
-    return [{"session_id": sid, "repo_id": repo} for sid, repo in pool[:n]]
+    return [{"session_id": sid, "repo_id": repo} for sid, repo in pool[skip:skip + n]]
+
+
+def random_sessions(n: int = 40, per_repo: int = 2, seed: int = 20261004, exclude=(), corpus: Path | None = None
+                    ) -> list[dict]:
+    """Sessions drawn without regard to pushback: the comparison arm (docs/study.md).
+
+    Claude Code sessions (SWE-chat's `agent`) with at least two developer
+    prompts and a transcript here, at most `per_repo` a repository, none in
+    `exclude`. The pilot's sessions were chosen for holding a real error, so its
+    rates hold for those; this arm's hold for sessions in general. Of SWE-chat's
+    4,852 Claude Code sessions, 3,857 have two prompts or more (10-03).
+    """
+    import pyarrow.parquet as pq
+
+    from ..corpus.recover import has_transcript
+    from ..corpus.sessions import CORPUS
+
+    rows = pq.read_table((corpus or CORPUS) / "sessions.parquet",
+                         columns=["session_id", "repo_id", "agent", "prompt_count"]).to_pylist()
+    skip = set(exclude)
+    pool = sorted((r for r in rows if r["agent"] == "Claude Code" and (r["prompt_count"] or 0) >= 2
+                   and r["session_id"] not in skip), key=lambda r: r["session_id"])
+    rng = random.Random(seed)
+    rng.shuffle(pool)
+    out, per = [], defaultdict(int)
+    for r in pool:
+        repo = r["repo_id"] or ""
+        if per[repo] >= per_repo or not has_transcript(r["session_id"]):
+            continue
+        out.append({"session_id": r["session_id"], "repo_id": repo})
+        per[repo] += 1
+        if len(out) == n:
+            break
+    return out
 
 
 def report_row(report: Report, text: str, stats: dict) -> dict:

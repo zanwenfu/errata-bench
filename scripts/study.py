@@ -49,8 +49,12 @@ OUTPUT_GUESS = {"review": 700, "human": 350, "merge": 300}
 CHARS_PER_TOKEN = 3.5
 
 
-def path(run: Path, name: str) -> Path:
-    return run / FILES[name]
+def path(run: Path, name: str, framing: str = "outside") -> Path:
+    """A stage's file. The reviewer's and the merge's carry their framing when it is not the outside reviewer's."""
+    f = FILES[name]
+    if framing != "outside" and name in ("review", "merge"):
+        f = f.replace(".jsonl", f"-{framing}.jsonl")
+    return run / f
 
 
 def key(row: dict) -> tuple:
@@ -68,8 +72,12 @@ def prepare(args) -> int:
     if args.session:
         repo_of = {p["session_id"]: p["repo_id"] for p in S.pilot_sessions(n=10**9, per_repo=10**9)}
         picked = [{"session_id": s, "repo_id": repo_of.get(s, "")} for s in args.session]
+    elif args.random:
+        # Drawn without regard to pushback; never a session the pushback-drawn sample can hold.
+        held = {p["session_id"] for p in S.pilot_sessions(n=10**9, per_repo=10**9)}
+        picked = S.random_sessions(n=args.random, per_repo=args.per_repo, exclude=held)
     else:
-        picked = S.pilot_sessions(n=args.sessions, per_repo=args.per_repo)
+        picked = S.pilot_sessions(n=args.sessions, per_repo=args.per_repo, skip=args.skip)
     from errata_bench.corpus.recover import has_transcript
 
     turns = S.load_turns([p["session_id"] for p in picked])
@@ -133,21 +141,21 @@ def _model() -> str:
 
 
 def _spent(run: Path) -> float:
-    """The run's spend so far, from every row's usage in every stage file and their dropped rows."""
+    """The run's spend so far: every row's usage in every paid stage's file, any framing, and their dropped rows."""
     total = 0.0
-    for name in ("review", "human", "merge"):
-        p = path(run, name)
-        for f in (p, p.with_name(p.name.removesuffix(".jsonl") + ".dropped.jsonl")):
-            for r in load(f):
+    files = {f for pattern in ("reviews*.jsonl", "replies*.jsonl", "merges*.jsonl") for f in run.glob(pattern)}
+    for f in sorted(files):
+        for r in load(f):
+            if r.get("usage"):
                 total += _spend.priced(r.get("model") or _model(), r.get("usage"), set())
     return total
 
 
-async def _run(run: Path, name: str, todo: list, *, max_usd: float, concurrency: int) -> int:
+async def _run(run: Path, name: str, todo: list, *, max_usd: float, concurrency: int, framing: str = "outside") -> int:
     """Make each item's call, at most `concurrency` at once, until done or the run's spend reaches max_usd."""
     from errata_bench.llm import usage_of
 
-    out = path(run, name)
+    out = path(run, name, framing)
     spent = _spent(run)
     print(f"{name}: {len(todo)} to do; run spend so far ${spent:,.2f} of ${max_usd:,.2f}")
     if spent >= max_usd:
@@ -185,7 +193,8 @@ async def _run(run: Path, name: str, todo: list, *, max_usd: float, concurrency:
 
 def review(args) -> int:
     run = Path(args.run)
-    done = {key(r) for r in completed(path(run, "review"))}
+    framing = getattr(args, "framing", "outside")
+    done = {key(r) for r in completed(path(run, "review", framing))}
     todo = []
     for r in load(path(run, "reports")):
         if key(r) in done:
@@ -193,12 +202,13 @@ def review(args) -> int:
         base = {"session_id": r["session_id"], "index": r["index"]}
 
         async def make(r=r):
-            result = await A.review(r["window"], model=_model())
+            result = await A.review(r["window"], model=_model(), framing=framing)
             problems = A.checked(result.final_output, r["window"])
-            return result, {"problems": problems}
+            return result, {"problems": problems, "framing": framing}
         todo.append((base, make))
     todo = todo[: args.limit] if args.limit else todo
-    return asyncio.run(_run(run, "review", todo, max_usd=args.max_usd, concurrency=args.concurrency))
+    return asyncio.run(_run(run, "review", todo, max_usd=args.max_usd, concurrency=args.concurrency,
+                            framing=framing))
 
 
 def human(args) -> int:
@@ -227,10 +237,11 @@ def _by_session(rows: list[dict]) -> dict[str, dict[int, dict]]:
 
 def merge(args) -> int:
     run = Path(args.run)
+    framing = getattr(args, "framing", "outside")
     reports = _by_session(load(path(run, "reports")))
-    reviews = _by_session(completed(path(run, "review")))
+    reviews = _by_session(completed(path(run, "review", framing)))
     replies = _by_session(completed(path(run, "human")))
-    done = {key(r) for r in completed(path(run, "merge"))}
+    done = {key(r) for r in completed(path(run, "merge", framing))}
     todo, alone, waiting = [], 0, 0
     for sid, by_index in reports.items():
         for k, rep in by_index.items():
@@ -248,8 +259,8 @@ def merge(args) -> int:
             cands = M.candidates({j: reviews[sid][j]["problems"] for j in needed}, k)
             base = {"session_id": sid, "index": k}
             if not cands:
-                append(path(run, "merge"), {**base, "verdicts": [], "no_candidates": True, "model": None,
-                                            "usage": None})
+                append(path(run, "merge", framing), {**base, "verdicts": [], "no_candidates": True, "model": None,
+                                                     "usage": None})
                 alone += 1
                 continue
 
@@ -260,17 +271,19 @@ def merge(args) -> int:
             todo.append((base, make))
     print(f"merge: {alone} pushbacks with no reviewer problem to compare (the developer's alone, no call); "
           f"{waiting} replies or reports not read yet")
-    return asyncio.run(_run(run, "merge", todo, max_usd=args.max_usd, concurrency=args.concurrency))
+    return asyncio.run(_run(run, "merge", todo, max_usd=args.max_usd, concurrency=args.concurrency,
+                            framing=framing))
 
 
 # --------------------------------------------------------------------------- tally and the hand-label sheet (free)
 
 def tally(args) -> int:
     run = Path(args.run)
+    framing = getattr(args, "framing", "outside")
     reports = load(path(run, "reports"))
-    reviews = {key(r): r for r in completed(path(run, "review"))}
+    reviews = {key(r): r for r in completed(path(run, "review", framing))}
     replies = {key(r): r for r in completed(path(run, "human"))}
-    merges = {key(r): r for r in completed(path(run, "merge"))}
+    merges = {key(r): r for r in completed(path(run, "merge", framing))}
     if not reviews or not replies:
         print("nothing to tally yet: review and human must have run", file=sys.stderr)
         return 2
@@ -308,17 +321,19 @@ def tally(args) -> int:
     real = by_kind.get("real_error", Counter())
     if sum(real.values()):
         out["real_error_caught_same"] = round(real["same"] / sum(real.values()), 3)
+    out["framing"] = framing
     print(json.dumps(out, indent=1))
-    (run / "tally.json").write_text(json.dumps(out, indent=1))
+    (run / ("tally.json" if framing == "outside" else f"tally-{framing}.json")).write_text(json.dumps(out, indent=1))
     return 0
 
 
 def sheet(args) -> int:
     """Two files for the hand check: labels.csv to fill in blind, and key.csv with the model's verdicts."""
     run = Path(args.run)
+    framing = getattr(args, "framing", "outside")
     reports = {key(r): r for r in load(path(run, "reports"))}
-    reviews = {key(r): r for r in completed(path(run, "review"))}
-    merges = completed(path(run, "merge"))
+    reviews = {key(r): r for r in completed(path(run, "review", framing))}
+    merges = completed(path(run, "merge", framing))
     rng = random.Random(20261003)
     pairs = []
     for m in merges:
@@ -335,7 +350,8 @@ def sheet(args) -> int:
     for match in ("same", "related", "different"):
         take += by_match[match][: args.matches // 3]
     rng.shuffle(take)
-    with open(run / "labels.csv", "w", newline="") as f, open(run / "key.csv", "w", newline="") as g:
+    tag = "" if framing == "outside" else f"-{framing}"
+    with open(run / f"labels{tag}.csv", "w", newline="") as f, open(run / f"key{tag}.csv", "w", newline="") as g:
         w, kw = csv.writer(f), csv.writer(g)
         w.writerow(["item", "developer_reply", "reviewer_problem", "reviewer_quote",
                     "your_label (same / related / different)", "note"])
@@ -343,7 +359,8 @@ def sheet(args) -> int:
         for n, (v, rep, p) in enumerate(take, 1):
             w.writerow([n, rep["reply"][:3000], p["what_is_wrong"], p["quote"][:1000], "", ""])
             kw.writerow([n, v.get("match"), v.get("reason")])
-    print(f"wrote {len(take)} merge decisions to label blind: {run / 'labels.csv'} (the model's: {run / 'key.csv'})")
+    print(f"wrote {len(take)} merge decisions to label blind: {run / f'labels{tag}.csv'} "
+          f"(the model's: {run / f'key{tag}.csv'})")
 
     # The reviewer's problems no pushback matched: is each a real problem the developer let pass, or a false alarm?
     matched = {(m["session_id"], v["report"], v["problem_id"]) for m in merges for v in m.get("verdicts") or []
@@ -353,7 +370,7 @@ def sheet(args) -> int:
              if p.get("quote_in_work") and (k[0], k[1], f"r{k[1]}p{i}") not in matched]
     rng.shuffle(alone)
     alone = alone[: args.alone]
-    with open(run / "alone.md", "w") as f:
+    with open(run / f"alone{tag}.md", "w") as f:
         f.write("# The reviewer's problems that no pushback matched\n\nFor each: is it a real problem the developer "
                 "let pass, or a false alarm? Write `real`, `false alarm` or `can't tell` after **Your call:**.\n")
         for n, ((sid, k), pid, p) in enumerate(alone, 1):
@@ -364,7 +381,7 @@ def sheet(args) -> int:
                     f"\"{p['quote']}\"\n\n**Your call:** \n\n<details><summary>The work it read</summary>\n\n"
                     f"```\n{rep['window']}\n```\n\n</details>\n\n**What the developer said next:**\n\n"
                     + "\n\n".join(f"> {r}" for r in later) + "\n")
-    print(f"wrote {len(alone)} of the reviewer's unmatched problems to check: {run / 'alone.md'}")
+    print(f"wrote {len(alone)} of the reviewer's unmatched problems to check: {run / f'alone{tag}.md'}")
     return 0
 
 
@@ -378,18 +395,28 @@ def main() -> int:
     p.add_argument("--max-reports", type=int, default=40,
                    help="the first N reports of each session (0: all); one session holds 426")
     p.add_argument("--session", action="append", help="a session id to prepare instead of the drawn sample")
-    for name in ("estimate", "tally"):
-        sub.add_parser(name).add_argument("--run", required=True)
+    p.add_argument("--random", type=int, default=0,
+                   help="draw this many sessions without regard to pushback instead (the comparison arm)")
+    p.add_argument("--skip", type=int, default=0,
+                   help="leave out the first N sessions of the drawn order (to draw a further batch)")
+    sub.add_parser("estimate").add_argument("--run", required=True)
+    t = sub.add_parser("tally")
+    t.add_argument("--run", required=True)
+    t.add_argument("--framing", choices=("outside", "self"), default="outside")
     for name in ("review", "human", "merge"):
         q = sub.add_parser(name)
         q.add_argument("--run", required=True)
         q.add_argument("--max-usd", type=float, required=True)
         q.add_argument("--concurrency", type=int, default=8)
         q.add_argument("--limit", type=int, default=0)
+        if name in ("review", "merge"):
+            q.add_argument("--framing", choices=("outside", "self"), default="outside",
+                           help="the outside reviewer (default) or the same model told the work is its own")
     s = sub.add_parser("sheet")
     s.add_argument("--run", required=True)
     s.add_argument("--matches", type=int, default=150)
     s.add_argument("--alone", type=int, default=50)
+    s.add_argument("--framing", choices=("outside", "self"), default="outside")
     args = ap.parse_args()
     if getattr(args, "concurrency", 1) < 1:
         ap.error("--concurrency must be at least 1")

@@ -63,14 +63,30 @@ DID NEXT" that show it, with the turn number. Copy the quote verbatim from the m
 """
 
 
-async def review(window_text: str, *, model: str, max_turns: int = 3):
+# The same task, framed as the agent checking its own work before it hands back:
+# Bhuwan's first example ("ask the agent to self-reflect on its own work"). The
+# original agents were mostly Claude, which this study cannot call, so this is the
+# same reviewer model told the work is its own, not the original agent (docs/study.md).
+SELF_INSTRUCTIONS = INSTRUCTIONS.replace(
+    "You are reviewing a coding agent's work at the moment it hands the work back to the developer.",
+    "You are the coding agent whose work is shown below. Before you hand it back to the developer, check your "
+    "own work.",
+).replace(
+    "List every problem in this work that a careful developer would push back on before accepting it",
+    "List every problem in your work that a careful developer would push back on before accepting it",
+)
+assert SELF_INSTRUCTIONS.count("your work") == 1 and SELF_INSTRUCTIONS.startswith("You are the coding agent")
+FRAMINGS = {"outside": INSTRUCTIONS, "self": SELF_INSTRUCTIONS}
+
+
+async def review(window_text: str, *, model: str, framing: str = "outside", max_turns: int = 3):
     """Run the reviewer on one window. Returns the run result (`final_output` is a `Review`)."""
     from agents import Agent, Runner
 
     from ..llm import configure_client, resilient, with_field_guide
 
     configure_client()
-    agent = Agent(name="study-reviewer", instructions=with_field_guide(INSTRUCTIONS, Review),
+    agent = Agent(name=f"study-reviewer-{framing}", instructions=with_field_guide(FRAMINGS[framing], Review),
                   model=model, output_type=Review)
     return await resilient(lambda: Runner.run(agent, window_text, max_turns=max_turns))
 

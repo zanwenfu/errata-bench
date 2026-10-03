@@ -238,8 +238,9 @@ def section_runner(reps):
     kept = (A.review, B.classify, M.merge)
     flaky = {"left": 1}
 
-    async def fake_review(window_text, *, model, max_turns=3):
+    async def fake_review(window_text, *, model, framing="outside", max_turns=3):
         records("review")
+        records(f"review-{framing}")
         if flaky["left"] and "REPORT-TWO" in window_text:
             flaky["left"] -= 1
             raise RuntimeError("a transient failure")
@@ -331,9 +332,28 @@ def section_runner(reps):
                 rcs2 = study.review(line)
             check(rcs2 == 3 and len(load(run2 / "reviews.jsonl")) == 3, "run again over the line, it starts nothing")
 
+            # The self-review framing: its own files, its own merge, and the same spend line.
+            spent_before = study._spent(run)
+            selfargs = SimpleNamespace(run=str(run), max_usd=100.0, concurrency=2, limit=0, framing="self")
+            with contextlib.redirect_stdout(quiet), contextlib.redirect_stderr(quiet):
+                rcf = study.review(selfargs)
+                rcfm = study.merge(selfargs)
+                study.tally(SimpleNamespace(run=str(run), framing="self"))
+            selfrows = load(run / "reviews-self.jsonl")
+            check(rcf == 0 and len(selfrows) == 3 and all(r["framing"] == "self" for r in selfrows)
+                  and len(load(run / "reviews.jsonl")) == 3 and CALLED.get("review-self") == 3
+                  and (run / "merges-self.jsonl").exists() and (run / "tally-self.json").exists()
+                  and study._spent(run) > spent_before,
+                  "the self framing writes its own reviews, merges and tally, and its spend joins the run's")
+            check(A.SELF_INSTRUCTIONS.startswith("You are the coding agent") and "your work" in A.SELF_INSTRUCTIONS
+                  and A.SELF_INSTRUCTIONS.split("You are shown", 1)[1] == A.INSTRUCTIONS.split("You are shown", 1)[1]
+                  .replace("problem in this work", "problem in your work"),
+                  "the self framing differs from the outside one only in who the work belongs to")
+
             out = io.StringIO()
             with contextlib.redirect_stderr(out):
-                rcp = study.prepare(SimpleNamespace(out=str(run), session=None, sessions=1, per_repo=1, max_reports=0))
+                rcp = study.prepare(SimpleNamespace(out=str(run), session=None, sessions=1, per_repo=1, max_reports=0,
+                                                    random=0, skip=0))
             check(rcp == 2 and "refused" in out.getvalue(), "a prepared run is never prepared over")
     finally:
         A.review, B.classify, M.merge = kept
