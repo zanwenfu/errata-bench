@@ -3942,13 +3942,15 @@ def _fixture49(reason):
                         "usable": True, "kind": "present"})
     append(p.screened, {"session_id": "s2", "repo_id": "acme/kt", "complaint": 9,
                         "usable": True, "kind": "present"})
+    # Since 10-03 a task is named by its session too (`task_name`), and so is
+    # the one a rejection held back: acme/up's at turn 7 from s1.
     for f in (p.calibration, p.controls, p.answers, p.attempts, p.instrument):
-        append(f, {"task_id": "acme-up-7"})
+        append(f, {"task_id": "acme-up-s1-7"})
         append(f, {"task_id": "acme-kt-9"})
     kept = _build49.build
 
     def _one_builds(rows, **kw):
-        return _BR49(tasks=[_task49("acme-kt-9")], rejected=[_Rej49("acme/up", 7, reason)])
+        return _BR49(tasks=[_task49("acme-kt-9")], rejected=[_Rej49("acme/up", 7, reason, "s1")])
 
     _build49.build = _one_builds
     try:
@@ -3967,7 +3969,7 @@ _pa49, _prog_a49 = _fixture49(f"{_TRANSIENT49}: Could not resolve host: github.c
 _left49 = {f.name: sorted(r["task_id"] for r in _rows33(f))
            for f in (_pa49.calibration, _pa49.controls, _pa49.answers, _pa49.attempts,
                      _pa49.instrument)}
-check(all(v == ["acme-kt-9", "acme-up-7"] for v in _left49.values()),
+check(all(v == ["acme-kt-9", "acme-up-s1-7"] for v in _left49.values()),
       f"a task whose tree could not be fetched keeps every row bought for it: {_left49}")
 check(any("could not be fetched this pass" in n for n in _prog_a49.notes),
       f"and the stage says which tasks it held back: {[n[:70] for n in _prog_a49.notes]}")
@@ -9012,6 +9014,23 @@ check(_mixed129.tools == ["corepack install -g pnpm@10"] and _empty129.tools == 
       f"one pnpm serves the image, pnpm 10 when any folder needs it or a workspace lists no packages; and a "
       f"workspace root with no package.json installs its members: {_mixed129.tools} {_empty129.tools} "
       f"{_bare129.installs}")
+# #17's review, 10-03: three valid workspace files that list packages were
+# read as listing none, and their images got pnpm 10.
+_listed129 = {
+    "a comment line first": "packages:\n  # all packages in direct subdirs of packages/\n  - 'packages/*'\n",
+    "the list at no indent": "packages:\n- 'apps/*'\n",
+    "a blank line first": "packages:\n\n  - 'apps/*'\n",
+    "the usual indent": "packages:\n  - apps/*\n"}
+_none129 = {"settings only": "allowBuilds:\n  esbuild: true\n", "an empty list": "packages: []\n",
+            "a key with nothing under it": "packages:\n# none yet\nonlyBuiltDependencies:\n  - esbuild\n",
+            "a key at the end": "allowBuilds:\n  esbuild: true\npackages:\n"}
+_read129 = {k: _env129._no_packages(v) for k, v in {**_listed129, **_none129}.items()}
+_comment129 = _env129.recipe(_T129, ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "packages/a/package.json"],
+                             {"package.json": "{}", "pnpm-workspace.yaml": _listed129["a comment line first"]})
+check(all(_read129[k] is False for k in _listed129) and all(_read129[k] is True for k in _none129)
+      and _comment129.tools == ["corepack install -g pnpm@9"],
+      f"a workspace lists packages after a comment or a blank line, and at any indent; one with none listed is "
+      f"pnpm 10's: {_read129}, {_comment129.tools}")
 _df129 = _env129.dockerfile(_ws129)
 check(_df129.startswith("# errata-bench v1: t129\nFROM errata-base:v1\n")
       and "mv /tmp/workspace '/Users/stavan/Docs - Stavan'\"'\"'s Mac/AiTutor'" in _df129
@@ -15410,6 +15429,81 @@ check(("Reference answer B, from this conversation:\n" + "c" * 40 + "\n\nThe CAN
       in _ps167 and ("Reference answer A, from this conversation:\n" + "o" * 5_999 + "\n\n") in _ps167
       and "longer than shown" not in _ps167,
       "references under the old cap, as all of v1's are, make the judge's prompt as it was, byte for byte")
+
+print("\n168. a task's name: v1's 55 keep theirs, every other carries its session (10-03, with #17)")
+# The plain {repo}-{turn} is not unique: v1 built entireio-cli-24 from two
+# sessions, and refused three entireio/cli candidates only because another
+# session had their name. A rule on fixed inputs names a moment the same in
+# every build; a task's fingerprint starts with its name.
+from errata_bench.construct.build import task_name as _name168
+from errata_bench.release.v1_names import V1_NAMES as _V1N168
+
+_own168 = _V1N168["entireio-cli-24"]
+_other168 = "85f99978-0000-4000-8000-000000000000" if not _own168.startswith("85f99978") else "e24bec4f-0000"
+_cases168 = {
+    "a v1 task from its own session": _name168("entireio/cli", _own168, 24),
+    "another session at a v1 name": _name168("entireio/cli", _other168, 24),
+    "a new moment": _name168("acme/up", "s-123456789", 3),
+    "the same moment again": _name168("acme/up", "s-123456789", 3)}
+try:
+    _name168("acme/up", "", 3)
+    _empty168 = "named"
+except ValueError:
+    _empty168 = "refused"
+check(_cases168["a v1 task from its own session"] == "entireio-cli-24"
+      and _cases168["another session at a v1 name"] == f"entireio-cli-{_other168[:8]}-24"
+      and _cases168["a new moment"] == "acme-up-s-123456-3" == _cases168["the same moment again"]
+      and _empty168 == "refused",
+      f"v1's name is kept for its own session only; any other task is named by its session, the same every time; a "
+      f"task with no session is refused: {_cases168}, {_empty168}")
+# Through the real build: two sessions at one (repository, turn) both build,
+# under two names; one moment twice is refused the second time.
+try:
+    _B43w.session_starts = lambda ids=None: {i: 1_000_000_000 for i in (ids or ["s-43w", "s-43x"])}
+    _B43w.load_session_turns = lambda ids: {i: list(_turns43w) for i in ids}
+    _B43w.load_repos = lambda: {"acme/up": _Repo43w(repo_id="acme/up", url="https://x/acme/up",
+                                                    license_type="mit", language="Python")}
+    _B43w.load_commits_by_repo = lambda **kw: {"acme/up": [
+        type("C168", (), {"author_ns": 1, "commit_ns": None, "checkpoint_pk": "", "commit_sha": "abc123"})()]}
+    _B43w.session_checkpoints = lambda ids: {}
+    _B43w.fetch = lambda url, sha, dest: _Checkout43w()
+    _B43w.edits_before = lambda turns, cut: []
+    _B43w.replay = lambda tree, edits, repo_id: _Replay43(applied=13, verified=7, files={"a"})
+    _B43w.check = lambda task_id, sig, tree: _Presence43w(
+        task_id=task_id, probeable=True, present=True, detail="ok", strength="declared")
+    _B43w.has_transcript = lambda sid: True
+    _row168 = {"repo_id": "acme/up", "request": 1, "failed": 2, "complaint": 3, "resolved": 4, "cut": 1,
+               "kind": "none", "path": "src/a.py", "token": "", "defect": "a defect", "rounds": 1, "usable": True,
+               "asks_for_something": True, "within_scope": True, "signals_trouble": False,
+               "calls_recovered": True, "text_recovered": True}
+    _built168 = []
+    for _sid168 in ("s-43w", "s-43x"):
+        _B43w.history = _agreeing43w(_sid168)
+        _built168.append(_B43w.build([dict(_row168, session_id=_sid168)]))
+    _B43w.history = _agreeing43w("s-43w")
+    _again168 = _B43w.build([dict(_row168, session_id="s-43w"), dict(_row168, session_id="s-43w")])
+finally:
+    for _n43w, _v43w in _kept43w.items():
+        setattr(_B43w, _n43w, _v43w)
+_names168 = [t.task_id for r in _built168 for t in r.tasks]
+check(_names168 == ["acme-up-s-43w-3", "acme-up-s-43x-3"]
+      and [t.task_id for t in _again168.tasks] == ["acme-up-s-43w-3"]
+      and any("two tasks cannot share a name" in r.reason and r.session_id == "s-43w" for r in _again168.rejected),
+      f"two sessions at one (repository, turn) build under two names, and one moment twice is refused the second "
+      f"time, its rejection carrying its session: {_names168}, {[t.task_id for t in _again168.tasks]}")
+# The frozen list is the release's, where the release is here; CI has none.
+_rel168 = Path(os.environ.get("ERRATA_V1_RELEASE") or "release/v1.0.2-dataset") / "tasks"
+if _rel168.is_dir():
+    _found168 = {}
+    for _g168 in sorted(_rel168.glob("*/grading/task.json")):
+        _t168 = json.loads(_g168.read_text())
+        _found168[_t168["task_id"]] = (_t168["session_id"],
+                                       _name168(_t168["repo_id"], _t168["session_id"], _t168["complaint_turn"]))
+    check(len(_found168) == 55 and {k: v[0] for k, v in _found168.items()} == _V1N168
+          and all(k == v[1] for k, v in _found168.items()),
+          f"the frozen names are the release's 55, each with its session, and each names itself: {len(_found168)}")
+else:
+    print(f"  skip  the frozen names against the release: {_rel168} is not here (as in CI)")
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:

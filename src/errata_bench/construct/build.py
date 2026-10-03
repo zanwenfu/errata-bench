@@ -318,6 +318,25 @@ def checkouts_before(session_id: str, turns: list[dict], cut: int, cwd: str | No
     return sorted(set(seen))
 
 
+def task_name(repo_id: str, session_id: str, turn: int) -> str:
+    """A task's name: `{repo}-{turn}` for one of v1.0's 55, built from its own session; `{repo}-{session[:8]}-{turn}`
+    for every other, always.
+
+    A rule on fixed inputs (#17, 10-03): a name taken by whichever session was
+    built first would change with the runs on disk and their order, and a
+    task's fingerprint starts with its name. The plain name is not unique --
+    v1 built entireio-cli-24 from two sessions -- so it is kept only where
+    `release.v1_names` lists it with this session.
+    """
+    from ..release.v1_names import V1_NAMES
+
+    if not session_id:
+        raise ValueError(f"a task in {repo_id} at turn {turn} has no session to name it by")
+    slug = repo_id.replace("/", "-")
+    plain = f"{slug}-{turn}"
+    return plain if V1_NAMES.get(plain) == session_id else f"{slug}-{session_id[:8]}-{turn}"
+
+
 def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
     """Turn located trajectories into tasks, checking each one's setup.
 
@@ -362,7 +381,7 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
         complaint = row.get("complaint", -1)
 
         def reject(why: str) -> None:
-            result.rejected.append(Rejection(repo_id, complaint, why))
+            result.rejected.append(Rejection(repo_id, complaint, why, str(row.get("session_id") or "")))
 
         try:
             if not row.get("usable"):
@@ -500,14 +519,13 @@ def build(located: list[dict], *, scratch: Path | None = None) -> BuildResult:
                 is_symlink_defect=bool(row.get("is_symlink_defect")),
                 reasoning=row.get("sig_reasoning") or row.get("reasoning") or "",
             )
-            task_id = f"{repo_id.replace('/', '-')}-{complaint}"
-            # A task is named for its repository and the turn the developer
-            # objected at, which is not unique: 93 of 400 moments in one run share
-            # a (repository, turn) pair with another session. None has survived to
-            # a built task yet, and the funnel is the only reason. Two tasks under
-            # one name is worse than one task fewer -- they overwrite each other's
-            # answers, each is reported as "an earlier version" of the other, and a
-            # full pass never converges because whichever is written second wins.
+            task_id = task_name(repo_id, str(row.get("session_id") or ""), complaint)
+            # Two tasks under one name is worse than one task fewer -- they
+            # overwrite each other's answers, each is reported as "an earlier
+            # version" of the other, and a full pass never converges because
+            # whichever is written second wins. Since 10-03 a name carries its
+            # session (`task_name`), so this refuses only one moment twice, or
+            # two sessions sharing their first eight characters.
             if task_id in seen:
                 reject(f"another session already built {task_id}; two tasks cannot share a name")
                 continue

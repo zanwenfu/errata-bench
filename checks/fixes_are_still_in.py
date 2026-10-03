@@ -506,25 +506,19 @@ check("B-152b", "and a rebuild prunes both of them",
 
 # ---- B-153: two tasks may not share one name --------------------------
 # Two sessions landing on the same (repository, turn), which 93 of 400 moments
-# in one run do. The grep this replaces passed with the refusal deleted and the
-# sentence left in a comment.
-seen_ids, dupes = set(), []
-for row in ({"session_id": "s1", "repo_id": "r/r", "complaint": 7},
-            {"session_id": "s2", "repo_id": "r/r", "complaint": 7}):
-    tid = f"{row['repo_id'].replace('/', '-')}-{row['complaint']}"
-    (dupes if tid in seen_ids else seen_ids).append(tid) if tid in seen_ids else seen_ids.add(tid)
-# Asserted by running `build`, not by searching its source for a sentence.
-# The old form passed on a comment and a line that could both survive the
-# behaviour being reverted -- and it read a path that the restructure moved,
-# which is how it was noticed.
-from errata_bench.construct.build import build as _real_build
+# in one run do. Since 10-03 a name carries its session (`task_name`): both
+# build, under two names, and only v1's 55 keep the plain {repo}-{turn}, each
+# for its own session. The build's refusal of a name already taken stays, for
+# one moment given twice (guards section 168 runs the real build).
+from errata_bench.construct.build import task_name
+from errata_bench.release.v1_names import V1_NAMES
 
-_twin = {"session_id": "s1", "repo_id": "r/r", "complaint": 7, "cut": 1,
-         "kind": "none", "defect": "d" * 40}
-_res = _real_build([dict(_twin), dict(_twin, session_id="s2")])
-_names = [t.task_id for t in _res.tasks]
-check("B-153", "two sessions cannot produce one task name",
-      len(_names) == len(set(_names)) and len(seen_ids) == 1)
+_mine = V1_NAMES["entireio-cli-24"]
+_twins = {task_name("r/r", "s1-aaaaaaaa", 7), task_name("r/r", "s2-bbbbbbbb", 7)}
+check("B-153", "two sessions at one (repository, turn) get two names, and a v1 name listed with another session "
+               "gets the session's",
+      len(_twins) == 2 and task_name("entireio/cli", _mine, 24) == "entireio-cli-24"
+      and task_name("entireio/cli", "ffffffff-other", 24) == "entireio-cli-ffffffff-24")
 
 # ---- B-154: the stamp covers the conversation -------------------------
 import dataclasses

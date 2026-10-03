@@ -126,14 +126,26 @@ def _runner(folder_files: set[str]) -> str | None:
 
 
 def _no_packages(workspace: str) -> bool:
-    """Whether a pnpm-workspace.yaml names no packages: no `packages` key, or an empty list."""
+    """Whether a pnpm-workspace.yaml names no packages: no `packages` key, or an empty list.
+
+    The list's first item may come after blank or comment lines, and at any
+    indent, the key's own included: pnpm's documented example opens with a
+    comment line, and `packages:` then `- 'apps/*'` at no indent is valid
+    YAML. Read only as text (#17's review, 10-03): each of those three was
+    taken for no packages, and its image got pnpm 10, which skips
+    dependencies' install scripts by default.
+    """
     m = re.search(r"(?m)^packages\s*:(.*)$", workspace)
     if not m:
         return True
     rest = m.group(1).split("#")[0].strip()
     if rest:
         return rest.replace(" ", "") == "[]"
-    return not re.match(r"[ \t]*\n[ \t]+-", workspace[m.end():])
+    for line in workspace[m.end():].splitlines():
+        text = line.strip()
+        if text and not text.startswith("#"):
+            return not text.startswith("-")
+    return True
 
 
 def recipe(task: dict, files: list[str], package_jsons: dict[str, str],

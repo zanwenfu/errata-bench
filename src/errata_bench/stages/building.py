@@ -50,7 +50,7 @@ def stage_build(paths: Paths, limit: int) -> Progress:
     which is exactly what fixing the session-start bug did -- leaves seven stale
     "sound" verdicts pointing at tasks that are gone.
     """
-    from ..construct.build import build
+    from ..construct.build import build, task_name
     from ..spec import fingerprint, write
 
     from .screening import unbranched
@@ -121,7 +121,7 @@ def stage_build(paths: Paths, limit: int) -> Progress:
     # destroyed by a command that exits 0 and prints "0 produced, 51 already
     # done", because `skipped` renders as "already done" and a total wipe reads
     # like a no-op resume.
-    held_back = {f"{r.repo_id.replace('/', '-')}-{r.complaint_turn}"
+    held_back = {task_name(r.repo_id, r.session_id, r.complaint_turn)
                  for r in result.rejected if TRANSIENT in (r.reason or "")}
     if not result.tasks and holds_paid_work(paths):
         p.failed = 1
