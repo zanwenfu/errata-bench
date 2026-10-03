@@ -632,6 +632,36 @@ check(got95 == {"a command in its place": 1, "a sub-agent's entry last": 0, "a p
       f"a rewind replaced by a command counts; a sub-agent's last entry, a missing parent, an answer of Claude "
       f"Code's own text, and a boundary's named parent make no count; an edit before a restart counts both "
       f"sides: {got95}")
+# An entry with a uuid and no parent key, last in the file, ends no
+# conversation; a cycle of parents ends its walk; a re-written copy of a kept
+# message, sharing its uuid, is not its own sibling (fourth review, 10-03).
+nokey95 = [U90("e1", None, "add retries"), A90("f1", "e1", {"type": "text", "text": "Added."}),
+           U90("e2a", "f1", "now test it"), A90("f2a", "e2a", {"type": "text", "text": "Tested."}),
+           U90("e2b", "f1", "now test it on Windows"), A90("f2b", "e2b", {"type": "text", "text": "Fine."}),
+           {"type": "summary", "uuid": "sm", "summary": "Retries added and tested"}]
+cycle95 = [U90("x1", "x2", "hello"), A90("x2", "x1", {"type": "text", "text": "Hi."})]
+copied95 = [U90("e1", None, "add retries"), A90("f1", "e1", {"type": "text", "text": "Added."}),
+            U90("e2", "f1", "now test it"), A90("f2", "e2", {"type": "text", "text": "Tested."}),
+            U90("e3", "f2", "and the docs"), A90("f3", "e3", {"type": "text", "text": "Docs."}),
+            U90("e2", "f1", [{"type": "text", "text": "now test it"}])]
+import signal as signal95
+signal95.signal(signal95.SIGALRM, lambda *a: (_ for _ in ()).throw(TimeoutError("a walk did not end")))
+signal95.alarm(10)
+try:
+    counted95 = tuple(rewound(shape) for shape in (
+        branch95, unanswered95, said90, compacted95, dangling95, inside95, cmd95, side95, missing95, synthetic95,
+        named95, restarted95, nokey95, cycle95, copied95))
+except TimeoutError as e95:
+    counted95 = (str(e95),)
+finally:
+    signal95.alarm(0)
+    signal95.signal(signal95.SIGALRM, signal95.SIG_DFL)
+from errata_bench.corpus.sessions import REWOUND_RULES as rules95
+# The number a list is stamped with goes with the rule that counted it: a
+# change to the rule changes these counts, and must change the number too.
+check((rules95, counted95) == (4, (1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 2, 1, 0, 0)),
+      f"every shape counts as the rule numbered {rules95} counts it: a last entry with no parent, a cycle and a "
+      f"copy of a uuid among them: {counted95}")
 check(rewound(dangling95) == 0 and rewound(inside95) == 1,
       f"a boundary naming an entry the file lacks follows the one before it, and an answer after a boundary "
       f"inside the abandoned branch is under it: {rewound(dangling95)}, {rewound(inside95)}")

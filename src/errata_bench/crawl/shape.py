@@ -314,15 +314,20 @@ def rewound(entries: list[dict]) -> int:
             return None
         return named if named in index else before[i]
 
+    # One entry for each uuid: `once` keeps two that share one but differ (43
+    # in the corpus), and a later copy of a kept message, sitting beside it,
+    # was counted as left with the original's answers under it (review, 10-03).
     children: dict[str | None, list[int]] = {}
     for i, entry in enumerate(entries):
-        if entry.get("uuid") and ("parentUuid" in entry or "logicalParentUuid" in entry):
+        if entry.get("uuid") and index[entry["uuid"]] == i and (
+                "parentUuid" in entry or "logicalParentUuid" in entry):
             children.setdefault(parent_of(i), []).append(i)
 
     # The last entry of the main thread with a place in the tree: a
-    # sub-agent's entry, or one with no parent key, ends no conversation.
+    # sub-agent's entry, one with no parent key, or a later copy of a uuid ends
+    # no conversation.
     last = next((i for i in range(len(entries) - 1, -1, -1) if entries[i].get("uuid")
-                 and not entries[i].get("isSidechain")
+                 and index[entries[i]["uuid"]] == i and not entries[i].get("isSidechain")
                  and ("parentUuid" in entries[i] or "logicalParentUuid" in entries[i])), None)
     kept: set[int] = set()
     at = last
@@ -352,6 +357,10 @@ def rewound(entries: list[dict]) -> int:
         if parent is None:
             continue
         typed_kids = [i for i in kids if typed(i)]
+        # The cheap test first: walking every message off the chain made a
+        # session with two roots cost the square of its length.
+        if not (len(typed_kids) >= 2 or index.get(parent) in kept):
+            continue
         for i in typed_kids:
             if i in kept:
                 continue
@@ -361,7 +370,7 @@ def rewound(entries: list[dict]) -> int:
                     if j not in below:
                         below.add(j)
                         todo.append(entries[j].get("uuid"))
-            if any(answered(j) for j in below) and (len(typed_kids) >= 2 or index.get(parent) in kept):
+            if any(answered(j) for j in below):
                 count += 1
     return count
 

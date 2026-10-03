@@ -238,17 +238,24 @@ async def stage_read(paths: Paths, limit: int, concurrency: int) -> Progress:
     if branched:
         p.notes.append(f"{branched} moments are not read: their session's rows hold an abandoned branch")
     done = already_done(paths.readings)
-    todo = p.cap([m for m in moments if key_of(m) not in done], limit, len(moments))
+    pending = [m for m in moments if key_of(m) not in done]
+    turns = None
+    if not triaged and pending:
+        # Reading the moments themselves: a shell command among them is found
+        # before the cap, or under --max-rows it stood first in line for ever
+        # (review, 10-03).
+        turns = recovered(load_session_turns({m["session_id"] for m in pending}))
+        shell = shell_commands(pending, turns)
+        if shell:
+            pending = [m for m in pending if key_of(m) not in shell]
+            p.notes.append(f"{len(shell)} moments are not read: each is a shell command the developer ran")
+    todo = p.cap(pending, limit, len(moments))
     if not todo:
         p.took_s = time.monotonic() - t0
         return p
 
-    turns = recovered(load_session_turns({m["session_id"] for m in todo}))
-    if not triaged:
-        shell = shell_commands(todo, turns)
-        if shell:
-            todo = [m for m in todo if key_of(m) not in shell]
-            p.notes.append(f"{len(shell)} moments are not read: each is a shell command the developer ran")
+    if turns is None:
+        turns = recovered(load_session_turns({m["session_id"] for m in todo}))
 
     async def one(m):
         try:

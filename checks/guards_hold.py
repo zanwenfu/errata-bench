@@ -14801,10 +14801,18 @@ try:
         append(_pr163.moments, {"session_id": _s163, "turn_number": 7, "repo_id": "acme/up", "kind": "correction"})
     _rpz163 = asyncio.run(_stage_read163(_pr163, 10**9, concurrency=1))
     _read_only163 = list(_asked163)
+    _asked163.clear()
+    _pq163 = Paths(Path(tempfile.mkdtemp()) / "run")
+    for _s163 in ("s-z", "s-y"):
+        append(_pq163.moments, {"session_id": _s163, "turn_number": 7, "repo_id": "acme/up", "kind": "correction"})
+    asyncio.run(_stage_read163(_pq163, 1, concurrency=1))
+    asyncio.run(_stage_read163(_pq163, 1, concurrency=1))
+    _read_capped163 = list(_asked163)
 finally:
     turns_mod.load_session_turns, _tr163.triage, _rd163.read_pushback, _sessions_mod.CORPUS = _keep163d
 check(_capped163[0] == ["s-y", "s-z"] and len(_capped163[1]) == 1 and "said in s-y" in _capped163[1][0]
-      and _read_only163 == ["said in s-y"] and any("shell command" in n for n in _rpz163.notes),
+      and _read_only163 == ["said in s-y"] and any("shell command" in n for n in _rpz163.notes)
+      and _read_capped163 == ["said in s-y"],
       f"a shell command first in line under --max-rows 1 is written down without a model, and the moment behind "
       f"it is triaged next; reading the moments themselves passes over one: {_capped163}, {_read_only163}")
 # Nor located: a viable reading of a listed session, read before the list.
@@ -14862,11 +14870,15 @@ try:
     _scp163 = asyncio.run(_stage_screen163(_pd163, 10**9, concurrency=1))
     append(_pd163.screened, {"session_id": "s-x", "repo_id": "acme/up", "complaint": 7, "screen_passes": 1})
     _bp163 = _stage_build163(_pd163, 10**9)
+    append(_pd163.calibration, {"task_id": "acme-up-7", "sound": True})
+    _bq163 = _stage_build163(_pd163, 10**9)
 finally:
     _sig163.derive, _build163.build, turns_mod.load_session_turns, _sessions_mod.CORPUS = _keep163e
 check(_signed163 == ["defect of s-y"] and any("not signed" in n for n in _sp163.notes)
       and any("not screened" in n for n in _scp163.notes)
-      and _built163 == [[]] and any("not built" in n for n in _bp163.notes),
+      and _built163 == [[]] and any("not built" in n for n in _bp163.notes)
+      and _bq163.failed == 1 and any("abandoned branch; nothing was pruned" in n for n in _bq163.notes)
+      and _rows41(_pd163.calibration),
       f"signature, screening and the build pass over a listed session too: signed {_signed163}, built "
       f"{_built163}")
 check(_located163 == ["said in s-y"] and len(_rows41(_pl163.trajectories)) == 1

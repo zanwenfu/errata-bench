@@ -52,9 +52,9 @@ import errata_bench.find.triage as triage_mod
 from errata_bench.find.answerable import Answerable
 
 # The stages ask the corpus for its list of edited sessions (G-95), which reads
-# `CORPUS`: an empty folder here, so whatever ERRATA_CORPUS names -- a collected
+# `CORPUS`: a folder that does not exist here, as in CI, so whatever ERRATA_CORPUS names -- a collected
 # corpus assembled before the list, say -- neither stops nor steers this run.
-sessions_mod.CORPUS = Path(tempfile.mkdtemp())
+sessions_mod.CORPUS = Path(tempfile.mkdtemp()) / "no-corpus"
 from errata_bench.find.leakage import Leakage
 from errata_bench.find.reading import Reading
 from errata_bench.find.scope import Scope

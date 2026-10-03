@@ -28,6 +28,12 @@ from errata_bench.corpus import turns as turns_mod
 from errata_bench.score import trace as trace_mod
 from errata_bench.score.attempt import Attempt, ToolCall
 from errata_bench.score.judge import Judgement
+
+# The build asks the corpus for its list of edited sessions (G-95), which reads
+# `CORPUS`: a folder that does not exist here, as in CI, so whatever ERRATA_CORPUS names -- a
+# collected corpus assembled before the list, say -- neither stops nor steers
+# this run (review, 10-03).
+corpus.CORPUS = Path(tempfile.mkdtemp()) / "no-corpus"
 from errata_bench.stages import stage_attempt, stage_build, stage_grade
 from errata_bench.store import Paths, load
 # from the code, not a copy: a control added there must appear in every
