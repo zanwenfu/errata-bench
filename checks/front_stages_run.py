@@ -40,6 +40,7 @@ from pathlib import Path
 
 sys.path.insert(0, "src")
 
+import errata_bench.corpus.sessions as sessions_mod
 import errata_bench.corpus.turns as turns_mod
 import errata_bench.find.answerable as answerable_mod
 import errata_bench.find.leakage as leakage_mod
@@ -49,6 +50,11 @@ import errata_bench.find.signature as signature_mod
 import errata_bench.find.trajectory as trajectory_mod
 import errata_bench.find.triage as triage_mod
 from errata_bench.find.answerable import Answerable
+
+# The stages ask the corpus for its list of edited sessions (G-95), which reads
+# `CORPUS`: a folder that does not exist here, as in CI, so whatever ERRATA_CORPUS names -- a collected
+# corpus assembled before the list, say -- neither stops nor steers this run.
+sessions_mod.CORPUS = Path(tempfile.mkdtemp()) / "no-corpus"
 from errata_bench.find.leakage import Leakage
 from errata_bench.find.reading import Reading
 from errata_bench.find.scope import Scope
@@ -147,6 +153,10 @@ async def fake_read_pushback(turns, turn, **kw):
         what_agent_did="added retries and said the tests pass",
         what_user_objected_to="it never checked the backoff fires",
         objection_kind="unverified_claim",
+        pushback_is_the_developers=True,
+        knowable_at_the_failing_turn=True,
+        visible_from_the_repository=True,
+        consistent_with_instructions=True,
         benchmark_viable=True,
         context_sufficient=True,
     )
@@ -155,7 +165,7 @@ async def fake_read_pushback(turns, turn, **kw):
 async def fake_locate(turns, turn, **kw):
     records("locate")
     return Trajectory(
-        request_turn=1, failed_turn=6, complaint_turn=7,
+        request_turn=1, failed_turn=6, complaint_turn=7, objection=True, knowable=True, resolution_fixes_it=True,
         defect="the backoff is never exercised", resolved=True,
         later_turns_are_new_work=False, resolved_turn=9,
         resolution="added the sleep and verified it", rounds=1,
@@ -521,6 +531,28 @@ def main() -> int:
           f"{[(r.get('screen_passes'), 'text_recovered' in r) for r in kept3]}, gates asked "
           f"{CALLED.get('signals_trouble', 0) - asked_before3}x")
     os.environ.pop("ERRATA_RESCREEN_OLD", None)
+
+    # A row the free pre-check set aside (`scripts/prescreen_buildable.py`) is
+    # done at any pass count: read as one pass, `--passes 3` screened every one
+    # again, paying back what the pre-check saved, and the build refused them
+    # all the same (review, 10-03).
+    dp = Paths(Path(tempfile.mkdtemp()) / "run")
+    append(dp.moments, {"session_id": "s-1", "turn_number": 7, "repo_id": "acme/up",
+                        "kind": "correction", "agent_turns_before": 4})
+    for stage in (stage_triage, stage_read, stage_locate, stage_signature):
+        asyncio.run(stage(dp, 10**9, concurrency=1))
+    aside = [{**r, "usable": False, "reason": "set aside before screening, as the build would refuse it: no commit",
+              "prescreened": True, "usage": {}, "screen_passes": 1, "text_recovered": True}
+             for r in load(dp.signatures)]
+    for r in aside:
+        append(dp.screened, r)
+    asked_before_p = CALLED.get("signals_trouble", 0)
+    asyncio.run(stage_screen(dp, 10**9, concurrency=1, passes=3))
+    writes = Path("scripts/prescreen_buildable.py").read_text()
+    check(len(aside) == 1 and load(dp.screened) == aside and CALLED.get("signals_trouble", 0) == asked_before_p
+          and '"prescreened": True' in writes and '"screen_passes": 1' in writes,
+          f"a row the pre-check set aside is not screened again at --passes 3: "
+          f"{len(load(dp.screened))} row(s), gates asked {CALLED.get('signals_trouble', 0) - asked_before_p}x")
 
     # A repair that rewrites the request changes what the candidate is asked: the
     # request and scope gates are asked again on the repaired conversation, not
@@ -1477,6 +1509,21 @@ def main() -> int:
           and "t-undo" in said10j.getvalue(),
           f"a task is not rendered again from other session data than its re-screen read, and nothing changes: "
           f"{elsewhere_rc10}, {said10j.getvalue().strip()[:100]!r}")
+
+    print("\n11. triage reads the end of the conversation with every message whole (G-92)")
+    kept11 = turns_mod.build_excerpt
+    turns_mod.build_excerpt = fake_build_excerpt
+    EXCERPT_KW.clear()
+    d11 = Paths(Path(tempfile.mkdtemp()) / "run")
+    try:
+        append(d11.moments, {"session_id": "s-1", "turn_number": 7, "repo_id": "acme/up",
+                             "kind": "correction", "agent_turns_before": 4})
+        asyncio.run(stage_triage(d11, 10**9, concurrency=1))
+    finally:
+        turns_mod.build_excerpt = kept11
+    check(EXCERPT_KW and all(k == {"record": 2, "whole_messages": True} for k in EXCERPT_KW)
+          and len(load(d11.triaged)) == 1,
+          f"the triage stage asks for its view with every message whole and every cut said: {EXCERPT_KW}")
 
     print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
     for f in FAIL:

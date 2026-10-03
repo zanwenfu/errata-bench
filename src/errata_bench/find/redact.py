@@ -41,7 +41,11 @@ from pydantic import BaseModel, Field
 from ..llm import MODEL, configure_client, resilient, with_field_guide
 
 # The rows `corpus.turns.build_excerpt` shows; every other kind is noise to the candidate.
-SHOWN = frozenset({"user_prompt", "assistant_response", "assistant_thinking", "tool_use", "tool_result"})
+SHOWN = frozenset({"user_prompt", "assistant_response", "assistant_thinking", "tool_use", "tool_result",
+                   "peer_message"})
+# The messages: the developer's, the agent's, and another agent's (G-90). A leak in
+# any of them is one the surveyor can drop or rewrite.
+PROSE = ("user_prompt", "assistant_response", "peer_message")
 
 # How much of each turn the surveyor is shown. A rewrite covers only this much.
 SURVEY_CHARS = 2500
@@ -212,7 +216,7 @@ def carried_by(turns: list[dict], cut_turn: int, quote: str) -> str:
         if (t.get("turn_number") or 0) > cut_turn:
             continue
         body = _fold(t.get("content")) + " " + _fold(t.get("command"))
-        (prose if t.get("turn_type") in ("user_prompt", "assistant_response") else rest).append(body)
+        (prose if t.get("turn_type") in PROSE else rest).append(body)
     if any(needle in body for body in prose):
         return "prose"
     if any(needle in body for body in rest):
@@ -231,7 +235,7 @@ def carrying(turns: list[dict], cut_turn, quote: str) -> set:
     if len(needle) < 12:
         return set()
     return {t.get("turn_number") for t in turns
-            if (t.get("turn_number") or 0) <= cut_turn and t.get("turn_type") in ("user_prompt", "assistant_response")
+            if (t.get("turn_number") or 0) <= cut_turn and t.get("turn_type") in PROSE
             and needle in _fold(t.get("content"))}
 
 
@@ -275,7 +279,7 @@ async def survey(turns: list[dict], cut_turn: int, *, model: str = MODEL, must_s
         t
         for t in turns
         if (t.get("turn_number") or 0) <= cut_turn
-        and t.get("turn_type") in ("user_prompt", "assistant_response")
+        and t.get("turn_type") in PROSE
         and (t.get("content") or "").strip()
     ]
     if not rows:
@@ -294,13 +298,21 @@ async def survey(turns: list[dict], cut_turn: int, *, model: str = MODEL, must_s
     exact = {label(t["turn_number"]): turn_number(t["turn_number"]) for t in shown}
     named = lambda v: exact.get(label(v), turn_number(v))
 
+    who = {"user_prompt": "USER", "peer_message": "ANOTHER AGENT"}
     rendered = "\n\n".join(
         f"[turn {label(t['turn_number'])}] "
-        f"{'USER' if t.get('turn_type') == 'user_prompt' else 'AGENT'}:\n"
+        f"{who.get(t.get('turn_type'), 'AGENT')}:\n"
         f"{(t.get('content') or '')[:SURVEY_CHARS]}"
         for t in shown
     )
     instructions = INSTRUCTIONS
+    # Said only where it applies, so a conversation with no other agent is asked
+    # about in the same words as before.
+    if any(t.get("turn_type") == "peer_message" for t in shown):
+        instructions += ("\n\nTurns marked ANOTHER AGENT are messages to the agent from another agent -- a "
+                         "teammate, a subagent reporting back, another session -- not from the developer. Judge "
+                         "them as you judge the developer's turns: one that tells the agent it got something "
+                         "wrong carries a hint.")
     if request_turn is not None:
         instructions += (
             f"\n\nTurn {label(request_turn)} is the developer's message the next model must answer. Never drop it. "

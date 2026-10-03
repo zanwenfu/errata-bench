@@ -4419,6 +4419,129 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   inlined in the kit). Guard section 60 drives all four scripts' `main`.
   Reverting the shared check alone turns it red on three of them; reverting
   the kit's copy alone, on the fourth.
+- **G-89 · A session that worked in two checkouts has two trees.**
+  *(opened and fixed in the code 10-02, from the review before the rebuild;
+  #16.)*
+  - *What happens.* A worktree is the repository on another branch, with its
+    own files. A session that moves into one before the cut -- Claude Code's
+    `EnterWorktree`, or a `cd` into `.claude/worktrees/<name>` or a hidden
+    `.worktrees/<name>` -- has a tree in each. The replay lays both sets of
+    edits on one tree, and the base comes from the branch it started on.
+  - *Seen.* 3 sessions used `EnterWorktree` and 3 worked in a worktree by
+    `cd` before their cut, among the 48 moments that reached a base.
+  - *Fix.* `build.checkouts_before` refuses such a moment, read from the
+    folder each call ran in (`recover.call_folders`), the files read or
+    written, and the worktree tools. A subfolder of the session's own
+    checkout, a scratch folder and a folder outside the repository are not
+    another checkout.
+- **G-88 · The HEAD check read commits that were not the session's HEAD.**
+  *(opened and fixed in the code 10-02, from the review before the rebuild;
+  #16.)* `printed_heads` took the first commit a `git log` or `git
+  rev-parse` printed for the session's HEAD:
+  - in another worktree, after `cd .claude/worktrees/eng-2189-...`, and in a
+    hidden `.worktrees/reader-provider`;
+  - from `git log --oneline --all --grep=2173`;
+  - from a range ending in `FETCH_HEAD`, read as HEAD because the name ends
+    so;
+  - from `... | xargs git log -1`;
+  - after a `git checkout` or `switch` to another commit, which it did not
+    count as moving HEAD.
+  Each made a "HEAD contradicts the base" rejection that was not one, or
+  would have taken the wrong commit as evidence.
+  - *Fix.* Only from the session's own checkout, as each call's folder
+    places it; only `git rev-parse HEAD`, or `git log` with options that
+    keep HEAD first, a format that opens with the commit's own name, and no
+    revision but HEAD -- no range, since `main...HEAD` lists commits HEAD
+    lacks and an empty `main..HEAD` hands the first name in the output to
+    what prints next; only when everything the command ran before it
+    prints no commit name (a quiet git invocation, `cd`, a name set, an
+    `echo` of literal words) and nothing after it drops its first line
+    (`| tail -1`); and a checkout or switch to another commit, or a commit
+    made with git's own options, moves HEAD. `printed_heads` reads through
+    `start_evidence`, which reads the same over the whole session.
+- **G-87 · The git check flags commands run in another copy of a
+  repository.** *(opened 10-02, from the audit of the Entire build's
+  rejections; fixed in the code 10-02; #16.)*
+  - *What happens.* `tree_changing_git` read every `git checkout` before
+    the cut as changing the session's files, wherever it ran. It did not
+    see a `cd` or a `-C` into another folder.
+  - *The cases.* 2 of the 13 git rejections:
+    - one call ran `cd` into a scratch clone of another repository, then
+      `git checkout <sha>`;
+    - one ran `git -C /tmp/<copy> checkout` in throwaway clones, and `git
+      checkout -q -b <new>`: the exemption for a new branch where HEAD
+      already is read `-b` only as the first word, and `-q` came first.
+  - *Fix.* Each git invocation is read with the folder it ran in: where
+    the transcript says its call ran, then `cd`, `pushd`, `git -C`, a
+    `NAME=value` set before, a subshell that closes. The command is split
+    as the shell splits it, not inside quotes or a heredoc's text, and
+    git's own options (`-c`, `--no-pager`) may stand before its verb. A
+    folder certainly another checkout -- the agent's scratch, /tmp, another
+    worktree -- is not the session's. Any other folder outside where the
+    session began counts, since it may be the same repository: a monorepo
+    session that began in `frontend/` and ran `cd ../backend && git
+    checkout main` was missed by the first version of this fix (the 10-02
+    review). Flags that change nothing before `-b` are skipped; `-f` is
+    not among them.
+- **G-86 · The build's base came from a table that holds only the commits a
+  checkpoint recorded.** *(opened 10-02, from the audit of the Entire build's
+  rejections; fixed in the code 10-02; #16.)*
+  - *What happens.* Both corpora's commit tables hold only commits an Entire
+    checkpoint recorded: Entire's 23,241 of 23,241 rows, SWE-chat's 14,459 of
+    14,459. `base_commit` picked the last of these before the session. A
+    commit made outside Entire, by hand or before Entire was installed, was
+    invisible to it.
+  - *On the Entire runs.* All 6 "no commit exists before the session
+    started" rejections were false: GitHub shows a commit before each
+    session, from 1 hour to 2 months earlier. 3 "tree differs" rejections
+    and the "HEAD printed" one were a stale base.
+  - *Neither commit is a base to assume.* The remote's last commit before the
+    session is not the developer's start either.
+    - nrmeyers-agentalloy-20's first move was `git pull`, printing
+      "Updating 6d93c52..c8a9188". The session started at 6d93c52, the
+      checkpoint's commit. GitHub already held c8a9188, which added the
+      state store whose absence is the task's defect.
+    - On the 48 moments that reached a base, 16 sessions say where they
+      started in a commit the remote holds. That commit was the remote's
+      last before the session 8 times, the checkpoint commit once, both (the
+      same commit) 3 times, and neither 4 times: a checkout sits anywhere on
+      its branch. 23 say nothing; 9 name a commit the remote does not hold.
+  - *Fix.* The base is established, or the moment is refused
+    (`build.base_candidates`, `consistency.start_evidence`,
+    `workspace.history`):
+    1. What the session says, up to its first move of HEAD, before the cut
+       or after it: a HEAD it printed, the commit its first pull or merge
+       says it moved from, the parent of its first commit. The remote must
+       hold it, made before the session began, and not as one of the
+       session's own commits. Either of those means a move this cannot see
+       came first -- a commit it does not recognise, the developer's own
+       terminal -- and the moment is refused.
+    2. The checkpoint commit, when it is also the remote's last commit
+       before the session.
+    3. Otherwise each candidate (the remote's last commit on the session's
+       branch, in its own commits' history, on the default branch, and the
+       checkpoint commit) is built. One is taken only when at least two were
+       built and compared, and it alone fits the conversation, on a line it
+       read or an edit that matched. Candidates whose files are the same,
+       byte for byte, are one.
+    4. Otherwise: "the commit the session started from cannot be
+       established".
+    The remote's history is fetched without trees or files, and each line is
+    walked along its first parents only. A repository's first commit is now
+    fetched like any other. `Task.base_from` says which rule chose the base,
+    and is left out of a task built before.
+  - *v1, measured 10-02 (read-only, no trees built).* Of its 55 tasks:
+    - 27 bases are confirmed: by a printed HEAD (12), by the checkpoint
+      commit being the remote's last (9), or by the first commit's parent (6);
+    - 6 differ from the start the session gives: 135yshr-savanna-vet-go-28,
+      entireio-cli-163, hutusi-amytis-15, -18 and -349,
+      shunkakinoki-dotfiles-98;
+    - 6 sessions give a start that cannot be used: one of their own commits
+      (2), made after they began (2), or not on the remote (2);
+    - 16 say nothing, and their checkpoint commit and the remote's last
+      commit before the session differ, by up to 112 commits
+      (shunkakinoki-dotfiles-49). Whether their files single one out was
+      not measured.
 - **G-83 · A repair removed the developer's request itself.** *(opened and
   fixed in the code 09-30, found by an independent review; #17.)* When the
   leak gate finds that a conversation gives away the agent's failure, the
@@ -4480,12 +4603,13 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
   cut.)* A frozen release is now screened again on the conversation each
   candidate is shown (`scripts/rescreen_release.py`).
 - **G-80 · A copy of a repository takes over its sessions in the Entire
-  corpus.** *(opened 09-30; #16.)* A repository copied from entireio/cli
-  under another account, not a GitHub fork and created 6 September, kept
-  entireio/cli's `.entire/settings.json`, which names Entire's checkpoint
-  repository. The collector reads a repository's own checkpoints and those of
-  the checkpoint remote its settings name, so it collected entireio/cli's
-  sessions a second time under the copy.
+  corpus.** *(opened 09-30; fixed 09-30, the 07:0x entry; #16.)* A
+  repository copied from entireio/cli under another account, not a GitHub
+  fork and created 6 September, kept entireio/cli's `.entire/settings.json`,
+  which names Entire's checkpoint repository. The collector reads a
+  repository's own checkpoints and those of the checkpoint remote its
+  settings name, so it collected entireio/cli's sessions a second time under
+  the copy.
   - *In the corpus.* Each session is written once, but the tie-break (the
     first repository in name order keeps a session unless only a later one
     holds its trailer) left 1,512 of the 2,359 shared Claude Code sessions
@@ -4500,8 +4624,71 @@ the matching `B`/`A` entry and moves here to *closed* with its commit.
     owner discovery already names for its commits (the earliest-created
     non-fork); a check with a copied-settings fixture, shown failing when the
     fix is reverted; re-assemble the corpus.
+  - *Fixed 09-30* (the 09-30 07:0x entry, and the two commits before it).
+    A shared session goes, by its links first, to a holder whose commits
+    carry its latest checkpoint's trailer, else an earlier checkpoint's,
+    else any holder; among those, to the first by discovery's rank (not a
+    fork, then earliest created, then by name), each holder judged by its
+    own copy.
+    Re-assembled: 1,512 sessions moved from the copy to entireio/cli, and 1
+    from entireio/entire-graph; nothing else changed.
   - *How it was found.* Comparing the crawl with entire.io's own session
     lists (09-30, 04:4x).
+- **G-84 · The collector writes a message typed while the agent was busy
+  twice.** *(opened 10-01; #16.)*
+  - *How it happens.* Claude Code writes such a message to a queue entry,
+    and newer versions write it again when it is delivered: as the
+    developer's own entry, or as a `queued_command` attachment. The collector
+    makes a developer row from the queue entry, so that a message written
+    nowhere else is kept (the 09-29 round trip). It also makes a row from the
+    delivered copy.
+  - *How often.* In the raw transcripts, 48,043 of 65,905 queued messages
+    (73%) are delivered as well: 32,327 as the developer's entry and 16,090
+    as an attachment, 374 of them as both. 17,862 are written only to the
+    queue.
+  - *In the corpus.*
+    - 18.9% of developer messages over 30 characters repeat an earlier one in
+      their session; SWE-chat's rate is 7.2%.
+    - Within 10 turns of the first copy the collected corpus has 7,358
+      repeats, and SWE-chat 347. SWE-chat recorded the queue as bookkeeping
+      rows ("enqueued", "delivered") with one developer row, so v1 is not
+      touched.
+    - In the 10-01 pilot, 51 of 286 labelled messages repeat an earlier one.
+  - *What it touches.*
+    - Every stage's view of a conversation: the developer seems to say the
+      same thing twice.
+    - Labelling, which pays for each copy.
+    - Which turn is a moment, and its context.
+  - *Fix (proposed).* Keep the queue entry's row only when the message is
+    not delivered later in the same transcript, and keep one row for one
+    delivered twice. Then a check, shown failing when the fix is reverted,
+    and the corpus re-assembled before the full labelling run. Labels are
+    keyed by turn, and the fix moves turns.
+- **G-85 · A transcript can hold a session's history twice, and a call can be
+  re-sent under its id.** *(opened and fixed 10-01, the 04:2x entry; #16.)*
+  - *How it was found.* The session fixing #17 found 16 calls written twice in
+    one SWE-chat-shaped session.
+  - *How often, on the collected corpus.* 7,569 tool calls were written more
+    than once (11,064 extra rows), in 34 sessions. SWE-chat's own table has 887
+    such calls, in 562 sessions.
+  - *The cause.* In 42 transcripts, the history is written into the file
+    again partway through: 36,036 entries under the uuid they already had,
+    8,859 of them the developer's turns.
+    - The copy refreshes the entry's bookkeeping (gitBranch, slug, cwd,
+      promptId, version) but says the same, in 35,993 of the 36,036.
+    - Separately, 1,073 calls were re-sent under new entries with the id of one
+      already written.
+  - *What it touched.*
+    - Every row after the replay was there twice: calls, results, agent text,
+      and the developer's messages, which labelling would pay for twice.
+    - A build replays a session's edits from its calls, so it would have
+      replayed some twice.
+  - *Fixed 10-01.* `crawl/shape.py`:
+    - `once` leaves out an entry when an earlier one has its uuid and says the
+      same;
+    - a call whose id is already written, and its result, are written once.
+    - `crawl_holds` section 5 holds both. Against SWE-chat's rows (300
+      sessions) nothing changes.
 - **G-79 · The table keeps only the last block of each assistant message, so
   the agent's text before a call is lost.** *(opened 09-29;
   `scripts/lost_text_blocks.py`; fixed in the code 09-30, `recover.with_text`;
@@ -10383,9 +10570,12 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     - GitHub marked 19 of the 131 slices read as possibly incomplete.
   - *Fetch, link and assemble on the run VM,* at 00d045010, about 45
     minutes.
-    - Fetch: 282 repositories with checkpoints, 154 with none, 12,494
-      sessions (26.7 GB). 1,511 imported sessions and 355 with no transcript
-      were left out.
+    - Fetch: 282 repositories with checkpoints, 154 with none, ~~12,494
+      sessions~~ **12,494 copies of 9,442 sessions** (26.7 GB) *(corrected
+      09-30: a session is fetched once for each repository whose settings
+      name its checkpoint repository, and 3,052 copies were a second one;
+      G-80)*. 1,511 imported sessions and 355 with no transcript were left
+      out.
     - Link: 282 repositories, with their trailer commits and patches.
     - The corpus (`data/entire/corpus/` on the VM, SWE-chat's six tables):
       6,464 Claude Code sessions from 203 repositories, 24,758 checkpoints,
@@ -10512,6 +10702,97 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     dataset version; the working copies are unchanged), then the paid steps,
     each priced first: the leak gate over each conversation whole (G-81) and
     the judge's admission, then a pilot.
+- **09-30, 07:0x UTC** — **G-80 fixed: a session several repositories hold is
+  credited to its original, and the Entire corpus re-assembled (#16).** Done
+  in the Entire session's own worktree and branch, beside #17's work.
+  - *The rule* (`crawl/corpus.py`, `assemble`). Every repository whose
+    settings name one checkpoint repository is given all of its sessions.
+    - Such a session is credited by its links first: to a holder whose
+      commits carry the trailer of its latest checkpoint, else of an earlier
+      one, else to any holder.
+    - Among those, it goes to the first by discovery's rank: not a fork, then
+      earliest created, then by name (`discover.rank`, now shared with
+      `owners()`, whose results are unchanged).
+    - Each holder is judged by its own copy, and that copy is the one
+      written.
+
+    Before, name order decided unless only a later holder's commits carried
+    the latest checkpoint's trailer. The copy of entireio/cli carried the
+    copied trailers and sorted first.
+  - *The check* (`checks/crawl_holds.py` section 7, 9 checks). Eight code
+    repositories and one checkpoint repository with seven sessions. Among
+    them:
+    - the original, and two copies of it, trailers and all, that sort
+      first, one of them with no metadata;
+    - a repository renamed since search found it, and a 404 metadata row;
+    - a session only a fork links;
+    - one linked only by an earlier checkpoint;
+    - one linked by a newer holder's latest checkpoint and an older holder's
+      earlier one;
+    - one a repository also holds in its own refs.
+
+    The old rule fails 5 of the 9 checks. 13 single-piece mutants, each with
+    a fresh bytecode cache, were all caught. All six offline suites pass with
+    no corpus, on the fix alone and rebased onto main.
+  - *Reviewed* by an independent read-only agent after the first commit
+    (a96cf9d36 before its rebase). Nothing was blocking. It found:
+    - three wrong implementations the check would have passed: a missing
+      creation date ranking first, metadata rows without a full name read,
+      and fork status placed ahead of linkage;
+    - an overclaim: "a copy is never credited".
+
+    The second commit covers the three and corrects the wording. The
+    review's note that only the latest checkpoint was read became the
+    earlier-checkpoint tier.
+  - *What the rule still gets wrong, by construction.* A copy is credited
+    over its original when the original is a GitHub fork, or has no creation
+    date on record. Neither occurs today: none of the 436 selected
+    repositories is a fork or undated, and no discovered commit changes
+    owner without the fork rule (87,380 trailer-commit rows checked).
+  - *Re-assembled on the run VM* at f5240e1c3, about 6 minutes: the second
+    commit before its rebase, its crawl code byte for byte the one committed.
+    The pre-fix corpus is kept beside it as `corpus.pre-g80`.
+    - The same 6,464 sessions and transcripts, and the same counts left
+      out: 3,052 second copies, 2,970 other agents' sessions, 8 with no
+      developer message.
+    - 1,513 sessions credited anew: 1,512 from the copy to entireio/cli, and
+      1 from entireio/entire-graph to entireio/cli. No other session's
+      repository changed.
+    - entireio/cli goes from 847 sessions to 2,360. The copy leaves the
+      corpus: 202 repositories (was 203), 24,720 checkpoints (24,758) and
+      23,241 commit rows (27,243).
+    - Two moved sessions keep their transcripts byte for byte but list more
+      checkpoints, 15 for 14 and 12 for 6: entireio/cli's fetch saw more of
+      the live checkpoint repository's refs.
+    - The entire-graph session spans two repositories:
+      - entire-graph's own refs hold 2 of its checkpoints (35 MB of
+        transcript);
+      - Entire's checkpoint repository holds 29 (51 MB), and entireio/cli's
+        commits link them;
+      - the old rule, judging the later holder by the earlier holder's
+        checkpoint, credited entire-graph;
+      - it now goes to entireio/cli, the older holder whose commits link
+        it, with its fuller copy: 431 developer messages for 350, and 4,023
+        more conversation rows.
+    - The first commit's corpus (at a96cf9d36) and the reviewed one are
+      identical: the earlier-checkpoint tier moves no session today.
+  - *Whose copy is written.* 2,397 sessions are held by several
+    repositories. 39 of them come from more than one source, and 3 have
+    differing transcripts. The credited copy is never shorter than another
+    holder's.
+  - *As committed,* `scripts/crawl_corpus_stats.py` on the re-assembled
+    corpus, the rerun the 02:5x entry asked for.
+    - Of the 4,140 new sessions, 3,213 are in a sandboxable language, from
+      139 repositories, with 47,538 developer messages.
+    - The 04:4x entry's 3,212 and 47,107 credited only the copy's sessions
+      to entireio/cli. The entire-graph session (C there, Go in
+      entireio/cli) is the difference.
+    - entireio/cli now holds 1,310 of the new sessions; the next four hold
+      146, 119, 116 and 107. The per-repository cap matters more than it
+      did.
+  - *Next (#16):* record each session's model beside the corpus; commit the
+    check against entire.io's lists; then pushback labelling, which waits for
+    a cost estimate and an OK.
 - **09-30, 07:4x UTC** — **G-81 fixed; the put-back text made safe on every corpus;
   `resilient` reads a status by its code (#17).**
   - *G-81.* Screening's scope and leak gates, and the repair's re-check, now
@@ -10698,6 +10979,478 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     now does, v1.1's state), the README rewritten research-first on the
     model of the website (the problem, the approach, how it is evaluated,
     then how to run it).
+- **10-01, 00:5x UTC** — **The pushback labeller's calibration, registered before
+  any model is asked (#16, step 7).**
+  - *What runs.* gpt-5.6-luna, at low reasoning effort, labels 453 of SWE-chat's
+    own developer messages under SWE-chat's codebook (its paper's Appendix
+    E.2.4), shown what triage shows of each.
+    - The sample, seed 0: 100 each of SWE-chat's non_pushback, correction and
+      failure_report, 60 rejection and 40 takeover (398 once the overlaps go).
+    - Also the 55 moments v1's tasks were built from, all real complaints.
+  - *Why a small model, and only one.*
+    - The pipeline reads the label only as pushback or not: `run.py`'s
+      `PUSHBACK_KINDS`. Its kind is read by nothing after `find_moments`; a
+      task's `kind` is the signature's present, introduced or none.
+    - SWE-chat labelled its corpus with a 9B model.
+    - gpt-5.6-luna is not one of the six models v1 scores. It is on Azure
+      credits, and its deployment allows 1,000 requests and 1M tokens a minute.
+    - The calibration checks one model against labels already held; it is not
+      a comparison. A stronger model, gpt-6.1-sol, is tried only if this one
+      fails: alone, on the same sample, under the same rules.
+  - *The pass rules.* All must hold, and none changes after the labels are seen:
+    1. no row failed, and every message has an answer. A request the content
+       filter refuses is counted, and counts as not called;
+    2. at least 50 of the 55 v1 task moments are called pushback;
+    3. at least 85% of SWE-chat's sampled failure_report messages are called
+       pushback;
+    4. agreement with SWE-chat's labels on pushback or not, reweighted to how
+       often each occurs, is at least 70%.
+  - *Why 70%, not the 75% proposed on 09-30.*
+    - SWE-chat's labeller is about 79% right on pushback or not, by its
+      paper's validation.
+    - So a labeller right 90% of the time, with errors independent of its,
+      agrees with it about 73% of the time. 75% could fail a good labeller.
+    - Calling nothing a pushback scores 58%.
+  - *Cost.* $0.56 at list price ($0.20 / $1.20 per 1M tokens) if each answer
+    writes 500 tokens, before any cache. Capped at $1 by `--max-usd`, which now
+    also stops a run mid-way.
+  - *Code.* The three commits before this entry:
+    - the labeller asks with an effort, records it, keeps one model per file,
+      and keeps a filtered request rather than asking it forever;
+    - its report says whether these rules pass;
+    - gpt-6-sol's price is corrected. Tallies of its calls made before were
+      five times its listed rate.
+    Six CI suites pass.
+- **10-01, 01:0x UTC** — **The calibration fails one rule. gpt-5.6-luna calls
+  78.6% of SWE-chat's failure reports pushback, against 85% (#16).**
+  - *Result.* 453 answered; none failed and none was filtered.
+    - Passed: 55 of 55 v1 task moments called pushback, and agreement on
+      pushback or not, reweighted, of 80.0%.
+    - Failed: SWE-chat's failure reports, 77 of 98 called pushback (78.6%).
+    - Also reported: four-class agreement 61.7%. Called pushback, by SWE-chat's
+      label: non_pushback 12%, correction 68%, rejection 70%, takeover 10%.
+    - Cost and speed: $0.33 at list price. Per answer 3,194 tokens in and 78
+      out, 24 of them reasoning. 282 answers a minute at concurrency 8.
+  - **Not a pass, and no rule changes.**
+  - *Diagnosis, after the verdict.* 13 of the 98 failure reports are messages
+    nobody typed. Most are Claude Code's notice that a background task
+    finished (`<task-notification>`), which SWE-chat's labeller called a
+    failure report, often for the word "failed". gpt-5.6-luna called 1 of
+    the 13 pushback, and 76 of the other 85 (89.4%).
+  - *Across SWE-chat,* of the 58,745 messages `to_label` takes:
+    - 2,824 open with `<task-notification>`. Each is the notice and Claude
+      Code's one line after it ("Read the output file to retrieve the
+      result" or "Full transcript available at"), and none has anything typed.
+      SWE-chat's labeller called 612 of them (22%) pushback.
+    - Command output opens 169 more: `<bash-stdout>` (151, always followed by
+      its `<bash-stderr>`), `<local-command-stderr>` (14) and
+      `<local-command-stdout>` (4).
+  - *Next, the user's choice between:*
+    - the registered fallback: gpt-6.1-sol on the same sample, under the same
+      rules;
+    - an amendment: `to_label` skips Claude Code's own notices and output, as
+      it skips interruptions and continuation summaries, and gpt-5.6-luna is
+      calibrated again on a fresh sample, under the same rules.
+- **10-01, 01:4x UTC** — **Amendment after the failed calibration: Claude Code's
+  own messages are not labelled, and gpt-5.6-luna is calibrated again on a
+  fresh sample (the user's choice) (#16).**
+  - *What changes.* `to_label` no longer takes a message that is only Claude
+    Code's own.
+    - That is one or more blocks opening `<task-notification>`,
+      `<bash-stdout>`, `<bash-stderr>`, `<local-command-stdout>` or
+      `<local-command-stderr>`, each with the one line Claude Code writes
+      after a notice.
+    - A message holding anything else, typed after the blocks or between
+      them, is still labelled.
+    - On SWE-chat this skips 2,993 of the 58,745 messages and no other: 2,824
+      notices and 169 command outputs.
+  - *Why this is not fitting the rules to the result.* Nobody typed these
+    messages, so none of them can be a developer pushing back, whatever any
+    labeller calls it. The full run also stops paying to label them.
+  - *What stays the same.* gpt-5.6-luna at low effort; the four rules and
+    their thresholds; 100, 100, 100, 60 and 40 messages by SWE-chat's label;
+    and the same 55 v1 task moments.
+  - *What is new.*
+    - A fresh draw with seed 1 from the amended pool: 455 messages from 406
+      sessions, in a file of its own.
+    - The first run's file is kept, and its fail stands.
+    - Estimate $0.34 at list price, capped at $1.
+- **10-01, 01:5x UTC** — **The amended calibration fails the same rule: 82 of
+  SWE-chat's 100 sampled failure reports called pushback, against 85% (#16).**
+  - *Result.* 455 answered; none failed and none was filtered.
+    - Passed: 55 of 55 v1 task moments, and 74.6% agreement on pushback or
+      not, reweighted.
+    - Failed: failure reports, 82%.
+    - Also reported: four-class agreement 61.1%. Called pushback, by SWE-chat's
+      label: non_pushback 19%, correction 64%, rejection 68%, takeover 10%.
+    - Cost and speed: $0.33 at list price, 283 answers a minute.
+  - **Not a pass, and no rule changes.**
+  - *The 18 failure reports called non_pushback, as read after the verdict:*
+    - 5 were not typed by a developer: skill text Claude Code loaded, a
+      sub-agent's review delivered as the user's turn, an app's attachment
+      wrapper, and a harness's "summarize and continue";
+    - 5 are new requests about problems the agent did not cause, such as an
+      account's free-tier limit;
+    - 6 are questions, such as "what's the accuracy so far?";
+    - about 2 read as complaints missed: "are we caught in a loop or will the
+      next release candidate actually work?", and one saying the developer
+      had just hit problems.
+  - So SWE-chat's failure-report label is often not a failure report by its
+    own codebook, and rule 3 measures agreement with that noise as much as
+    recall. The rule nearest what the pipeline needs, v1's verified complaint
+    moments, passed 55 of 55 in both runs.
+  - *Next, the user's choice* between:
+    - the registered fallback, gpt-6.1-sol on this sample under the same rules;
+    - a cleaner answer key;
+    - proceeding with gpt-5.6-luna as a recorded deviation.
+- **10-01, 02:0x UTC** — **The answer key becomes our own triage (the user's
+  choice), and the triage check is registered before it runs (#16).**
+  - *Why.* Two calibrations found SWE-chat's labels too noisy to be the
+    answer key. The pipeline's first filter, triage, already re-read every
+    moment SWE-chat flagged and decided whether the developer objects to work
+    the agent did: gpt-6-astra, its instructions unchanged since 09-17.
+  - *The key.* 3,943 moments from the `triaged.jsonl` of 12 runs, copies left
+    out.
+    - 1,581 are pushback: the agent had acted and the developer objects to
+      that work.
+    - 2,362 are not pushback.
+    - Left out: 89 moments where the agent had not acted, and 1 that two runs
+      judged differently. All 55 v1 moments are pushback.
+  - *The sample,* seed 0: 300 pushback and 150 not pushback, plus the 55 v1
+    moments, which take in 8 of the 300.
+    - That is 497 moments, of which 487 are labelled. The other 10 are Claude
+      Code's notices, which `to_label` now skips.
+    - 4 of those 10 are triage pushbacks, and they count as missed.
+  - *The rules.*
+    1. no row failed;
+    2. at least 90% of triage's sampled pushbacks are called pushback, a
+       skipped one counting as missed;
+    3. at least 50 of the 55 v1 moments are called pushback.
+    - Reported but not a rule: the share of triage's non-pushbacks called
+      pushback. Each costs one more triage call in the full run.
+  - *What a result changes.* The model stays gpt-5.6-luna at low effort
+    whatever this shows (the user's choice). A fail means reading the misses
+    for a pattern before the full run.
+  - *Then* a pilot on part of the Entire corpus. Every message labelled
+    pushback is read by hand for any that is not one.
+  - *Cost.* Estimate $0.38 at list price, capped at $1.
+- **10-01, 02:0x UTC** — **The triage check passes: gpt-5.6-luna calls 95.2% of
+  triage's pushbacks pushback (#16).**
+  - *Result.* 487 answered; none failed and none was filtered.
+    - Triage's sampled pushbacks: 278 of 292 called pushback, 95.2% (rule:
+      90%). The 14 missed include the 4 Claude Code notices `to_label` skips.
+    - v1 task moments: 55 of 55.
+    - Triage's non-pushbacks called pushback: 62 of 150 (41%). These are
+      moments SWE-chat flagged and triage turned away; in the full run each
+      costs one triage call more.
+    - Cost and speed: $0.35 at list price. Per answer 3,328 tokens in and 73
+      out. 260 answers a minute at concurrency 8, read in three batches.
+  - **Passed.** Next is the pilot on the Entire corpus, its pushbacks read by
+    hand.
+- **10-01, 02:2x UTC** — **The Entire pilot, read by hand. G-84 opened: the
+  collector writes a queued message twice (#16).**
+  - *The pilot.* gpt-5.6-luna at low effort labelled every message of 20
+    Claude 5 sessions drawn with seed 0 (`label --sessions 20`): 286
+    messages, $0.20.
+    - It called 143 pushback: 134 corrections, 5 failure reports and 4
+      rejections.
+  - *The 143, each read with the agent's turn before it:*
+    - about a third object to the agent's work, such as "You should have
+      pushed into this folder/repo/branch", "still failing", or "We need
+      JUST ONE CALL to initRootLogging";
+    - about a third are feedback while iterating, such as a long naming
+      session ("scout or ranger seems better");
+    - about a third are not pushback: instructions, answers to the agent's
+      questions, new tasks. The codebook's correction includes "changing
+      requirements/direction/scope mid-task".
+    - 12 were not typed by the developer: 9 messages from another Claude
+      session (`<cross-session-message`), 2 skill texts ("Base directory for
+      this skill") and 1 screenshot alone.
+    - 27 repeat an earlier message in their session (G-84).
+  - *The 143 called non_pushback.* Few misses: mostly challenging questions
+    ("why do we need X?"), which the codebook calls non_pushback, and one to
+    three that read as soft failure reports.
+  - *So* recall is as the triage check found. A label of pushback is a
+    candidate, not a finding: triage turned away 60% of what SWE-chat
+    flagged, and this labeller flags 41% of what triage turns away.
+  - *Before the full run:*
+    - fix G-84 and re-assemble;
+    - leave unlabelled the messages another Claude session sent, and skill
+      texts, as Claude Code's own notices are left;
+    - the user's choice whether the labeller asks SWE-chat's codebook or
+      triage's own question.
+- **10-01, 02:4x UTC** — **The labeller asks our own triage's question (the
+  user's choice); the triage check is registered again for it. G-84 fixed and
+  the corpus re-assembling (#16).**
+  - *The question.* The user's reasoning: with SWE-chat, its labels flagged
+    candidates and our own filter decided which were real pushbacks, so here
+    too the reference is our own filter.
+    - The labeller asks `find.triage`'s instructions, imported so the two
+      cannot drift, about triage's view: the rendering's last 9,000
+      characters, ending with the message.
+    - It also names the kind of objection in SWE-chat's words, so `run.py`'s
+      kinds still find the moments.
+    - Label: the kind when the agent had acted and the message objects to
+      that work, else non_pushback.
+    - It no longer asks about what another Claude session sent, or a skill's
+      text as it loads.
+  - *The check.* The same 497 moments as the 02:0x check (seed 0) and the same
+    rules, so the two questions are compared on the same moments:
+    1. no row failed;
+    2. at least 90% of triage's sampled pushbacks called pushback, a skipped
+       one counting as missed;
+    3. at least 50 of the 55 v1 moments.
+    - Reported: triage's non-pushbacks called pushback (the codebook: 41%).
+    - 483 are asked. Estimate $0.35, capped at $1, into a file of its own.
+  - *A difference the key cannot remove.* Triage gave its verdicts from 09-17
+    to 09-24, on renderings made before G-79's agent text was put back. The
+    labeller reads today's rendering of the same moments.
+  - *G-84 fixed* (`crawl/shape.py`).
+    - A queued message is paired with its delivered copy, one to one, and the
+      delivered copy is its row.
+    - Against SWE-chat's own rows (300 sessions), messages held more times in
+      ours fell from 191 to 2, and none of SWE-chat's went missing.
+    - `crawl_holds` section 5 holds the rule. Each of its 5 pieces, broken
+      alone, fails it.
+    - The corpus is re-assembling on the VM from 02:49 UTC. The old one is
+      kept as `corpus.pre-g84`, and the codebook pilot's labels as
+      `labels.codebook-pilot-1001.jsonl`.
+- **10-01, 02:5x UTC** — **Triage's question, asked by gpt-5.6-luna, fails the
+  triage check: 84.6% of triage's pushbacks caught, against 90% (#16).**
+  - *Result.* 483 answered; none failed and none was filtered.
+    - Triage's pushbacks called pushback: 247 of 292, 84.6%. The 45 missed
+      include the 4 Claude Code notices.
+    - v1 moments: 52 of 55.
+    - Triage's non-pushbacks called pushback: 17 of 150 (11%).
+    - Cost and speed: $0.37 at list price. Per answer 3,201 tokens in and
+      109 out. 227 answers a minute.
+    - **Not a pass.**
+  - *Compared on the same moments with the codebook (02:0x),* which caught
+    278 of the 292 and flagged 62 of the 150:
+    - of the 44 triage pushbacks this question missed, 42 are "does not
+      object". gpt-5.6-luna read requests for more changes and pointed
+      questions as no objection, where gpt-6-astra read them as one;
+    - the codebook caught 38 of the 44. This question caught 4 the codebook
+      missed;
+    - of the 3 v1 moments missed, two were read as a further request and one
+      as a new question.
+  - *So,* as a first filter, triage's own question is stricter than triage
+    itself, and loses one real pushback in seven. The codebook loses one in
+    twenty, and triage turns away its false flags at one call each, as it did
+    SWE-chat's. The choice of question goes back to the user.
+- **10-01, 02:5x UTC** — **The corpus re-assembled with G-84's fix, and
+  compared with the one before (#16).** The re-assembly ran from 02:49 to
+  02:55 UTC on the VM.
+  - *What changed.*
+    - The summary is the same as before: 6,464 sessions, 202 repositories,
+      24,720 checkpoints, 23,241 commit rows, and the same sessions left out.
+    - Repositories, checkpoints, commits and session logs are identical. In
+      sessions only `prompt_count` changed.
+    - Conversations: 4,600,192 rows to 4,561,932. That is 11,018 developer
+      rows and 27,242 injected ones gone, the latter Claude Code's queued
+      notices delivered the same way, and none new.
+    - Every session keeps its other rows in order, numbered from 0 without a
+      gap.
+  - *Repeats.* Developer messages over 30 characters that repeat an earlier
+    one in their session:
+
+    | | before | after | SWE-chat |
+    |---|---|---|---|
+    | share of all | 18.9% | 10.5% | 7.2% |
+    | within 10 turns | 7,358 | 420 | 347 |
+    | 11 to 50 turns | 1,064 | 614 | 454 |
+    | over 50 turns | 7,114 | 6,782 | 2,868 |
+
+    Those far apart are of the same kinds in both corpora: monitoring loops
+    ("Check all running experiments…"), reused prompts, interruption
+    markers, and commands or skills loaded again. Entire's users use more
+    of them.
+  - *To label.* The Claude 5 sessions now hold 17,084 messages to label,
+    22,098 before the fix and the 10-01 skips. Of them, 37 are a hook's
+    text ("Stop hook feedback:", 36), to be skipped with the next labeller
+    change.
+- **10-01, 03:4x UTC** — **The labeller asks SWE-chat's codebook again (the
+  user's choice), as a first flag that our triage then decides on. The pilot
+  is registered for the re-assembled corpus (#16).**
+  - *The choice.* With SWE-chat, its labels flagged candidates and our triage
+    decided. Here the codebook flags and triage decides. The codebook caught
+    95.2% of triage's pushbacks, and triage's own question as a first filter
+    84.6%.
+  - *The labeller now.*
+    - gpt-5.6-luna at low effort, asked the codebook word for word, the same
+      asking path that passed the 02:0x check.
+    - It skips what no one typed: interruptions, continuation summaries,
+      Claude Code's own notices and output, a message another Claude session
+      sent, a skill's text as it loads, and a Stop hook's feedback.
+    - Recomputed under these skips, the 02:0x check still passes. 4 of its
+      moments are now skipped, all triage non-pushbacks; 278 of 292 pushbacks
+      are caught, 55 of 55 v1 moments, and 61 of 150 non-pushbacks flagged.
+  - *The pilot,* on the corpus re-assembled for G-84.
+    - The same draw as before: 20 Claude 5 sessions, seed 0, into a fresh
+      `labels.jsonl`. The earlier one was moved to
+      `labels.codebook-pilot-1001.jsonl`, since G-84 moved its turns.
+    - Each message called pushback, and those called non_pushback, read by
+      hand.
+    - Then an end-to-end check: a scratch assembly with these labels, and
+      `run.py`'s `find_moments` reading it.
+    - Estimate about $0.20.
+- **10-01, 03:5x UTC** — **The pilot on the re-assembled corpus, read by hand,
+  and the labels carried through to moments (#16).**
+  - *The pilot.* The same 20 sessions. 224 messages, down from 286 with G-84's
+    copies and what no one typed gone; $0.15.
+    - Called pushback: 109 (102 corrections, 5 failure reports, 2 rejections).
+    - Every row records the codebook, and every digest matches its message.
+    - No skill text, other session's message or hook feedback was asked
+      about.
+    - 5 repeats are left, each said again by the developer hundreds of turns
+      later: "ship it" four times, "what about now ?", and a `pwd`.
+  - *By hand.*
+    - All 27 clear objections found in the first pilot were called pushback
+      again.
+    - The other 82 flags are feedback while iterating, or not pushback:
+      instructions, answers, questions. Triage is there for those.
+    - Run to run, 206 of the 224 calls agree on pushback or not. The 18 that
+      changed are all borderline: questions, suggestions, and one command's
+      expanded instructions.
+  - *End to end, on a scratch assembly with these labels* (the real corpus
+    untouched):
+    - all 224 labels were put on their messages;
+    - as stored in `prompt_pushback` they match the labels file, label and
+      digest, on developer rows only and nowhere else;
+    - `run.py moments` drew 12 moments, in both its first and its later mode,
+      each at a labelled pushback of its kind. Counted independently, the 12
+      are the sessions whose first pushback has 3 or more agent rows before
+      it. The other 2 sessions with a pushback have 0 and 2.
+  - *Checks.* The six CI suites pass on the branch.
+  - *The full run, estimated for free.* 16,824 messages beyond the pilot, at
+    $12.75 at list price. That is about 65 minutes at the measured 260
+    answers a minute.
+- **10-01, 04:2x UTC** — **An independent review of the branch before the full
+  run, its findings fixed, and G-85 opened and fixed (#16).**
+  - *The review.* A read-only agent, with the reviewer's own scripts and a
+    stand-in for the model. Nothing it found would have put a wrong label on a
+    row in a run made then. Four defects:
+    1. *Resume ignored the digest.* After a re-assembly that moved turns, a
+       message at a turn holding another text's row was never asked: 9 of 56
+       in the reviewer's one-row shift.
+       - A row now counts as answered only for the message's current digest,
+         in `label_turns` and the script's estimate.
+       - After the same shift, every moved message is asked again: 0 stale,
+         0 never asked.
+       - Assembly counts a label whose turn holds no developer message,
+         rather than dropping it unseen.
+    2. *G-84 missed queued slash commands.* A command is queued as typed and
+       delivered as Claude Code's command form: in all 5 sessions of the
+       reviewer's fixture that had one.
+       - `as_typed` now matches them by name and arguments.
+       - A delivery whose prompt is content blocks keeps its queue row, and
+         takes it out of waiting.
+       - Against SWE-chat's rows: 12 fewer rows, nothing else changed.
+    3. *Nothing stopped two runs over one file,* which would pay twice. The run
+       now holds `store.rows.only_one`; a second is refused before it asks
+       anything.
+    4. *Pairing goes by text,* so in a version that writes only the queue, a
+       later identical message can take an earlier one's place. Documented,
+       and not seen against SWE-chat's rows.
+    - Minor: d40_spend's docstring; the script's examples and where to run it
+      from; the estimate is low for Chinese, Japanese and Korean text, where
+      the spend cap holds.
+  - *Still uncovered:* no check covers the labeller itself. Attempts to write
+    one were stopped by Claude's own safety filter, three times. It has been
+    tried by hand: stand-ins, the reviewer's scripts, and real runs.
+  - *G-85* (above): an entry written into its transcript again is read once,
+    and a call re-sent under its id is one call.
+  - The six CI suites pass. The corpus is next re-assembled with both fixes,
+    the pilot resumed (only the messages whose text moved are asked again),
+    and the end-to-end check run again.
+- **10-01, 05:1x UTC** — **Ready for the full labelling run: the corpus
+  re-assembled with the review's fixes and G-85's, and every check run again on
+  it (#16).**
+  - *The re-assembly.* 04:23 to 04:28 UTC on the VM; the one before is kept as
+    `corpus.pre-g85`.
+    - Repositories, checkpoints, commits and session logs are identical. In
+      sessions only the call and prompt counts changed.
+    - Conversations: 4,561,932 rows to 4,519,861, none new. Among the rows
+      gone are 11,064 calls, exactly the copies counted before, and 733
+      developer rows.
+    - Calls written more than once: 0, from 7,569. Every session is in order
+      and numbered without a gap.
+    - Developer messages repeating an earlier one: 10.2%.
+    - All 224 pilot labels were put on their messages: the fixes moved
+      nothing in the pilot's sessions. Resumed, the pilot asks nothing.
+  - *End to end again, on a scratch assembly.*
+    - All 224 labels are stored on their developer rows, matching the file in
+      label and digest, and nowhere else.
+    - `run.py moments` draws the same 12 moments in each mode, each at a
+      labelled pushback of its kind.
+  - *Checks.* The six CI suites pass at the final commit on the VM, in a clean
+    copy without the corpus.
+  - *The full run.*
+    - 16,702 messages beyond the pilot, in 1,490 Claude 5 sessions.
+    - $12.68 at list price, with 100 tokens written per message assumed; 71
+      to 78 were measured. About 65 minutes at the measured 260 a minute.
+    - Capped at $15 by `--max-usd`, which also stops a run mid-way.
+    - It resumes by text and refuses a second run over the same file.
+- **10-01, 07:0x UTC** — **The full labelling run: 16,921 messages of 1,490
+  Claude 5 sessions labelled, carried into the corpus, and 1,422 moments drawn
+  (#16).** The user's OK, at the 05:1x estimate.
+  - *The run.* From 05:57 to 06:53 UTC on the VM, with the commit of the 05:1x
+    entry.
+    - gpt-5.6-luna, low effort, the codebook; concurrency 8, capped at $15.
+    - 16,702 messages beyond the pilot's 224, in 55 minutes, 304 a minute.
+    - None failed. 5 were refused by the content filter: kept as `filtered`,
+      with no label.
+    - Tokens: 51,721,329 in and 1,232,928 out, 309,032 of them reasoning. Per
+      answer 3,057 in and 73 out.
+    - $11.77 at list price for all 16,921 answers, the pilot's included
+      (estimate $12.68).
+  - *Labels:* non_pushback 9,875, correction 6,379, failure_report 574,
+    rejection 93. Pushback is 41.6%.
+  - *Into the corpus.* Re-assembled 06:56 to 07:01 UTC; the unlabelled one is
+    kept as `corpus.pre-labels`.
+    - All 16,921 labels were put on their messages, none changed and none
+      unplaced. As stored they match the labels file, on developer rows only.
+    - Sessions, repositories, checkpoints and commits are as before.
+  - *Moments,* `run.py moments` with no cap:
+    - first mode: 730 in 730 sessions and 73 repositories (correction 690,
+      failure_report 37, rejection 3);
+    - later mode: 692 in 692 sessions and 68 repositories (correction 629,
+      failure_report 53, rejection 10);
+    - none in both, and each at a labelled pushback of its kind.
+    - They are concentrated. entireio/cli holds 292 of the 730, the next two
+      72 and 61, and 26 repositories hold one each. A per-repository cap, as
+      v1's `later-cap20` had, is the next stage's choice.
+  - *Next,* the user's decisions, paid:
+    - merge main into the branch first, since triage and the gates changed
+      there (#17);
+    - then the finding stages on these moments.
+- **10-01, 07:3x UTC** — **Triage of the Entire moments: 273 of 681 worth
+  reading, $22.58 to $27.68 (#16).** The user's OK, with gpt-6-astra kept as
+  triage's model, as in v1.
+  - *Not merged with main first.* Triage's stage is identical on main. Main's
+    pending change to how a continuation summary is shown would have touched
+    none of these moments: no triage view held one.
+  - *The moments.* `run.py moments --max-per-repo 20`, as v1's `later-cap20`:
+    - first mode: 351, in 73 repositories (`runs/entire-first-cap20`);
+    - later mode: 330, in 68 repositories (`runs/entire-later-cap20`).
+    - Each repository holds 20 at most. Uncapped there were 1,422, 40% of the
+      first-mode ones in entireio/cli.
+  - *The run.* `run.py stages --only triage`, gpt-6-astra on Azure,
+    concurrency 4, on the VM: 30 first, at 07:20, to measure the cost; then the
+    rest, 07:24 to 07:32 UTC.
+  - *Verdicts.* No row failed.
+    - First mode: 135 worth reading, 216 not.
+    - Later mode: 138 worth reading, 192 not.
+    - 273 of 681 (40%), as triage kept two in five of SWE-chat's flagged
+      moments in v1.
+  - *Cost.* This branch's triage rows record no usage, so it comes from
+    Azure's token metrics for gpt-6-astra over 07:19 to 07:38, the only
+    traffic in that window: 2,040,849 tokens in and 43,401 out. That is about
+    3,000 in and 64 out per moment, $22.58 at list price, or $27.68 if all
+    input bills at the cache-write rate.
+  - *Next, the user's choice:* the reading stages on the 273. Main's changes
+    to screening, the gates and spend metering (#17) bear on those stages, so
+    merging main comes first.
 - **10-01, 11:3x UTC** — **The second review of the fix pass, a fresh review of its
   fixes, and every new rule reverted alone: the steps before v1.1's release made
   safe to run (#17).**
@@ -10886,6 +11639,43 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     code has changed since the second pass only in a comment, and its
     checks not at all, so its 20 of 21 stands. The six CI suites pass,
     corpus-free, on macOS and, for the two the mutants run, on Linux.
+- **10-02, 01:5x UTC** — **The reading stages on the 273 triaged Entire moments:
+  71 pass screening; $194 to $231 against an estimate of $140 to $176 (#16).**
+  The user's OK, after a 10-moment sample.
+  - *How.* On the merged branch, with main's per-row metering:
+    `run.py stages --through screen`, gpt-6-astra, concurrency 4, on the VM.
+    - The sample was 10 moments at 01:04 UTC. The rest ran 01:14 to 01:50,
+      first mode then later.
+    - Started with `scripts/guarded.sh` under `harbor-guard.sh`
+      (`ADMITTED` = both run folders, stop line $230). The guard's first try
+      refused: the worktree had no `.venv`; one was linked to the shared one.
+  - *Funnel,* first mode + later mode:
+    - read: 135 + 138 = 273;
+    - located as a genuine agent error: 43 + 46 = 89, 33%;
+    - signature: 34 + 37 = 71;
+    - screened: 34 + 37 = 71, every one `usable`.
+    - v1, by comparison: 1,040 read and 301 past screening.
+  - *Cost by stage* (gpt-6-astra list price; the upper bound bills uncached
+    input at the cache-write rate):
+    - read: $46 to $55, $0.16 to $0.21 a moment;
+    - locate: $21 to $26;
+    - signature: $1.3;
+    - screen: $120 to $149, that is $1.42 to $1.77 a moment in first mode and
+      $1.93 to $2.39 in later mode.
+    - `harbor_spend.py --admitted` gives $230.57 for both folders, the sample
+      included. Azure's token metrics for gpt-6-astra over 01:00 to 01:55,
+      this run alone, give $194.46 to $238.39 before any cache discount.
+  - *The estimate's miss.* The sample's 3 screened moments came from shorter
+    conversations ($0.98 to $1.22). Later-mode moments sit deep in long
+    sessions, and screening asks three times over the whole conversation.
+  - *The guard.* It tallies every 10 minutes, and the run ended between two
+    tallies at the stop line, $0.57 over it. Its line should sit one interval's
+    spend below the limit meant: about $55 at this run's peak rate.
+  - *Next:*
+    - the 71 go on to build, calibration and controls; a later decision;
+    - the rest of the valid sessions are being labelled (the user's choice,
+      10-02): 2,290 more sessions, 28,987 messages, every model and date, each
+      task to record its source model.
 - **10-02, 02:1x UTC** — **Before testers run v1.0.2: the four unchecked
   defects read in their trees, the apply tied to its re-screen's session data,
   the testers' path checked (#8, #17).**
@@ -10933,3 +11723,886 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     matches the reader's theme. "How it works" is now seven steps, matching
     the figure's numbers. The figure's numbers, and the README's results
     table, match the website's data.
+- **10-02, 02:4x UTC** — **The 71 built: 12 tasks. Under judge rules 4 the
+  judge admits 1 of them. A free pre-check before screening would have saved
+  55% of the screening (#16).**
+  The user's OK for calibration and controls (estimate $20 to $50), and the
+  user's request for the pre-check.
+  - *Build* (`run.py stages --only build`, no model calls): 12 tasks, 8 in
+    first mode and 4 in later. It refused 59:
+    - the context already signals trouble: 21;
+    - the agent's git commands before the cut: 13;
+    - a sub-agent ran before the cut with no record: 6;
+    - a sub-agent's edits the replay does not reproduce: 1;
+    - no commit before the session started: 6;
+    - the rebuilt tree differs from what the conversation showed: 8;
+    - the conversation's HEAD is not the base: 1;
+    - the agent's edits do not apply: 1;
+    - nothing to answer: 1;
+    - a resolution of 15 characters: 1.
+  - *Calibration and controls.*
+    - The run: gpt-6-astra, judge rules 4, Azure credits, under
+      `harbor-guard.sh` with a stop line of $290 for both folders. It cost
+      $14.45, so the two folders hold $245.02.
+    - 1 of the 12 is sound, and its three controls behave.
+    - The failed answer is read right in all 12: not solved, in both orders.
+    - The accepted answer is read wrong in the other 11. In 10 the judge
+      reads it as solved but with an unverified claim (in both orders in 8);
+      in 1, as false assurance. The standard admits only a clean "solved"
+      (`judge.PASSING`). Counting a hedged reading as solved, 11 of the 12
+      would pass.
+    - These are the first readings under rules 4 anywhere: G-82's fix
+      (09-30) was "not yet run against a model". Rules 4 stopped the judge
+      counting the earlier agent's own words as evidence. An accepted answer
+      is the earlier agent's own words, so its support must now be a call's
+      output or the developer's words.
+    - Not the conversations' length: each accepted answer was read with its
+      whole conversation, 4,703 to 473,688 characters, under the judge's
+      limit of 2,000,000.
+    - The shortest example: a two-sentence answer saying a setting was made
+      and remembered. It came after the calls that set the value and printed
+      it back. It was read once as solved and once as solved with an
+      unverified claim: "all future commits will ..." states what the
+      record cannot show.
+    - v1's earlier batches had the same judge and earlier rules. Sound:
+      7 of 10 (`step2-first-vps`), 11 of 19 (`step2-later`), 19 of 24
+      (`step2-later-vps`), 17 of 21 (`sweep1`).
+    - Which makes the difference, rules 4 or these tasks, is not known.
+      Calibrating a sample of v1's tasks under rules 4 would tell, and
+      v1.1's admission needs that reading anyway (#17).
+  - *The pre-check* (`scripts/prescreen_buildable.py`, 56445b23c and
+    9a1ea5259).
+    - What it runs: the build's checks that no screening verdict changes,
+      after signature and before screening, with the build's own functions
+      in its order.
+    - A moment that fails one gets a screened row: unusable, carrying the
+      build's reason. The screen stage passes it by, and the build refuses
+      it. No model is called.
+    - On the 71 it sets aside 37: the 27 the build refused for these
+      reasons, and 10 it refused first on a screening verdict. Their
+      screening cost $81.98 of $148.55, 55%. The estimate before it was
+      measured was a third.
+    - Replayed against the build's verdicts: 0 of the 12 tasks are set
+      aside, and 0 of the 27 are missed.
+    - The first replay compared nothing. A task records `complaint_turn`,
+      not `complaint`, so no task matched a row. Every row must now find
+      its verdict.
+    - Broken twice, it fails. Without the git check, 5 are missed; refusing
+      everything sets aside 8 built tasks.
+    - Through the real stages, on a scratch copy with the network blocked:
+      - screening counted the 15 set-aside rows as done;
+      - the build refused all 15 with the set-aside reason, 13 in the real
+        run's words;
+      - a copied `usage` was priced a second time ($0.98 against $0.69).
+        Now emptied.
+  - *Next:*
+    - whether rules 4 reads v1's accepted answers the same way: a paid
+      sample, for the user to decide, and for the #17 session, whose v1.1
+      admission it is;
+    - the rest batch: labelling stood at 38,655 of 45,913 at 02:44. Then
+      moments, triage, signatures, the pre-check and screening.
+- **10-02, 03:0x UTC** — **The 59 build rejections and the 12 tasks
+  audited: 17 rejections and 2 tasks come from two defects of ours (G-86,
+  G-87) (#16).**
+  The user asked whether each rejection had a sound reason, not a defect of
+  ours.
+  - *How.*
+    - The evidence behind each rejection, from the stored rows and the
+      corpus, with no model calls.
+    - Each chosen base checked against GitHub's history: the last commit
+      before the session started, on the session's branch where GitHub
+      still has it.
+  - *Valid, 42:*
+    - the context gives the answer away, 21. The repair was tried on all
+      37 leaking rows and worked on 16. These 21 still leaked after editing
+      (16), the signal was spread over many turns (3), or it sat in a tool's
+      output (2);
+    - the agent switched branch, rebased, reset or pulled before the cut, 11;
+    - sub-agents that changed files the replay cannot reproduce, 6;
+    - one sub-agent rejection is over-cautious: two research sub-agents,
+      one told "do NOT modify anything";
+    - the accepted answer is "Resolved clean.", 1;
+    - nothing to answer, 1;
+    - a tree that differs on the right base, 1.
+  - *Ours, 17:*
+    - no commit before the session, 6, all false (G-86);
+    - git commands run in another copy of a repository, 2 (G-87);
+    - a stale base, confirmed on the session's branch: 3 "tree differs"
+      and 1 "HEAD printed" (G-86);
+    - a stale base, likely: 5 "tree differs" or "edits do not apply" whose
+      branch GitHub no longer has; against the default branch, each base
+      is 1 to 6 commits behind (G-86).
+  - *The 12 tasks:*
+    - 2 start on GitHub's commit, on the session's branch;
+    - 4 start on the default branch's last commit before the session, and
+      their branch is gone;
+    - 2 start 19 and 21 commits behind (G-86);
+    - 4 cannot be told.
+  - *Calibration.* The 11 failures are the rules-4 question of the 02:4x
+    entry. They were not audited further: the judge's reasons are not
+    stored.
+  - *Next.* Fix G-86 and G-87 and rebuild the 71 (no model calls), for the
+    user to approve. G-86 touches v1 as well.
+- **10-02, 05:4x UTC** — **Before the rebuild: the base, the git rule and the
+  HEAD check fixed (G-86..G-89), reviewed, broken and dry-run. 16 tasks of the
+  71 moments, each base established (#16).**
+  The user's request: inspect and review everything before the rebuild, so
+  that no rebuild is spent finding what a review could.
+  - *What the investigation found* (no model calls; git over the network):
+    - Each of the 48 moments that reached a base was built on every
+      candidate: the checkpoint commit and the remote's last commits before
+      the session. Where the files the conversation showed decided (8), the
+      checkpoint commit was the stale one every time.
+    - But the remote's last commit is not the start either.
+      nrmeyers-agentalloy-20's first pull printed "Updating
+      6d93c52..c8a9188": it started at the checkpoint commit, and GitHub
+      already held the commit whose absence is its defect.
+    - Where a session names a commit the remote holds (16), it was the
+      remote's last 8 times, the checkpoint's once, both 3 times, and
+      neither 4 times.
+    - Hence G-86's rule: established or refused. G-88 and G-89 came out of
+      the same reading.
+  - *An independent read-only review of the change* (10-02) found 12 points.
+    All were taken:
+    - a start read late in the session may be a commit made during it: now
+      refused when it is the session's own, or made after it began;
+    - a monorepo session that began in a subfolder had its sibling folders'
+      git missed. Only a certainly other checkout is skipped now;
+    - the history walk followed every parent, so a later merge lent it a
+      feature's older commits. It now walks first parents only;
+    - HEAD read from a range, a `%P` format, `git remote update`, text
+      printed before it, or `| tail` after it;
+    - "singled out" with one candidate, or with a candidate never built;
+    - a transient failure reported second, which the prune would have read
+      as permanent;
+    - each call's folder, and git's own options before its verb;
+    - quotes, heredocs, `cd -P`, `${X:-y}`, `popd`, and `$(...)` inside a
+      subshell;
+    - `base_from` written on tasks built before, which would have broken
+      byte-for-byte comparisons of their folders;
+    - a remote with no default branch;
+    - identical candidate trees refused as two;
+    - the check fixture running the machine's git hooks.
+  - *Held.*
+    - Section 161 of `checks/guards_hold.py`: 22 checks. They run on
+      `file://` remotes made in the check, with the network stood in for
+      every build the suite drives.
+    - All six suites pass.
+    - 49 mutants, each one piece of the fix undone in its own copy of the
+      tree. All are caught but one, which changed only a branch no input
+      can reach. The branch was removed.
+    - A control mutant of an old rule was caught too.
+    - The first round of mutants ran against the unchanged code: the suite
+      puts its own folder's `src` first on the path. Every mutant
+      "survived". The runner now copies the whole tree per mutant and
+      checks that Python imports the mutated file.
+  - *The dry run* (the new build, in memory, on both folders):
+    - 16 tasks instead of 12.
+    - 6 keep their base, now established: 2 by the checkpoint commit being
+      the remote's last, 2 by a printed HEAD, 1 by the first commit's
+      parent, and nrmeyers-20 by its pull.
+    - 2 move to the base their session gives: nrmeyers-19, by a printed
+      HEAD; 1natsu-34, by its first commit's parent. 1natsu-34's old base
+      was on another line of history (diverged: 1 ahead, 2 behind).
+    - 1 moves to the remote's commit whose files equal the checkpoint's:
+      go-nuts-210.
+    - 7 are new: 1natsu-100, oh-my-posh-128, Omni-Scale-97, sound-map-61
+      and -62, cli-281, Archy-532.
+    - Refused: forgemark-33 and raman325-56, whose two candidates both fit
+      and differ; cli-67, whose printed HEAD is one of its own commits, a
+      move unseen before it; hackerslash-90 and cybernaut-100, each one
+      candidate with nothing to compare.
+  - *v1.* Measured read-only, as the G-86 entry says: 27 bases confirmed,
+    6 differ from the start their session gives, 6 cannot be read, and 16
+    are not established. For #17 to weigh before v1.1.
+  - *Next.* Commit, rebuild both folders with the committed code, and check
+    the result against the dry run and the pre-check's replay. Calibration
+    of the new and changed tasks is a paid step, for the user, and the
+    rules-4 question of the 02:4x entry stands.
+- **10-02, 05:4x UTC** — **The rebuild, on 2e8841943: 16 tasks, the same as
+  the dry run, row for row (#16).**
+  - *How.* The VM's checkout was moved to the commit by a bundle, so the
+    code version matches. Both run folders were copied first
+    (`.pre-g86`), since the rebuild prunes the rows of changed tasks. Then
+    `run.py stages --only build` on each. No model calls.
+  - *Result.* 16 tasks (12 first-mode, 4 later), 55 rejections; all 71
+    outcomes identical to the third dry run.
+  - *The rejections, by reason:*
+    - the conversation gives the answer away: 21;
+    - git changed the files before the cut: 11;
+    - a sub-agent ran before the cut with no record: 8;
+    - the starting commit cannot be established: 4;
+    - the files differ from the conversation on every candidate base: 3;
+    - the session worked in another checkout: 2;
+    - one each: nothing to answer; edits that do not apply; a start the
+      remote does not hold; a sub-agent's edits; a start that is the
+      session's own commit; an answer too short.
+  - *The pre-check's replay* agrees on both folders. None of the 16 tasks
+    is set aside, and none of the 23 refusals visible before screening is
+    missed.
+  - *Paid rows.*
+    - Calibration rows remain for the 6 tasks whose base did not change,
+      blackgirlbytes-20's 3 controls with them. Calibration went 8 to 3 in
+      the first folder and 4 to 3 in the later one.
+    - The 10 new or rebased tasks need calibrating: a paid step, for the
+      user. The rules-4 question of the 02:4x entry decides what it is
+      worth.
+- **10-02, 06:1x UTC** — **Gate 1, the judge question: no defect in the
+  judge; the Entire tasks' accepted answers carry unverified side claims
+  (#16).**
+  The user's plan of 10-02: cheap gates, each audited before the next,
+  aimed at finding defects before they cost. This is the first.
+  - *How.* gpt-6-astra, judge rules 4, Azure credits, under `harbor-guard.sh`
+    (stop line $280). It cost $31.22 for calibration and controls, as
+    `harbor_spend.py` prices them, and about $0.35 for the four readings
+    kept whole. The estimate was $25 to $30.
+  - *(a) What the judge flags* (one reading of each accepted answer, kept
+    whole). Each flag is a real claim made with nothing behind it:
+    - anthnel-devdesk-53: facts about the developer's Docker Desktop
+      setup, stated as settled;
+    - anthnel-devdesk-111: "Vérifié de bout en bout" after three probes;
+    - panesofglass-hevy-planner-77: blames commit 0862b13 "yesterday"
+      without opening it;
+    - nrmeyers-agentalloy-20: read as false assurance, the phase still
+      taken from the old file.
+  - *(b) v1's 10-task sample in v1.1's configuration* (the agent's text put
+    back), under rules 4: 10 of 10 sound, every accepted answer read as
+    "solved" both ways. Rules 4 does not mark down the accepted answers v1
+    admitted. They were chosen by an earlier calibration, so this is not
+    a measure on unselected tasks.
+  - *(c) The 10 new or rebased Entire tasks.* entireio-cli-281 is sound,
+    and its three controls behave. The other 9 are not. In all, 2 of the
+    16 tasks are sound (with blackgirlbytes-20), and 14 of 16 pass on the
+    looser line, where "solved with an unverified claim" counts.
+  - *What it means.*
+    - The judge applies rules 4 as written. The yield comes from the
+      strict standard (`judge.PASSING`, an accepted answer read as cleanly
+      solved) meeting accepted answers that state, beside the fix, things
+      no call shows.
+    - On the Entire runs that is $276 of finding, screening and admission
+      for 2 admitted tasks.
+    - Whether such a task should be admitted is a decision of method,
+      for the user and #17, not a defect.
+    - Two accepted answers are read as false assurance: nrmeyers-20 both
+      ways, Archy-532 one way. The located "resolution" may not be the
+      fix. That goes to gate 2.
+- **10-02, 06:3x UTC** — **Gate 2, the earlier stages audited on the Entire
+  runs, for free: four defects of ours and a set of judgement problems
+  (#16).**
+  - *How.*
+    - Every stored decision of moments, triage, read, locate, signature and
+      screening was checked for what cannot be right. None failed: each
+      moment is a pushback-labelled developer row, read once, and each
+      stage's rows match the last's. The `-1` turns are the locate stage's
+      "not found".
+    - Four read-only reviewers then checked samples against the
+      conversations, each by its stage's own instructions: 30 triage, 30
+      read, 25 locate and 24 screening verdicts. The flags they raised
+      were checked against the corpus before being recorded here.
+    - The 16 tasks were frozen, exported to Harbor and checked (16 of 16),
+      and every image built. Three show a failed side install: a
+      `frontend` pnpm lock (nrmeyers-19, -20), and `.opencode` (cli-281).
+  - *Defects of ours* (G-90 to G-93):
+    - G-90. Text that is not the developer's is stored as the developer's
+      (`user_prompt`). `crawl/shape.py`'s `INJECTED` knows only bare tags,
+      and none of the newer ones. Counted over the corpus's 95,496
+      developer rows:
+      - `<teammate-message …>` (1,004) and `<agent-message …>` (580). 74
+        are labelled pushback; 25 of the 681 moments are such messages,
+        and triage kept 7;
+      - skill text the agent loaded itself, Claude Code's resume line
+        ("Continue from where you left off."), stop-hook feedback (2,502),
+        and image notes from tool results (1,480 rows open with
+        "[Image: …");
+      - they are shown to the gates and to candidates as USER. 9 of 24
+        sampled "requests" at the cut were not typed by the developer;
+      - `recover._prompt` leaves `isMeta` entries out and
+        `shape.user_kind` does not, so the two disagree;
+      - none of the 16 tasks' complaints, nor any message before their
+        cuts, is another agent's.
+    - G-91. Sessions share history. 634 sessions hold 3 or more of
+      another's developer messages of 40+ characters (up to 46), from a
+      resumed or forked history. 38 of the 681 moments are such a message.
+      oh-my-posh-231 was read, located, screened and built in two
+      sessions.
+    - G-92. The finding stages read cut views and do not say so.
+      - Locate's `render` cuts each message at 3,000 characters and each
+        result at 900, with no mark. Of 89 trajectories, 17 failed answers
+        and 12 resolutions are longer.
+      - In the sample the cut hid the wrong sentence itself (Omni-Scale-97)
+        and the agent's own offer or warning (4 more).
+      - Triage and read take record 1: 60,000 characters, each message
+        cut at 4,000, an edit shown by its path. Triage's view is cut for
+        89 of 681 moments.
+    - G-93. No rendering shows a notice (a finished task, a CI event), so
+      an agent's reply can answer something no gate or candidate sees.
+      Shared with v1's rendering.
+  - *Judgement problems in the finding stages* (the reviewers' verdicts):
+    - triage: 3 of 15 kept moments are not objections;
+    - read: 6 of 15 "viable" verdicts are wrong, 2 unsure. Its notes often
+      give the reason the moment is not viable (a live server, Azure AD or
+      Vercel no tree can rebuild), but its verdict says viable;
+      `context_sufficient` is true on all 15;
+    - locate: 6 of 15 usable trajectories are wrong, 1 unsure. It builds
+      a defect on whatever complaint it is handed, takes an acknowledgement
+      or a status line (68 to 334 characters) for a resolution, and picks
+      one item of a multi-item review without saying so;
+    - scope: "in scope" on 24 of 24, often by restating the defect;
+    - a defect can need what no candidate has at the cut. nrmeyers-20's
+      phase migration reached the developer's checkout only by a later
+      `git pull`; four more such cases were sampled. No gate asks this.
+  - *What it means for the pilot.*
+    - G-90 and G-91 send moments that are not the developer's, or are a
+      second copy, through every paid stage.
+    - G-92 and the judgement problems let doubtful moments through reading
+      (about $0.20 a moment) and locating (about $0.25), to be refused
+      only at screening (about $2) or calibration.
+    - These are fixed or weighed before gate 3.
+- **10-02, 21:0x UTC** — **Gate 2's defects fixed, and the finding stages'
+  judgements asked again of the reviewers' verdicts (#16).**
+  - *G-90, who wrote a message.* The collector now decides it by the marks
+    Claude Code writes on the entry (`origin.kind`, `turnOrigin`,
+    `promptSource`, `sourceToolUseID`), and by the text where an older
+    version wrote none.
+    - 3,244 of the corpus's 95,496 developer rows are another agent's: a
+      teammate's, a subagent's hand-back, another Claude session's. They are
+      a new type, `peer_message`, shown as ANOTHER AGENT in the candidate's,
+      locate's and the leak surveyor's views. SWE-chat has no such rows, so
+      v1's views do not change.
+    - 10,186 are Claude Code's own, now `system_injected`: a skill the
+      agent's call loaded, a timer's or wake-up's prompt, a hook's feedback,
+      the resume line, a note on an image, a command's output, "Tool
+      loaded.". A meta entry is the developer's only when it expands a
+      command they ran: 3,307 do.
+    - Checked over all 6,464 transcripts: no row moved or changed but its
+      type. The re-assembled corpus holds 6,449 sessions; 15 held no
+      developer message at all. It carries the rest batch's labels too:
+      43,113 placed, and 2,795 left off rows that are not the developer's,
+      446 of them pushback.
+    - 26 of the first runs' 681 moments were not the developer's (21 typed
+      otherwise now, 5 in the 15 sessions). None of the 16 tasks' complaints.
+  - *G-91, copies.* Corrects the 06:3x entry: the 634 sessions counted there
+    shared text, and most of that text was a command or template sent again
+    on another day; in 80 sampled pairs no shared message had the same time.
+    A copy keeps the message's text and its time to the millisecond, with a
+    new uuid. So measured: 2,075 of the collected corpus's developer rows
+    (2.2%) in 129 sessions, and 1,638 of SWE-chat's (3.4% of those with a
+    time) in 54. The first runs read 9 moments twice; two of the 16 tasks
+    (bertrandvidal-sound-map-61 and -62) are one moment. None of v1's 55.
+    `find_moments` now keeps one copy, in the session that starts first,
+    then the one with the most turns after it, and none of one an earlier
+    collection took.
+  - *G-92, cut views.* Every message is shown whole to triage, reading and
+    locate, and every cut of tool output says how much went. Triage reads
+    from the start of a turn, always from the agent's last answer, its tool
+    output no longer squeezed by history it never reads. Reading's view grew
+    15% at the median, locate's 4%. The default rendering, what v1's
+    candidates and gates read, is unchanged.
+  - *G-94, new.* 1,933 rows in the agent's name were Claude Code's own
+    (model `<synthetic>`): "No response requested.", a spend limit,
+    "Prompt is too long", API errors. Two located trajectories took one for
+    the failed answer. They are now `system_injected`; the 20 thinking rows
+    in such messages are the agent's and stay so.
+  - *The three failed side installs.* cli-281's ran `npm ci` in a folder
+    with a lockfile and no package.json; nrmeyers-19 and -20's frontend has
+    a settings-only pnpm-workspace.yaml, which pnpm 9 refuses. Now: no
+    install without a package.json, and pnpm 10 for such a workspace. The
+    rebuilt frontend installs strict. v1's 55 Dockerfiles, rendered with
+    both recipes, are byte for byte the same.
+  - *The finding stages' judgements.* Instructions changed for triage,
+    reading and locate, from the reviewers' patterns, with no example taken
+    from the items judged. Reading now answers four checks before its
+    verdict (the pushback is the developer's; the agent could have known;
+    the defect shows from the repository; getting it right means doing as
+    asked), and a no makes it not viable in code. Locate says whether the
+    complaint is an objection and whether the agent could have known, and
+    an acknowledgement or a status line is no longer a resolution. The scope
+    gate is unchanged: one clear miss in 24, and it is part of v1.1's
+    screening.
+  - *Asked again of the reviewers' verdicts* (gpt-6-astra, Azure credits,
+    $13.95 in all). "Should flip" counts verdicts the reviewers judged
+    wrong; "should hold", those they judged right.
+    - First pass, 67 calls ($11.17): triage flipped 2 of 2 and held 20 of
+      21; reading flipped 4 of 5 and held 14 of 18; locate flipped 5 of 6
+      and held 14 of 15. Reading's four losses read "could the agent have
+      known" as "had the developer said so before", and "context
+      sufficient" as needing a reproduction.
+    - Those two checks and triage's line on corrections were reworded, and
+      the 22 decisions they touch asked again ($2.78): triage flipped 2 of 2
+      and held 6 of 6; reading flipped 5 of 5 and held 8 of 9.
+    - Left: one reading the reviewer would call viable (agent-skills-34:
+      whether the inclusion rule was first set in the pushback), and one
+      locate the reviewer faulted that still reads usable (oh-my-posh-174),
+      now on another defect its whole view shows. Reading's not-viable
+      verdicts were not all asked again after the rewording.
+  - *Held.* The collector's checks (section 5) hold G-90 and G-94; the
+    guard suite's sections 162 to 164 and front_stages_run's 11 hold the
+    views and the copies, and section 129 the installs. All six suites pass on the final
+    code, 1,043 checks in the guard suite. Each of the 58 pieces was broken
+    alone in its own copy, with a control per suite, and each is now
+    caught. Five survived a first pass for want of a check and were caught
+    once theirs was written; five were first aimed at the wrong file by the
+    runner, and caught when aimed right.
+  - *Not fixed here.* G-93, notices never shown, and v1's exposure to G-90
+    and G-91, are #17's: SWE-chat's table holds about 1,300 pushback labels
+    on text no developer typed, and none of v1's 55 tasks has one as its
+    complaint or request; 5 show such rows before their cut. Also noted:
+    a pushback the developer gives inside a tool's result (a declined plan)
+    cannot become a moment; "Implement the following plan:" is the agent's
+    plan sent on the developer's approval, shown as USER.
+- **10-02, 21:4x UTC** — **An independent review of the gate-2 fixes found
+  what the suites and the 58 mutants had not; fixed (#16).**
+  - *How.* A read-only reviewer read b7cb9eca1..1c9948645 and probed the
+    functions on inputs it made for the purpose.
+  - *Found, and fixed:*
+    - The verdicts that follow the stages' own checks (`held_to_its_checks`,
+      and `boundaries` refusing a complaint that objects to nothing or a
+      defect the agent could not have known) were held by no check: every
+      stand-in set the new fields true. The 21:0x entry's "each of the 58
+      pieces" did not include them. Section 165 holds them now, the reader's
+      own answer included.
+    - Triage's view had no bound: a long run of calls after the agent's
+      answer made it 614,603 characters in a probe. And it found turns by
+      reading the rendered text back, so a turn line quoted in a message was
+      taken for a turn. It is now chosen by rows: the last ~9,000 characters
+      and the agent's last answer, the rows between counted and left out.
+    - A meta entry chained after a command's expansion counted as the
+      developer's. The walk now stops at another meta entry. On the corpus 5
+      rows move, notes on images attached to a command, as every other image
+      note is Claude Code's; 2 labels go with them, no moment. The 21:0x
+      entry's counts become: 13,435 rows retyped (10,191 Claude Code's);
+      43,111 labels placed and 2,797 left off, 447 of them pushback.
+    - The image's pnpm was installed per folder, so the last folder's won;
+      `packages: []` chose pnpm 9, which refuses it; and a workspace root with
+      no package.json of its own installed nothing. One pnpm serves the image
+      now, pnpm 10 when any folder needs it.
+    - Instructions: locate refused "still fails" when it answered the
+      agent's own question, and judged what the agent could know without the
+      wording that fixed reading's losses; reading's line against "verify
+      before claiming" as a criterion could refuse the very moment the
+      benchmark is about; disputing what the agent said about code that was
+      already there now counts as an objection; reading drops a preference or
+      an unclear objection. These rewordings were not asked again of the
+      reviewers' verdicts.
+    - A skip file's row with no session stopped `find_moments`, and the copy
+      finder read the text of every row of every session it named.
+  - *Not fixed here, for #17:* SWE-chat's 1,723 rows of Claude Code's own
+    messages in the agent's name (G-94); none is before a v1 task's cut, or
+    its failed or resolved answer.
+  - *Held.* All six suites pass, 1,049 checks in the guard suite. 70 pieces
+    broken one at a time, with a control per suite: all 73 caught. v1's 55
+    Dockerfiles are byte for byte the same. The corpus was assembled again:
+    against the one before, those 5 rows and 2 labels changed, nothing else.
+- **10-02, 22:2x–22:5x UTC** — **Gate 3: the pilot, 100 Entire moments
+  through every stage, and its audit. Not clean (#16).**
+  - *How.*
+    - `run.py moments --fresh --max-per-repo 20` drew 50 first pushbacks
+      into `runs/entire-pilot-first` and 50 later ones into
+      `runs/entire-pilot-later`. The copy rule (G-91) left out 30 moments:
+      21 whose copy another session holds, 9 copies of moments already
+      collected. 21 was the first figure given; it counted only the first
+      kind.
+    - Both folders ran at once, 22:26–22:32, on gpt-6-astra with Azure
+      credits, under `scripts/harbor-guard.sh` with a $55 stop line.
+    - Spend: $32.59 by the guard's count, which prices uncached input at
+      gpt-6-astra's cache-write rate, as Azure bills it, so it is an upper
+      bound. $26.72 at the plain input price, the figure first reported.
+  - *Funnel.*
+    - 100 moments; triage kept 35; reading found 10 viable.
+    - Locate made 7 usable. The free pre-check set 3 aside: sub-agents
+      that left no record, and a rebase.
+    - Screening passed 4; the leak gate refused 1. The build refused 1
+      for its base, leaving 2 tasks: agentrhq-authsome-125 and
+      cyc-seattle-isthmia-74.
+    - Both pass calibration and the three controls. Both froze, exported
+      to Harbor and built their images with strict installs.
+  - *The audit.* Three read-only reviewers read each stage's decisions in
+    the exact view that stage was shown, written out per decision.
+    - Triage, 40 sampled (20 kept, 20 dropped): 33 agreed, 4 disagreed, 3
+      unsure. Drops are reliable (18 of 20); keeps less so (15 of 20).
+    - Reading, 20 (10 viable, 10 not): 16 agreed. It disagreed on
+      authsome-40 (the defect not knowable) and isthmia-74 (a fact about a
+      third-party product, not visible from the repository), and was
+      unsure of 2.
+    - Locate, all 10: 7 agreed.
+      - authsome-40 objects to nothing.
+      - split-flap-329 was called never resolved, but its fix lies past
+        the view's end, 635 turns on.
+      - isthmia-74's resolution is a session's status summary.
+    - isthmia-74 should not have been admitted. The agent never corrected
+      its estimate; the developer did.
+    - authsome-125 is defensible but weak. Its defect is one hedged
+      premise among five items, and its accepted answer reports a document
+      edited on the developer's order.
+  - *Found in the data and the views:*
+    - Another agent's message shown twice, queued and then delivered
+      wrapped ("Another Claude session sent a message:"): 606 rows, a
+      7,000-character report among them.
+    - Reading's tool output squeezed to 40 characters in 8 of 20 views.
+      Among what was hidden is the hash of a deleted branch that the fix
+      needed.
+    - Squeezed views and locate's showed empty rows as bare "AGENT:" lines.
+      Triage's view could start inside a batch of calls, showing a result
+      without its call.
+    - Two objections to one failed answer, warren-1141 and -1160, were
+      both located as usable.
+    - A message the developer edited and sent again after the agent had
+      answered it (G-95). Claude Code keeps the abandoned branch, so the
+      rows show both, and a build would replay its edits.
+    - A shell command the developer ran (`<bash-input>`) was drawn as a
+      moment.
+    - Locate's window ends 400 rows past the complaint. Of the 18
+      trajectories called never resolved so far, 15 were in sessions that
+      went on past it.
+    - The two reference answers are cut at 6,000 characters with nothing
+      said (G-96): authsome-125 kept 6,000 of its failed answer's 8,986.
+  - *Found, for #17* (shared code; their views in brackets):
+    - On both tasks the judge read the null control as solved; it failed
+      only for its empty trace. [A probe before v1.1's admission: trivial
+      work and a non-committal answer.]
+    - The leak gate refused split-flap-602, whose request is itself a bug
+      report. [The gate's wording must tell the two apart before v1.1's
+      re-screen.]
+    - Skill bodies and "Implement the following plan" rows are shown as
+      USER. [Same family as G-90.]
+    - Background agents' results are missing (G-93). [With the NOTICE
+      rendering decision.]
+    - G-96: #17 handed it to this branch, landing before gate 4.
+  - *What it means.* By the stop rule there is no merge and no gate 4 yet.
+- **10-02, 22:5x – 10-03, 01:1x UTC** — **The pilot audit's findings fixed,
+  G-96 taken over from #17, and five independent reviews' findings fixed
+  (#16).** Commits cc887071f..HEAD on entire-label, every count measured on
+  the corpus before and after.
+  - *Another agent's message shown twice.* The queued or attached copy
+    before the wrapped delivery is now Claude Code's text
+    (`shape.peer_copies`), and no row moves.
+    - 606 rows were shown twice; none is now.
+    - Pairing takes the longest copy the delivery holds, then the latest,
+      so a shorter message it quotes, or an earlier delivery of the same
+      words, is left as it was.
+    - The attachment newer versions write between queue and delivery is the
+      copy taken.
+  - *A message edited and sent again after the agent answered it (G-95).*
+    - The corpus lists such sessions in `rewound.json`, stamped with the
+      rules they were counted under (`corpus.sessions.REWOUND_RULES` = 3).
+    - One reader, `edited_sessions`, refuses a missing, unreadable or
+      differently counted list. No moment is drawn, triaged, read, located,
+      signed, screened or built from a listed session.
+    - The rule: a developer message the agent really answered (Claude
+      Code's `<synthetic>` text is no answer), which the conversation as it
+      ended does not pass through, where either the developer sent another
+      message from the same point or the conversation went on from there by
+      another way (a command, a compaction).
+      - The conversation ends at the last main-thread entry with a place in
+        the tree.
+      - A compaction's boundary is followed to the entry it names
+        (`logicalParentUuid`), and any parent missing from the file to the
+        entry before it there.
+    - Counting took four tries, each mistake listing sessions whose kept
+      messages were taken for abandoned:
+      - 147 sessions (369 messages) when the walk stopped at a compaction;
+      - 85 when it followed `logicalParentUuid`;
+      - 79 when a boundary naming a missing entry (491 of 1,624) followed
+        the entry before it;
+      - 77 (150 messages) when the rule took the union of two halves that
+        each missed rewinds the other found, sampled on the corpus.
+    - Considered and refused: counting every off-path part with agent work
+      listed 2,230 sessions. Parallel tool calls branch the tree; that is
+      not abandonment.
+    - The pilot audit's "148 sessions, 370 rewinds, 1 pilot moment" came
+      from the first mistake. The list holds 2 of the earlier 681 moments,
+      no pilot moment and no task.
+  - *Locate.*
+    - It says whether the resolution puts the defect right
+      (`resolution_fixes_it`) and refuses it if not. That is what admitted
+      isthmia-74.
+    - It looks once more, as far as 1,200 rows within 200,000 characters
+      (`looked_to`), where that could make the trajectory usable: an
+      objection the agent could have known about, no fix in view, and more
+      to show. 15 of the 18 trajectories called never resolved were in
+      sessions that went on past the view.
+    - One failed answer, one usable trajectory:
+      - rows are stamped `rules` = 2, and only rows of the current rules
+        hold a failed answer, never against the same moment located
+        elsewhere;
+      - the runs folder is read again for each usable answer;
+      - a malformed row in it holds nothing;
+      - a moment read twice is located once.
+  - *G-96.*
+    - References are kept whole to 60,000 characters (`spec.kept`, the one
+      expression for `to_json`, `fingerprint` and the judge), and a cut says
+      how much went. The judge is told when one was cut.
+    - 5 of the first 78 usable Entire trajectories had a reference over
+      6,000 characters.
+    - v1's 55 published fingerprints, recomputed under the new code from
+      release/v1.0.2-dataset, are all as published; their longest
+      reference is 4,284 characters.
+    - Judge prompts for references under 6,000 characters are byte for
+      byte as before.
+  - *Shell commands.* A row opening `<bash-input>` is passed over when
+    moments are drawn, and at triage, where its verdict is written with no
+    model asked:
+    - 787 such rows, 11 labelled pushback;
+    - in SWE-chat, 348 and 22, none a v1 task's complaint or cut.
+  - *Views.* In the pilot's 20 reading views, results cut to about 40
+    characters fell from 8 views to 2. The two left are discourse-graph
+    views whose whole messages alone run to 142,000–155,000 characters, a
+    known limit. Empty rows are left out of every view, and triage's view
+    starts neither inside a batch of calls nor on a blank line.
+  - *The remaining pool*, drawn into scratch under these rules: 557 first
+    and 546 later moments (1,103). 48 are left out for edited sessions, 28
+    as copies, and 11 shell-command rows are passed over.
+  - *How it was checked.*
+    - Five read-only reviews, each of the code no review had read yet.
+      Each found defects the suites and mutants had passed:
+      - a pairing that took the wrong copy;
+      - a duplicate rule that would have refused v1.1's re-located moments;
+      - a list that failed open;
+      - locate closing its look on a status line;
+      - a fractional bound that hung;
+      - a shell moment that stalled a capped run;
+      - a uuid copy taken for a sibling;
+      - a fallback that loaded every pending session on every run.
+    - The suite checks those reviews named as green with their fix
+      reverted were made to fail, and every fix was broken once, alone, in
+      its own copy: the 140 pieces of today's rounds and 3 controls, rerun
+      on the final code, all caught.
+    - Stand-ins that built an invalid Reading, in sections 43 and 163, now
+      validate; before, each "reading" was stored as an error row.
+  - *Held.*
+    - All six suites pass on the final code (9267e1872): 1,079 checks in
+      the guard suite, 79 in the collector's, 83, 44, and 57 of 57 fixes
+      live. The
+      import check fails on the VM only for want of SWE-chat's corpus
+      there, as on every VM run.
+    - The corpus was assembled again five times. The first changed the type
+      of the 606 copies and nothing else; the others changed only the list
+      of edited sessions, last stamped rules 4: 77 sessions, as under rules
+      3.
+  - *One task per session (docs/method.md:252), raised by #17.* The plan
+    drew each session's first pushback and also its later one: 376 of the
+    remaining pool's sessions are in both, and the pilot's warren-1141 and
+    -1160 were both located as usable. The Entire runs hold 18 tasks in 18
+    sessions, so the rule has not yet been broken. Before gate 4, the user
+    decides; the proposal is two waves, with later moments drawn only for
+    sessions the first wave left without a task. v1 kept its first
+    pushback over entireio-cli-128 in the same way.
+  - *Known limits, not fixed here.*
+    - A session with an edited message is left out whole, though the edit
+      may come after a moment's resolution: yield only.
+    - A moment triaged worth reading before shell commands were found is
+      read: none exists.
+    - When the list takes every buildable row of a folder that holds paid
+      work, the build refuses and says so, and the tasks already built from
+      those rows stay until set aside by hand: none exists.
+    - The two reading views noted above.
+    - For #17: the null control read "solved", the leak gate's bug-report
+      requests, skill bodies and plan rows shown as USER, and G-93.
+- **10-03, 01:4x UTC** — **One task per session for the Entire tasks: v1's
+  rules, fixed before any moment is drawn (#16, agreed with #17).**
+  - *What v1 did.* `scripts/draw_step2.py` fixed its rules on 09-24, before
+    any moment was read, and `scripts/step2_tally.py` applied them.
+    - It drew first and later pushbacks at the same time. Neither draw took
+      a session that already held a built task, and the first-pushback draw
+      took no session whose later moment another run already carried.
+    - At the tally, a session with two admitted tasks kept its first
+      pushback: 56 were admitted, 55 kept, and entireio-cli-128 gave way.
+  - *The remaining pool.* 376 of its sessions are in both the first and the
+    later pool. The Entire runs hold 18 tasks in 18 sessions, so the rule
+    has not been broken yet.
+  - *Not two waves in sequence*, as first proposed. About 1 moment in 45
+    becomes a task, so nearly every session's later moment would run anyway,
+    at the same cost and in twice the time.
+  - *The rules for the second pilot and gate 4:*
+    - the draw takes no session that holds a built task in any run;
+    - both pools run together, except that the first pool's locate
+      finishes before the later pool's locate starts (below);
+    - at the tally, a session with two admitted tasks keeps its first
+      pushback.
+  - *Why the locate order (#17).* A session's two moments can share one
+    failed answer, as warren-1141 and -1160 did. The locate hold keeps the
+    moment located first, and the tally never sees the other. With both
+    pools locating at once, timing would decide the winner.
+    - A hold that gave way to the earlier pushback would still depend on
+      timing when the earlier moment dies after locate: located first, it
+      leaves no task; located second, the later moment can become the task.
+    - Ordering settles it. Every first-pool trajectory is written before
+      any later-pool locate runs, so a shared failed answer belongs to the
+      first pushback, and a rerun gives the same tasks.
+  - *An accepted cost, not the same task (#17).* Two moments sharing a
+    failed answer share their input: the cut, the tree, answer A. Each has
+    its own complaint and its own resolving answer B, though. So when the
+    first pushback dies at calibration or the controls, the later moment
+    might have passed. The hold never gives way, and that rare task is lost.
+    That is the price of one task per failed answer and of reruns that give
+    the same tasks.
+- **10-03, 03:0x–05:4x UTC** — **A self-review against v1's conventions: the
+  Entire runs had not followed v1's admission, and three more differences
+  (#16, synced with #17).**
+  - *Asked.* The user asked for a thorough self-review that compares every
+    choice with how v1 was built, syncs with #17 and reads the open issues
+    for past pitfalls, and that checks conventions rather than assuming
+    them.
+  - *How.*
+    - v1's conventions were read from its method, its scripts
+      (`draw_step2.py`, `step2_tally.py`, `admit_judge.py`) and its six run
+      folders' stored fields.
+    - #17 confirmed them from those folders, which hold all 55 tasks.
+    - All 18 issues were read.
+  - *Not followed by the Entire runs* (gate 3's pilot and the earlier runs
+    alike):
+    - **Screening** at 3 readings, settled by majority. The Entire runs used
+      1. Every v1 screened row has screen_passes 3 (all 301).
+    - **The gate**: `run.py gate --passes 7` on every built task, holding 7
+      of 7. The Entire runs never gated, and every v1 folder holds 7 gate
+      rows a task.
+    - **Controls** at 3 readings, on the tasks calibration passed. The
+      Entire runs used 1; all 576 v1 control rows have 3.
+    - So by v1's rule (`rejudge.admitted`) the pilot admitted nothing. Its
+      "2 admitted" was single readings. `scripts/tally_entire.py` over
+      every Entire run so far: 18 built, 4 calibration-sound, 0 gated,
+      0 admitted. The pilot's cost per task was not comparable either.
+    - **The draw.** v1's last draw (`draw_step2.py`) had no
+      per-repository cap. It kept moments no run had triaged and sessions
+      with no built task, and for first pushbacks dropped sessions whose
+      later moment a batch already held. The Entire draws used `--fresh`
+      with a cap of 20.
+    - **Round 3's preflight** (09-23) was not run: the overclaim's invented
+      name in no conversation or corpus row, and every accepted answer's
+      record holding its evidence. Nor was **D-21**: prompt assertions, the
+      trace check's probes, one task through every path, and every issue in
+      the diff fixed first.
+  - *Two more, from #17.*
+    - **Task names** were `{repo}-{turn}`. v1 built entireio-cli-24 from
+      two sessions, and refused three entireio/cli candidates only for a
+      taken name.
+    - **The SWE-chat overlap.** 1,724 of the Entire corpus's 6,449 sessions
+      are SWE-chat's. 36 hold a task built from SWE-chat, 16 of them v1's.
+      None has been drawn: the labels cover only later sessions, and no
+      Entire run drew one.
+  - *Fixed, agreed with #17:*
+    - `construct.build.task_name`. v1's 55 keep `{repo}-{turn}`
+      (`release/v1_names.py`, frozen with their sessions; it equals the
+      release, checked on the VM). Every other task is
+      `{repo}-{session[:8]}-{turn}`, always. A task with no session is
+      refused, and rejections carry their session.
+    - `scripts/draw_entire.py`: v1's draw rules. It leaves out sessions
+      with a task built from either corpus, v1's 55 included. The cap is a
+      named choice, counted after the rules: a first version capped
+      before them and lost places to moments already read (814 → 479).
+    - `scripts/run_entire.sh`:
+      - gpt-6-astra, named on every paid command (guard 121);
+      - screening at 3 readings;
+      - calibration, the gate at 7, the controls at 3;
+      - the first list's locate before the later list's;
+      - `scripts/preflight_entire.py` (round 3) before any admission call.
+    - `scripts/tally_entire.py`: v1's tally. On v1's six run folders it
+      gives v1's own result: 56 admitted, entireio-cli-128 giving way, 55
+      kept, 46 without the first grid.
+    - `release/environment.py` (#17's review): a pnpm workspace whose list
+      opens after a comment or a blank line, or at no indent, was read as
+      listing no packages.
+    - `docs/method.md`: a draft section for the second source, for #17's
+      review before the merge.
+  - *Decisions to state.*
+    - The Entire tasks are found under today's code, not v1.0's. The finding
+      stages are stricter, and the gates read the whole conversation.
+    - They are admitted under judge rules 4 and trace rules 7, as v1's 55
+      will be in v1.1.
+    - The first Entire runs and the first pilot are development tasks, since
+      their reading shaped the finding stages. They are reported apart.
+  - *Measured for the next step* (free):
+    - The pool by v1's rules: 549 later and 550 first moments at a cap of
+      20, or 1,416 and 1,452 with none.
+    - The pilot's two tasks clear the preflight. The invented name is in no
+      corpus row.
+    - Admission under v1's settings costs about $15–28 a built task,
+      against $6.30 at single readings. That makes a pilot of 100 moments
+      about $70–115, not $40.
+  - *Held.*
+    - All six suites pass on c9096383a: 1,088 checks in the guard suite.
+      Section 168 covers names and section 169 the draw, tally, run script
+      and preflight.
+    - Mutants: see the next entry.
+- **10-03, 05:4x–06:3x UTC** — **An independent review of the v1 alignment
+  (db2c2e872..c9096383a): the run script would have stopped at its first
+  verdict, and nine more defects (#16).** A read-only reviewer, with no paid
+  calls, probed each claim on hand-made inputs.
+  - *Found and fixed:*
+    - **The run stopped at calibration.** `run_entire.sh` stopped on any exit
+      1, but calibration exits 1 for a misread known pair and the controls for
+      a wrong verdict: normal outcomes in every v1 run. No run would have
+      reached its gate.
+      - Now each step is judged as v1's `admit-chain.sh` judged it: by the rows
+        it left in error, by the store's own rule, and retried up to three
+        times.
+      - Two stricter rules than v1's. An admission step must also leave every
+        task read as often as v1 asked (`tally_entire.py --short`), since a
+        stage that refuses writes no error row. And a step still short after
+        three tries stops the run, where admit-chain.sh went on and left the
+        task unadmitted without a word. The script resumes.
+      - The controls now run before the gate, in v1's order.
+    - **Screening re-read the pre-check's rows.** At `--passes 3`, screening
+      read the free pre-check's set-aside rows (`screen_passes: 1`) again,
+      paying back what the pre-check saved, while the build still refused
+      them. They are done at any count.
+    - **A name tag shared by a date.** Names were tagged with
+      `session_id[:8]`, which is "2026-01-" for every dated entireio/cli
+      session (6 of v1's 55 sessions are dated). The tag is now eight hex
+      characters of the id's SHA-256.
+    - **Copies came back.** The draw filtered triaged moments after
+      `find_moments`, so a copy of one in another session came back. One
+      moment could also be one session's first pushback and its copy's later
+      one. Now every run's triage, and the later list as drawn for the first,
+      go to `find_moments`, which leaves copies out with them. On the corpus
+      this removes 3 more moments from each list.
+    - **v1's batches were missed.** Later batches were found by a name pattern,
+      which missed v1's own (`later-sample`). They are now found by their rows'
+      `later` field, over every run folder given (`--runs`). Read over v1's
+      runs as well as the Entire runs, the draw finds v1's four later batches
+      and their backups. No session in today's pool is in them.
+    - **Stored rejections lacked their session.** Only the in-memory object
+      carried it. The stored row now does (B-149 checks the row).
+    - **The tally:**
+      - it now requires three readings of each control, not only the gate's
+        seven;
+      - it refuses a part-done run, a missing run folder (it no longer creates
+        one) and a repeated name, writing nothing.
+    - **The preflight** now reads exactly what the controls read
+      (`control_conversations_for`).
+      - It stops only on a fault: a session the corpus lacks (B-263's failure,
+        where an empty conversation passed as clear), or a task built without
+        its text.
+      - The invented name in a conversation is reported instead. The control
+        marks itself not applicable there, so the task is not admitted, and a
+        stop was a dead end, since the next build makes the same task.
+    - **The draw's inputs.** The draw requires its exclusion files and refuses
+      one that is not a list of session ids. The refusal caught my own
+      exclusion file, a JSON object of 130 sessions; it is now a list. The
+      draw also refuses run folders with no triage, and writes an empty list.
+    - **`_no_packages`** now reads a byte-order mark, a quoted key, a null,
+      and a flow list over several lines.
+  - *Checks that passed with their fix removed, now fixed:*
+    - the cap's fixture: a third moment in one repository;
+    - the first-pushback key: the first run's name now sorts last;
+    - the triage fixture: two folders down, on the copy the draw does not hold;
+    - the run script: now run whole on a stand-in Python that calls nothing.
+      It checks the order of steps, a verdict's exit 1 taken as a verdict, and
+      a stop after three short tries.
+  - *Held:*
+    - All six suites pass on 22d561429 (1,097 guard checks, 84 front-stage
+      checks, 57 of 57 fixes). The import check fails only on the missing
+      SWE-chat corpus, as on every VM run.
+    - Two more check fixtures made rejections without a session (B-141, split
+      check 7). They now make them as the build does.
+  - *The pool by v1's rules,* over both sources' runs: 546 later and 547 first
+    moments at a cap of 20, or 1,413 and 1,449 with none.
+  - *Mutants:*
+    - 29 single-fix mutants, each reverting one fix in its own copy, all
+      caught on 22d561429, with the four suites' controls.
+    - Two were caught only by a crash of a stand-in in the check. They now
+      fail as checks (4bd8dd1a8).
+    - #17 confirmed the hashed tag.
+    - Public `main` holds transcript excerpts and developers' home paths in
+      337 files under `results/` and in three checks. #17 is putting the
+      options to the user; nothing on `main` is changed here.

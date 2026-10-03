@@ -125,12 +125,44 @@ def _runner(folder_files: set[str]) -> str | None:
     return None
 
 
+def _no_packages(workspace: str) -> bool:
+    """Whether a pnpm-workspace.yaml names no packages: no `packages` key, or an empty list.
+
+    The list's first item may come after blank or comment lines, and at any
+    indent, the key's own included: pnpm's documented example opens with a
+    comment line, and `packages:` then `- 'apps/*'` at no indent is valid
+    YAML. Read only as text (#17's review, 10-03): each of those three was
+    taken for no packages, and its image got pnpm 10, which skips
+    dependencies' install scripts by default.
+    """
+    workspace = workspace.lstrip("\ufeff")
+    m = re.search(r"""(?m)^["']?packages["']?\s*:(.*)$""", workspace)
+    if not m:
+        return True
+    rest = m.group(1).split("#")[0].strip()
+    if rest in ("~", "null"):
+        return True
+    if rest.startswith("["):
+        # A flow list, on one line or across several: empty if nothing but
+        # blanks and comments come before its closing bracket.
+        flow = (rest + workspace[m.end():]).split("]", 1)[0][1:]
+        return not "".join(line.split("#")[0] for line in flow.splitlines()).replace(",", "").strip()
+    if rest:
+        return False
+    for line in workspace[m.end():].splitlines():
+        text = line.strip()
+        if text and not text.startswith("#"):
+            return not text.startswith("-")
+    return True
+
+
 def recipe(task: dict, files: list[str], package_jsons: dict[str, str],
            pyprojects: dict[str, str] | None = None) -> Recipe:
     """A task's recipe, from its task.json, its working copy's file list and its manifests.
 
-    ``files`` are paths relative to the working copy; ``package_jsons`` and
-    ``pyprojects`` map a package.json's or pyproject.toml's path to its text.
+    ``files`` are paths relative to the working copy; ``package_jsons`` maps a
+    package.json's or pnpm-workspace.yaml's path to its text, and
+    ``pyprojects`` a pyproject.toml's.
     Lockfiles under node_modules or deeper than three folders are not the
     project's own.
     """
@@ -148,6 +180,7 @@ def recipe(task: dict, files: list[str], package_jsons: dict[str, str],
         r.tools.append(f"npm install -g {shlex.quote(manager.split('+')[0])}")
     if manager.startswith(("pnpm@", "yarn@")):
         r.tools.append(f"corepack install -g {shlex.quote(manager.split('+')[0])}")
+    pnpm10, pnpm_at = False, None    # whether a folder needs pnpm 10; where the image's pnpm is installed
     for folder in sorted(by_folder, key=lambda f: (f.count("/"), f)):
         names = by_folder[folder]
         # A workspace member's packages are installed from the root's lockfile.
@@ -167,6 +200,14 @@ def recipe(task: dict, files: list[str], package_jsons: dict[str, str],
             if lock in names:
                 if lock in JS_LOCKS and lock != keep_js:
                     continue
+                # A lockfile with no package.json beside it has nothing to install
+                # from: `npm ci` stops at once (entireio-cli-281's .opencode, 10-02).
+                # A pnpm workspace's root is the exception: its members hold the
+                # package.json files, and the root installs them all.
+                if lock in JS_LOCKS and "package.json" not in names and not (
+                        lock == "pnpm-lock.yaml" and "pnpm-workspace.yaml" in names):
+                    r.notes.append(f"{folder or '.'}: {lock} with no package.json, not installed")
+                    continue
                 if lock == "requirements.txt" and names & {"uv.lock", "poetry.lock"}:
                     continue
                 r.installs.append((folder, strict, lenient, lock))
@@ -175,7 +216,16 @@ def recipe(task: dict, files: list[str], package_jsons: dict[str, str],
             r.installs.append((folder, UNLOCKED[pm], UNLOCKED[pm], "package.json"))
             r.notes.append(f"{folder or '.'}: package.json with no lockfile, installed unlocked with {pm}")
         if "pnpm-lock.yaml" in names and not manager.startswith("pnpm@"):
-            r.tools.append("corepack install -g pnpm@9")
+            # A pnpm-workspace.yaml with no packages, one that only holds
+            # settings, is pnpm 10's: pnpm 9 refuses it ("packages field missing
+            # or empty"), as it did nrmeyers-agentalloy-19's and -20's frontend
+            # (10-02). One pnpm serves the image, installed once: pnpm 10 if any
+            # folder needs it, where pnpm 9's line would have been.
+            workspace = package_jsons.get(f"{folder}/pnpm-workspace.yaml" if folder else "pnpm-workspace.yaml")
+            pnpm10 = pnpm10 or (workspace is not None and _no_packages(workspace))
+            if pnpm_at is None:
+                pnpm_at = len(r.tools)
+                r.tools.append("corepack install -g pnpm@9")
         pkg_path = f"{folder}/package.json" if folder else "package.json"
         run = (_runner(names) or (_runner(by_folder.get("", set())) if pkg_path in package_jsons else None)
                or ("npm run" if "package.json" in names else None))
@@ -197,6 +247,8 @@ def recipe(task: dict, files: list[str], package_jsons: dict[str, str],
             pyproject = pyprojects.get(f"{folder}/pyproject.toml" if folder else "pyproject.toml", "")
             r.checks.append((folder, "uv run --frozen --all-extras python -m pytest --collect-only -q"
                              if "pytest" in pyproject else "uv run --frozen --all-extras python -m compileall -q ."))
+    if pnpm10 and pnpm_at is not None:
+        r.tools[pnpm_at] = "corepack install -g pnpm@10"
     r.tools = list(dict.fromkeys(r.tools))
     if not r.installs:
         r.notes.append("no lockfile: nothing to install")
@@ -318,7 +370,8 @@ def environment_failure(output: str) -> str | None:
 
 
 def workspace_contents(archive: Path) -> tuple[list[str], dict[str, str], dict[str, str]]:
-    """The working copy's files (paths under workspace/, outside .git), and its package.json and pyproject.toml texts."""
+    """The working copy's files (paths under workspace/, outside .git); its JavaScript manifests' texts by path
+    (package.json, and pnpm-workspace.yaml, which says which pnpm wrote it); and its pyproject.toml texts."""
     files, packages, pyprojects = [], {}, {}
     with tarfile.open(archive) as tar:
         for m in tar:
@@ -327,7 +380,8 @@ def workspace_contents(archive: Path) -> tuple[list[str], dict[str, str], dict[s
                 continue
             rel = "/".join(parts[1:])
             files.append(rel)
-            if parts[-1] in ("package.json", "pyproject.toml") and "node_modules" not in parts and len(parts) <= 5:
+            if (parts[-1] in ("package.json", "pnpm-workspace.yaml", "pyproject.toml") and "node_modules" not in parts
+                    and len(parts) <= 5):
                 text = tar.extractfile(m).read().decode("utf-8", "replace")
-                (packages if parts[-1] == "package.json" else pyprojects)[rel] = text
+                (pyprojects if parts[-1] == "pyproject.toml" else packages)[rel] = text
     return files, packages, pyprojects

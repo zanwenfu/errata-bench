@@ -50,12 +50,18 @@ def stage_build(paths: Paths, limit: int) -> Progress:
     which is exactly what fixing the session-start bug did -- leaves seven stale
     "sound" verdicts pointing at tasks that are gone.
     """
-    from ..construct.build import build
+    from ..construct.build import build, task_name
     from ..spec import fingerprint, write
+
+    from .screening import unbranched
 
     p = Progress("build")
     t0 = time.monotonic()
     rows = [r for r in load(paths.screened) if not r.get("error")]
+    rows, branched = unbranched(rows)
+    if branched:
+        p.notes.append(f"{branched} screened rows are not built: their session's rows hold an abandoned branch, "
+                       "whose edits a build would replay")
     errored = sum(1 for r in load(paths.screened) if r.get("error"))
     if errored:
         # In neither tasks.jsonl nor rejections.jsonl, so said here: re-running
@@ -75,8 +81,11 @@ def stage_build(paths: Paths, limit: int) -> Progress:
         p.failed = 1
         p.notes += [
             "refused: no screened rows to build from, but this directory already holds "
-            f"{holds_paid_work(paths)}. Re-run the earlier stages first, or use --only "
-            "to name the stage you meant."
+            f"{holds_paid_work(paths)}. "
+            + (f"Every one of its {branched} buildable screened rows is in a session the corpus lists as "
+               "holding an abandoned branch. Nothing was pruned, and tasks built from them before the list "
+               "stay in tasks.jsonl: set them aside before the later stages." if branched else
+               "Re-run the earlier stages first, or use --only to name the stage you meant.")
         ]
         p.took_s = time.monotonic() - t0
         return p
@@ -112,7 +121,7 @@ def stage_build(paths: Paths, limit: int) -> Progress:
     # destroyed by a command that exits 0 and prints "0 produced, 51 already
     # done", because `skipped` renders as "already done" and a total wipe reads
     # like a no-op resume.
-    held_back = {f"{r.repo_id.replace('/', '-')}-{r.complaint_turn}"
+    held_back = {task_name(r.repo_id, r.session_id, r.complaint_turn)
                  for r in result.rejected if TRANSIENT in (r.reason or "")}
     if not result.tasks and holds_paid_work(paths):
         p.failed = 1
@@ -199,7 +208,7 @@ def stage_build(paths: Paths, limit: int) -> Progress:
     # build.
     with held(paths.rejections):
         replace(paths.rejections, [
-            {"repo_id": r.repo_id, "complaint": r.complaint_turn, "reason": r.reason}
+            {"repo_id": r.repo_id, "complaint": r.complaint_turn, "reason": r.reason, "session_id": r.session_id}
             for r in result.rejected
         ])
     p.produced = len(result.tasks)

@@ -22,7 +22,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from errata_bench.construct import consistency  # noqa: E402
 from errata_bench.construct.edits import edits_before, replay  # noqa: E402
 from errata_bench.construct.workspace import fetch  # noqa: E402
-from errata_bench.corpus.recover import recover, transcript_path  # noqa: E402
+from errata_bench.corpus.recover import call_folders, recover, start_of, transcript_path  # noqa: E402
 from errata_bench.corpus.turns import load_session_turns  # noqa: E402
 from errata_bench.spec import read  # noqa: E402
 from errata_bench.store import Paths  # noqa: E402
@@ -39,8 +39,10 @@ def one(task, turns) -> dict:
         # Where the raw transcript is here, the edits the table lost are
         # counted too (G-76); where it is not, `lost_edits` stays None.
         here = transcript_path(task.session_id).is_file()
+        # And from the folder the session started in, as the build reads it (G-88).
         row = consistency.check(tree, turns, task.cut_turn, task.sha,
-                                recovered=recover(task.session_id, turns) if here else None)
+                                recovered=recover(task.session_id, turns) if here else None,
+                                cwd=start_of(task.session_id)[1], folders=call_folders(task.session_id))
         return {"task_id": task.task_id, "replay_ok": bool(getattr(rep, "ok", True)), **row}
 
 

@@ -14,9 +14,18 @@ Code's edit tools when it rebuilds a task, and the other agents' edits need
 the same first (#16, "Scope"). Every session left out is counted, with its
 reason, in ``corpus/left_out.json``.
 
-A session fetched under two repositories is written once. That happens when
-two repositories name one checkpoint repository, so the session is kept under
-the repository whose commits carry its checkpoint's trailer.
+A session fetched under several repositories is written once. That happens
+when they name one checkpoint repository: each is given all of its sessions.
+The session is credited to a repository whose commits carry the trailer of
+its latest checkpoint, if any does; else to one whose commits carry an earlier
+checkpoint's; else to any holder. Within the first of those groups that has
+one, it goes to the first by discovery's rank, as a commit's owner is chosen:
+not a fork, then earliest created (`discover.rank`), and the holder's own copy
+of the session is the one written. Name order alone credited Entire's own
+sessions to a copy of entireio/cli that kept its settings and its trailers
+(G-80). A copy is still credited over its original when the original is a
+GitHub fork, or has no creation date on record; neither is true of any
+repository selected so far.
 
 Everything is streamed: conversations are written a session at a time in row
 groups, so memory holds one session's rows, not the corpus.
@@ -34,8 +43,11 @@ from pathlib import Path
 import pyarrow as pa
 import pyarrow.parquet as pq
 
+from ..corpus.sessions import REWOUND_RULES
 from ..store.rows import load
-from .shape import CONVERSATIONS, claude_code_rows, is_claude_code, read_entries
+from .discover import rank
+from .label import digest
+from .shape import CONVERSATIONS, claude_code_rows, is_claude_code, once, read_entries, rewound
 
 S = pa.large_string()
 TS_NS, TS_US = pa.timestamp("ns", tz="UTC"), pa.timestamp("us", tz="UTC")
@@ -114,6 +126,11 @@ def assemble(out: Path, *, log=print) -> dict:
     corpus.mkdir(parents=True, exist_ok=True)
     meta = {r["query_repo"]: r for r in load(out / "discover" / "repos.jsonl")}
     fetched = {r["repo"]: r for r in load(out / "fetch.jsonl") if r.get("status") == "ok"}
+    # Pushback labels (`crawl.label`), each put on the row it was made for.
+    labels = {(r["session_id"], r["turn_number"]): (r["label"], r["digest"])
+              for r in load(out / "labels.jsonl") if r.get("label") and not r.get("error")}
+    labelled: Counter = Counter()
+    developer_turns: set[tuple[str, int]] = set()
 
     # Commits, and which checkpoint each links to: from `link` when it ran,
     # else from discovery's trailer commits (default branches only, no patch).
@@ -138,19 +155,33 @@ def assemble(out: Path, *, log=print) -> dict:
 
     left_out: Counter = Counter()
     agents_left: Counter = Counter()
-    owner_of: dict[str, tuple[str, dict]] = {}
+    # Which repository a session several hold is credited to (the module's
+    # docstring, G-80). Metadata is keyed by the name search found a repository
+    # under; a repository is fetched under its full name.
+    named = {**{m["full_name"]: m for m in meta.values() if m.get("full_name")}, **meta}
+    holders: dict[str, list[tuple[str, dict]]] = {}
     for repo in sorted(fetched):
         for s in load(out / "raw" / repo.replace("/", "__") / "sessions.jsonl"):
-            sid = s["session_id"]
-            if sid in owner_of:
-                prev_repo = owner_of[sid][0]
-                if repo in trailer_repos.get(s["checkpoint_id"], ()) and prev_repo not in trailer_repos.get(s["checkpoint_id"], ()):
-                    owner_of[sid] = (repo, s)
-                left_out["the same session under a second repository"] += 1
-                continue
-            owner_of[sid] = (repo, s)
+            holders.setdefault(s["session_id"], []).append((repo, s))
+
+    def link(held: tuple[str, dict]) -> int:
+        """0: the holder's commits carry its copy's latest checkpoint's trailer; 1: an earlier one's; 2: none."""
+        repo, row = held
+        if repo in trailer_repos.get(row.get("checkpoint_id"), ()):
+            return 0
+        return 1 if any(repo in trailer_repos.get(c, ()) for c in row.get("checkpoint_ids") or []) else 2
+
+    owner_of: dict[str, tuple[str, dict]] = {}
+    for sid, held in holders.items():
+        owner_of[sid] = min(held, key=lambda h: (link(h), rank(h[0], named)))
+        if len(held) > 1:
+            left_out["the same session under a second repository"] += len(held) - 1
 
     sessions, logs, checkpoint_sessions = [], [], {}
+    # Sessions whose developer edited a message the agent had answered and sent
+    # it again: their rows hold the abandoned branch too (`shape.rewound`, G-95).
+    # `find_moments` leaves them out.
+    rewound_sessions: dict[str, int] = {}
     writer = pq.ParquetWriter(corpus / "conversations.parquet.part", CONVERSATIONS)
     batch: list[dict] = []
     try:
@@ -166,9 +197,21 @@ def assemble(out: Path, *, log=print) -> dict:
                 continue
             pk = f"{repo}#{s['checkpoint_id']}"
             rows = claude_code_rows(sid, repo, pk, entries, strategy=s.get("strategy"))
+            edited = rewound(once(entries))
+            for r in rows:
+                if r["turn_type"] == "user_prompt":
+                    developer_turns.add((sid, r["turn_number"]))
+                got = labels.get((sid, r["turn_number"])) if r["turn_type"] == "user_prompt" else None
+                if got and got[1] == digest(r["content"]):
+                    r["prompt_pushback"] = got[0]
+                    labelled["put on its message"] += 1
+                elif got:
+                    labelled["not put: the message changed since it was labelled"] += 1
             if not any(r["turn_type"] == "user_prompt" for r in rows):
                 left_out["no developer message"] += 1
                 continue
+            if edited:
+                rewound_sessions[sid] = edited
             batch += rows
             if len(batch) >= ROW_GROUP:
                 writer.write_table(pa.Table.from_pylist(batch, schema=CONVERSATIONS))
@@ -282,8 +325,17 @@ def assemble(out: Path, *, log=print) -> dict:
     _write(corpus / "checkpoints.parquet", checkpoints, CHECKPOINTS)
     _write(corpus / "commits.parquet", commit_rows, COMMITS)
     _write(corpus / "repositories.parquet", repositories, REPOSITORIES)
-    summary = {"sessions": len(sessions), "repositories": len(repositories), "checkpoints": len(checkpoints),
-               "commit_rows": len(commit_rows), "left_out": dict(left_out), "agents_left_for_later": dict(agents_left)}
+    (corpus / "rewound.json").write_text(json.dumps(
+        {"rules": REWOUND_RULES, "sessions": dict(sorted(rewound_sessions.items()))}, indent=1) + "\n")
+    # A label whose turn holds no developer message now -- the corpus re-assembled
+    # with turns moved, or the session left out -- is counted, not dropped unseen.
+    unplaced = sum(1 for key in labels if key not in developer_turns)
+    if unplaced:
+        labelled["not put: no developer message at that turn"] = unplaced
+    summary = {"sessions": len(sessions), "rewound sessions": len(rewound_sessions),
+               "repositories": len(repositories), "checkpoints": len(checkpoints),
+               "commit_rows": len(commit_rows), "left_out": dict(left_out), "agents_left_for_later": dict(agents_left),
+               "labels": dict(labelled)}
     (corpus / "left_out.json").write_text(json.dumps(summary, indent=1) + "\n")
     log(json.dumps(summary))
     return summary

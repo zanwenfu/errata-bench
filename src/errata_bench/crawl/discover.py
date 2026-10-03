@@ -174,17 +174,19 @@ def fetch_meta(out: Path, *, get: Callable[[str, dict], dict] = gh_get, gap_s: f
         time.sleep(gap_s)
 
 
+def rank(repo: str, meta: dict[str, dict]) -> tuple:
+    """How the holders of one commit, or of one session (`corpus.assemble`), are ordered: not a fork, then earliest
+    created, then by name. A repository with no creation date on record comes after every dated one of its kind."""
+    m = meta.get(repo) or {}
+    return (bool(m.get("fork")), m.get("created_at") or "9999", repo)
+
+
 def owners(commits: list[dict], meta: dict[str, dict]) -> dict[str, str]:
-    """Each commit's owner among the repositories holding it: not a fork, then earliest created, then by name."""
+    """Each commit's owner among the repositories holding it: the first by `rank`."""
     holders: dict[str, set[str]] = {}
     for c in commits:
         holders.setdefault(c["sha"], set()).add(c["repo"])
-
-    def rank(repo: str) -> tuple:
-        m = meta.get(repo) or {}
-        return (bool(m.get("fork")), m.get("created_at") or "9999", repo)
-
-    return {sha: min(repos, key=rank) for sha, repos in holders.items()}
+    return {sha: min(repos, key=lambda r: rank(r, meta)) for sha, repos in holders.items()}
 
 
 def select(out: Path, since: str, policy: str = "v1") -> list[dict]:

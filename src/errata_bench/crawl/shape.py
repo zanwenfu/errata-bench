@@ -1,7 +1,7 @@
 """A Claude Code transcript as rows of SWE-chat's conversations table, with nothing dropped (#16, G-76, G-79).
 
 The pipeline reads SWE-chat's tables, so a session collected here is written
-in their schema (`CONVERSATIONS`) with their row types. Three things differ
+in their schema (`CONVERSATIONS`) with their row types. Four things differ
 from SWE-chat's parser, each on purpose:
 
 - **Every block is a row.** Claude Code writes each block of a message as its
@@ -15,21 +15,34 @@ from SWE-chat's parser, each on purpose:
 - **Who wrote a user message is decided by rule.** SWE-chat's split between
   `user_prompt` and `system_injected` was inconsistent: the same kind of entry
   landed on both sides, and a message holding an image was dropped. Measured
-  on 300 sessions, 09-29. Here:
+  on 300 sessions, 09-29. Here, by the marks Claude Code writes on the entry
+  where it writes them, and by the text where it does not (`user_kind`, G-90):
+  - `peer_message`: another agent's message, delivered into the agent's
+    turn: a teammate's in an agent team, a subagent's hand-back, another
+    Claude session's, a coordinator's relay. SWE-chat has no such type. No
+    developer typed these, and they are shown as another agent's
+    (`corpus.turns`);
   - `system_injected`: built-in commands (`<command-name>/model`), command
     and shell output (`<local-command-stdout>`, `<bash-stdout>`, ...),
     background-task notices, system reminders and instructions, and CI
-    events. SWE-chat counted most
-    background-task notices as the developer's; they are not;
+    events. SWE-chat counted most background-task notices as the
+    developer's; they are not. Also what Claude Code writes there itself: a
+    skill the agent loaded with its own call, a prompt a timer or the
+    harness sent, a Stop hook's feedback, the line it writes on resuming, a
+    note on an image a tool returned, and the "Tool loaded." beside a
+    deferred tool's result;
   - `user_prompt` (the developer's): everything else, including commands
     with their arguments and expanded instructions, `!` shell input,
     interruptions, messages typed while the agent was busy (written only as
-    queue entries), and the summary that opens a continued session (kept as
-    SWE-chat kept it, with `is_continuation`, since the candidate needs what
-    it says);
+    queue entries, or beside a tool's result), and the summary that opens a
+    continued session (kept as SWE-chat kept it, with `is_continuation`,
+    since the candidate needs what it says);
   - an image is kept as the text ``[Image: <type>]``, SWE-chat's form, and
     context an IDE attaches (``<ide_selection>``, the file opened) is kept,
     where SWE-chat dropped it.
+- **A message Claude Code writes in the agent's turn is not the agent's.**
+  One with model ``<synthetic>`` (a usage limit, an API error, "No response
+  requested.") is `system_injected`, not `assistant_response` (G-94).
 
 Entries that are not messages (progress, file snapshots, system events,
 queue operations) are kept as SWE-chat kept them, as ``metadata`` rows holding
@@ -64,6 +77,25 @@ CONVERSATIONS = pa.schema([
 INJECTED = re.compile(r"^\s*<(local-command-caveat|local-command-stdout|local-command-stderr|bash-stdout|bash-stderr"
                       r"|command-name|task-notification|system-reminder|system[_-]instructions?|ci-monitor-event)>")
 CONTINUED = "This session is being continued"
+# Another agent's message, delivered into the agent's turn (G-90): a teammate's,
+# a subagent handing its result back, another Claude session's, a coordinator's
+# relay. Claude Code 2.1 marks most (`origin.kind` or `turnOrigin` "peer"); the
+# opening catches those delivered from a queue, or written by a version that
+# marks nothing. 3,244 of the corpus's 95,496 developer rows were these (10-02).
+PEER = re.compile(r"^\s*(?:<(?:teammate-message|agent-message|cross-session-message|relay)\b"
+                  r"|Another Claude session sent a message)")
+# What Claude Code writes into the user's turn itself, by the marks on the
+# entry (G-90): a notice, an automatic continuation, a timer's or the harness's
+# prompt.
+HARNESS_ORIGINS = frozenset({"task-notification", "auto-continuation"})  # origin.kind
+HARNESS_TURNS = frozenset({"task_notification", "scheduled", "system"})  # turnOrigin
+# Written beside a deferred tool's result when the agent loads it.
+TOOL_LOADED = "Tool loaded."
+# The model Claude Code writes on a message of its own in the agent's turn
+# (G-94): "No response requested." (546 rows of the corpus, 10-02), a usage
+# limit (205), "Prompt is too long" (114), an API error or a login expiring.
+# Shown as the agent's words, two located failed answers were one of these.
+SYNTHETIC = "<synthetic>"
 METADATA = {"progress": "progress", "file-history-snapshot": "file_snapshot", "system": "system_event",
             "summary": "summary", "queue-operation": "queue_operation"}
 FILE_KEYS = ("file_path", "notebook_path", "path")
@@ -99,24 +131,345 @@ def _text(content) -> str:
     return "\n".join(parts)
 
 
-def user_kind(entry: dict, text: str) -> str:
-    """By what the text is, as SWE-chat mostly decided, not by `isMeta`.
+def user_kind(entry: dict, text: str, *, beside_result: bool = False, expansion: bool = False) -> str:
+    """Who wrote a user entry's text: the developer (`user_prompt`), another agent (`peer_message`) or Claude Code
+    (`system_injected`). By the marks Claude Code writes on the entry, and by the text where it wrote none (G-90).
 
-    `isMeta` also marks a command's expanded instructions, which are what the
-    developer asked for and what the agent was given; SWE-chat kept those as
-    the developer's in 109 of 124 cases measured, and so does this.
+    `isMeta` marks what Claude Code wrote into the turn, and among that a
+    command's expanded instructions, which are what the developer asked for
+    and what the agent was given; SWE-chat kept those as the developer's in
+    109 of 124 cases measured, and so does this. So a meta entry is the
+    developer's only when it expands a command they ran (``expansion``, as
+    `is_expansion` decides) and no call of the agent's loaded it
+    (`sourceToolUseID`, a skill the agent ran). Every other meta entry is
+    Claude Code's: a hook's feedback, the line it writes on resuming, a note
+    on an image a tool returned, a timer's or a wake-up's prompt, "your
+    previous response had no visible output", a command's output. Of the
+    corpus's meta entries, 3,307 expand a command (10-02).
+
+    Text beside a tool's result in the same entry (``beside_result``) is a
+    message the developer typed while the tool ran, as their answer to a
+    question or a permission prompt is, except the "Tool loaded." Claude Code
+    writes beside a deferred tool's.
     """
     if entry.get("isCompactSummary") or text.lstrip().startswith(CONTINUED):
         return "user_prompt"
-    return "system_injected" if INJECTED.match(text) else "user_prompt"
+    if INJECTED.match(text):
+        return "system_injected"
+    origin = entry.get("origin") if isinstance(entry.get("origin"), dict) else {}
+    if origin.get("kind") == "peer" or entry.get("turnOrigin") == "peer" or PEER.match(text):
+        return "peer_message"
+    if (origin.get("kind") in HARNESS_ORIGINS or entry.get("turnOrigin") in HARNESS_TURNS
+            or entry.get("promptSource") == "system"
+            or entry.get("isMeta") and (not expansion or bool(entry.get("sourceToolUseID")))
+            or beside_result and text.strip() == TOOL_LOADED):
+        return "system_injected"
+    return "user_prompt"
+
+
+COMMAND_ENTRY = re.compile(r"^\s*<command-message>")
+
+
+def is_expansion(entries: list[dict], i: int, index: dict[str, int]) -> bool:
+    """Whether meta entry ``i`` expands a command the developer ran: the first entry before it, looking past
+    attachments, system entries and progress, is their command entry.
+
+    Their own command opens with its message (`<command-message>`); a built-in
+    one opens with its name, and a meta entry after it is its output (`/context`
+    writes its report so). A command a timer ran (`turnOrigin` "scheduled") is
+    not theirs either. Another meta entry before it ends the walk: Claude Code
+    writes an expansion right after its command (all 3,307 of the corpus's,
+    10-02), and a meta entry after the expansion is its own: a hook's
+    feedback, the resume line, or the note on an image attached to the
+    command (5 in the corpus). The entry before is the one `parentUuid` names;
+    an entry without that field is placed after the one before it in the file,
+    and one whose `parentUuid` is null has nothing before it.
+    """
+    seen = 0
+    while seen < 200:
+        seen += 1
+        entry = entries[i]
+        if "parentUuid" in entry:
+            parent = entry.get("parentUuid")
+            if parent not in index:
+                return False
+            i = index[parent]
+        elif i > 0:
+            i -= 1
+        else:
+            return False
+        before = entries[i]
+        if before.get("type") == "assistant":
+            return False
+        if before.get("type") != "user":
+            continue
+        if before.get("isMeta"):
+            return False
+        msg = before.get("message") if isinstance(before.get("message"), dict) else {}
+        text = _text(msg.get("content"))
+        return bool(COMMAND_ENTRY.match(text)) and user_kind(before, text) == "user_prompt"
+    return False
+
+
+_COMMAND_NAME = re.compile(r"<command-name>\s*(.*?)\s*</command-name>", re.DOTALL)
+_COMMAND_ARGS = re.compile(r"<command-args>(.*?)</command-args>", re.DOTALL)
+
+
+def as_typed(text: str) -> str | None:
+    """A slash command as the developer typed it, its name and arguments, from the form Claude Code delivers it in."""
+    name = _COMMAND_NAME.search(text)
+    if not name:
+        return None
+    args = _COMMAND_ARGS.search(text)
+    typed = name.group(1) if name.group(1).startswith("/") else "/" + name.group(1)
+    return " ".join(f"{typed} {args.group(1) if args else ''}".split())
+
+
+def queued_and_delivered(entries: list[dict]) -> set[int]:
+    """The queue entries whose message is written again where it was delivered (G-84).
+
+    A message typed while the agent was busy is written to a queue entry, and
+    newer versions of Claude Code write it again when it is delivered: as the
+    developer's own entry, or mid-turn as a `queued_command` attachment. That
+    copy is where the agent read it, so it is the row, and the queue entry is a
+    developer row only for a message written nowhere else. Each delivered copy
+    is paired with the earliest queue entry of the same text still waiting, one
+    to one, so a message queued twice and delivered twice stays two.
+
+    A slash command is queued as typed (``/ship-it merge it``) and delivered
+    as Claude Code's command form, so it is matched by its name and arguments
+    (`as_typed`). An attachment whose prompt is content blocks makes no row of
+    its own: it takes its queue entry out of waiting, and the queue entry stays
+    the row, so a later message of the same text is not paired with it.
+    Pairing goes by text alone, so in a version that writes only the queue, a
+    message typed later with the same text can still take an earlier one's place.
+    """
+    waiting: dict[str, list[int]] = {}
+    paired: set[int] = set()
+    for i, entry in enumerate(entries):
+        kind = entry.get("type")
+        if kind == "queue-operation":
+            text = " ".join(entry["content"].split()) if isinstance(entry.get("content"), str) else ""
+            if entry.get("operation") == "enqueue" and text:
+                waiting.setdefault(text, []).append(i)
+            continue
+        if kind == "user" and isinstance(entry.get("message"), dict):
+            text = " ".join(_text(entry["message"].get("content")).split())
+            texts, a_row = (text, as_typed(text)), True
+        elif kind == "attachment" and isinstance(entry.get("attachment"), dict) \
+                and entry["attachment"].get("type") == "queued_command":
+            prompt = entry["attachment"].get("prompt")
+            texts, a_row = (" ".join((prompt if isinstance(prompt, str) else _text(prompt)).split()),), isinstance(prompt, str)
+        else:
+            continue
+        for text in texts:
+            if text and waiting.get(text):
+                queued = waiting[text].pop(0)
+                if a_row:
+                    paired.add(queued)
+                break
+    return paired
+
+
+def rewound(entries: list[dict]) -> int:
+    """How many of the developer's messages the agent answered and the conversation then left (G-95, pilot audit
+    10-02): a message edited and sent again, or the conversation taken back to before it.
+
+    Claude Code keeps the abandoned branch in the transcript: the message, and
+    everything the agent did in answer to it. The rows are written in the
+    file's order, so a conversation shows both, as if one had followed the
+    other, and a build would replay the abandoned branch's edits.
+
+    The conversation as it ended is the chain from the session's last
+    main-thread entry back to its root. A developer message is counted when a
+    real answer (not Claude Code's `<synthetic>` text) is under it, the
+    chain does not pass through it, and either the developer sent another
+    message from the same point or the chain goes on from that point by
+    another way -- a command, a compaction. Both: each alone missed rewinds
+    the other found. Two first messages, two roots, are no rewind: the one
+    session with them ran a command, finished, and three hours later ran it
+    again.
+
+    A compaction's boundary has no parent and names the entry it follows in
+    `logicalParentUuid`; an entry naming one the file does not hold -- 491 of
+    the corpus's 1,624 boundaries do -- follows the entry before it in the
+    file. Each of these, missed, listed sessions whose kept messages were
+    taken for abandoned: 147 listed at first, then 85, then 79, against 77
+    now (150 messages).
+    """
+    index: dict[str, int] = {}
+    for i, entry in enumerate(entries):
+        if entry.get("uuid"):
+            index.setdefault(entry["uuid"], i)
+    before: list[str | None] = []
+    seen = None
+    for entry in entries:
+        before.append(seen)
+        seen = entry.get("uuid") or seen
+
+    def parent_of(i: int) -> str | None:
+        entry = entries[i]
+        named = entry.get("parentUuid") or entry.get("logicalParentUuid")
+        if not named:
+            return None
+        return named if named in index else before[i]
+
+    # One entry for each uuid: `once` keeps two that share one but differ (43
+    # in the corpus), and a later copy of a kept message, sitting beside it,
+    # was counted as left with the original's answers under it (review, 10-03).
+    children: dict[str | None, list[int]] = {}
+    for i, entry in enumerate(entries):
+        if entry.get("uuid") and index[entry["uuid"]] == i and (
+                "parentUuid" in entry or "logicalParentUuid" in entry):
+            children.setdefault(parent_of(i), []).append(i)
+
+    # The last entry of the main thread with a place in the tree: a
+    # sub-agent's entry, one with no parent key, or a later copy of a uuid ends
+    # no conversation.
+    last = next((i for i in range(len(entries) - 1, -1, -1) if entries[i].get("uuid")
+                 and index[entries[i]["uuid"]] == i and not entries[i].get("isSidechain")
+                 and ("parentUuid" in entries[i] or "logicalParentUuid" in entries[i])), None)
+    kept: set[int] = set()
+    at = last
+    while at is not None and at not in kept:
+        kept.add(at)
+        parent = parent_of(at)
+        at = index.get(parent) if parent else None
+
+    def typed(i: int) -> bool:
+        entry = entries[i]
+        message = entry.get("message") if isinstance(entry.get("message"), dict) else {}
+        content = message.get("content")
+        if entry.get("type") != "user" or entry.get("isMeta") or entry.get("isSidechain") or (
+                isinstance(content, list) and any(isinstance(b, dict) and b.get("type") == "tool_result"
+                                                  for b in content)):
+            return False
+        text = _text(content)
+        return bool(text.strip()) and user_kind(entry, text) == "user_prompt"
+
+    def answered(i: int) -> bool:
+        entry = entries[i]
+        message = entry.get("message") if isinstance(entry.get("message"), dict) else {}
+        return entry.get("type") == "assistant" and message.get("model") != SYNTHETIC
+
+    count = 0
+    for parent, kids in children.items():
+        if parent is None:
+            continue
+        typed_kids = [i for i in kids if typed(i)]
+        # The cheap test first: walking every message off the chain made a
+        # session with two roots cost the square of its length.
+        if not (len(typed_kids) >= 2 or index.get(parent) in kept):
+            continue
+        for i in typed_kids:
+            if i in kept:
+                continue
+            below, todo = {i}, [entries[i].get("uuid")]
+            while todo:
+                for j in children.get(todo.pop(), []):
+                    if j not in below:
+                        below.add(j)
+                        todo.append(entries[j].get("uuid"))
+            if any(answered(j) for j in below):
+                count += 1
+    return count
+
+
+# How Claude Code opens the entry that delivers another session's or agent's message.
+DELIVERED_PEER = "Another Claude session sent a message:"
+
+
+def peer_copies(entries: list[dict]) -> set[int]:
+    """The queue entries and queued attachments holding another agent's message that Claude Code writes again,
+    whole, in the entry that delivers it (pilot audit, 10-02).
+
+    The delivering entry opens with "Another Claude session sent a message:"
+    and closes with a note of the harness's, so the texts differ and
+    `queued_and_delivered` never paired them: the message was shown twice, a
+    7,000-character report among them -- 606 rows in the corpus. The
+    delivering entry is where the agent read it. The copy before it is typed
+    Claude Code's, not dropped, so no row moves: labels and runs name rows by
+    their number.
+
+    Paired one to one: the longest text the delivery holds, so a shorter
+    message it quotes is not taken for it, and of equal texts the latest
+    before the delivery, so an earlier delivery of the same words is left as
+    it was. Newer versions write the queue entry, the attachment that
+    delivers it mid-turn, then the wrapped delivery: the attachment, the row,
+    is the later of the two (review, 10-02).
+    """
+    waiting: list[tuple[int, str]] = []
+    copies: set[int] = set()
+    for i, entry in enumerate(entries):
+        kind = entry.get("type")
+        att = entry.get("attachment") if isinstance(entry.get("attachment"), dict) else {}
+        if kind == "queue-operation" and entry.get("operation") == "enqueue" and isinstance(entry.get("content"), str):
+            text = " ".join(entry["content"].split())
+        elif kind == "attachment" and att.get("type") == "queued_command" and isinstance(att.get("prompt"), str):
+            text = " ".join(att["prompt"].split())
+        elif kind == "user" and isinstance(entry.get("message"), dict):
+            said = " ".join(_text(entry["message"].get("content")).split())
+            if said.startswith(DELIVERED_PEER):
+                held = [k for k, (_, queued) in enumerate(waiting) if queued in said]
+                if held:
+                    copies.add(waiting.pop(max(held, key=lambda k: (len(waiting[k][1]), k)))[0])
+            continue
+        else:
+            continue
+        if text and PEER.match(text):
+            waiting.append((i, text))
+    return copies
+
+
+def _said(entry: dict) -> str:
+    """What an entry says, without its bookkeeping (branch, directory, version, ids)."""
+    return json.dumps([entry.get(k) for k in ("type", "subtype", "message", "attachment", "content")], sort_keys=True)
+
+
+def once(entries: list[dict]) -> list[dict]:
+    """The transcript with each entry once (G-85).
+
+    In 42 of the collected corpus's transcripts, a session's history is written
+    into its file again partway through: 36,036 entries under the uuid they
+    already had, among them 8,859 of the developer's turns. Every call, result
+    and message after that point became a row twice, and a build would replay a
+    session's edits twice. The copy refreshes the entry's bookkeeping (branch,
+    directory, version) but says what the first said, in 35,993 of the 36,036.
+    So an entry is left out when an earlier one has its uuid and says the same.
+    Two that share a uuid but say different things are both kept.
+    """
+    said: dict[str, set[str]] = {}
+    out = []
+    for entry in entries:
+        uuid = entry.get("uuid")
+        if uuid:
+            this = _said(entry)
+            if this in said.setdefault(uuid, set()):
+                continue
+            said[uuid].add(this)
+        out.append(entry)
+    return out
 
 
 def claude_code_rows(session_id: str, repo_id: str, checkpoint_pk: str, entries: list[dict],
                      strategy: str | None = None) -> list[dict]:
-    """The session's rows in order, numbered from 0."""
+    """The session's rows in order, numbered from 0.
+
+    Each entry is read once (`once`), and so is each call and its result: a
+    call re-sent under a new entry with the id of one already written, as a
+    retried or replayed message is, is not a second call (G-85).
+    """
+    entries = once(entries)
     rows: list[dict] = []
     call_names: dict[str, str] = {}
+    results: set[str] = set()  # calls whose result is written
     last_of_message: dict[str, int] = {}  # message id -> index of its last row
+    delivered = queued_and_delivered(entries)
+    copies = peer_copies(entries)
+    index: dict[str, int] = {}  # uuid -> the entry's place, for what a meta entry follows
+    for n, entry in enumerate(entries):
+        if entry.get("uuid"):
+            index.setdefault(entry["uuid"], n)
 
     def add(role, turn_type, content, entry, **fields):
         row = {"role": role, "turn_type": turn_type, "content": content,
@@ -124,19 +477,25 @@ def claude_code_rows(session_id: str, repo_id: str, checkpoint_pk: str, entries:
         rows.append(row)
         return len(rows) - 1
 
-    for entry in entries:
+    for n, entry in enumerate(entries):
         kind = entry.get("type")
         msg = entry.get("message") if isinstance(entry.get("message"), dict) else {}
         if kind == "user":
             content = msg.get("content")
             text = _text(content)
             if text.strip() or isinstance(content, str):
-                turn_type = user_kind(entry, text)
+                beside = isinstance(content, list) and any(
+                    isinstance(b, dict) and b.get("type") == "tool_result" for b in content)
+                turn_type = user_kind(entry, text, beside_result=beside,
+                                      expansion=bool(entry.get("isMeta")) and is_expansion(entries, n, index))
                 add("user", turn_type, text, entry, is_continuation=bool(entry.get("isCompactSummary"))
                     or text.lstrip().startswith(CONTINUED))
             for block in content if isinstance(content, list) else []:
                 if isinstance(block, dict) and block.get("type") == "tool_result":
                     cid = block.get("tool_use_id")
+                    if cid and cid in results:
+                        continue
+                    results.add(cid)
                     add("tool_result", "tool_result", _text(block.get("content")), entry, tool_call_id=cid,
                         tool_name=call_names.get(cid))
         elif kind == "assistant":
@@ -146,11 +505,15 @@ def claude_code_rows(session_id: str, repo_id: str, checkpoint_pk: str, entries:
                     continue
                 btype = block.get("type")
                 if btype == "text":  # stripped, as SWE-chat stored it
-                    i = add("assistant", "assistant_response", (block.get("text") or "").strip(), entry,
-                            model=msg.get("model"))
+                    # Claude Code's own text in the agent's turn (G-94): a usage
+                    # limit, an API error, "No response requested.". Not the agent's.
+                    kind_of = "system_injected" if msg.get("model") == SYNTHETIC else "assistant_response"
+                    i = add("assistant", kind_of, (block.get("text") or "").strip(), entry, model=msg.get("model"))
                 elif btype == "thinking":
                     i = add("assistant", "assistant_thinking", block.get("thinking") or "", entry, model=msg.get("model"))
                 elif btype == "tool_use":
+                    if block.get("id") and block.get("id") in call_names:
+                        continue
                     inp = block.get("input") if isinstance(block.get("input"), dict) else {}
                     dumped = json.dumps(inp)  # SWE-chat's form: non-ASCII escaped; the same JSON either way
                     call_names[block.get("id")] = block.get("name")
@@ -167,20 +530,21 @@ def claude_code_rows(session_id: str, repo_id: str, checkpoint_pk: str, entries:
         elif kind in METADATA:
             add("metadata", METADATA[kind], json.dumps(entry, ensure_ascii=False), entry,
                 queue_op_subtype=entry.get("operation") if kind == "queue-operation" else None)
-            # A message typed while the agent was busy is queued, and the queue
-            # entry is the only place it is written. It is the developer's --
+            # A message typed while the agent was busy is queued. Where the queue
+            # entry is the only place it is written, it is the developer's --
             # often a correction mid-run -- so it is a row of its own, as
             # SWE-chat made it (194 of 300 sessions' unmatched messages, 09-29).
+            # Where it is written again on delivery, that copy is the row (G-84).
             text = entry.get("content") if kind == "queue-operation" else None
-            if entry.get("operation") == "enqueue" and isinstance(text, str) and text.strip():
-                add("user", user_kind({}, text), text, entry)
+            if entry.get("operation") == "enqueue" and isinstance(text, str) and text.strip() and n not in delivered:
+                add("user", "system_injected" if n in copies else user_kind({}, text), text, entry)
         elif kind == "attachment":
             att = entry.get("attachment") if isinstance(entry.get("attachment"), dict) else {}
             if att.get("type") == "queued_command" and isinstance(att.get("prompt"), str) and att["prompt"].strip():
                 # A message queued while the agent was busy, delivered as an
                 # attachment by newer versions: the developer's unless it is
                 # itself a notice (`commandMode` "task-notification").
-                kind_of = ("system_injected" if att.get("commandMode") not in (None, "prompt")
+                kind_of = ("system_injected" if att.get("commandMode") not in (None, "prompt") or n in copies
                            else user_kind({}, att["prompt"]))
                 add("user", kind_of, att["prompt"], entry)
             elif att.get("type") == "edited_text_file":

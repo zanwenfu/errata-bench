@@ -28,6 +28,12 @@ from errata_bench.corpus import turns as turns_mod
 from errata_bench.score import trace as trace_mod
 from errata_bench.score.attempt import Attempt, ToolCall
 from errata_bench.score.judge import Judgement
+
+# The build asks the corpus for its list of edited sessions (G-95), which reads
+# `CORPUS`: a folder that does not exist here, as in CI, so whatever ERRATA_CORPUS names -- a
+# collected corpus assembled before the list, say -- neither stops nor steers
+# this run (review, 10-03).
+corpus.CORPUS = Path(tempfile.mkdtemp()) / "no-corpus"
 from errata_bench.stages import stage_attempt, stage_build, stage_grade
 from errata_bench.store import Paths, load
 # from the code, not a copy: a control added there must appear in every
@@ -451,7 +457,7 @@ check(len(seen["judge"]) == 1, f"the errored grade is retried, the good one is n
 # ------------------------------- 7. rebuilding tasks does not orphan answers
 
 print("\n7. a rebuild prunes answers with their tasks")
-from errata_bench.spec import read as read_tasks
+from errata_bench.spec import Rejection, read as read_tasks
 import errata_bench.build as build_mod
 
 surviving = [t for t in read_tasks(after.tasks) if t.task_id != "task-0"]
@@ -459,7 +465,7 @@ surviving = [t for t in read_tasks(after.tasks) if t.task_id != "task-0"]
 
 class FakeBuild:
     tasks = surviving
-    rejected = [type("R", (), {"repo_id": "r/r", "complaint_turn": 1, "reason": "nothing to answer"})()]
+    rejected = [Rejection("r/r", 1, "nothing to answer", "s")]
 
 
 build_mod.build = lambda rows_: FakeBuild()

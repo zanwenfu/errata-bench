@@ -29,6 +29,73 @@ from pydantic import BaseModel, Field
 
 from ..llm import MODEL, configure_client, resilient, with_field_guide
 
+# How much of the end of the conversation triage reads, at the least.
+TAIL_CHARS = 9000
+LEFT_OUT = "[... the conversation before this is not shown ...]"
+
+
+def view(turns: list[dict], turn_number) -> str:
+    """What triage reads: the end of the conversation up to the developer's message (G-92).
+
+    Each row is rendered on its own, as `build_excerpt` renders it with every
+    message whole (record 2: a call shows its input, each result keeps up to
+    4,000 characters, and a cut says how much went), and the rows are chosen
+    as rows, never by reading the text back: a message that quotes "[turn 2]
+    AGENT:" is not a turn. From the end, whole rows up to `TAIL_CHARS`, the
+    developer's message whole however long, and the agent's last answer before
+    it, the work it may object to; the rows between those two are left out
+    and counted, so a long run of calls after the answer does not make the
+    view long. A line says where the start was left out.
+
+    It read the last 9,000 characters as they fell, each message cut at 4,000:
+    the view began inside a turn in 643 of the first 681 Entire moments, and
+    the agent's last answer was cut, unmarked, in 77. Each row rendered on
+    its own is never squeezed to fit the rest: fitted as a whole, the history
+    triage never reads cut the calls and results it does, to 40 characters in
+    the longest sessions.
+    """
+    from ..corpus.turns import build_excerpt
+
+    rows = []
+    for t in turns:
+        n = t.get("turn_number")
+        if n is None or n > turn_number:
+            continue
+        shown = build_excerpt([t], turn_number, record=2, whole_messages=True)
+        if shown:
+            rows.append((t, shown))
+    if not rows:
+        return ""
+    start, size = len(rows) - 1, len(rows[-1][1])
+    while start > 0 and size + 1 + len(rows[start - 1][1]) <= TAIL_CHARS:
+        start -= 1
+        size += 1 + len(rows[start][1])
+    # Not from inside a batch of calls: a result shown without its call reads
+    # as the next call's (pilot audit, 10-02). Back to the earliest call whose
+    # result is in view, unless the steps back add more than another
+    # TAIL_CHARS in all.
+    call_at = {t.get("tool_call_id"): i for i, (t, _) in enumerate(rows)
+               if t.get("turn_type") == "tool_use" and t.get("tool_call_id")}
+    tail = start
+    while start > 0:
+        earliest = min((call_at[t.get("tool_call_id")] for t, _ in rows[start:]
+                        if t.get("turn_type") == "tool_result" and call_at.get(t.get("tool_call_id"), start) < start),
+                       default=start)
+        if earliest >= start or sum(len(shown) + 1 for _, shown in rows[earliest:tail]) > TAIL_CHARS:
+            break
+        start = earliest
+    kept = [shown for _, shown in rows[start:]]
+    first = start
+    answer = next((i for i in range(len(rows) - 1, -1, -1) if rows[i][0].get("turn_type") == "assistant_response"),
+                  None)
+    if answer is not None and answer < start:
+        between = start - answer - 1
+        kept = [rows[answer][1]] + ([f"[... {between} turns between not shown ...]"] if between else []) + kept
+        first = answer
+    # A message's row opens with a blank line; the view does not (pilot audit).
+    text = "\n".join(kept).lstrip("\n")
+    return text if first == 0 else f"{LEFT_OUT}\n{text}"
+
 
 class Triage(BaseModel):
     """Whether this moment could possibly be an objection to agent work."""
@@ -74,12 +141,21 @@ instruction is not, however firmly worded. A constraint stated up front -- \
 "don't commit automatically", "preserve the existing behaviour" -- is not, \
 because nothing has gone wrong yet.
 
+Some messages only sound like objections. A question about the design ("do we \
+really need this layer?"), a clarification of what the developer wants next, or \
+a reply that accepts the work and then extends it ("fine, keep that; now do the \
+same for the exporter") does not say the agent got anything wrong, even with an \
+evaluative word in it. But correcting a fact the agent stated or assumed is an \
+objection, however mildly put. And the work objected to must be the agent's: \
+questioning code that was in the repository before the agent touched it is not \
+objecting to the agent, unless it disputes what the agent said or did about it.
+
 Both must be true for this moment to be worth examining further. Be strict: \
 saying no is cheap, and saying yes commits several expensive reads."""
 
 
 async def triage(excerpt: str, *, model: str = MODEL) -> Triage:
-    """One call deciding whether a moment deserves the full reader."""
+    """One call deciding whether a moment deserves the full reader, on the end of the conversation (`view`)."""
     from agents import Agent, Runner
 
     configure_client()
@@ -89,8 +165,8 @@ async def triage(excerpt: str, *, model: str = MODEL) -> Triage:
         model=model,
         output_type=Triage,
     )
-    # Only the tail matters: whether the agent has acted, and what the developer
-    # said about it. The reader gets the whole conversation afterwards, if this
-    # says it is worth having.
-    result = await resilient(lambda: Runner.run(agent, f"The conversation:\n\n{excerpt[-9000:]}", max_turns=3))
+    # Only the end matters: whether the agent has acted, and what the developer
+    # said about it (`view`). The reader gets the whole conversation afterwards,
+    # if this says it is worth having.
+    result = await resilient(lambda: Runner.run(agent, f"The conversation:\n\n{excerpt}", max_turns=3))
     return result.final_output

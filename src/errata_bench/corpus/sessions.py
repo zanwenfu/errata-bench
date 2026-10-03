@@ -67,6 +67,42 @@ class Repo:
         return self.license_type is not None
 
 
+#: How `crawl.shape.rewound` counts, stamped on a collected corpus's
+#: `rewound.json`. 4 (10-03): a compaction's boundary is followed to the entry it
+#: names, or to the entry before it when that is not in the file, as is any
+#: missing parent; the conversation ends at its last main-thread entry; a
+#: message left when the conversation went on by a command or a compaction
+#: counts; Claude Code's own text is no answer; one entry stands for each uuid.
+#: Lists counted otherwise are refused. A change to the rule changes this
+#: number: the collector's checks pin the two together.
+REWOUND_RULES = 4
+
+
+def edited_sessions() -> set[str]:
+    """The sessions the collector lists as holding an abandoned branch (`crawl.shape.rewound`, G-95): no moment
+    is drawn or read from them.
+
+    None from a corpus the collector did not assemble (SWE-chat's has no
+    list). A collected corpus (it has `left_out.json`) with no list, a list
+    that cannot be read, or one counted under other rules is refused: each
+    would leave out nothing, or the wrong sessions, and say nothing (review,
+    10-02).
+    """
+    listed = CORPUS / "rewound.json"
+    if not listed.exists():
+        if (CORPUS / "left_out.json").exists():
+            raise SystemExit(f"{CORPUS} was assembled before the sessions holding an abandoned branch were listed "
+                             "(rewound.json): assemble it again")
+        return set()
+    try:
+        data = json.loads(listed.read_text())
+    except (OSError, ValueError) as e:
+        raise SystemExit(f"{listed} cannot be read ({e}): assemble the corpus again") from e
+    if not isinstance(data, dict) or data.get("rules") != REWOUND_RULES or not isinstance(data.get("sessions"), dict):
+        raise SystemExit(f"{listed} was not counted under rules {REWOUND_RULES}: assemble the corpus again")
+    return set(data["sessions"])
+
+
 def load_repos() -> dict[str, Repo]:
     """Every repository in the corpus, keyed by ``owner/name``."""
     table = pq.read_table(

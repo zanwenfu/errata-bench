@@ -2,11 +2,11 @@
 
     .venv/bin/python d40_spend.py [--prefix d40] [--stop 1600] [--code <sha>]
 
-An upper bound, on purpose: gpt-6-sol is not on Azure's price list, so it is
-priced as gpt-6-astra, and gpt-6-sol's own tests (calibration, controls,
-probes), whose rows record no tokens, are priced at a first reading's cost
-each, and counted once, in d40-soltests, where they are asked. Exits 3 when
-the total reaches --stop.
+An upper bound, on purpose. gpt-6-sol, missing from Azure's price list until
+09-30 and priced as gpt-6-astra before then, is now at its listed price. Its
+own tests (calibration, controls, probes), whose rows record no tokens, are
+priced at a first reading's cost each, and counted once, in d40-soltests,
+where they are asked. Exits 3 when the total reaches --stop.
 
 --code counts only the rows written at that commit: D-45 copies D-44's
 answers and its readings of the answers it does not re-grade, and those were
@@ -24,7 +24,11 @@ PRICE = {  # USD per 1M tokens: input, cached input, output (Global Standard lis
     "grok-4.6": (2.00, 0.50, 6.00), "Kimi-K2.7-Code": (0.95, 0.19, 4.00),
     "DeepSeek-V4-Pro": (1.74, 0.145, 3.48), "DeepSeek-V4-Flash": (0.44, 0.028, 1.32),
     "Mistral-Large-3": (0.50, 0.50, 1.50), "MAI-Thinking-1": (2.00, 0.20, 8.00),
-    "gpt-6-astra": (10.00, 1.00, 50.00), "gpt-6-sol": (10.00, 1.00, 50.00),
+    "gpt-6-astra": (10.00, 1.00, 50.00),
+    # Not listed on 09-24, and held at gpt-6-astra's price until Azure listed it (by 09-30): a tally
+    # made before then priced gpt-6-sol's calls at five times its rate.
+    "gpt-6-sol": (2.00, 0.20, 10.00),
+    "gpt-5.6-luna": (0.20, 0.02, 1.20),  # listed 09-30; the pushback labeller (`crawl/label.py`)
 }
 TEST_ROW_USD = {"calibration": 0.40, "controls": 0.26, "instrument": 0.13, "probes": 0.05}
 

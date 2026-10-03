@@ -79,9 +79,16 @@ def find_moments(
     repositories, so a sample of any size covers as many projects as it can and
     reads the most promising moments first.
     """
+    import pyarrow.compute as pc
     import pyarrow.parquet as pq
 
     from errata_bench.corpus.sessions import CORPUS
+
+    # Asked first: a stale or missing list stops the collection before the
+    # passes over the corpus, not after (review, 10-02).
+    from errata_bench.corpus.sessions import edited_sessions
+
+    rewound = edited_sessions()
 
     # One file or many: `--exclude` names one, `--fresh` hands over every
     # moments file already on disk.
@@ -110,17 +117,26 @@ def find_moments(
     wanted = set(kinds)
     first: dict[str, dict] = {}
     pushes: dict[str, list[tuple]] = {}
+    # A shell command the developer ran (`!cmd`, written `<bash-input>`) is
+    # addressed to the shell, not the agent, and is no pushback whatever its
+    # label: 11 of the Entire corpus's 787 carry one, and one was drawn into the
+    # gate-3 pilot (pilot audit, 10-02).
+    shell = 0
     conv = pq.ParquetFile(CORPUS / "conversations.parquet")
     for batch in conv.iter_batches(
         batch_size=200_000,
-        columns=["session_id", "turn_number", "turn_type", "prompt_pushback"],
+        columns=["session_id", "turn_number", "turn_type", "prompt_pushback", "content"],
     ):
-        cols = {n: batch.column(n).to_pylist() for n in batch.schema.names}
+        cols = {n: batch.column(n).to_pylist() for n in ("session_id", "turn_number", "turn_type", "prompt_pushback")}
+        escape = pc.match_substring_regex(batch.column("content"), r"^\s*<bash-input>").to_pylist()
         for i in range(len(cols["session_id"])):
             kind = cols["prompt_pushback"][i]
             if kind not in wanted:
                 continue
             if cols["turn_type"][i] != "user_prompt":
+                continue
+            if escape[i]:
+                shell += 1
                 continue
             session = cols["session_id"][i]
             turn = cols["turn_number"][i]
@@ -142,6 +158,9 @@ def find_moments(
     # now?", which is a real bug report and an impossible task, because there is
     # no failing answer in this transcript to cut before. Triage catches these
     # for the price of a model call; counting rows costs nothing.
+    if shell:
+        print(f"  {shell} rows in the corpus labelled pushback passed over: a shell command the developer ran, "
+              "not a message to the agent", flush=True)
     if later:
         first = _later_moments(conv, pushes, repo_of, min_agent_turns)
     need = {m["session_id"]: m["turn_number"] for m in first.values()}
@@ -203,6 +222,16 @@ def find_moments(
     if twice:
         print(f"  {twice} moments left out: the corpus holds rows of their session twice, under the same "
               "turn numbers", flush=True)
+    # And a session whose developer edited a message the agent had answered and
+    # sent it again: its rows hold the abandoned branch as if it had happened,
+    # and a build would replay that branch's edits (G-95, pilot audit 10-02).
+    # The collector lists them (`crawl.shape.rewound`); SWE-chat's corpus has
+    # no such list, and nothing is left out there.
+    branched = sum(1 for m in fresh if m["session_id"] in rewound)
+    fresh = [m for m in fresh if m["session_id"] not in rewound]
+    if branched:
+        print(f"  {branched} moments left out: the developer edited and sent again a message the agent had "
+              "answered, and the session's rows still hold the abandoned branch", flush=True)
     untranscribed = sum(1 for m in fresh if not has_transcript(m["session_id"]))
     fresh = [m for m in fresh if has_transcript(m["session_id"])]
     if untranscribed:
@@ -234,6 +263,19 @@ def find_moments(
         if unknown:
             why.append(f"{unknown} whose repository the corpus has no row for")
         print(f"  {len(withheld)} moments left out: " + ", ".join(why), flush=True)
+
+    # One moment in several sessions (G-91): a conversation resumed, forked,
+    # carried on after compaction, or recorded twice, holds its messages in
+    # each session, each copy with the message's text and time. One copy of a
+    # moment is read, and none of one an earlier collection took: the first
+    # runs on the collected corpus read 9 moments twice and built one into two
+    # tasks. After the checks above, so the copy kept is one that can be built.
+    from errata_bench.corpus.copies import identities, keep_one
+
+    found = identities(conv, {(m["session_id"], m["turn_number"]) for m in fresh} | seen)
+    fresh, copies = keep_one(fresh, found, {found[k][0] for k in seen if k in found and found[k][0]})
+    for why, n in sorted(copies.items()):
+        print(f"  {n} moments left out: {why}", flush=True)
 
     # Spread across repositories rather than taking the first N of a sorted list.
     # Sorting by repo_id and slicing gave fifty moments from a single repository,

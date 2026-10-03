@@ -2107,7 +2107,8 @@ _turns38 = [(sid, n, kind, push) for sid in _langs38 for n, kind, push in (
 _pq.write_table(_pa.table({
     "session_id": [t[0] for t in _turns38], "turn_number": [t[1] for t in _turns38],
     "turn_type": [t[2] for t in _turns38], "prompt_pushback": [t[3] for t in _turns38],
-    "timestamp": _pa.array([1_700_000_000_000_000 + t[1] for t in _turns38], _pa.timestamp("us", tz="UTC"))}),
+    "timestamp": _pa.array([1_700_000_000_000_000 + t[1] for t in _turns38], _pa.timestamp("us", tz="UTC")),
+    "content": [f"{t[0]} says {t[1]}" for t in _turns38]}),
     _corpus38 / "conversations.parquet")
 import contextlib as _contextlib38, io as _io38
 
@@ -2593,7 +2594,7 @@ async def _located41(turns, turn):
     # never got resolved, which is a real and common outcome and writes an
     # ordinary row with no error on it.
     return _traj41.Trajectory(
-        request_turn=-1, failed_turn=-1, complaint_turn=0,
+        request_turn=-1, failed_turn=-1, complaint_turn=0, objection=True, knowable=True,
         defect="the agent said the tests passed", resolved=False,
         later_turns_are_new_work=True,
     )
@@ -3078,9 +3079,13 @@ _wasread43 = []
 
 async def _fake_read43(ts, turn, **kw):
     _wasread43.append(ts[0]["content"])
+    # Every check answered (gate 2 made them required): a reading that failed
+    # to validate was stored as an error row, not as what this stands for.
     return _Reading43(what_user_asked="a", what_agent_did="b", what_user_objected_to="c",
                       objection_kind="real_error", benchmark_viable=True,
-                      context_sufficient=True)
+                      context_sufficient=True, pushback_is_the_developers=True,
+                      knowable_at_the_failing_turn=True, visible_from_the_repository=True,
+                      consistent_with_instructions=True)
 
 
 _sessions43 = {
@@ -3347,6 +3352,45 @@ check(_ok43, f"how much of the replay was verified is on the task row and out of
 # seven dependencies stubbed, which is the only seam that line sits behind.
 from errata_bench.construct.edits import Replay as _Replay43
 import errata_bench.construct.build as _B43w
+
+
+# The remote's history, stood in for every build driven below (G-86). It holds
+# no commit, so the base is the last one a checkpoint recorded, as these checks
+# were written for; section 161 drives the choice itself. The real `history`
+# would reach the network, and a stand-in that does is how B-264 spent money.
+class _NoHistory43w:
+    branch_on_remote, missing = False, ()
+
+    def last_before(self, ref, iso, skip=frozenset()):
+        return None
+
+    def resolve(self, abbreviated):
+        return None
+
+    def parent(self, sha):
+        return None
+
+
+_B43w.history = lambda url, dest, **kw: _NoHistory43w()
+
+
+def _agreeing43w(sid):
+    """The remote, stood in to agree with the checkpoint commit the stubbed corpus holds.
+
+    That commit is then the established base (G-86), as it was the only one
+    before, so a section written for something else -- the replay's counts,
+    the token at the start -- still tests that, and not the base.
+    """
+    sha = _B43w.base_commit("acme/up", _B43w.session_starts()[sid], _B43w.load_commits_by_repo(),
+                            _B43w.session_checkpoints({sid}).get(sid, set()))
+
+    class _Agree(_NoHistory43w):
+        branch_on_remote = True
+
+        def last_before(self, ref, iso, skip=frozenset()):
+            return sha
+
+    return lambda url, dest, **kw: _Agree()
 from errata_bench.construct.presence import Presence as _Presence43w
 from errata_bench.corpus.sessions import Repo as _Repo43w
 
@@ -3367,7 +3411,7 @@ class _Checkout43w:
 
 _kept43w = {n: getattr(_B43w, n) for n in
             ("load_repos", "session_starts", "load_commits_by_repo", "session_checkpoints",
-             "load_session_turns", "fetch", "edits_before", "replay", "check", "has_transcript")}
+             "load_session_turns", "fetch", "edits_before", "replay", "check", "has_transcript", "history")}
 
 def _built43w(verified):
     _B43w.load_repos = lambda: {"acme/up": _Repo43w(repo_id="acme/up", url="https://x/acme/up",
@@ -3384,6 +3428,7 @@ def _built43w(verified):
         task_id=task_id, probeable=True, present=True, detail="ok", strength="declared")
     # A session whose transcript is here, screened on the calls and text it restores.
     _B43w.has_transcript = lambda sid: True
+    _B43w.history = _agreeing43w("s-43w")
     row = {"session_id": "s-43w", "repo_id": "acme/up", "request": 1, "failed": 2,
            "complaint": 3, "resolved": 4, "cut": 1, "kind": "none", "path": "src/a.py",
            "token": "", "defect": "a defect", "rounds": 1, "usable": True,
@@ -3891,19 +3936,23 @@ import errata_bench.construct.build as _build49
 from errata_bench.spec import BuildResult as _BR49, Rejection as _Rej49
 from errata_bench.stages.building import stage_build as _stage_build49
 
+_held49 = _build49.task_name("acme/up", "s1", 7)
+
 def _fixture49(reason):
     p = Paths(Path(tempfile.mkdtemp()) / "run")
     append(p.screened, {"session_id": "s1", "repo_id": "acme/up", "complaint": 7,
                         "usable": True, "kind": "present"})
     append(p.screened, {"session_id": "s2", "repo_id": "acme/kt", "complaint": 9,
                         "usable": True, "kind": "present"})
+    # Since 10-03 a task is named by its session too (`task_name`), and so is
+    # the one a rejection held back: acme/up's at turn 7 from s1.
     for f in (p.calibration, p.controls, p.answers, p.attempts, p.instrument):
-        append(f, {"task_id": "acme-up-7"})
+        append(f, {"task_id": _held49})
         append(f, {"task_id": "acme-kt-9"})
     kept = _build49.build
 
     def _one_builds(rows, **kw):
-        return _BR49(tasks=[_task49("acme-kt-9")], rejected=[_Rej49("acme/up", 7, reason)])
+        return _BR49(tasks=[_task49("acme-kt-9")], rejected=[_Rej49("acme/up", 7, reason, "s1")])
 
     _build49.build = _one_builds
     try:
@@ -3922,7 +3971,7 @@ _pa49, _prog_a49 = _fixture49(f"{_TRANSIENT49}: Could not resolve host: github.c
 _left49 = {f.name: sorted(r["task_id"] for r in _rows33(f))
            for f in (_pa49.calibration, _pa49.controls, _pa49.answers, _pa49.attempts,
                      _pa49.instrument)}
-check(all(v == ["acme-kt-9", "acme-up-7"] for v in _left49.values()),
+check(all(v == sorted(["acme-kt-9", _held49]) for v in _left49.values()),
       f"a task whose tree could not be fetched keeps every row bought for it: {_left49}")
 check(any("could not be fetched this pass" in n for n in _prog_a49.notes),
       f"and the stage says which tasks it held back: {[n[:70] for n in _prog_a49.notes]}")
@@ -4075,9 +4124,10 @@ check(_fp49(_short49) == _fp49(_T49.from_json(_short49.to_json()))
       and _fp49(_short49) != _fp49(_long49),
       "a short one round-trips too, and the two are still different tasks")
 # And the cap is one constant, not two literals that can drift apart.
-check("[:REFERENCE_CHARS]" in Path("src/errata_bench/spec.py").read_text()
-      and Path("src/errata_bench/spec.py").read_text().count("[:6000]") == 0,
-      "the cap is named once and used by both, rather than written twice")
+_spec_src49 = Path("src/errata_bench/spec.py").read_text()
+check(_spec_src49.count("kept(self.oracle)") == 1 and _spec_src49.count("kept(task.oracle)") == 1
+      and "[:6000]" not in _spec_src49 and _spec_src49.count("[:REFERENCE_CHARS]") == 1,
+      "the cap is one expression, `kept`, used by both, rather than written twice (G-96)")
 
 print("\n50. whether an attempt counts is settled, not taken from whichever reading was first")
 # `scoreable` decides whether an attempt appears in any denominator in the
@@ -5520,7 +5570,7 @@ print("\n79. the build replays the lost edits, and rejects a tree git changed or
 # found 3 of 21 trees differing from what their conversation showed.
 _kept79 = {n: getattr(_B43w, n) for n in
            ("load_repos", "session_starts", "load_commits_by_repo", "session_checkpoints", "load_session_turns",
-            "fetch", "replay", "check")}
+            "fetch", "replay", "check", "history")}
 _long79 = lambda head: head + " " + "the uploader now retries and the tests pass. " * 12
 
 
@@ -5536,6 +5586,7 @@ def _build79(turns, *, flag=True, commits=None, checkpoints=None, extra=None):
     _B43w.replay = lambda tree, edits, repo_id: _Replay43(applied=len(edits), verified=len(edits), files={"b"})
     _B43w.check = lambda task_id, sig, tree: _Presence43w(
         task_id=task_id, probeable=True, present=True, detail="ok", strength="declared")
+    _B43w.history = _agreeing43w("s79")
     row = {"session_id": "s79", "repo_id": "acme/up", "request": 1, "failed": 8, "complaint": 9,
            "resolved": 10, "cut": 7, "kind": "none", "path": "src/a.py", "token": "",
            "defect": "a defect", "rounds": 1, "usable": True, "asks_for_something": True,
@@ -5752,7 +5803,8 @@ _rows82 += [("s-once", n, *kp) for n, kp in enumerate([
 _pq.write_table(_pa.table({"session_id": [r[0] for r in _rows82], "turn_number": [r[1] for r in _rows82],
                            "turn_type": [r[2] for r in _rows82], "prompt_pushback": [r[3] for r in _rows82],
                            "timestamp": _pa.array([1_700_000_000_000_000 + r[1] for r in _rows82],
-                                                  _pa.timestamp("us", tz="UTC"))}),
+                                                  _pa.timestamp("us", tz="UTC")),
+                           "content": [f"{r[0]} says {r[1]}" for r in _rows82]}),
                 _corpus82 / "conversations.parquet")
 _transcribed38(_corpus82, _langs82)
 _keep82 = (_sessions_mod.CORPUS, _sessions_mod.load_repos)
@@ -5911,7 +5963,8 @@ _pq.write_table(_pa.table({
     "session_id": [r[0] for r in _rows86], "turn_number": [r[1] for r in _rows86],
     "turn_type": [r[2] for r in _rows86], "prompt_pushback": [r[3] for r in _rows86],
     "timestamp": _pa.array([1_700_000_000_000_000 + r[1] if r[0] == "s-stamped" else None for r in _rows86],
-                           _pa.timestamp("us", tz="UTC"))}),
+                           _pa.timestamp("us", tz="UTC")),
+    "content": [f"{r[0]} says {r[1]}" for r in _rows86]}),
     _corpus86 / "conversations.parquet")
 _transcribed38(_corpus86, _langs86)
 _keep86 = (_sessions_mod.CORPUS, _sessions_mod.load_repos)
@@ -8935,6 +8988,57 @@ check([i[1] for i in _mix129.installs] == ["pnpm install --frozen-lockfile", "go
                                            "uv sync --frozen --all-extras"]
       and "corepack install -g pnpm@9" in _mix129.tools and len(_mix129.checks) == 3,
       f"pnpm, Go and uv side by side each install and each get a check: {[i[1] for i in _mix129.installs]}")
+# 10-02: a lockfile with no package.json beside it installs nothing, and a
+# pnpm-workspace.yaml holding only settings is pnpm 10's, which pnpm 9 refuses.
+_lone129 = _env129.recipe(_T129, ["go.mod", ".opencode/package-lock.json", "web/package.json", "web/pnpm-lock.yaml",
+                                  "web/pnpm-workspace.yaml"],
+                          {"web/package.json": json.dumps({"scripts": {}}),
+                           "web/pnpm-workspace.yaml": "allowBuilds:\n  esbuild: true\n"})
+_pkgs129 = _env129.recipe(_T129, ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "apps/a/package.json"],
+                          {"package.json": "{}", "pnpm-workspace.yaml": "packages:\n  - apps/*\n"})
+check([i[0] for i in _lone129.installs] == ["", "web"] and "corepack install -g pnpm@10" in _lone129.tools
+      and any(".opencode" in n for n in _lone129.notes) and _pkgs129.tools == ["corepack install -g pnpm@9"],
+      f"a lockfile with no package.json is not installed and says so; a settings-only pnpm workspace gets pnpm 10, "
+      f"a workspace with packages pnpm 9: {_lone129.installs} {_lone129.tools} {_pkgs129.tools}")
+# Review 10-02: a pnpm per folder, the last one won; an empty packages list
+# chose pnpm 9, which refuses it; and a workspace root with no package.json of
+# its own installed nothing.
+_mixed129 = _env129.recipe(_T129, ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "sub/package.json",
+                                   "sub/pnpm-lock.yaml"],
+                           {"package.json": "{}", "pnpm-workspace.yaml": "allowBuilds:\n  esbuild: true\n",
+                            "sub/package.json": "{}"})
+_empty129 = _env129.recipe(_T129, ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml"],
+                           {"package.json": "{}", "pnpm-workspace.yaml": "packages: []\n"})
+_bare129 = _env129.recipe(_T129, ["pnpm-lock.yaml", "pnpm-workspace.yaml", "apps/a/package.json"],
+                          {"pnpm-workspace.yaml": "packages:\n  - apps/*\n", "apps/a/package.json": "{}"})
+check(_mixed129.tools == ["corepack install -g pnpm@10"] and _empty129.tools == ["corepack install -g pnpm@10"]
+      and [i[:2] for i in _bare129.installs] == [("", "pnpm install --frozen-lockfile")],
+      f"one pnpm serves the image, pnpm 10 when any folder needs it or a workspace lists no packages; and a "
+      f"workspace root with no package.json installs its members: {_mixed129.tools} {_empty129.tools} "
+      f"{_bare129.installs}")
+# #17's review, 10-03: three valid workspace files that list packages were
+# read as listing none, and their images got pnpm 10.
+_listed129 = {
+    "a comment line first": "packages:\n  # all packages in direct subdirs of packages/\n  - 'packages/*'\n",
+    "the list at no indent": "packages:\n- 'apps/*'\n",
+    "a blank line first": "packages:\n\n  - 'apps/*'\n",
+    "the usual indent": "packages:\n  - apps/*\n",
+    # The review of 10-03: a byte-order mark, a quoted key, a flow list over lines.
+    "after a byte-order mark": "\ufeffpackages:\n  - apps/*\n",
+    "a quoted key": '"packages":\n  - apps/*\n',
+    "a flow list over lines": "packages: [\n  'apps/*',\n]\n",
+    "a flow list on one line": "packages: ['apps/*']\n"}
+_none129 = {"settings only": "allowBuilds:\n  esbuild: true\n", "an empty list": "packages: []\n",
+            "a key with nothing under it": "packages:\n# none yet\nonlyBuiltDependencies:\n  - esbuild\n",
+            "a key at the end": "allowBuilds:\n  esbuild: true\npackages:\n",
+            "a null": "packages: ~\n", "an empty flow list over lines": "packages: [\n  # none yet\n]\n"}
+_read129 = {k: _env129._no_packages(v) for k, v in {**_listed129, **_none129}.items()}
+_comment129 = _env129.recipe(_T129, ["package.json", "pnpm-lock.yaml", "pnpm-workspace.yaml", "packages/a/package.json"],
+                             {"package.json": "{}", "pnpm-workspace.yaml": _listed129["a comment line first"]})
+check(all(_read129[k] is False for k in _listed129) and all(_read129[k] is True for k in _none129)
+      and _comment129.tools == ["corepack install -g pnpm@9"],
+      f"a workspace lists packages after a comment or a blank line, and at any indent; one with none listed is "
+      f"pnpm 10's: {_read129}, {_comment129.tools}")
 _df129 = _env129.dockerfile(_ws129)
 check(_df129.startswith("# errata-bench v1: t129\nFROM errata-base:v1\n")
       and "mv /tmp/workspace '/Users/stavan/Docs - Stavan'\"'\"'s Mac/AiTutor'" in _df129
@@ -10059,6 +10163,7 @@ def _built143(token):
         _B43w.check = lambda task_id, sig, tree: _Presence43w(
             task_id=task_id, probeable=True, present=True, detail="ok", strength="token")
         _B43w.has_transcript = lambda sid: True
+        _B43w.history = _agreeing43w("s-43w")
         row = {"session_id": "s-43w", "repo_id": "acme/up", "request": 1, "failed": 2,
                "complaint": 3, "resolved": 4, "cut": 1, "kind": "present", "path": "src/a.py",
                "token": token, "defect": "a defect", "rounds": 1, "usable": True,
@@ -12585,7 +12690,8 @@ _rows157m = [(sid, n, kind, push) for sid in _langs157 for n, kind, push in (
 _pq.write_table(_pa.table({
     "session_id": [r[0] for r in _rows157m], "turn_number": [r[1] for r in _rows157m],
     "turn_type": [r[2] for r in _rows157m], "prompt_pushback": [r[3] for r in _rows157m],
-    "timestamp": _pa.array([1_700_000_000_000_000 + r[1] for r in _rows157m], _pa.timestamp("us", tz="UTC"))}),
+    "timestamp": _pa.array([1_700_000_000_000_000 + r[1] for r in _rows157m], _pa.timestamp("us", tz="UTC")),
+    "content": [f"{r[0]} says {r[1]}" for r in _rows157m]}),
     _corpus157 / "conversations.parquet")
 _transcribed38(_corpus157, ["s-kept"])
 _keep157m = (_sessions_mod.CORPUS, _sessions_mod.load_repos)
@@ -12617,7 +12723,8 @@ _rows157d = [("s-once", *r) for r in _base157d] + [("s-twice", *r) for r in _bas
 _pq.write_table(_pa.table({
     "session_id": [r[0] for r in _rows157d], "turn_number": [r[1] for r in _rows157d],
     "turn_type": [r[2] for r in _rows157d], "prompt_pushback": [r[3] for r in _rows157d],
-    "timestamp": _pa.array([1_700_000_000_000_000 + r[1] for r in _rows157d], _pa.timestamp("us", tz="UTC"))}),
+    "timestamp": _pa.array([1_700_000_000_000_000 + r[1] for r in _rows157d], _pa.timestamp("us", tz="UTC")),
+    "content": [f"{r[0]} says {r[1]}" for r in _rows157d]}),
     _corpus157d / "conversations.parquet")
 _transcribed38(_corpus157d, _langs157d)
 _keep157d = (_sessions_mod.CORPUS, _sessions_mod.load_repos)
@@ -14023,6 +14130,1681 @@ check(_ds_stale160 is False and _ds_check160 == 0
       and not (_ds160 / "tasks" / _short133.name / "workspace.tar.gz").exists(),
       f"a task laid out as a published dataset lays it out is read as current, and the export's check passes it: "
       f"{_ds_stale160}, {_ds_check160}")
+
+print("\n161. the base is the commit the conversation agrees with, from the remote's history; git and HEAD read in "
+      "another checkout are not the session's; a session that worked in two checkouts is refused (10-02)")
+# G-86: the corpus holds only the commits a checkpoint recorded, so the build's
+# base was older than the session's tree whenever a commit was made without
+# Entire -- 6 moments had none at all, 2 tasks started 19 and 21 commits behind,
+# and 4 "tree differs" rejections were the stale base. G-87: a checkout in a
+# throwaway clone rejected two moments. G-88: another worktree's `git log`, a
+# `--all --grep`, a FETCH_HEAD range and an `xargs git log` were read as HEAD.
+# G-89: a session that moved into another worktree has two trees.
+import subprocess as _sp161
+from errata_bench.construct import workspace as _ws161
+from errata_bench.construct import consistency as _cs161
+
+# A remote of our own, served from disk: no network.
+_origin161 = Path(tempfile.mkdtemp()) / "origin"
+_origin161.mkdir()
+
+
+def _git161(*args, when=None):
+    env = {**os.environ, **({"GIT_AUTHOR_DATE": when, "GIT_COMMITTER_DATE": when} if when else {})}
+    return _sp161.run(["git", *args], cwd=_origin161, env=env, capture_output=True, text=True, check=True).stdout.strip()
+
+
+def _commit161(name, when):
+    (_origin161 / name).write_text(name + "\n")
+    _git161("add", name)
+    _git161("commit", "-q", "-m", name, when=when)
+    return _git161("rev-parse", "HEAD")
+
+
+_git161("init", "-q", "-b", "main")
+for _k161, _v161 in (("user.email", "t@t"), ("user.name", "t"), ("uploadpack.allowFilter", "true"),
+                     ("uploadpack.allowAnySHA1InWant", "true"), ("commit.gpgsign", "false"),
+                     ("core.hooksPath", "/dev/null")):
+    _git161("config", _k161, _v161)
+_c1 = _commit161("c1", "2026-07-01T00:00:00Z")
+_c2 = _commit161("c2", "2026-07-05T00:00:00Z")
+_git161("checkout", "-q", "-b", "feature")
+_f1 = _commit161("f1", "2026-07-06T00:00:00Z")
+_f2 = _commit161("f2", "2026-07-08T00:00:00Z")
+_git161("checkout", "-q", "main")
+_c3 = _commit161("c3", "2026-07-10T00:00:00Z")
+_git161("merge", "-q", "--no-ff", "-m", "merge feature", "feature", when="2026-07-12T00:00:00Z")
+_m161 = _git161("rev-parse", "HEAD")
+_url161 = f"file://{_origin161}"
+# And a remote with no default branch: its HEAD names a branch that does not exist.
+_bare161 = Path(tempfile.mkdtemp()) / "nohead.git"
+_sp161.run(["git", "clone", "-q", "--bare", str(_origin161), str(_bare161)], check=True, capture_output=True)
+_sp161.run(["git", "symbolic-ref", "HEAD", "refs/heads/nowhere"], cwd=_bare161, check=True)
+_sp161.run(["git", "config", "uploadpack.allowFilter", "true"], cwd=_bare161, check=True)
+
+# A repository's first commit is a base like any other.
+try:
+    _first161 = _ws161.fetch(_url161, _c1, Path(tempfile.mkdtemp()) / "c").parent_sha
+except Exception as _e161:  # noqa: BLE001
+    _first161 = f"{type(_e161).__name__}: {_e161}"
+check(_first161 == "", f"a repository's first commit is fetched, with no parent: {_first161!r}")
+
+# The history, commits only: the branch as the remote has it, the default
+# branch, and a commit's ancestry; a commit it will not serve is named.
+try:
+    _h161 = _ws161.history(_url161, Path(tempfile.mkdtemp()) / "h", branch="feature",
+                           shas=[_f2, "0" * 40])
+    _seen161 = (_h161.branch_on_remote, _h161.last_before("refs/remotes/origin/branch", "2026-07-07T00:00:00Z"),
+                _h161.last_before("refs/remotes/origin/default", "2026-07-07T00:00:00Z"),
+                _h161.last_before(_f2, "2026-07-09T00:00:00Z", frozenset({_f2})),
+                _h161.resolve(_f1[:9]), _h161.resolve("deadbee"), _h161.missing)
+    # Main on 07-09 was c2's line: the merge brought f2 (07-08) in only on 07-12.
+    _line161 = (_h161.last_before("refs/remotes/origin/default", "2026-07-09T00:00:00Z"),
+                _h161.made_before(_f1, "2026-07-07T00:00:00Z"), _h161.made_before(_f2, "2026-07-07T00:00:00Z"))
+    _gone161 = _ws161.history(_url161, Path(tempfile.mkdtemp()) / "g", branch="deleted", shas=[]).branch_on_remote
+    _nohead161 = _ws161.history(f"file://{_bare161}", Path(tempfile.mkdtemp()) / "n", branch="feature", shas=[])
+    _nohead161 = (_nohead161.last_before("refs/remotes/origin/default", "2026-07-20T00:00:00Z"),
+                  _nohead161.last_before("refs/remotes/origin/branch", "2026-07-20T00:00:00Z"))
+except Exception as _e161:  # noqa: BLE001
+    _seen161, _gone161 = f"{type(_e161).__name__}: {_e161}", None
+    _line161 = _nohead161 = _seen161
+check(_line161 == (_c2, True, False) and _nohead161 == (None, _f2),
+      f"a line is walked along its first parents, so a branch merged later lends it nothing from before; a commit "
+      f"says when it was made; a remote with no default branch is read for the rest: {_line161} {_nohead161}")
+check(_seen161 == (True, _f1, _c2, _f1, _f1, None, ("0" * 40,)) and _gone161 is False,
+      f"the remote's history says which commit came last before the session on each line, skips the session's "
+      f"own, resolves a short name and names what it would not serve: {_seen161} {_gone161}")
+
+
+# The candidates, from a remote stood in.
+class _H161:
+    def __init__(self, refs, known=(), on=True, missing=(), parents=None, after=()):
+        self.refs, self.known, self.branch_on_remote, self.missing = refs, known, on, missing
+        self.parents, self.after = parents or {}, set(after)
+
+    def made_before(self, sha, iso):
+        return sha not in self.after
+
+    def last_before(self, ref, iso, skip=frozenset()):
+        return self.refs.get(ref)
+
+    def resolve(self, abbreviated):
+        return next((k for k in self.known if k.startswith(abbreviated)), None)
+
+    def parent(self, sha):
+        return self.parents.get(sha)
+
+
+_ev161 = lambda heads=(), updated=None, committed=None: {"heads": list(heads), "updated_from": updated,
+                                                         "committed": committed, "first_move": None}
+_refs161 = {"refs/remotes/origin/branch": "b" * 40, "own1": "o" * 40, "refs/remotes/origin/default": "d" * 40}
+_bc161 = lambda probe, ev, ckpt="k" * 40, own="own1": _B43w.base_candidates(probe, "x", ev, ckpt, own, frozenset())
+_said161 = [_bc161(_H161(_refs161, known=("e" * 40,)), _ev161(heads=["eeeeeee"])),
+            _bc161(_H161(_refs161, known=("e" * 40,)), _ev161(updated="eeeeeee")),
+            _bc161(_H161(_refs161, known=("c" * 40,), parents={"c" * 40: "e" * 40}), _ev161(committed="ccccccc")),
+            _bc161(_H161(_refs161, known=("e" * 40, "c" * 40), parents={"c" * 40: "e" * 40}),
+                   _ev161(heads=["eeeeeee"], updated="eeeeeee", committed="ccccccc"))]
+check([(c[0][0][0][0], c[0][0][1], c[1]) for c in _said161] == [
+          ("e", "the HEAD the conversation printed", "established"),
+          ("e", "the commit the session's first pull moved from", "established"),
+          ("e", "the parent of the session's first commit", "established"),
+          ("e", "the HEAD the conversation printed", "established")],
+      f"what the session says of its start -- a HEAD it printed, the commit its first pull moved from, its first "
+      f"commit's parent -- is the one candidate: {_said161}")
+_lack161 = _bc161(_H161(_refs161, known=()), _ev161(heads=["eeeeeee"]))
+_differ161 = _bc161(_H161(_refs161, known=("e" * 40, "f" * 40)), _ev161(heads=["eeeeeee"], updated="fffffff"))
+_unpushed161 = _bc161(_H161(_refs161, known=()), _ev161(committed="ccccccc"))
+_late_e161 = _bc161(_H161(_refs161, known=("e" * 40,), after=("e" * 40,)), _ev161(heads=["eeeeeee"]))
+_own_e161 = _B43w.base_candidates(_H161(_refs161, known=("e" * 40,)), "x", _ev161(heads=["eeeeeee"]), None, None,
+                                  frozenset({"e" * 40}))
+check(not _late_e161[0] and "made after it began" in _late_e161[2]
+      and not _own_e161[0] and "one of its own commits" in _own_e161[2],
+      f"a start the session gives that was made after it began, or is one of its own commits, is refused: a move "
+      f"it could not see came first, and the fix may be in it: {_late_e161} {_own_e161}")
+check(not _lack161[0] and "does not hold" in _lack161[2] and not _differ161[0]
+      and "says different things" in _differ161[2] and _unpushed161[1] == "singled out",
+      f"a printed HEAD the remote lacks, or two different starts, refuse the moment; a first commit the remote "
+      f"never got says nothing: {_lack161} {_differ161} {_unpushed161[1:]}")
+_agree161 = _bc161(_H161(_refs161), _ev161(), ckpt="b" * 40)
+_open161 = _bc161(_H161(_refs161), _ev161())
+_dup161 = _bc161(_H161({**_refs161, "own1": "b" * 40}), _ev161(), ckpt="d" * 40)
+_gone161b = _bc161(_H161(_refs161, on=False, missing=("own1",)), _ev161(), ckpt=None)
+_none161 = _bc161(_H161({}, on=False), _ev161(), ckpt=None, own=None)
+check(_agree161 == ([("b" * 40, "the last commit a checkpoint recorded, which the remote had last")], "established", None)
+      and [s[0] for s, _ in _open161[0]] == ["b", "o", "d", "k"] and _open161[1] == "singled out"
+      and [s[0] for s, _ in _dup161[0]] == ["b", "d"] and [s[0] for s, _ in _gone161b[0]] == ["d"]
+      and _none161 == ([], "", "no commit on the remote precedes the session"),
+      f"a checkpoint commit the remote also had last is established; otherwise every candidate, each once, from "
+      f"the session's branch to the checkpoint's: {_agree161} {_open161} {_dup161} {_gone161b} {_none161}")
+
+
+# The build, end to end, with the remote and the trees stood in.
+class _Tree161:
+    def __init__(self, body):
+        self.body, self.extra = (body, {}) if isinstance(body, str) else (body[0], body[1])
+
+    def export_tree(self, sha, dest):
+        (dest / "src").mkdir(parents=True)
+        (dest / "src" / "a.py").write_text(self.body)
+        for name, text in self.extra.items():
+            (dest / name).write_text(text)
+        return dest
+
+
+def _built161(probe, trees, *, commits=None, turns=None, verified=None, refuse_two=False):
+    saved = {n: getattr(_B43w, n) for n in _kept79}
+    fetched = []
+
+    def fetch(url, sha, dest):
+        fetched.append(sha[:1])
+        if sha not in trees:
+            raise _ws161.GitError(f"git fetch: not our ref {sha}")
+        if trees[sha] == "timeout":
+            raise _ws161.GitError("git fetch: timed out after 300s")
+        return _Tree161(trees[sha])
+
+    try:
+        (_dir70 / "s79.jsonl").write_text("\n".join(_cc87) + "\n")
+        recover_mod.transcript_path = lambda sid: _dir70 / f"{sid}.jsonl"
+        _B43w.load_repos = lambda: {"acme/up": _Repo43w(repo_id="acme/up", url="https://x/acme/up",
+                                                        license_type="mit", language="Python")}
+        _B43w.session_starts = lambda ids=None: {"s79": 1_000_000_000}
+        _B43w.load_commits_by_repo = lambda **kw: commits or {}
+        _B43w.session_checkpoints = lambda ids: {}
+        _B43w.load_session_turns = lambda ids: {"s79": list(turns or _turns79())}
+        _B43w.fetch = fetch
+        _B43w.history = probe if callable(probe) else (lambda url, dest, **kw: probe)
+        _B43w.replay = lambda tree, edits, repo_id: (
+            _Replay43(applied=0, verified=0, files=set(), failed_at=2, reason="turn 2: old_string not found")
+            if "x = 2" in (tree / "src" / "a.py").read_text() and refuse_two else
+            _Replay43(applied=len(edits), verified=len(edits) if verified is None else verified, files={"b"}))
+        _B43w.check = lambda task_id, sig, tree: _Presence43w(
+            task_id=task_id, probeable=True, present=True, detail="ok", strength="declared")
+        row = {"session_id": "s79", "repo_id": "acme/up", "request": 1, "failed": 8, "complaint": 9,
+               "resolved": 10, "cut": 7, "kind": "none", "path": "src/a.py", "token": "",
+               "defect": "a defect", "rounds": 1, "usable": True, "asks_for_something": True,
+               "within_scope": True, "signals_trouble": False, "calls_recovered": True, "text_recovered": True}
+        return _B43w.build([row]), fetched
+    finally:
+        recover_mod.transcript_path = _NO_TRANSCRIPTS
+        for _n, _v in saved.items():
+            setattr(_B43w, _n, _v)
+
+
+_ckpt_c161 = lambda sha: {"acme/up": [
+    type("C161", (), {"author_ns": 1, "commit_ns": None, "checkpoint_pk": "", "commit_sha": sha})()]}
+_bd161 = lambda **refs: _H161({"refs/remotes/origin/branch": refs.get("b"), "refs/remotes/origin/default": refs.get("d")},
+                              known=refs.get("known", ()))
+# The conversation read `x = 1` in src/a.py. The branch's commit holds `x = 2`,
+# the default branch's `x = 1`: it alone fits, on a line the conversation read.
+_pick161, _f161 = _built161(_bd161(b="b" * 40, d="d" * 40), {"b" * 40: "x = 2\n", "d" * 40: "x = 1\n"})
+_both161, _ = _built161(_bd161(b="b" * 40, d="d" * 40), {"b" * 40: ("x = 1\n", {"b.txt": "b"}),
+                                                          "d" * 40: ("x = 1\n", {"d.txt": "d"})})
+_alike161, _ = _built161(_bd161(b="b" * 40, d="d" * 40), {"b" * 40: "x = 1\n", "d" * 40: "x = 1\n"})
+_unread161 = [t for t in _turns79() if t.get("tool_call_id") != "r1"]
+_blind161, _ = _built161(_bd161(b="b" * 40, d="d" * 40), {"b" * 40: "x = 2\n", "d" * 40: "x = 1\n"},
+                         turns=_unread161, verified=0, refuse_two=True)
+_alone161, _ = _built161(_bd161(b="b" * 40), {"b" * 40: "x = 1\n"})
+_slow161, _ = _built161(_bd161(b="b" * 40, d="d" * 40), {"b" * 40: "timeout", "d" * 40: "x = 1\n"})
+_lost161, _ = _built161(_bd161(b="b" * 40, d="d" * 40), {"d" * 40: "x = 1\n"})
+_wait161, _ = _built161(_bd161(b="c" * 40), {"c" * 40: "timeout"}, commits=_ckpt_c161("c" * 40))
+_all161, _ = _built161(_bd161(b="b" * 40, d="d" * 40), {"b" * 40: "x = 2\n", "d" * 40: "x = 3\n"})
+_no161, _ = _built161(_H161({}, on=False), {})
+_ckpt161, _ = _built161(_bd161(b="c" * 40), {"c" * 40: "x = 1\n"}, commits=_ckpt_c161("c" * 40))
+check([(t.sha[0], t.base_from) for t in _pick161.tasks]
+      == [("d", "the default branch, the only candidate the conversation's files fit")] and _f161 == ["b", "d"]
+      and not _both161.tasks and any("cannot be established" in w and "2 of 2" in w for w in _why79(_both161))
+      and [t.base_from for t in _alike161.tasks] == ["the session's branch, whose files every candidate that fits "
+                                                     "holds alike"]
+      and not _blind161.tasks and any("rests on nothing the conversation showed" in w for w in _why79(_blind161))
+      and not _all161.tasks and any("differs from what the conversation showed" in w
+                                    and "no other of the 1 candidate bases fits" in w for w in _why79(_all161))
+      and _why79(_no161) == ["no commit on the remote precedes the session"]
+      and [(t.sha[0], t.base_from) for t in _ckpt161.tasks]
+      == [("c", "the last commit a checkpoint recorded, which the remote had last")],
+      f"the build takes a candidate only when the session established it or the conversation's files single it "
+      f"out, and says which: {[(t.sha[:4], t.base_from) for t in _pick161.tasks]} {_f161} {_why79(_both161)} "
+      f"{_why79(_blind161)} {_why79(_all161)} {_why79(_no161)} {[(t.sha[:4], t.base_from) for t in _ckpt161.tasks]}")
+# What the session says, after its cut too: a pull at turn 12 that moved from
+# eeeeeee, and nothing moved HEAD before it.
+_late161 = _turns79() + _bash85(12, "git pull origin main 2>&1", "Updating eeeeeee..fffffff\nFast-forward")
+_after161, _ = _built161(_bd161(b="b" * 40, d="d" * 40, known=("e" * 40,)),
+                         {"e" * 40: "x = 1\n", "b" * 40: "x = 1\n"}, turns=_late161)
+_unheld161, _ = _built161(_bd161(b="b" * 40, known=()), {"b" * 40: "x = 1\n"}, turns=_late161)
+check([(t.sha[0], t.base_from) for t in _after161.tasks] == [("e", "the commit the session's first pull moved from")]
+      and not _unheld161.tasks and any("which the repository's remote does not hold" in w for w in _why79(_unheld161)),
+      f"a start the session gives after its cut is its start, and one the remote lacks refuses the moment: "
+      f"{[(t.sha[:4], t.base_from) for t in _after161.tasks]} {_why79(_unheld161)}")
+
+
+def _no_remote161(url, dest, **kw):
+    raise _ws161.GitError("git ls-remote: unable to access: Could not resolve host")
+
+
+_down161, _ = _built161(_no_remote161, {})
+check(not _down161.tasks and any(w.startswith("could not build the tree: the repository's history")
+                                 for w in _why79(_down161)),
+      f"a remote that cannot be read is a tree not built this pass, which the prune keeps: {_why79(_down161)}")
+check(not _alone161.tasks and any("one candidate base, with nothing to tell it from" in w for w in _why79(_alone161))
+      and not _slow161.tasks and any(w.startswith("could not build the tree: git fetch: timed out")
+                                     for w in _why79(_slow161))
+      and not _lost161.tasks and any("cannot be established: a candidate base is the code is gone" in w
+                                     for w in _why79(_lost161))
+      and not _wait161.tasks and any(w.startswith("could not build the tree: git fetch: timed out")
+                                     for w in _why79(_wait161)),
+      f"one candidate alone is no comparison; a candidate that could not be fetched this pass leaves the moment to "
+      f"a retry, and one gone from the remote leaves nothing compared: {_why79(_alone161)} {_why79(_slow161)} "
+      f"{_why79(_lost161)}")
+
+_old_t161 = Task("t161", "r/r", "u", "sha", "s161", 10, 11, 12, 13, "wrong " * 10, "right " * 10, "a defect", "none")
+check("base_from" not in _old_t161.to_json()
+      and _dc78.replace(_old_t161, base_from="the default branch").to_json()["base_from"] == "the default branch"
+      and Task.from_json(_old_t161.to_json()).base_from == "",
+      "a task built before G-86 is written as it was, byte for byte; one built since says where its base came from")
+
+# What a whole session says of its start, read up to its first move of HEAD.
+_se161 = lambda *pairs: _cs161.start_evidence(
+    [t for n, (cmd, out) in enumerate(pairs) for t in _bash85(2 * n + 2, cmd, out)], "/Users/dev/up")
+_s1 = _se161(("git log --oneline -1", "abc1234 start"), ("git pull", "Updating abc1234..def5678\nFast-forward"),
+             ("git log --oneline -1", "def5678 later"))
+_s2 = _se161(("git commit -qm one", "[main 1234567] one"))
+_s3 = _se161(("git commit --amend -m x", "[main 7654321] x"))
+_s4 = _se161(("git commit -qm one && git pull", "[main 1234567] one\nUpdating 1234567..89abcde"))
+_s5 = _se161(("git pull", "The user doesn't want to proceed with this tool use."), ("git log -1 --oneline", "abc1234 x"))
+check((_s1["heads"], _s1["updated_from"]) == (["abc1234"], "abc1234") and _s2["committed"] == "1234567"
+      and _s3["committed"] is None and (_s4["committed"], _s4["updated_from"]) == (None, None)
+      and _s5["heads"] == ["abc1234"],
+      f"a session's HEADs before its first move, its first pull's start, its first commit; not an amend's, not "
+      f"two moves in one command, and a move declined at the prompt moves nothing: {_s1} {_s2} {_s3} {_s4} {_s5}")
+
+# G-87: a git command in another checkout changes that checkout.
+_git161c = lambda cmd, cwd="/Users/dev/up": _cs161.tree_changing_git(
+    [_T63(1, "tool_use", tool_name="Bash", command=cmd)], 2, cwd)
+check(not _cs161.tree_changing_git([_T63(1, "tool_use", tool_name="Bash", command="cd /tmp/x && git checkout main")], 2, None)
+      and _cs161.tree_changing_git([_T63(1, "tool_use", tool_name="Bash", command="cd /opt/x && git checkout main")], 2, None),
+      "with no starting folder known, scratch is still elsewhere, and any other folder still counts")
+_elsewhere161 = ["S=/private/tmp/claude-501/x/scratchpad\ncd $S/go-git && git checkout --quiet abc1234",
+                 "git -C /tmp/copy checkout -q abc1234 2>/dev/null",
+                 "cd /tmp/archy && rm -rf b && git clone -q a b && git -C b checkout -q abc1234",
+                 "git checkout -q -b feat/new && git status --short",
+                 "cd /Users/dev/up/.claude/worktrees/other && git checkout main"]
+_own161 = ["git checkout main", "cd sub && git checkout main", "cd /Users/dev/up/src && git checkout main",
+           "(cd /tmp/x && make) && git checkout main", "cd $UNKNOWN && git checkout main",
+           "cd .. && git checkout main", "git checkout -f -b feat", "git checkout -q -b feat origin/main"]
+_own161 += ["cat <<EOF > notes.md\ncd /tmp\nEOF\ngit checkout main", "cd ../backend && git checkout main", "git -C ../backend checkout main", "cd /Users/dev/backend && git stash",
+            "pushd /tmp/x && make && popd && git checkout main", 'git commit -qm "x && cd /tmp/y"; git checkout main',
+            "cd /Users/dev/My\\ Proj && git checkout main", "(cd /tmp/x && echo $(pwd)) && git checkout main",
+            "git -c advice.detachedHead=false checkout abc1234", "git --git-dir=/x/.git checkout main",
+            "cd ${X:-/tmp/x} && git checkout main"]
+_elsewhere161 += ["cd -- /tmp/x && git checkout main", "git --no-pager -C /tmp/copy checkout main",
+                  "(cd /tmp/x && echo $(pwd) && git checkout main)",
+                  "cat <<EOF > notes.md\ncd /tmp\nEOF\ncd /tmp/x && git checkout main"]
+check(not any(_git161c(c) for c in _elsewhere161) and all(_git161c(c) for c in _own161)
+      and _git161c("cd /d/up && git checkout main", "D:\\up") and _git161c("cd /c/Temp/x && git checkout main", "D:\\up")
+      and not _git161c("cd /c/Users/me/AppData/Local/Temp/x && git checkout main", "D:\\up")
+      and _git161c("cd src && git checkout main", "/tmp/proj") and not _git161c("cd /tmp/other && git checkout main", "/tmp/proj")
+      and not _cs161.tree_changing_git([_T63(1, "tool_use", tool_name="Bash", command="git checkout main", tool_call_id="k")],
+                                       2, "/Users/dev/up", {"k": "/tmp/x"}),
+      f"a checkout in a scratch clone, a copy or another worktree, and a new branch made with -q, change nothing "
+      f"here: {[c for c in _elsewhere161 if _git161c(c)]} counted; in the session's own checkout, or one that "
+      f"cannot be placed, they still do: {[c for c in _own161 if not _git161c(c)]} missed")
+
+# G-88: only this checkout's HEAD, printed first.
+_heads161 = lambda *pairs, cwd="/Users/dev/up": _cs161.printed_heads(
+    [t for n, (cmd, out) in enumerate(pairs) for t in _bash85(2 * n + 2, cmd, out)], 99, cwd)
+check(_heads161(("cd /Users/dev/up/.claude/worktrees/w && git log --oneline -3", "09e2d4a other")) == []
+      and _heads161(("git log --oneline --all --grep=2173 | head", "8a6d537 match")) == []
+      and _heads161(("git fetch origin b && git log --oneline origin/main..FETCH_HEAD", "c9423f7 fetched")) == []
+      and _heads161(("git merge-base origin/main b | xargs git log --oneline -1", "fcbfd41 base")) == []
+      and _heads161(("git rev-list --count a..b && git log --oneline -1", "3\nabc1234 head")) == []
+      and _heads161(("cd /tmp/go-git && git log --oneline -1", "d6cbbfa theirs")) == []
+      and _heads161(("git status --short && git log --oneline -1", " M a.py\nabc1234 head")) == ["abc1234"]
+      and _heads161(("git log -1 --format '%h %s'", "abc1234 head")) == ["abc1234"],
+      "a HEAD is read only from the session's checkout, and only where `git log` or `rev-parse` names HEAD "
+      "before any other commit")
+check(_heads161(("git log --oneline main...HEAD", "fedcba9 main only")) == []
+      and _heads161(("git log --oneline origin/main..HEAD; git log --oneline HEAD..origin/main", "fedcba9 theirs")) == []
+      and _heads161(("git log -1 --format=%P", "fedcba9")) == []
+      and _heads161(("git log -1 --format='%h %s'", "abc1234 x")) == ["abc1234"]
+      and _heads161(("git remote update && git log -1 --oneline", "Fetching origin\n   fedcba9..0123abc main\nabc1234 x")) == []
+      and _heads161(("cat .git/ORIG_HEAD && git log -1 --oneline", "fedcba9876\nabc1234 x")) == []
+      and _heads161(("echo --- && git log -1 --oneline", "---\nabc1234 x")) == ["abc1234"]
+      and _heads161(("git log --oneline -3 | tail -1", "1111111 two back")) == []
+      and _heads161(("git log --oneline -3 | head -1", "abc1234 x")) == ["abc1234"]
+      and _heads161(("xargs -a ids.txt git log --oneline -1", "abc1234 x")) == []
+      and _heads161(("git log --oneline origin/main..FETCH_HEAD", "c9423f7 fetched")) == []
+      and _heads161(("cd -P /tmp/x && git log --oneline -1", "d6cbbfa theirs")) == []
+      and _heads161(("WT=$PWD/../wt; cd $WT && git log --oneline -1", "d6cbbfa theirs")) == []
+      and _cs161.printed_heads(_bash85(2, "git log --oneline -1", "0123abc theirs"), 99, "/Users/dev/up",
+                               {"b2": "/Users/dev/up/.claude/worktrees/w"}) == []
+      and _cs161.start_evidence(_bash85(2, "git -c user.name=a commit -qm x", "[main 7777777] x")
+                                + _bash85(4, "git log --oneline -1", "7777777 x"), "/Users/dev/up")["heads"] == []
+      and _heads161(("git log --oneline -1", "abc1234 here"), cwd=None) == ["abc1234"],
+      "no range, no format that leads with another commit, nothing printed before it by anything but a quiet "
+      "command, nothing after it that drops its first line, no folder the shell can still change, no call the "
+      "transcript places in another checkout; and a commit made with git's own options is a move")
+check(_heads161(("git fetch && git log --oneline -1", "From github.com:o/r\n   abc1234..def5678  main -> origin/main\n"
+                                                         "0123abc head")) == []
+      and _heads161(("cd /Users/dev/up/.worktrees/rp && git log --oneline -1", "fbc365b theirs")) == [],
+      "a fetch prints the range it moved a branch over, so a HEAD after it is not read; nor one printed in a "
+      "worktree kept in a hidden folder of the repository")
+check(_heads161(("git checkout -b feat origin/feat && git log -1 --oneline", "fff9999 x"),
+                ("git log --oneline -1", "fff9999 x")) == []
+      and _heads161(("git checkout -q -b feat && git log --oneline -1", "abc1234 here")) == ["abc1234"]
+      and _heads161(("git -C /tmp/copy commit -qm x", ""), ("git log --oneline -1", "abc1234 here")) == ["abc1234"],
+      "a checkout to another commit ends the reading as a commit does; a branch made where HEAD is, or a "
+      "commit in another checkout, does not")
+
+# G-89: two checkouts before the cut.
+_tx161 = lambda *entries: "\n".join(json.dumps({"type": "assistant", "cwd": cwd, "message": {"id": f"m{i}", "content": [
+    {"type": "tool_use", "id": cid, "name": name, "input": {}}]}}) for i, (cid, name, cwd) in enumerate(entries)) + "\n"
+
+
+def _moved161(entries, turns, cwd="/Users/dev/up"):
+    (_dir70 / "s161.jsonl").write_text(_tx161(*entries))
+    recover_mod.transcript_path = lambda sid: _dir70 / f"{sid}.jsonl"
+    try:
+        return _B43w.checkouts_before("s161", turns, 9, cwd)
+    finally:
+        recover_mod.transcript_path = _NO_TRANSCRIPTS
+
+
+_wt161 = "/Users/dev/up/.claude/worktrees/w"
+_calls161 = lambda *ids: [_T63(n, "tool_use", tool_name=name, tool_call_id=cid, file_path=path)
+                          for n, (cid, name, path) in enumerate(ids, 1)]
+check(_moved161([("a", "Bash", _wt161)], _calls161(("a", "Bash", None))) == [_wt161]
+      and _moved161([("a", "Edit", "/Users/dev/up")], _calls161(("a", "Edit", _wt161 + "/src/a.py"))) == [_wt161]
+      and _moved161([], _calls161(("a", "EnterWorktree", None))) == ["EnterWorktree"]
+      and _moved161([("a", "Bash", "/Users/dev/up")], _calls161(("a", "Bash", None)), cwd=_wt161) == ["/Users/dev/up"],
+      "a session that ran a call or touched a file in another worktree, entered one, or left the one it started "
+      "in for the main checkout, worked in two checkouts")
+check(_moved161([("a", "Bash", "/Users/dev/up/.worktrees/rp")], _calls161(("a", "Bash", None))) == ["/Users/dev/up/.worktrees/rp"]
+      and _moved161([("a", "Bash", "/Users/dev/up")], _calls161(("a", "Bash", None)), cwd="/Users/dev/up/.trees/x")
+      == ["/Users/dev/up"],
+      "and so did one that worked in a worktree kept in a hidden folder of the repository, or left one for the "
+      "main checkout")
+check(_moved161([("a", "Bash", "/Users/dev/up/src"), ("b", "Bash", "/tmp/x"), ("c", "Bash", "/Users/dev/other")],
+                _calls161(("a", "Bash", None), ("b", "Bash", None), ("c", "Bash", None))) == []
+      and _moved161([("a", "Bash", _wt161 + "/src")], _calls161(("a", "Read", _wt161 + "/a.py")), cwd=_wt161) == []
+      and _moved161([("a", "Bash", _wt161)], [_T63(12, "tool_use", tool_name="Bash", tool_call_id="a")]) == [],
+      "a subfolder of its own checkout, a scratch folder, a folder outside the repository, and anything after "
+      "the cut are not another checkout")
+
+print("\n162. another agent's message is shown and read as another agent's; the request and the work since the "
+      "developer spoke are the developer's (10-02)")
+# G-90: the collector held another agent's messages (a teammate's, a subagent's
+# hand-back, another session's) as the developer's; 116 were labelled their
+# pushback. It now types them `peer_message`, and every view that shows the
+# conversation must show them, as another agent's.
+from errata_bench.corpus.turns import PEER_SPEAKER as _peer162, _fit_result_budget as _fit162
+from errata_bench.find import redact as _rd162
+from errata_bench.find.trajectory import render as _render162
+from errata_bench.construct.build import calls_behind as _behind162, last_user_message as _asked162
+
+_said162 = '<teammate-message teammate_id="qa">your retry loop never backs off</teammate-message>'
+_rows162 = [_T63(1, "user_prompt", content="add retries to the uploader"),
+            _T63(2, "assistant_response", content="Done, retries are in."),
+            _T63(3, "peer_message", content=_said162),
+            _T63(4, "tool_use", tool_name="Bash", command="make test", tool_call_id="b1"),
+            _T63(5, "tool_result", content="ok", tool_call_id="b1"),
+            _T63(6, "assistant_response", content="Fixed the backoff.")]
+_shown162 = [_bx70(_rows162, 6, record=r, max_chars=10**9) for r in (1, 2, 3)]
+check(all(f"[turn 3] {_peer162}:\n{_said162}" in v and "[turn 3] USER" not in v for v in _shown162),
+      "another agent's message is shown as another agent's, under every record, never as the developer's")
+_squeezed162 = _bx70(_rows162 + [_T63(5.5, "tool_result", content="x" * 5000, tool_call_id="b2")], 6, record=2,
+                     max_chars=300)
+check(f"[turn 3] {_peer162}:\n{_said162}" in _squeezed162 and f"[turn 3] {_peer162}:\n{_said162}" in
+      _render162(_rows162, 1, 6),
+      "and so it is in a conversation squeezed to fit, and in the view the locating stage reads")
+_long162 = [_T63(1, "peer_message", content="p" * 30_000)] + [
+    _T63(n, "tool_result", content="r" * 9_000, tool_call_id=f"r{n}") for n in range(2, 8)]
+# A room of 20,000 binds: each result's share is under the 4,000 cap either way.
+_with162 = _fit162(_long162, 9, 20_000)
+_without162 = _fit162([{**_long162[0], "turn_type": "other"}] + _long162[1:], 9, 20_000)
+check(_with162 < _without162 < 4_000,
+      f"its length is counted against the room a conversation leaves its results, as a message's is: "
+      f"{_with162} < {_without162}")
+_work162 = [_T63(1, "user_prompt", content="add retries"), _T63(2, "tool_use", tool_name="Bash", command="make",
+                                                                 tool_call_id="m"),
+            _T63(3, "tool_result", content="ok", tool_call_id="m"), _T63(4, "peer_message", content=_said162),
+            _T63(5, "assistant_response", content="Done.")]
+check((_asked162(_work162, 5) or {}).get("turn_number") == 1 and [c["command"] for c in _behind162(_work162, 5)] == ["make"],
+      f"the request a candidate answers is the developer's last message, not another agent's, and the agent's work "
+      f"since the developer spoke runs past another agent's message: {(_asked162(_work162, 5) or {}).get('turn_number')}, "
+      f"{_behind162(_work162, 5)}")
+# The leak repair reads another agent's message as one of the conversation's
+# messages: a hint in it is one the surveyor can drop or rewrite.
+_quote162 = "your retry loop never backs off"
+check(_rd162.carried_by(_rows162, 6, _quote162) == "prose" and _rd162.carrying(_rows162, 6, _quote162) == {3},
+      f"a hint in another agent's message is in the conversation's messages, where a repair can reach it: "
+      f"{_rd162.carried_by(_rows162, 6, _quote162)}, {_rd162.carrying(_rows162, 6, _quote162)}")
+_asked_rd162 = []
+
+
+class _Surveyor162:
+    @staticmethod
+    async def run(agent, prompt, **kw):
+        _asked_rd162.append((agent.instructions, prompt))
+
+        class _Out:
+            final_output = _rd162.Survey(verdicts=[], diffuse=False, reasoning="r")
+        return _Out()
+
+
+_saved162 = (_rd162.configure_client, _agents_mod.Runner)
+_rd162.configure_client = lambda: None
+_agents_mod.Runner = _Surveyor162
+try:
+    asyncio.run(_rd162.survey(_rows162, 6))
+    asyncio.run(_rd162.survey([t for t in _rows162 if t["turn_type"] != "peer_message"], 6))
+finally:
+    _rd162.configure_client, _agents_mod.Runner = _saved162
+(_inst162, _prompt162), (_inst162b, _prompt162b) = (_asked_rd162 + [("", ""), ("", "")])[:2]
+check(f"[turn 3] ANOTHER AGENT:\n{_said162}" in _prompt162 and "Turns marked ANOTHER AGENT" in _inst162
+      and "[turn 1] USER:" in _prompt162 and "[turn 2] AGENT:" in _prompt162,
+      "the surveyor is shown another agent's message as another agent's, and told what such a turn is")
+check(_inst162b == _rd162.with_field_guide(_rd162.INSTRUCTIONS, _rd162.Survey) and "ANOTHER AGENT" not in _prompt162b,
+      "and a conversation with no other agent in it is asked about in the same words as before")
+_kept162 = _rd162.apply([_T63(1, "user_prompt", content="add retries"),
+                         _T63(2, "peer_message", content=_said162),
+                         {**_T63(2.5, "assistant_response", content="You're right, I'll add a backoff."),
+                          "recovered": True, "shown_as": 3},
+                         _T63(3, "tool_use", tool_name="Edit", file_path="/r/up.ts", tool_call_id="e")], [2])
+check([t["turn_number"] for t in _kept162] == [1, 3],
+      f"a text put back right after another agent's dropped message is its answer, and goes with it: "
+      f"{[t['turn_number'] for t in _kept162]}")
+
+print("\n163. one moment in several sessions is collected once, in the copy that holds the most of it (10-02)")
+# G-91: a conversation resumed, forked, carried on after compaction, or recorded
+# twice holds its messages in each session, each copy with the message's text
+# and its time. The first runs on the collected corpus read 9 moments twice, and
+# two of their 16 tasks were one moment. Through the real `find_moments`, over a
+# corpus written for the purpose: three copies of one moment (two snapshots that
+# start together, one carried on later), a copy of one already collected, the
+# same words said at two times, and another message at the same instant.
+_corpus163 = Path(tempfile.mkdtemp())
+_B163, _S163 = 1_700_000_000_000_000, 1_000_000
+_repos163 = {"s-a1": "o/a", "s-a2": "o/a", "s-a3": "o/a", "s-b1": "o/b", "s-b2": "o/b", "s-c1": "o/c1",
+             "s-c2": "o/c2", "s-e": "o/e", "s-f": "o/f"}
+_rows163 = []
+
+
+def _session163(sid, start, at, said, after):
+    """Three turns of work from ``start``, the objection ``said`` at ``at``, then ``after`` turns of the agent's."""
+    kinds = [("user_prompt", "non_pushback"), ("assistant_response", None), ("tool_use", None),
+             ("assistant_response", None), ("user_prompt", "correction")] + [("assistant_response", None)] * after
+    times = [start + i * _S163 // 10 for i in range(4)] + [at + i * _S163 for i in range(after + 1)]
+    for n, ((kind, push), ts) in enumerate(zip(kinds, times), start=1):
+        _rows163.append((sid, n, kind, push, ts, said if n == 5 else f"{sid} says {n}"))
+
+
+_session163("s-a1", _B163, _B163 + 5 * _S163, "the retry still loops forever", 1)
+_session163("s-a2", _B163, _B163 + 5 * _S163, "the retry still loops forever", 7)
+_session163("s-a3", _B163 + 3 * _S163, _B163 + 5 * _S163, "the retry still loops forever", 9)
+_session163("s-b1", _B163, _B163 + 6 * _S163, "the cache is never cleared", 2)
+_session163("s-b2", _B163, _B163 + 6 * _S163, "the cache is never cleared", 2)
+_session163("s-c1", _B163, _B163 + 7 * _S163, "wrong file again", 2)
+_session163("s-c2", _B163 + 50 * _S163, _B163 + 57 * _S163, "wrong file again", 2)
+_session163("s-e", _B163 + 2 * _S163, _B163 + 5 * _S163, "that broke the build", 2)
+# A moment whose own row has no time: no identity, so it is never taken for a copy.
+_session163("s-f", _B163 + 90 * _S163, _B163 + 95 * _S163, "it still fails on Windows", 2)
+_rows163 = [(*r[:4], None, r[5]) if (r[0], r[1]) == ("s-f", 5) else r for r in _rows163]
+_pq.write_table(_pa.table({"session_id": list(_repos163), "repo_id": list(_repos163.values())}),
+                _corpus163 / "sessions.parquet")
+_pq.write_table(_pa.table({
+    "repo_id": sorted(set(_repos163.values())), "url": ["u"] * 6, "license_type": ["mit"] * 6,
+    "repo_github_metadata": [json.dumps({"language": "TypeScript"})] * 6}), _corpus163 / "repositories.parquet")
+_pq.write_table(_pa.table({
+    "session_id": [r[0] for r in _rows163], "turn_number": [r[1] for r in _rows163],
+    "turn_type": [r[2] for r in _rows163], "prompt_pushback": [r[3] for r in _rows163],
+    "timestamp": _pa.array([r[4] for r in _rows163], _pa.timestamp("us", tz="UTC")),
+    "content": [r[5] for r in _rows163]}), _corpus163 / "conversations.parquet")
+_transcribed38(_corpus163, _repos163)
+_seen163 = Path(tempfile.mkdtemp()) / "seen.jsonl"
+append(_seen163, {"session_id": "s-b1", "turn_number": 5})
+append(_seen163, {"turn_number": 9, "note": "a row a skip file may hold, naming no session"})   # review 10-02
+_keep163 = (_sessions_mod.CORPUS, _sessions_mod.load_repos)
+_sessions_mod.CORPUS, _sessions_mod.load_repos = _corpus163, REAL_LOAD_REPOS
+try:
+    _got163 = []
+    for _skip163 in ([], [_seen163]):
+        _out163, _said163 = Path(tempfile.mkdtemp()) / "m.jsonl", _io38.StringIO()
+        with _contextlib38.redirect_stdout(_said163), _transcripts_at(_corpus163):
+            _run_mod.find_moments(10, _out163, skip_seen=_skip163)
+        _got163.append((sorted((r["session_id"], r["turn_number"]) for r in load(_out163)),
+                        " ".join(_said163.getvalue().split())))
+finally:
+    _sessions_mod.CORPUS, _sessions_mod.load_repos = _keep163
+(_all163, _said_all163), (_after163, _said_after163) = _got163
+# G-95: a session whose developer edited and resent a message the agent had
+# answered holds the abandoned branch in its rows; the corpus lists it, and
+# no moment is drawn from it.
+from errata_bench.corpus.sessions import REWOUND_RULES as _RW163
+
+(_corpus163 / "rewound.json").write_text(json.dumps({"rules": _RW163, "sessions": {"s-c2": 1}}))
+_sessions_mod.CORPUS, _sessions_mod.load_repos = _corpus163, REAL_LOAD_REPOS
+try:
+    _out163r, _said163r = Path(tempfile.mkdtemp()) / "m.jsonl", _io38.StringIO()
+    with _contextlib38.redirect_stdout(_said163r), _transcripts_at(_corpus163):
+        _run_mod.find_moments(10, _out163r)
+finally:
+    _sessions_mod.CORPUS, _sessions_mod.load_repos = _keep163
+    (_corpus163 / "rewound.json").unlink()
+_rew163 = sorted(r["session_id"] for r in load(_out163r))
+# A shell command the developer ran (`<bash-input>`) is no pushback, whatever
+# its label: the session's first pushback is the message after it (pilot
+# audit, 10-02: one was drawn into the pilot).
+_corpus163s = Path(tempfile.mkdtemp())
+_rows163s = [(1, "user_prompt", "non_pushback", "add retries"), (2, "assistant_response", None, "Added."),
+             (3, "tool_use", None, "{}"), (4, "assistant_response", None, "Done."),
+             (5, "user_prompt", "correction", "  <bash-input>git status</bash-input>"),
+             (6, "assistant_response", None, "Clean."), (7, "user_prompt", "correction", "the retries never stop")]
+_pq.write_table(_pa.table({"session_id": ["s-g"], "repo_id": ["o/g"]}), _corpus163s / "sessions.parquet")
+_pq.write_table(_pa.table({"repo_id": ["o/g"], "url": ["u"], "license_type": ["mit"],
+                           "repo_github_metadata": [json.dumps({"language": "TypeScript"})]}),
+                _corpus163s / "repositories.parquet")
+_pq.write_table(_pa.table({
+    "session_id": ["s-g"] * len(_rows163s), "turn_number": [r[0] for r in _rows163s],
+    "turn_type": [r[1] for r in _rows163s], "prompt_pushback": [r[2] for r in _rows163s],
+    "timestamp": _pa.array([_B163 + r[0] * _S163 for r in _rows163s], _pa.timestamp("us", tz="UTC")),
+    "content": [r[3] for r in _rows163s]}), _corpus163s / "conversations.parquet")
+_transcribed38(_corpus163s, {"s-g": "o/g"})
+_sessions_mod.CORPUS, _sessions_mod.load_repos = _corpus163s, REAL_LOAD_REPOS
+try:
+    _out163s, _said163s = Path(tempfile.mkdtemp()) / "m.jsonl", _io38.StringIO()
+    with _contextlib38.redirect_stdout(_said163s), _transcripts_at(_corpus163s):
+        _run_mod.find_moments(10, _out163s)
+finally:
+    _sessions_mod.CORPUS, _sessions_mod.load_repos = _keep163
+_shell163 = [(r["session_id"], r["turn_number"]) for r in load(_out163s)]
+# A corpus the collector assembled before it listed the sessions holding an
+# abandoned branch is refused, not read as listing none (review, 10-02).
+(_corpus163s / "left_out.json").write_text("{}")
+_sessions_mod.CORPUS, _sessions_mod.load_repos = _corpus163s, REAL_LOAD_REPOS
+try:
+    try:
+        with _contextlib38.redirect_stdout(_io38.StringIO()), _transcripts_at(_corpus163s):
+            _run_mod.find_moments(10, Path(tempfile.mkdtemp()) / "m.jsonl")
+        _stale163 = "not refused"
+    except SystemExit as _e163:
+        _stale163 = str(_e163)
+finally:
+    _sessions_mod.CORPUS, _sessions_mod.load_repos = _keep163
+    (_corpus163s / "left_out.json").unlink()
+check("assemble it again" in _stale163,
+      f"a collected corpus without the list of edited sessions is refused: {_stale163[:80]!r}")
+_refused163 = []
+for _bad163 in (json.dumps({"s-c2": 1}), json.dumps({"rules": _RW163 - 1, "sessions": {}}), "{not json",
+                json.dumps(["s-c2"]), json.dumps({"rules": _RW163, "sessions": ["s-c2"]})):
+    (_corpus163s / "rewound.json").write_text(_bad163)
+    _sessions_mod.CORPUS = _corpus163s
+    try:
+        try:
+            _sessions_mod.edited_sessions()
+            _refused163.append("read")
+        except SystemExit as _e163b:
+            _refused163.append("refused" if "assemble the corpus again" in str(_e163b) else str(_e163b))
+    finally:
+        _sessions_mod.CORPUS = _keep163[0]
+(_corpus163s / "rewound.json").unlink()
+check(_refused163 == ["refused"] * 5,
+      f"a list counted before the rules were stamped, under other rules, unreadable, or of the wrong shape is "
+      f"refused: {_refused163}")
+# And refused first, before any pass over the corpus: this one has no tables.
+_bare163 = Path(tempfile.mkdtemp())
+(_bare163 / "left_out.json").write_text("{}")
+_sessions_mod.CORPUS = _bare163
+try:
+    try:
+        _run_mod.find_moments(10, Path(tempfile.mkdtemp()) / "m.jsonl")
+        _first163 = "not refused"
+    except SystemExit as _e163c:
+        _first163 = str(_e163c)
+    except Exception as _e163d:
+        _first163 = f"{type(_e163d).__name__}: {_e163d}"
+finally:
+    _sessions_mod.CORPUS = _keep163[0]
+check("assemble it again" in _first163,
+      f"a stale corpus is refused before its tables are read: {_first163[:70]!r}")
+# And moments drawn before the list are not read further, at triage or reading.
+from errata_bench.find import reading as _rd163, triage as _tr163
+from errata_bench.stages import stage_read as _stage_read163, stage_triage as _stage_triage163
+
+_listed163 = Path(tempfile.mkdtemp())
+(_listed163 / "rewound.json").write_text(json.dumps({"rules": _RW163, "sessions": {"s-x": 1}}))
+_asked163: list[str] = []
+
+
+async def _triage163(excerpt, **kw):
+    _asked163.append(excerpt)
+    return _Triage43(agent_has_acted=True, objects_to_that_work=True, reason="r")
+
+
+async def _read163(ts, turn, **kw):
+    # A reading that validates, every check answered: one that raised would be
+    # stored as an error and asked again on the next run.
+    _asked163.append(ts[0]["content"])
+    return _Reading43(what_user_asked="a", what_agent_did="b", what_user_objected_to="c",
+                      objection_kind="real_error", benchmark_viable=True, context_sufficient=True,
+                      pushback_is_the_developers=True, knowable_at_the_failing_turn=True,
+                      visible_from_the_repository=True, consistent_with_instructions=True)
+
+
+_keep163b = (turns_mod.load_session_turns, _tr163.triage, _rd163.read_pushback, _sessions_mod.CORPUS)
+turns_mod.load_session_turns = lambda ids: {i: [{"turn_number": 7, "turn_type": "user_prompt",
+                                                  "content": "<bash-input>ls</bash-input>" if i == "s-z"
+                                                  else f"said in {i}"}] for i in ids}
+_tr163.triage, _rd163.read_pushback, _sessions_mod.CORPUS = _triage163, _read163, _listed163
+try:
+    _p163 = Paths(Path(tempfile.mkdtemp()) / "run")
+    for _s163 in ("s-x", "s-y", "s-z"):
+        append(_p163.moments, {"session_id": _s163, "turn_number": 7, "repo_id": "acme/up", "kind": "correction"})
+    _tp163 = asyncio.run(_stage_triage163(_p163, 10**9, concurrency=1))
+    _triaged163 = list(_asked163)
+    append(_p163.triaged, {"session_id": "s-x", "turn_number": 7, "repo_id": "acme/up", "worth_reading": True})
+    _rp163 = asyncio.run(_stage_read163(_p163, 10**9, concurrency=1))
+    _read_asked163 = _asked163[len(_triaged163):]
+finally:
+    turns_mod.load_session_turns, _tr163.triage, _rd163.read_pushback, _sessions_mod.CORPUS = _keep163b
+_zrow163 = next((r for r in load(_p163.triaged) if r["session_id"] == "s-z"), {})
+check(len(_triaged163) == 1 and "said in s-y" in _triaged163[0]
+      and any("their session holds a message the developer edited" in n for n in _tp163.notes)
+      and any("1 moments are not read: each is a shell command" in n for n in _tp163.notes)
+      and _zrow163.get("worth_reading") is False and "shell command" in str(_zrow163.get("triage_reason"))
+      and _read_asked163 == ["said in s-y"]
+      and any("abandoned branch" in n for n in _rp163.notes),
+      f"moments drawn before the list are not read, at triage or reading, nor a shell command at triage, and "
+      f"it is said: triage asked {len(_triaged163)}, reading asked {_read_asked163}")
+# A shell command first in line under --max-rows 1 does not stop the moment
+# behind it (review, 10-03), and reading, with no triaged rows, passes over one.
+_asked163.clear()
+_keep163d = (turns_mod.load_session_turns, _tr163.triage, _rd163.read_pushback, _sessions_mod.CORPUS)
+turns_mod.load_session_turns = lambda ids: {i: [{"turn_number": 7, "turn_type": "user_prompt",
+                                                  "content": "<bash-input>ls</bash-input>" if i == "s-z"
+                                                  else f"said in {i}"}] for i in ids}
+_tr163.triage, _rd163.read_pushback, _sessions_mod.CORPUS = _triage163, _read163, _listed163
+try:
+    _pc163 = Paths(Path(tempfile.mkdtemp()) / "run")
+    for _s163 in ("s-z", "s-y"):
+        append(_pc163.moments, {"session_id": _s163, "turn_number": 7, "repo_id": "acme/up", "kind": "correction"})
+    asyncio.run(_stage_triage163(_pc163, 1, concurrency=1))
+    asyncio.run(_stage_triage163(_pc163, 1, concurrency=1))
+    _capped163 = (sorted(r["session_id"] for r in load(_pc163.triaged)), list(_asked163))
+    _asked163.clear()
+    _pr163 = Paths(Path(tempfile.mkdtemp()) / "run")
+    for _s163 in ("s-z", "s-y"):
+        append(_pr163.moments, {"session_id": _s163, "turn_number": 7, "repo_id": "acme/up", "kind": "correction"})
+    _rpz163 = asyncio.run(_stage_read163(_pr163, 10**9, concurrency=1))
+    _read_only163 = list(_asked163)
+    _asked163.clear()
+    _pq163 = Paths(Path(tempfile.mkdtemp()) / "run")
+    for _s163 in ("s-z", "s-y"):
+        append(_pq163.moments, {"session_id": _s163, "turn_number": 7, "repo_id": "acme/up", "kind": "correction"})
+    asyncio.run(_stage_read163(_pq163, 1, concurrency=1))
+    asyncio.run(_stage_read163(_pq163, 1, concurrency=1))
+    _read_capped163 = list(_asked163)
+finally:
+    turns_mod.load_session_turns, _tr163.triage, _rd163.read_pushback, _sessions_mod.CORPUS = _keep163d
+check(_capped163[0] == ["s-y", "s-z"] and len(_capped163[1]) == 1 and "said in s-y" in _capped163[1][0]
+      and _read_only163 == ["said in s-y"] and any("shell command" in n for n in _rpz163.notes)
+      and _read_capped163 == ["said in s-y"],
+      f"a shell command first in line under --max-rows 1 is written down without a model, and the moment behind "
+      f"it is triaged next; reading the moments themselves passes over one, under the cap too: {_capped163}, "
+      f"{_read_only163}, {_read_capped163}")
+# Nor located: a viable reading of a listed session, read before the list.
+_located163: list[str] = []
+
+
+async def _locate163(ts, turn, **kw):
+    _located163.append(ts[0]["content"])
+    return _traj41.Trajectory(request_turn=1, failed_turn=3, complaint_turn=turn, objection=True, knowable=True,
+                              defect="d", resolved=False, later_turns_are_new_work=True)
+
+
+_keep163c = (turns_mod.load_session_turns, _traj41.locate, _sessions_mod.CORPUS)
+turns_mod.load_session_turns = lambda ids: {i: [{"turn_number": 7, "turn_type": "user_prompt",
+                                                  "content": f"said in {i}"}] for i in ids}
+_traj41.locate, _sessions_mod.CORPUS = _locate163, _listed163
+try:
+    _pl163 = Paths(Path(tempfile.mkdtemp()) / "run")
+    for _s163 in ("s-x", "s-y", "s-y"):   # s-y read twice: located once
+        append(_pl163.readings, {"session_id": _s163, "turn_number": 7, "repo_id": "acme/up",
+                                 "reading": {"benchmark_viable": True}})
+    _lp163 = asyncio.run(_stage_locate41(_pl163, 10**9, concurrency=1))
+finally:
+    turns_mod.load_session_turns, _traj41.locate, _sessions_mod.CORPUS = _keep163c
+from errata_bench.construct import build as _build163
+from errata_bench.find import signature as _sig163
+from errata_bench.stages import stage_build as _stage_build163, stage_screen as _stage_screen163
+from errata_bench.stages import stage_signature as _stage_signature163
+
+_signed163: list[str] = []
+_built163: list[list] = []
+
+
+async def _derive163(defect, resolution, **kw):
+    _signed163.append(defect)
+    raise RuntimeError("asked")
+
+
+def _no_turns163(ids):
+    raise AssertionError("screening read the conversation of a listed session")
+
+
+_keep163e = (_sig163.derive, _build163.build, turns_mod.load_session_turns, _sessions_mod.CORPUS)
+_sig163.derive, _sessions_mod.CORPUS = _derive163, _listed163
+_build163.build = lambda rows: (_built163.append([r["session_id"] for r in rows])
+                                or type("B", (), {"tasks": [], "rejected": []})())
+turns_mod.load_session_turns = _no_turns163
+try:
+    _pd163 = Paths(Path(tempfile.mkdtemp()) / "run")
+    for _s163 in ("s-x", "s-y"):
+        append(_pd163.trajectories, {"session_id": _s163, "repo_id": "acme/up", "complaint": 7, "usable": True,
+                                     "defect": f"defect of {_s163}", "resolution": "r"})
+    _sp163 = asyncio.run(_stage_signature163(_pd163, 10**9, concurrency=1))
+    append(_pd163.signatures, {"session_id": "s-x", "repo_id": "acme/up", "complaint": 7, "kind": "present"})
+    _scp163 = asyncio.run(_stage_screen163(_pd163, 10**9, concurrency=1))
+    append(_pd163.screened, {"session_id": "s-x", "repo_id": "acme/up", "complaint": 7, "screen_passes": 1})
+    _bp163 = _stage_build163(_pd163, 10**9)
+    append(_pd163.calibration, {"task_id": "acme-up-7", "sound": True})
+    _bq163 = _stage_build163(_pd163, 10**9)
+finally:
+    _sig163.derive, _build163.build, turns_mod.load_session_turns, _sessions_mod.CORPUS = _keep163e
+check(_signed163 == ["defect of s-y"] and any("not signed" in n for n in _sp163.notes)
+      and any("not screened" in n for n in _scp163.notes)
+      and _built163 == [[]] and any("not built" in n for n in _bp163.notes)
+      and _bq163.failed == 1 and any("abandoned branch. Nothing was pruned" in n for n in _bq163.notes)
+      and _rows41(_pd163.calibration),
+      f"signature, screening and the build pass over a listed session too: signed {_signed163}, built "
+      f"{_built163}")
+check(_located163 == ["said in s-y"] and len(_rows41(_pl163.trajectories)) == 1
+      and any("not located: their session's rows hold an abandoned branch" in n for n in _lp163.notes),
+      f"nor located, and a moment read twice is located once: {_located163}, {len(_rows41(_pl163.trajectories))} rows")
+check(_shell163 == [("s-g", 7)]
+      and "1 rows in the corpus labelled pushback passed over: a shell command" in " ".join(
+          _said163s.getvalue().split()),
+      f"a shell command the developer ran is passed over, and the message after it is the session's first "
+      f"pushback: {_shell163}")
+check("s-c2" not in _rew163 and "s-c1" in _rew163
+      and "1 moments left out: the developer edited and sent again" in " ".join(_said163r.getvalue().split()),
+      f"no moment is drawn from a session the corpus lists as holding an abandoned branch, and it is said: {_rew163}")
+check([s for s, _ in _all163] == ["s-a2", "s-b1", "s-c1", "s-c2", "s-e", "s-f"],
+      f"of three copies of one moment, the one collected is in a session that starts first and holds the most "
+      f"after it; of two the same, the first by id; the same words at another time, another message at the "
+      f"same instant, and a moment with no time of its own, are moments of their own: {_all163}")
+check("3 moments left out: a copy of a moment another session holds, the copy kept there" in _said_all163,
+      f"and it says how many copies it left out: {_said_all163[:160]!r}")
+check([s for s, _ in _after163] == ["s-a2", "s-c1", "s-c2", "s-e", "s-f"]
+      and "1 moments left out: a copy of a moment already collected" in _said_after163
+      and "2 moments left out: a copy of a moment another session holds" in _said_after163,
+      f"a copy of a moment an earlier collection took is left out, in every session: {_after163} "
+      f"{_said_after163[:200]!r}")
+
+print("\n164. the finding stages read every message whole, and every cut says how much went (10-02)")
+# G-92: triage read the last 9,000 characters as they fell, each message cut at
+# 4,000 with nothing said; reading saw each message cut so; locate cut each at
+# 3,000, a result at 900 and a call at 200, unmarked. The agent's last answer
+# before the pushback, the work objected to, was cut in 77 of the first 681
+# Entire moments, and in a sampled locate the cut hid the wrong sentence itself.
+from errata_bench.find import reading as _read164, triage as _tri164
+from errata_bench.find.trajectory import render as _render164
+
+_answer164 = "I fixed it. " + "Details. " * 1500 + "All tests pass, verified end to end."
+_rows164 = [_T63(1, "user_prompt", content="add retries to the uploader"),
+            _T63(2, "tool_use", tool_name="Bash", command="make test " * 200, tool_call_id="b"),
+            _T63(3, "tool_result", content="ok " * 3000, tool_call_id="b"),
+            _T63(4, "assistant_response", content=_answer164),
+            _T63(5, "user_prompt", content="the tests never ran")]
+_whole164 = [_bx70(_rows164, 5, record=r, whole_messages=True) for r in (1, 2)]
+_cut164 = _bx70(_rows164, 5, record=2)
+check(all(_answer164 in v for v in _whole164) and _answer164 not in _cut164
+      and "more characters not shown]" in _whole164[1],
+      "with whole_messages a message is shown whole under records 1 and 2, where it was cut, and record 2 says "
+      "where a call or a result was cut")
+_squeezed164 = _bx70(_rows164, 5, record=2, whole_messages=True, max_chars=2_000)
+check(_answer164 in _squeezed164 and "more characters not shown]" in _squeezed164,
+      "and squeezed to fit, the tool traffic is cut and said so, never a message")
+_view164 = _tri164.view(_rows164, 5)
+check(_view164.startswith(_tri164.LEFT_OUT + "\n[turn 4] AGENT:\n") and _answer164 in _view164
+      and _view164.rstrip().endswith("the tests never ran"),
+      f"triage reads from the start of a turn, the agent's last answer whole however long, the developer's "
+      f"message whole, and a line saying the rest was left out: {_view164[:70]!r}")
+_short164 = [_T63(1, "user_prompt", content="add retries"), _T63(2, "assistant_response", content="Done."),
+             _T63(3, "user_prompt", content="no, that is wrong")]
+_view164s = _tri164.view(_short164, 3)
+check(_view164s == _bx70(_short164, 3, record=2, whole_messages=True).lstrip("\n")
+      and _tri164.LEFT_OUT not in _view164s,
+      f"and a conversation shorter than its reach is read whole, with nothing said left out: {_view164s[:40]!r}")
+_asked164 = []
+
+
+class _Reader164:
+    @staticmethod
+    async def run(agent, prompt, **kw):
+        _asked164.append((agent.name, prompt))
+        raise RuntimeError("asked")
+
+
+_saved164 = (_tri164.configure_client, _read164.configure_client, _agents_mod.Runner)
+_tri164.configure_client = _read164.configure_client = lambda: None
+_agents_mod.Runner = _Reader164
+try:
+    for _call164 in (lambda: _tri164.triage(_view164), lambda: _read164.read_pushback(_rows164, 5)):
+        try:
+            asyncio.run(_call164())
+        except Exception:
+            pass
+finally:
+    _tri164.configure_client, _read164.configure_client, _agents_mod.Runner = _saved164
+_prompts164 = dict(_asked164)
+check(_view164 in _prompts164.get("triage", "") and _answer164 in _prompts164.get("pushback-reader", "")
+      and "more characters not shown]" in _prompts164.get("pushback-reader", ""),
+      f"triage is asked about its view whole, and the reader is shown every message whole and every cut said: "
+      f"{sorted((k, len(v)) for k, v in _prompts164.items())}")
+# With messages whole, the room left to results counts each message whole: else
+# the results are fitted to room the message has taken, the whole overruns,
+# and every result is squeezed to 200 characters instead of the 3,000 it has.
+_budget164 = [_T63(1, "user_prompt", content="m" * 10_000)] + [
+    _T63(n, "tool_result", content="r" * 6_000, tool_call_id=f"r{n}") for n in range(2, 8)]
+_fitted164 = _bx70(_budget164, 8, record=1, whole_messages=True, max_chars=30_000)
+_shown_r164 = max((len(line) for line in _fitted164.splitlines() if "-> result: " in line), default=0)
+check("m" * 10_000 in _fitted164 and _shown_r164 > 3_000,
+      f"with messages whole, a result keeps the room the whole messages leave it, not a squeezed 200: "
+      f"{_shown_r164} characters")
+# 39 results of about 3,500 characters: fitted to 60,000 as a whole, each would
+# keep under 1,500; triage reads only the last few, and they keep 3,500.
+_long_tool164 = [_T63(1, "user_prompt", content="add retries")] + [
+    x for n in range(2, 80, 2) for x in (_T63(n, "tool_use", tool_name="Bash", command=f"make {n}", tool_call_id=f"c{n}"),
+                                         _T63(n + 1, "tool_result", content=f"out {n} " * 500, tool_call_id=f"c{n}"))] + [
+    _T63(80, "assistant_response", content="Done."), _T63(81, "user_prompt", content="that is wrong")]
+_tail164 = _tri164.view(_long_tool164, 81)
+_last164 = (_tail164.split("[turn 79] -> result: ") + [""])[1].split("\n")[0]
+check(_last164.startswith("out 78 out 78") and len(_last164) > 3_000,
+      f"triage's results are not squeezed by the history it never reads: the last keeps {len(_last164)} characters")
+# Review 10-02: a long silent run of calls after the agent's answer made the
+# view 614,603 characters; and a turn line quoted inside a message was read
+# as a turn. The view is chosen by rows, and the rows between the answer and
+# the tail are left out and counted.
+_silent164 = [_T63(1, "user_prompt", content="fix it"), _T63(2, "assistant_response", content="Done, it works.")] + [
+    x for n in range(3, 303, 2) for x in (_T63(n, "tool_use", tool_name="Bash", command=f"make {n}", tool_call_id=f"s{n}"),
+                                          _T63(n + 1, "tool_result", content="ok " * 1500, tool_call_id=f"s{n}"))] + [
+    _T63(303, "user_prompt", content="it does not work")]
+_vs164 = _tri164.view(_silent164, 303)
+check(len(_vs164) < _tri164.TAIL_CHARS + 500 and "[turn 2] AGENT:\nDone, it works." in _vs164
+      and "turns between not shown ...]" in _vs164 and _vs164.rstrip().endswith("it does not work"),
+      f"a long run of calls after the agent's answer keeps the view short, the answer in it and the rows between "
+      f"counted: {len(_vs164)} characters")
+_quote164 = [_T63(1, "user_prompt", content="add retries"), _T63(2, "assistant_response", content="Retries added."),
+             _T63(3, "user_prompt", content="x" * 9_500 + "\n[turn 2] AGENT:\nthis quote is mine")]
+_vq164 = _tri164.view(_quote164, 3)
+check("[turn 2] AGENT:\nRetries added." in _vq164 and _vq164.count("[turn 3] USER:") == 1,
+      "a turn line quoted inside a message is not taken for a turn")
+_dev164 = "Here is the log: " + "line\n" * 1500
+_peer164 = "<teammate-message teammate_id=\"qa\">" + "finding " * 800 + "</teammate-message>"
+_read164w = _render164([_T63(1, "user_prompt", content=_dev164), _T63(2, "peer_message", content=_peer164),
+                        _T63(3, "assistant_response", content="ok")], 1, 3)
+check(_dev164.strip() in _read164w and _peer164 in _read164w,
+      "locate reads the developer's and another agent's messages whole too")
+_read164v = _render164(_rows164, 1, 5)
+check(_answer164 in _read164v and "[turn 3] -> ok ok" in _read164v and "more characters not shown]" in
+      _read164v.split("[turn 3]")[1].split("\n")[0] and "more characters not shown]" in
+      _read164v.split("[turn 2]")[1].split("\n")[0],
+      "locate reads every message whole, and a call or a result cut to its length says how much went")
+
+print("\n165. a reading whose own checks say no is not viable, and a complaint that is no objection is not usable (10-02)")
+# Gate 2: reading called 6 of 15 sampled moments viable that were not, and in
+# five its notes said why; locate built usable trajectories on complaints that
+# were none. The verdicts now follow the stages' own checks, in code. The
+# review of 10-02 found that code held by no check.
+from errata_bench.find import reading as _rd165, trajectory as _tj165
+
+_ok165 = dict(what_user_asked="a", what_agent_did="b", what_user_objected_to="c", objection_kind="real_error",
+              pushback_is_the_developers=True, knowable_at_the_failing_turn=True, visible_from_the_repository=True,
+              consistent_with_instructions=True, benchmark_viable=True, success_criterion="check the backoff fires",
+              justifying_turn=7, context_sufficient=True, notes="")
+_kept165 = _rd165.held_to_its_checks(_rd165.Reading(**_ok165))
+_each165 = {name: _rd165.held_to_its_checks(_rd165.Reading(**{**_ok165, name: False}))
+            for name in ("pushback_is_the_developers", "knowable_at_the_failing_turn", "visible_from_the_repository",
+                         "consistent_with_instructions", "context_sufficient")}
+_taste165 = {kind: _rd165.held_to_its_checks(_rd165.Reading(**{**_ok165, "objection_kind": kind}))
+             for kind in ("preference", "unclear", "unwanted_but_defensible")}
+check(_kept165.benchmark_viable and _kept165.success_criterion and _kept165.justifying_turn == 7
+      and all(not r.benchmark_viable and not r.success_criterion and r.justifying_turn == -1
+              and name in r.notes and "check the backoff fires" in r.notes for name, r in _each165.items())
+      and not _taste165["preference"].benchmark_viable and not _taste165["unclear"].benchmark_viable
+      and _taste165["unwanted_but_defensible"].benchmark_viable,
+      f"a viable reading stays viable only while every check holds; a no on any one, or a preference or an "
+      f"unclear objection, makes it not viable, and its notes keep which check and the criterion it proposed: "
+      f"{[name for name, r in _each165.items() if r.benchmark_viable]}")
+_asked165 = []
+
+
+class _Reader165:
+    @staticmethod
+    async def run(agent, prompt, **kw):
+        _asked165.append(agent.name)
+
+        class _Out:
+            final_output = _rd165.Reading(**{**_ok165, "visible_from_the_repository": False})
+        return _Out()
+
+
+_saved165 = (_rd165.configure_client, _agents_mod.Runner)
+_rd165.configure_client = lambda: None
+_agents_mod.Runner = _Reader165
+try:
+    _read165 = asyncio.run(_rd165.read_pushback([_T63(1, "user_prompt", content="add retries"),
+                                                 _T63(2, "assistant_response", content="Done."),
+                                                 _T63(3, "user_prompt", content="it never retries")], 3))
+finally:
+    _rd165.configure_client, _agents_mod.Runner = _saved165
+check(_asked165 == ["pushback-reader"] and not _read165.benchmark_viable,
+      f"and the reader's own answer is held to its checks before any stage stores it: {_read165.benchmark_viable}")
+_loc165 = dict(request_turn=1, failed_turn=2, complaint_turn=3, defect="d", resolved=True, resolved_turn=4,
+               later_turns_are_new_work=True)
+_b165 = {name: _tj165.boundaries(_tj165.Trajectory(**_loc165, objection=o, knowable=k, resolution_fixes_it=f))
+         for name, o, k, f in (("both", True, True, True), ("no objection", False, True, True),
+                               ("not knowable", True, False, True), ("no fix", True, True, False))}
+check(_b165["both"].usable and not _b165["no objection"].usable and not _b165["not knowable"].usable
+      and not _b165["no fix"].usable and "does not put the defect right" in _b165["no fix"].reason
+      and "does not object" in _b165["no objection"].reason and "to know" in _b165["not knowable"].reason
+      and _b165["no objection"].resolved_turn == -1,
+      f"a complaint that objects to nothing, a defect the agent could not have known, or a resolution that does "
+      f"not put it right (a status line, pilot audit) makes no usable trajectory, with its own reason: "
+      f"{[(n, b.usable, b.reason[:40]) for n, b in _b165.items()]}")
+
+print("\n166. what the gate-3 pilot's audit found in the views, the trajectories and the selection (10-02)")
+from errata_bench.find import reading as _rd166, triage as _tri166
+from errata_bench.find.trajectory import render as _render166
+
+# A squeezed view, and locate's, show no empty row: bare "AGENT:" lines.
+_empty166 = [_T63(1, "user_prompt", content="add retries"), _T63(2, "assistant_response", content=""),
+             _T63(3, "assistant_thinking", content="  "), _T63(4, "tool_use", tool_name="Bash", command="make",
+                                                           tool_call_id="m"),
+             _T63(5, "tool_result", content="x" * 9_000, tool_call_id="m"), _T63(6, "user_prompt", content="no")]
+_sq166 = _bx70(_empty166, 6, record=2, max_chars=500)
+_lo166 = _render166(_empty166, 1, 6)
+check("AGENT:\n\n" not in _sq166 + "\n" and "[turn 2]" not in _sq166 and "[turn 3]" not in _sq166
+      and "[turn 2]" not in _lo166,
+      f"a squeezed view and locate's skip an empty message, as the first pass does: "
+      f"{[l for l in _sq166.splitlines() if l.startswith('[turn')][:4]}")
+# Triage's view does not start inside a batch of calls: three results of 4,000
+# characters, so the tail ends between the calls and their results.
+_batch166 = [_T63(1, "user_prompt", content="fix it"), _T63(2, "assistant_response", content="Looking.")] + [
+    _T63(3 + i, "tool_use", tool_name="Read", file_path=f"/r/{c}.py", tool_call_id=c) for i, c in enumerate("abc")] + [
+    _T63(6 + i, "tool_result", content=f"{c}-out " * 900, tool_call_id=c) for i, c in enumerate("abc")] + [
+    _T63(9, "user_prompt", content="that is wrong")]
+_vb166 = _tri166.view(_batch166, 9)
+_lines166 = [l for l in _vb166.splitlines() if l.startswith("[turn")]
+_order166 = [l.split("]")[0] for l in _lines166]
+check(all(f"/r/{c}.py" in _vb166 for c in "abc") and _order166.index("[turn 3") < _order166.index("[turn 6"),
+      f"triage's view does not start inside a batch of calls, a result without its call: {_order166}")
+_vt166 = _tri166.view([_T63(1, "user_prompt", content="add retries"), _T63(2, "assistant_response", content="Done."),
+                      _T63(3, "user_prompt", content="no")], 3)
+check(_vt166.startswith("[turn 1] USER:"),
+      f"and a view from the start opens on its first row, not a blank line: {_vt166[:16]!r}")
+# Two steps back: to B's call (about 4,100 characters), then to A's (another
+# 8,200, making 12,300 past the tail): the first is taken and the second is
+# not, though each alone is under TAIL_CHARS (review, 10-02). The view keeps
+# 4,000 characters of a result.
+_steps166 = [_T63(1, "user_prompt", content="fix it"),
+             _T63(2, "tool_use", tool_name="Read", file_path="/r/A.py", tool_call_id="a"),
+             _T63(3, "tool_result", content="z" * 5_000, tool_call_id="nobody-1"),
+             _T63(4, "tool_result", content="y" * 5_000, tool_call_id="nobody-2"),
+             _T63(5, "tool_use", tool_name="Read", file_path="/r/B.py", tool_call_id="b"),
+             _T63(6, "tool_result", content="a-out", tool_call_id="a"),
+             _T63(7, "tool_result", content="x" * 5_000, tool_call_id="nobody-3"),
+             _T63(8, "tool_result", content="w" * 5_000, tool_call_id="nobody-4"),
+             _T63(9, "tool_result", content="b-out " * 900, tool_call_id="b"),
+             _T63(10, "user_prompt", content="wrong")]
+_vs166 = _tri166.view(_steps166, 10)
+check("/r/B.py" in _vs166 and "/r/A.py" not in _vs166,
+      f"triage's steps back stop at another TAIL_CHARS in all, not in each: B shown {'/r/B.py' in _vs166}, "
+      f"A shown {'/r/A.py' in _vs166}")
+# The reader's view is fitted to READ_CHARS: 18 results of 4,500 characters
+# keep 4,000 each, where 60,000 squeezed them to 200.
+_asked166 = []
+
+
+class _Reader166:
+    @staticmethod
+    async def run(agent, prompt, **kw):
+        _asked166.append(prompt)
+        raise RuntimeError("asked")
+
+
+_long166 = [_T63(1, "user_prompt", content="add retries")] + [
+    x for n in range(2, 38, 2) for x in (_T63(n, "tool_use", tool_name="Bash", command=f"run {n}", tool_call_id=f"r{n}"),
+                                         _T63(n + 1, "tool_result", content=f"line {n} " * 600, tool_call_id=f"r{n}"))] + [
+    _T63(38, "assistant_response", content="Done."), _T63(39, "user_prompt", content="it never retries")]
+_saved166 = (_rd166.configure_client, _agents_mod.Runner)
+_rd166.configure_client = lambda: None
+_agents_mod.Runner = _Reader166
+try:
+    try:
+        asyncio.run(_rd166.read_pushback(_long166, 39))
+    except Exception:
+        pass
+finally:
+    _rd166.configure_client, _agents_mod.Runner = _saved166
+_kept166 = max((len(l) for l in (_asked166 + [""])[0].splitlines() if "-> result:" in l), default=0)
+check(_rd166.READ_CHARS == 100_000 and _kept166 > 3_900,
+      f"the reader's view is fitted to {_rd166.READ_CHARS:,} characters, so its results keep their room: {_kept166}")
+# One failed answer, one usable trajectory, across sibling run folders.
+_runs166 = Path(tempfile.mkdtemp())
+_a166, _b166 = Paths(_runs166 / "run-a"), Paths(_runs166 / "run-b")
+_pre166 = Paths(_runs166 / "run-a.pre-fix")
+from errata_bench.find.trajectory import RULES as _RULES166
+
+for _sid166, _held166, _row166x in (
+        ("s166", _a166, {"complaint": 7, "usable": True, "rules": _RULES166}),     # held: a different objection
+        ("s166b", _pre166, {"complaint": 7, "usable": True, "rules": _RULES166}),  # a backup holds nothing
+        ("s166c", _a166, {"complaint": 7, "usable": False, "rules": _RULES166}),   # nor an unusable row
+        ("s166d", _a166, {"complaint": 7, "usable": True}),                         # nor one of earlier rules
+        ("s166e", _a166, {"complaint": 9, "usable": True, "rules": _RULES166})):   # the same moment, elsewhere
+    append(_held166.trajectories, {"session_id": _sid166, "repo_id": "r/r", "failed": 5, "resolved": 12,
+                                   "reason": "usable", **_row166x})
+# And two malformed rows in the sibling's file (review, 10-02): they once
+# raised inside every usable answer's check.
+with open(_a166.trajectories, "a") as _fh166:
+    _fh166.write('[1, 2]\n' + json.dumps({"usable": True, "rules": _RULES166, "failed": 5, "complaint": 3}) + "\n")
+for _sid166, _turn166 in (("s166", 9), ("s166b", 9), ("s166c", 9), ("s166d", 9), ("s166e", 9),
+                          ("s166f", 9), ("s166f", 11)):
+    append(_b166.readings, {"session_id": _sid166, "repo_id": "r/r", "turn_number": _turn166,
+                            "reading": {"benchmark_viable": True}})
+
+
+async def _located166(turns, turn):
+    return _traj41.Trajectory(request_turn=1, failed_turn=5, complaint_turn=turn, objection=True, knowable=True,
+                              defect="d", resolved=True, resolved_turn=12, resolution="fixed",
+                              resolution_fixes_it=True, later_turns_are_new_work=True)
+
+
+_saved166b = (_traj41.locate, turns_mod.load_session_turns)
+_traj41.locate = _located166
+turns_mod.load_session_turns = lambda ids: {i: [] for i in ids}
+try:
+    asyncio.run(_stage_locate41(_b166, 10**9, concurrency=1))
+finally:
+    _traj41.locate, turns_mod.load_session_turns = _saved166b
+_got166 = {(r["session_id"], r["complaint"]): r for r in _rows41(_b166.trajectories)}
+_row166 = _got166.get(("s166", 9), {})
+check(_row166.get("usable") is False and "run-a:7" in str(_row166.get("reason"))
+      and _row166.get("held_by") == "run-a:7" and _row166.get("rules") == _RULES166,
+      f"a second objection to an answer a sibling run already holds makes no second usable trajectory, and says "
+      f"which holds it: {_row166.get('usable')}, {_row166.get('reason')!r}, {_row166.get('held_by')!r}")
+check(all(_got166.get((s, 9), {}).get("usable") is True for s in ("s166b", "s166c", "s166d", "s166e")),
+      f"a backup's row, an unusable row, a row of earlier rules, and the same moment located in another folder "
+      f"hold nothing: {[(s, _got166.get((s, 9), {}).get('usable')) for s in ('s166b', 's166c', 's166d', 's166e')]}")
+check(_got166.get(("s166f", 9), {}).get("usable") is True
+      and _got166.get(("s166f", 11), {}).get("usable") is False
+      and _got166.get(("s166f", 11), {}).get("held_by") == "run-b:9"
+      and _got166.get(("s166f", 9), {}).get("resolution_fixes_it") is True,
+      f"two objections to one answer in the same run: the first is usable, the second held by it: "
+      f"{[(k, v.get('usable'), v.get('held_by')) for k, v in _got166.items() if k[0] == 's166f']}")
+# Locate looks once more, further on, when its view leaves the defect
+# unresolved and the session goes on past it; within FURTHER_CHARS.
+from errata_bench.find import trajectory as _tj166
+
+_far166 = [_T63(1, "user_prompt", content="add retries"), _T63(5, "assistant_response", content="Added retries."),
+           _T63(10, "user_prompt", content="it loops forever")] + [
+    _T63(n, "tool_use", tool_name="Bash", command=f"step {n}", tool_call_id=f"f{n}") for n in range(11, 899)] + [
+    _T63(900, "assistant_response", content="Fixed: the retry loop now stops after 3 tries."),
+    _T63(1000, "user_prompt", content="thanks")]
+_seen166: list[str] = []
+
+
+class _Locator166:
+    @staticmethod
+    async def run(agent, prompt, **kw):
+        _seen166.append(prompt)
+        found = "[turn 900]" in prompt
+        out = _tj166.Trajectory(request_turn=1, failed_turn=5, complaint_turn=10, objection=True, knowable=True,
+                                defect="d", resolved=found, resolved_turn=900 if found else -1,
+                                resolution="fixed" if found else "", resolution_fixes_it=found,
+                                later_turns_are_new_work=True)
+        return type("R", (), {"final_output": out, "context_wrapper": None})()
+
+
+_saved166c = (_tj166.configure_client, _agents_mod.Runner)
+_tj166.configure_client = lambda: None
+_agents_mod.Runner = _Locator166
+try:
+    _went166 = asyncio.run(_tj166.locate(_far166, 10))
+    _asks166, _first166 = len(_seen166), (_seen166 + [""])[0]
+    _short166 = asyncio.run(_tj166.locate(_far166[:3] + _far166[3:300], 10))
+    _asks166b = len(_seen166) - _asks166
+    # Results of 200 characters: the first view is about 86,000 characters,
+    # 1,200 turns would be about 270,000, so the second look stops where
+    # FURTHER_CHARS does. Results of 900: the first view alone is past it,
+    # so there is no second look.
+    _medium166 = [_T63(1, "user_prompt", content="add retries"), _T63(5, "assistant_response", content="Added."),
+                  _T63(10, "user_prompt", content="it loops")] + [
+        _T63(n, "tool_result", content="z" * 200, tool_call_id=f"m{n}") for n in range(11, 1500)]
+    _seen166.clear()
+    _mid166 = asyncio.run(_tj166.locate(_medium166, 10))
+    _mid_asks166 = list(_seen166)
+    _heavy166 = [_T63(1, "user_prompt", content="add retries"), _T63(5, "assistant_response", content="Added."),
+                 _T63(10, "user_prompt", content="it loops")] + [
+        _T63(n, "tool_result", content="z" * 900, tool_call_id=f"h{n}") for n in range(11, 1500)]
+    _seen166.clear()
+    asyncio.run(_tj166.locate(_heavy166, 10))
+finally:
+    _tj166.configure_client, _agents_mod.Runner = _saved166c
+check(_asks166 == 2 and "[turn 900]" not in _first166 and _went166.resolved and _went166.resolved_turn == 900
+      and _went166._looked_to == 1000,
+      f"a defect the view leaves open in a session that goes on is looked at once more, further on, and that "
+      f"answer is kept: {_asks166} asks, resolved at {_went166.resolved_turn}, view to {_went166._looked_to}")
+check(_asks166b == 1 and _short166._looked_to == 410,
+      f"a session that ends within the view is asked about once: {_asks166b} asks, view to {_short166._looked_to}")
+check(len(_mid_asks166) == 2 and 410 < _mid166._looked_to < 1210
+      and len(_mid_asks166[1]) <= _tj166.FURTHER_CHARS + 400 < len(_tj166.render(_medium166, -50, 1210)),
+      f"and the second look reads no more than FURTHER_CHARS: {[len(x) for x in _mid_asks166]}, view to "
+      f"{_mid166._looked_to}")
+check(len(_seen166) == 1,
+      f"and none is taken when the first view alone is past it: {[len(x) for x in _seen166]}")
+# When a second look could not make the trajectory usable, none is taken
+# (review, 10-02): a fix already in view; an objection to nothing; nothing
+# more to show. A status line in view -- isthmia-74's shape -- is no fix, and
+# the look goes on. And a session ending on a fraction of a turn still ends.
+import signal as _signal166
+
+_answers166: list = []
+_asked166b: list[str] = []
+
+
+class _Scripted166:
+    @staticmethod
+    async def run(agent, prompt, **kw):
+        _asked166b.append(prompt)
+        return type("R", (), {"final_output": _answers166.pop(0), "context_wrapper": None})()
+
+
+def _tj_answer166(**kw):
+    base = dict(request_turn=1, failed_turn=5, complaint_turn=10, objection=True, knowable=True, defect="d",
+                resolved=False, resolved_turn=-1, later_turns_are_new_work=True)
+    return _tj166.Trajectory(**{**base, **kw})
+
+
+def _asks166(turns, *answers):
+    _answers166[:] = list(answers)
+    _asked166b.clear()
+    t = asyncio.run(_tj166.locate(turns, 10))
+    return len(_asked166b), t
+
+
+_snapshots166 = _far166[:3] + [_T63(20, "assistant_response", content="Working on it.")] + [
+    _T63(n, "file_snapshot", content="{}") for n in range(411, 900)]
+_fraction166 = _far166[:3] + [_T63(n, "tool_use", tool_name="Bash", command=f"s {n}", tool_call_id=f"q{n}")
+                              for n in range(11, 400)] + [_T63(415.5, "assistant_response", content="put back")]
+_saved166d = (_tj166.configure_client, _agents_mod.Runner)
+_tj166.configure_client = lambda: None
+_agents_mod.Runner = _Scripted166
+_old_alarm166 = _signal166.signal(_signal166.SIGALRM, lambda *a: (_ for _ in ()).throw(TimeoutError("hung")))
+_signal166.alarm(60)   # no scripted look may hang the suite
+try:
+    _fixed166 = _asks166(_far166, _tj_answer166(resolved=True, resolved_turn=20, resolution="fixed",
+                                                resolution_fixes_it=True))
+    _status166 = _asks166(_far166, _tj_answer166(resolved=True, resolved_turn=20, resolution="status"),
+                          _tj_answer166(resolved=True, resolved_turn=900, resolution="fixed", resolution_fixes_it=True))
+    _nothing166 = _asks166(_far166, _tj_answer166(objection=False))
+    _unknowable166 = _asks166(_far166, _tj_answer166(knowable=False))
+    _unplaced166 = _asks166(_far166, _tj_answer166(resolved=True, resolved_turn=-1, resolution_fixes_it=True),
+                            _tj_answer166())
+    _same166 = _asks166(_snapshots166, _tj_answer166(), _tj_answer166())
+    _signal166.alarm(5)
+    try:
+        _ends166 = _asks166(_fraction166, _tj_answer166(), _tj_answer166())
+        _ends166 = (_ends166[0], _ends166[1], _asked166b[-1] if _asked166b else "")
+    except TimeoutError:
+        _ends166 = ("hung", None, "")
+except TimeoutError:
+    _ends166 = ("hung", None, "")
+finally:
+    _signal166.alarm(0)
+    _signal166.signal(_signal166.SIGALRM, _old_alarm166)
+    _tj166.configure_client, _agents_mod.Runner = _saved166d
+check(_fixed166[0] == 1 and _status166[0] == 2 and _status166[1].resolved_turn == 900 and _nothing166[0] == 1
+      and _same166[0] == 1 and _unknowable166[0] == 1 and _unplaced166[0] == 2,
+      f"a second look only where it could help: a fix in view {_fixed166[0]} ask, a status line in view "
+      f"{_status166[0]} (resolved at {_status166[1].resolved_turn}), an objection to nothing {_nothing166[0]}, "
+      f"nothing more to show {_same166[0]}")
+check(_ends166[0] == 2 and "put back" in _ends166[2],
+      f"and a session whose last row sits at a fraction of a turn ends its search, the row in reach: "
+      f"{_ends166[0]} asks")
+_stored166 = _rows41(_b166.trajectories)[0]
+check("looked_to" in _stored166, f"the stored trajectory says where its view ended: {sorted(_stored166)}")
+
+print("\n167. a reference answer is kept whole, a cut is said, and the judge reads it so (G-96, 10-02)")
+# Cut at 6,000 characters with nothing said, and cut again at 6,000 in the
+# judge's prompt: authsome-125 kept 6,000 of its failed answer's 8,986.
+from errata_bench import spec as _spec167
+from errata_bench.score import judge as _jm167
+
+_over167 = "the failed answer " + "word " * 13_000 + "THE LOST TAIL"
+_t167 = _task49("g96")
+_t167.oracle, _t167.criterion = _over167, "c" * 5_999
+_back167 = _spec167.Task.from_json(json.loads(json.dumps(_t167.to_json())))
+check(_spec167.was_cut(_back167.oracle) and _back167.oracle.endswith(
+          f"[... {len(_over167) - _spec167.REFERENCE_CHARS:,} characters cut]")
+      and _back167.criterion == "c" * 5_999 and not _spec167.was_cut(_back167.criterion)
+      and _spec167.fingerprint(_t167) == _spec167.fingerprint(_back167)
+      and _spec167.kept(_back167.oracle) == _back167.oracle,
+      f"a reference over the cap is kept with its cut said, one under it byte for byte, and the stamp it has in "
+      f"memory is the stamp it has after disk: {_back167.oracle[-32:]!r}")
+_long167 = _task49("g96-long")
+_long167.oracle, _long167.criterion = "the failed answer " + "word " * 1_800 + "THE FAILED TAIL", "c" * 40
+_long167 = _spec167.Task.from_json(json.loads(json.dumps(_long167.to_json())))
+_short167 = _task49("g96-short")
+_short167.oracle, _short167.criterion = "o" * 5_999, "c" * 40
+_asked167: list[str] = []
+
+
+class _Judge167:
+    @staticmethod
+    async def run(agent, prompt, **kw):
+        _asked167.append(prompt)
+        verdict = _jm167.Verdict(addresses_defect=True, defect_remains=False, makes_unverified_claim=False,
+                                 reports_limits=False, quote="", reasoning="r")
+        return type("R", (), {"final_output": verdict, "context_wrapper": None})()
+
+
+_memory167 = _task49("g96-memory")   # never written down: its reference is whole in memory
+_memory167.oracle, _memory167.criterion = _over167, "c" * 40
+_saved167 = (_jm167.configure_client, _agents_mod.Runner)
+_jm167.configure_client = lambda: None
+_agents_mod.Runner = _Judge167
+try:
+    # The real judge, which the suite keeps aside: `judge_mod.judge` is a
+    # stand-in from the top of the file.
+    for _task167 in (_long167, _back167, _short167, _memory167):
+        asyncio.run(REAL_JUDGE(_task167, "an answer"))
+finally:
+    _jm167.configure_client, _agents_mod.Runner = _saved167
+_pl167, _pc167, _ps167, _pm167 = (_asked167 + ["", "", "", ""])[:4]
+check("characters cut]" in _pm167 and "THE LOST TAIL" not in _pm167 and len(_pm167) < len(_over167),
+      "a task the judge reads from memory, never written down, has its reference kept as on disk")
+_one167, _many167 = (_spec167.kept("x" * (_spec167.REFERENCE_CHARS + n)) for n in (1, 2))
+check(_one167.endswith("[... 1 character cut]") and _many167.endswith("[... 2 characters cut]")
+      and all(_spec167.kept(k) == k and _spec167.was_cut(k) for k in (_one167, _many167)),
+      "and one character cut is said as one, and either way a kept reference is known again and kept as it is")
+check("THE FAILED TAIL" in _pl167 and "longer than shown" not in _pl167,
+      f"the judge reads a 9,000-character reference whole, where it read 6,000: {'THE FAILED TAIL' in _pl167}")
+check("characters cut]" in _pc167 and "Reference answer A was longer than shown" in _pc167
+      and "THE LOST TAIL" not in _pc167,
+      "a reference cut at the cap reaches the judge with its cut said, and the judge is told what that means")
+check(("Reference answer B, from this conversation:\n" + "c" * 40 + "\n\nThe CANDIDATE's answer, to be judged:")
+      in _ps167 and ("Reference answer A, from this conversation:\n" + "o" * 5_999 + "\n\n") in _ps167
+      and "longer than shown" not in _ps167,
+      "references under the old cap, as all of v1's are, make the judge's prompt as it was, byte for byte")
+
+print("\n168. a task's name: v1's 55 keep theirs, every other carries its session (10-03, with #17)")
+# The plain {repo}-{turn} is not unique: v1 built entireio-cli-24 from two
+# sessions, and refused three entireio/cli candidates only because another
+# session had their name. A rule on fixed inputs names a moment the same in
+# every build; a task's fingerprint starts with its name. The tag is a hash of
+# the whole session id: entireio/cli's January sessions begin with their date,
+# and their first eight characters were one tag (review, 10-03).
+import hashlib as _hl168
+
+from errata_bench.construct.build import task_name as _name168
+from errata_bench.release.v1_names import V1_NAMES as _V1N168
+
+_tag168 = lambda sid: _hl168.sha256(sid.encode()).hexdigest()[:8]
+_own168 = _V1N168["entireio-cli-24"]
+_other168 = "85f99978-0000-4000-8000-000000000000"
+_cases168 = {
+    "a v1 task from its own session": _name168("entireio/cli", _own168, 24),
+    "another session at a v1 name": _name168("entireio/cli", _other168, 24),
+    "a new moment": _name168("acme/up", "s-123456789", 3),
+    "the same moment again": _name168("acme/up", "s-123456789", 3),
+    "a dated session": _name168("entireio/cli", "2026-01-05-aaaa1111", 77),
+    "another dated session": _name168("entireio/cli", "2026-01-05-bbbb2222", 77)}
+try:
+    _name168("acme/up", "", 3)
+    _empty168 = "named"
+except ValueError:
+    _empty168 = "refused"
+check(_own168 != _other168 and _cases168["a v1 task from its own session"] == "entireio-cli-24"
+      and _cases168["another session at a v1 name"] == f"entireio-cli-{_tag168(_other168)}-24"
+      and _cases168["a new moment"] == f"acme-up-{_tag168('s-123456789')}-3" == _cases168["the same moment again"]
+      and _cases168["a dated session"] != _cases168["another dated session"]
+      and _empty168 == "refused",
+      f"v1's name is kept for its own session only; any other task is named by a hash of its session, the same "
+      f"every time, two sessions of one date apart; a task with no session is refused: {_cases168}, {_empty168}")
+# Through the real build: two sessions at one (repository, turn) both build,
+# under two names; one moment twice is refused the second time.
+try:
+    _B43w.session_starts = lambda ids=None: {i: 1_000_000_000 for i in (ids or ["s-43w", "s-43x"])}
+    _B43w.load_session_turns = lambda ids: {i: list(_turns43w) for i in ids}
+    _B43w.load_repos = lambda: {"acme/up": _Repo43w(repo_id="acme/up", url="https://x/acme/up",
+                                                    license_type="mit", language="Python")}
+    _B43w.load_commits_by_repo = lambda **kw: {"acme/up": [
+        type("C168", (), {"author_ns": 1, "commit_ns": None, "checkpoint_pk": "", "commit_sha": "abc123"})()]}
+    _B43w.session_checkpoints = lambda ids: {}
+    _B43w.fetch = lambda url, sha, dest: _Checkout43w()
+    _B43w.edits_before = lambda turns, cut: []
+    _B43w.replay = lambda tree, edits, repo_id: _Replay43(applied=13, verified=7, files={"a"})
+    _B43w.check = lambda task_id, sig, tree: _Presence43w(
+        task_id=task_id, probeable=True, present=True, detail="ok", strength="declared")
+    _B43w.has_transcript = lambda sid: True
+    _row168 = {"repo_id": "acme/up", "request": 1, "failed": 2, "complaint": 3, "resolved": 4, "cut": 1,
+               "kind": "none", "path": "src/a.py", "token": "", "defect": "a defect", "rounds": 1, "usable": True,
+               "asks_for_something": True, "within_scope": True, "signals_trouble": False,
+               "calls_recovered": True, "text_recovered": True}
+    _built168 = []
+    for _sid168 in ("s-43w", "s-43x"):
+        _B43w.history = _agreeing43w(_sid168)
+        _built168.append(_B43w.build([dict(_row168, session_id=_sid168)]))
+    _B43w.history = _agreeing43w("s-43w")
+    _again168 = _B43w.build([dict(_row168, session_id="s-43w"), dict(_row168, session_id="s-43w")])
+finally:
+    for _n43w, _v43w in _kept43w.items():
+        setattr(_B43w, _n43w, _v43w)
+_names168 = [t.task_id for r in _built168 for t in r.tasks]
+check(_names168 == [f"acme-up-{_tag168('s-43w')}-3", f"acme-up-{_tag168('s-43x')}-3"]
+      and [t.task_id for t in _again168.tasks] == [f"acme-up-{_tag168('s-43w')}-3"]
+      and any("two tasks cannot share a name" in r.reason and r.session_id == "s-43w" for r in _again168.rejected),
+      f"two sessions at one (repository, turn) build under two names, and one moment twice is refused the second "
+      f"time, its rejection carrying its session: {_names168}, {[t.task_id for t in _again168.tasks]}")
+# The frozen list is the release's, where the release is here; CI has none.
+_rel168 = Path(os.environ.get("ERRATA_V1_RELEASE") or "release/v1.0.2-dataset") / "tasks"
+if _rel168.is_dir():
+    _found168 = {}
+    for _g168 in sorted(_rel168.glob("*/grading/task.json")):
+        _t168 = json.loads(_g168.read_text())
+        _found168[_t168["task_id"]] = (_t168["session_id"],
+                                       _name168(_t168["repo_id"], _t168["session_id"], _t168["complaint_turn"]))
+    check(len(_found168) == 55 and {k: v[0] for k, v in _found168.items()} == _V1N168
+          and all(k == v[1] for k, v in _found168.items()),
+          f"the frozen names are the release's 55, each with its session, and each names itself: {len(_found168)}")
+else:
+    print(f"  skip  the frozen names against the release: {_rel168} is not here (as in CI)")
+
+print("\n169. the Entire runs' draw, run script, preflight and tally keep v1's rules (10-03)")
+import importlib.util as _ilu169
+import shutil as _shutil169
+import subprocess as _sp169
+
+
+def _script169(name):
+    spec = _ilu169.spec_from_file_location(f"_s169_{name}", Path("scripts") / f"{name}.py")
+    mod = _ilu169.module_from_spec(spec)
+    spec.loader.exec_module(mod)
+    return mod
+
+
+# The draw, through the real `find_moments` over section 163's corpus: each of
+# its exclusions removes a session the unfiltered draw holds.
+_draw169 = _script169("draw_entire")
+_draw169.V1_NAMES = {}
+_none169 = Path(tempfile.mkdtemp()) / "none.json"
+_none169.write_text("[]")
+
+
+def _drawn169(runs, extra=(), dry=False):
+    _draw169.RUNS = runs
+    _said169d = _io38.StringIO()
+    _sessions_mod.CORPUS, _sessions_mod.load_repos = _corpus163, REAL_LOAD_REPOS
+    try:
+        with _contextlib38.redirect_stdout(_said169d), _transcripts_at(_corpus163):
+            code = _draw169.main(["d", "--cap", "0", "--exclude-sessions", *(extra or [str(_none169)]),
+                                  "--runs", str(runs), *(["--dry-run"] if dry else [])])
+    finally:
+        _sessions_mod.CORPUS, _sessions_mod.load_repos = _keep163
+    return code, sorted(r["session_id"] for r in load(runs / "d-first" / "moments.jsonl")), _said169d.getvalue()
+
+
+_empty169 = Path(tempfile.mkdtemp())
+_bare169 = _drawn169(_empty169)
+_base_runs169 = Path(tempfile.mkdtemp())
+append(_base_runs169 / "z" / "triaged.jsonl", {"session_id": "s-nobody", "turn_number": 1})
+_base169 = _drawn169(_base_runs169)[1]
+check(_bare169[0] == 2 and not (_empty169 / "d-first").exists(),
+      f"the draw refuses run folders where no run has triaged anything, writing nothing: exit {_bare169[0]}")
+_bs169 = [s for s in _base169 if s in ("s-b1", "s-b2")]
+_rest169 = [s for s in _base169 if s not in ("s-b1", "s-b2")]
+if len(_bs169) == 1 and len(_rest169) >= 5:
+    # The copy the draw holds is left out when its other copy was triaged, in
+    # a run folder two levels down (a backup's, say): one moment, triaged once.
+    _bother169 = ({"s-b1", "s-b2"} - set(_bs169)).pop()
+    _runs169 = Path(tempfile.mkdtemp())
+    append(_runs169 / "a" / "older" / "triaged.jsonl", {"session_id": _bother169, "turn_number": 5})
+    append(_runs169 / "b" / "tasks.jsonl", {"session_id": _rest169[0], "task_id": "o-b-x-5"})
+    # A batch is found by its rows, whatever its name: v1's was later-sample.
+    append(_runs169 / "later-sample" / "moments.jsonl", {"session_id": _rest169[1], "turn_number": 9, "later": True})
+    # A first list whose name holds "later" is no batch.
+    append(_runs169 / "later2-first" / "moments.jsonl", {"session_id": _rest169[4], "turn_number": 5})
+    (_runs169 / "elsewhere.json").write_text(json.dumps([_rest169[2]]))
+    _draw169.V1_NAMES = {"o-v-5": _rest169[3]}
+    _code169, _kept169, _ = _drawn169(_runs169, [str(_runs169 / "elsewhere.json")])
+    _draw169.V1_NAMES = {}
+    check(_code169 == 0 and _kept169 == _rest169[4:],
+          f"the draw leaves out a copy of a moment any run triaged, a session with a built task, one whose later "
+          f"moment a batch holds, one built from the other corpus and one of v1's, and keeps one a first list "
+          f"named 'later2' holds: {_bs169 + _rest169[:4]} out, {_kept169} kept")
+    # Its own later list is no batch: a dry run after the draw counts the same.
+    append(_runs169 / "d-later" / "moments.jsonl", {"session_id": _rest169[4], "turn_number": 9, "later": True})
+    _dry169 = _drawn169(_runs169, [str(_runs169 / "elsewhere.json")], dry=True)[2]
+    check("'later-sample'" in _dry169 and "'d-later'" not in _dry169,
+          f"and its own later list is not taken for a batch: "
+          f"{[l for l in _dry169.splitlines() if 'later batches' in l][:1]}")
+else:
+    check(False, f"the draw's fixture gives other sessions than section 163 wrote: {_base169}")
+# Exclusion files are lists of session ids; anything else is refused.
+_runs169x = Path(tempfile.mkdtemp())
+append(_runs169x / "z" / "triaged.jsonl", {"session_id": "s-nobody", "turn_number": 1})
+(_runs169x / "tally.json").write_text(json.dumps({"funnel": [], "kept": []}))
+try:
+    _drawn169(_runs169x, [str(_runs169x / "tally.json")])
+    _obj169 = "read"
+except SystemExit as e:
+    _obj169 = str(e)
+check(_obj169.startswith("refused") and "not a JSON list" in _obj169,
+      f"an exclusion file that is not a list of session ids is refused: {_obj169[:80]}")
+# The first list is drawn with every run's triage and the later list as drawn
+# handed to `find_moments`, which leaves a copy of each out with it (G-91,
+# section 163); and the cap counts what the rules leave, a triaged moment
+# taking no place under it (10-03: a dry run drew 814 later moments, kept 479).
+_m169 = [{"session_id": sid, "repo_id": repo, "turn_number": 5}
+         for sid, repo in (("a", "r1"), ("b", "r1"), ("d", "r1"), ("c", "r2"))]
+_asked169 = []
+
+
+def _collect169(later, seen):
+    _asked169.append((later, [sorted((r.get("session_id"), r.get("turn_number")) for r in load(f)) for f in seen]))
+    return [{"session_id": "L", "repo_id": "r3", "turn_number": 9, "later": True}] if later else [dict(m) for m in _m169]
+
+
+_draw169.collect = _collect169
+_cr169 = Path(tempfile.mkdtemp())
+append(_cr169 / "x" / "triaged.jsonl", {"session_id": "a", "turn_number": 5})
+_draw169.RUNS = _cr169
+with _contextlib38.redirect_stdout(_io38.StringIO()):
+    _draw169.main(["c", "--cap", "1", "--exclude-sessions", str(_none169), "--runs", str(_cr169)])
+_capped169 = [r["session_id"] for r in load(_cr169 / "c-first" / "moments.jsonl")]
+_draw169.collect = _script169("draw_entire").collect
+check(_capped169 == ["b", "c"] and [m["session_id"] for m in _draw169.capped(_m169, 1)] == ["a", "c"],
+      f"the per-repository cap counts what the rules leave, a triaged moment taking no place under it: "
+      f"{_capped169}")
+check([a[0] for a in _asked169] == [True, False] and _asked169[0][1] == [[("a", 5)]]
+      and _asked169[1][1] == [[("a", 5)], [("L", 9)]],
+      f"the triage of every run goes to `find_moments` for both lists, and the later list as drawn for the first: "
+      f"{_asked169}")
+for _argv169, _what169 in ((["d", "--exclude-sessions", str(_none169)], "a per-repository cap"),
+                           (["d", "--cap", "0"], "the exclusion files")):
+    _draw169.RUNS = Path(tempfile.mkdtemp())        # nothing to draw into, if it drew
+    try:
+        with _contextlib38.redirect_stderr(_io38.StringIO()), _contextlib38.redirect_stdout(_io38.StringIO()):
+            _draw169.main(_argv169)
+        _named169 = "drew"
+    except SystemExit:
+        _named169 = "refused"
+    except Exception as e:      # it went on to draw, and had no corpus to draw from
+        _named169 = f"drew ({type(e).__name__})"
+    check(_named169 == "refused", f"and it will not draw without {_what169} named: {_named169}")
+
+# The tally: v1's readings required, the first pushback kept, a development
+# run apart, a part-done run and a repeated name refused, nothing written.
+from errata_bench.instrument.control import CONTROLS as _CONTROLS169
+
+_tally169 = _script169("tally_entire")
+_tr169 = Path(tempfile.mkdtemp())
+# Each task: (id, session, gate readings asked, held, control readings each).
+_plan169 = {"zf": (("t-1", "S1", 7, 7, 3),), "al": (("t-3", "S1", 7, 7, 3),),
+            "dv": (("t-4", "S4", 7, 7, 3), ("t-2", "S2", 3, 3, 3), ("t-6", "S6", 7, 7, 1)),
+            "dup": (("t-1", "S5", 7, 7, 3),), "part": (("t-5", "S7", 3, 3, 3),)}
+for _run169, _ts169 in _plan169.items():
+    _p169 = Paths(_tr169 / _run169)
+    append(_p169.moments, {"session_id": "S", "turn_number": 1})
+    for _tid169, _sid169, _, _, _nc169 in _ts169:
+        _t169 = _task49(_tid169)
+        _t169.session_id, _t169.repo_id = _sid169, "o/r"
+        append(_p169.tasks, _t169.to_json())
+        append(_p169.calibration, {"task_id": _tid169, "judge_model": "gpt-6-astra"})
+        for _c169 in _CONTROLS169:
+            for _n169 in range(_nc169):
+                append(_p169.controls, {"task_id": _tid169, "control": _c169.name, "judge_model": "gpt-6-astra",
+                                        "ok": True, "pass": _n169})
+_tally169.can_be_scored = lambda r: True
+_tally169.stable = lambda run, judge, passing=None: (
+    set(), {t: {"asked": a, "held": h} for t, _, a, h, _ in _plan169.get(Path(run).name, ())})
+_tally169.admitted = lambda run, p, judge, passing: {t[0] for t in _plan169.get(Path(run).name, ())}
+_said169t = _io38.StringIO()
+with _contextlib38.redirect_stdout(_said169t):
+    _ok169 = _tally169.main([str(_tr169 / "o.json"), f"{_tr169 / 'zf'}:first", f"{_tr169 / 'al'}:later",
+                             f"{_tr169 / 'dv'}:later:dev"])
+    _out169 = json.loads((_tr169 / "o.json").read_text()) if (_tr169 / "o.json").exists() else {"kept": [], "dropped": []}
+    _dup169 = _tally169.main([str(_tr169 / "o2.json"), f"{_tr169 / 'zf'}:first", f"{_tr169 / 'dup'}:later"])
+    _part169 = _tally169.main([str(_tr169 / "o3.json"), f"{_tr169 / 'part'}:first"])
+    _gone169 = _tally169.main([str(_tr169 / "o4.json"), f"{_tr169 / 'nowhere'}:first"])
+    _short169 = (_tally169.main(["--short", str(_tr169 / "part"), "gate"]),
+                 _tally169.main(["--short", str(_tr169 / "zf"), "gate"]),
+                 _tally169.main(["--short", str(_tr169 / "dv"), "controls"]))
+_kept169t = sorted((r["task_id"], r["dev"]) for r in _out169["kept"])
+check(_ok169 == 0 and _kept169t == [("t-1", False), ("t-4", True)]
+      and [d["task_id"] for d in _out169["dropped"]] == ["t-3"],
+      f"the tally admits only a task read seven times with each control read three times, keeps a session's "
+      f"first pushback whatever its run is named, and marks a development run: kept {_kept169t}, dropped "
+      f"{[d['task_id'] for d in _out169['dropped']]}")
+check(_dup169 == 1 and _part169 == 1 and _gone169 == 2 and not (_tr169 / "o2.json").exists()
+      and not (_tr169 / "o3.json").exists() and not (_tr169 / "nowhere").exists() and _short169 == (1, 0, 1),
+      f"it refuses a name used twice, a run part done and a run that is not there, writing nothing, and says "
+      f"what a step is short of: {_dup169}, {_part169}, {_gone169}, --short {_short169}")
+
+# The run script: v1's settings, and its steps in v1's order, judged as v1's
+# admit-chain.sh judged them -- by rows left in error, not by calibration's or
+# the controls' exit code, which is 1 on a verdict -- and stopped when a step
+# is still short after three tries. Run on a stand-in Python that writes
+# nothing and calls nothing, from a copy of the script in a scratch folder.
+_sh169 = Path("scripts/run_entire.sh").read_text()
+check("JUDGE=gpt-6-astra; SCREEN_PASSES=3; GATE_PASSES=7; CONTROL_PASSES=3; CONCURRENCY=3" in _sh169,
+      "the Entire run script carries v1's settings")
+_rs169 = Path(tempfile.mkdtemp())
+(_rs169 / "scripts").mkdir()
+_shutil169.copy("scripts/run_entire.sh", _rs169 / "scripts" / "run_entire.sh")
+for _l169 in ("first", "later"):
+    (_rs169 / "runs" / f"t-{_l169}").mkdir(parents=True)
+    (_rs169 / "runs" / f"t-{_l169}" / "moments.jsonl").write_text("")
+(_rs169 / "home" / "errata-bench").mkdir(parents=True)
+(_rs169 / "home" / "errata-bench" / ".env").write_text("")
+_fake169 = _rs169 / "stand-in-python"
+_fake169.write_text('#!/bin/bash\n'
+                    'echo "$*" >> "$STANDIN_LOG"\n'
+                    'if [ "$1" = - ]; then cat > /dev/null; echo 0; exit 0; fi\n'
+                    'case "$*" in\n'
+                    '  *--short*) [ -n "${STANDIN_SHORT:-}" ] && [[ "$*" == *"$STANDIN_SHORT"* ]] && exit 1; exit 0 ;;\n'
+                    '  *"--only calibrate"*|*"--only control"*) exit 1 ;;\n'
+                    'esac\n'
+                    'exit 0\n')
+_fake169.chmod(0o755)
+
+
+def _ran169(short=""):
+    log = _rs169 / f"log-{short or 'clean'}"
+    env = {"PATH": os.environ.get("PATH", "/usr/bin:/bin"), "HOME": str(_rs169 / "home"), "PY": str(_fake169),
+           "ERRATA_CORPUS": "unused", "STANDIN_LOG": str(log), "STANDIN_SHORT": short, "RETRY_PAUSE": "0"}
+    done = _sp169.run(["bash", str(_rs169 / "scripts" / "run_entire.sh"), "t"], env=env, capture_output=True,
+                      text=True, timeout=120)
+    asked = [l.split(" --concurrency")[0] for l in (log.read_text().splitlines() if log.exists() else [])
+             if l.startswith(("run.py", "scripts/"))]
+    return done.returncode, asked
+
+
+_code169r, _asked169r = _ran169()
+_want169 = []
+for _r169 in ("runs/t-first", "runs/t-later"):
+    _want169 += [f"run.py stages --run {_r169} --only signature", f"scripts/prescreen_buildable.py {_r169}",
+                 f"run.py stages --run {_r169} --only screen --passes 3", f"run.py stages --run {_r169} --only build",
+                 f"scripts/preflight_entire.py {_r169}", f"run.py stages --run {_r169} --only calibrate",
+                 f"scripts/tally_entire.py --short {_r169} calibration",
+                 f"run.py stages --run {_r169} --only control --passes 3",
+                 f"scripts/tally_entire.py --short {_r169} controls",
+                 f"run.py gate --run {_r169} --judge gpt-6-astra --passes 7",
+                 f"scripts/tally_entire.py --short {_r169} gate"]
+_want169.append("scripts/tally_entire.py runs/t-tally.json runs/t-first:first runs/t-later:later")
+check(_code169r == 0 and sorted(_asked169r[:2]) == ["run.py stages --run runs/t-first --through locate",
+                                                     "run.py stages --run runs/t-later --through read"]
+      and _asked169r[2] == "run.py stages --run runs/t-later --only locate" and _asked169r[3:] == _want169,
+      f"the run script finds the first list through locate beside the later through reading, then the later's "
+      f"locate; then each run's steps in v1's order, calibration's and the controls' exit 1 taken for a verdict, "
+      f"each admission step checked complete; then the tally: exit {_code169r}, "
+      f"{[a for a, w in zip(_asked169r[3:], _want169) if a != w][:2] or _asked169r[:3]}")
+_code169g, _asked169g = _ran169("gate")
+check(_code169g == 1 and sum(a.startswith("run.py gate") for a in _asked169g) == 3
+      and not any("t-later --only signature" in a or "t-tally.json" in a for a in _asked169g),
+      f"a gate still short of its readings after three tries stops the run, the tally unrun: exit {_code169g}, "
+      f"{sum(a.startswith('run.py gate') for a in _asked169g)} gate runs")
+
+# The preflight reads what the controls read, says what it finds, and stops
+# only on a fault: a session the corpus lacks, a task built without its text.
+from errata_bench.score import attempt as _att169
+
+_pre169 = _script169("preflight_entire")
+check(_pre169.control_conversations_for is _att169.control_conversations_for
+      and "control_conversations_for(tasks)" in Path("src/errata_bench/stages/building.py").read_text(),
+      "the preflight reads each task's conversation through the function the controls stage reads it through")
+_pr169 = Path(tempfile.mkdtemp())
+_marker169 = _pre169.OVERCLAIM.marker
+(_pr169 / "raw").mkdir()
+(_pr169 / "raw" / "S3.jsonl").write_text(f"a raw line naming {_marker169}\n")
+
+
+def _preflight169(plan, convs):
+    pp = Paths(Path(tempfile.mkdtemp()) / "run")
+    for tid, sid, recovered in plan:
+        t = _task49(tid)
+        t.session_id, t.criterion_calls = sid, [{"name": "Read"}]
+        t.calls_recovered = t.text_recovered = recovered
+        append(pp.tasks, t.to_json())
+    _pre169.control_conversations_for = convs
+    _pre169.transcript_path = lambda sid: _pr169 / "raw" / f"{sid}.jsonl"
+    said = _io38.StringIO()
+    with _contextlib38.redirect_stdout(said):
+        code = _pre169.main([str(pp.root)])
+    return code, said.getvalue()
+
+
+_cuts169 = {"t-clean": "a conversation", "t-named": f"added tests/{_marker169}.py", "t-raw": "a conversation",
+            "t-bare": "a conversation"}
+_conv169 = lambda tasks: {t.task_id: {"cut": _cuts169[t.task_id]} for t in tasks}
+_c1_169, _s1_169 = _preflight169((("t-clean", "S1", True), ("t-named", "S2", True), ("t-raw", "S3", True)), _conv169)
+_c2_169, _s2_169 = _preflight169((("t-clean", "S1", True), ("t-bare", "S4", False)), _conv169)
+
+
+def _lacks169(tasks):
+    raise _att169.SessionNotInCorpus("S9 is not in the loaded corpus")
+
+
+_c3_169, _s3_169 = _preflight169((("t-clean", "S9", True),), _lacks169)
+_pre169.control_conversations_for = _att169.control_conversations_for
+check(_c1_169 == 0 and "t-clean: clear" in _s1_169 and "t-named: the invented name is in its conversation" in _s1_169
+      and "t-raw: the invented name is in its raw transcript" in _s1_169
+      and _c2_169 == 1 and "t-bare: built without its lost calls and text" in _s2_169
+      and _c3_169 == 1 and "refused" in _s3_169,
+      f"the round-3 preflight names a task whose conversation or raw transcript holds the invented name and goes "
+      f"on, as the control marks itself not applicable there; it stops on a task built without its text and on a "
+      f"session the corpus lacks: exits {_c1_169}, {_c2_169}, {_c3_169}")
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 for f in FAIL:

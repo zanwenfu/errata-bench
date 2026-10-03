@@ -7,6 +7,7 @@ cheap gate never reaches an expensive one.
 
 from __future__ import annotations
 
+import dataclasses
 import os
 import time
 
@@ -74,6 +75,34 @@ def runnable(moments: list[dict]) -> tuple[list[dict], int]:
     return keep, len(moments) - len(keep)
 
 
+def unbranched(moments: list[dict]) -> tuple[list[dict], int]:
+    """The moments not in a session the corpus lists as holding an abandoned branch (`crawl.shape.rewound`,
+    G-95), and how many were.
+
+    `find_moments` leaves them out when it collects; asked again here, as
+    `runnable` is, because a moments file drawn before the list existed is
+    read too (review, 10-02), at triage, reading and locate. The list is read
+    by `corpus.sessions.edited_sessions`, which refuses a stale one. Signature,
+    screening and the build ask it too: rows written before the list carry
+    such a session on, and a build would replay its abandoned edits (review,
+    10-03).
+    """
+    from ..corpus.sessions import edited_sessions
+
+    branched = edited_sessions()
+    keep = [m for m in moments if m.get("session_id") not in branched]
+    return keep, len(moments) - len(keep)
+
+
+def shell_commands(rows: list[dict], turns: dict) -> set[tuple]:
+    """The moments whose message is a shell command the developer ran (`<bash-input>`), not a message to the
+    agent: passed over when moments are drawn, and found again here for a moments file drawn before that."""
+    return {key_of(m) for m in rows if any(
+        t.get("turn_number") == m.get("turn_number") and t.get("turn_type") == "user_prompt"
+        and str(t.get("content") or "").lstrip().startswith("<bash-input>")
+        for t in turns.get(m.get("session_id"), []))}
+
+
 async def stage_triage(paths: Paths, limit: int, concurrency: int) -> Progress:
     """Discard moments where the agent has not done anything to object to.
 
@@ -81,10 +110,9 @@ async def stage_triage(paths: Paths, limit: int, concurrency: int) -> Progress:
     moments were read at full price and every one came back unclear, because
     they were opening instructions rather than objections.
     """
-    from ..corpus.turns import build_excerpt
     from ..corpus.turns import load_session_turns
     from ..corpus.recover import recovered
-    from ..find.triage import triage
+    from ..find.triage import triage, view as triage_view
     from ..llm import metering, model_name
 
     p = Progress("triage")
@@ -94,6 +122,10 @@ async def stage_triage(paths: Paths, limit: int, concurrency: int) -> Progress:
         p.notes.append(f"{unrunnable} moments are not read: their repository's language "
                        "has no container here, so no candidate could be run against the "
                        "task even if one were built")
+    moments, branched = unbranched(moments)
+    if branched:
+        p.notes.append(f"{branched} moments are not read: their session holds a message the developer edited and "
+                       "sent again, and its rows still hold the abandoned branch")
     done = already_done(paths.triaged)
     # The work, not the input. Slicing the input meant `--max-rows 3` run three
     # times did three rows and then nothing: the same three were always at the
@@ -104,10 +136,24 @@ async def stage_triage(paths: Paths, limit: int, concurrency: int) -> Progress:
         return p
 
     turns = recovered(load_session_turns({m["session_id"] for m in todo}))
+    # A shell command the developer ran is no message to the agent. Its row is
+    # written with no model asked, so it is done: left unwritten, it stood
+    # first in line under `--max-rows` for ever, and reading, finding no
+    # triaged rows, read it at full price (review, 10-03).
+    shell = shell_commands(todo, turns)
+    for m in todo:
+        if key_of(m) in shell:
+            append(paths.triaged, {**m, "worth_reading": False, "agent_has_acted": None,
+                                   "objects_to_that_work": False, "find_model": None,
+                                   "triage_reason": "not a message to the agent: a shell command the developer ran"})
+    if shell:
+        todo = [m for m in todo if key_of(m) not in shell]
+        p.notes.append(f"{len(shell)} moments are not read: each is a shell command the developer ran, not a "
+                       "message to the agent")
 
     async def one(m):
         try:
-            excerpt = build_excerpt(turns[m["session_id"]], m["turn_number"])
+            excerpt = triage_view(turns[m["session_id"]], m["turn_number"])
             verdict = await triage(excerpt)
             append_used(
                 paths.triaged,
@@ -188,6 +234,9 @@ async def stage_read(paths: Paths, limit: int, concurrency: int) -> Progress:
     if unrunnable:
         p.notes.append(f"{unrunnable} moments are not read: their repository's language "
                        "has no container here")
+    moments, branched = unbranched(moments)
+    if branched:
+        p.notes.append(f"{branched} moments are not read: their session's rows hold an abandoned branch")
     done = already_done(paths.readings)
     todo = p.cap([m for m in moments if key_of(m) not in done], limit, len(moments))
     if not todo:
@@ -195,6 +244,19 @@ async def stage_read(paths: Paths, limit: int, concurrency: int) -> Progress:
         return p
 
     turns = recovered(load_session_turns({m["session_id"] for m in todo}))
+    if not triaged:
+        # Reading the moments themselves: a shell command among them is written
+        # down as not read, with no model asked, so it is done, as triage writes
+        # its verdict. Left unwritten, it stood first in line under --max-rows
+        # for ever, and each run loaded it again (reviews, 10-03).
+        shell = shell_commands(todo, turns)
+        for m in todo:
+            if key_of(m) in shell:
+                append(paths.readings, {**carried_forward(m), "reading": None, "find_model": None,
+                                        "not_read": "a shell command the developer ran, not a message to the agent"})
+        if shell:
+            todo = [m for m in todo if key_of(m) not in shell]
+            p.notes.append(f"{len(shell)} moments are not read: each is a shell command the developer ran")
 
     async def one(m):
         try:
@@ -214,6 +276,31 @@ async def stage_read(paths: Paths, limit: int, concurrency: int) -> Progress:
     return p
 
 
+def failures_held(paths: Paths) -> dict[tuple[str, int], tuple[str, int]]:
+    """The failed answers that usable trajectories of the current rules already hold, and which moment holds
+    each: in this run folder and its siblings, as `run.py moments --fresh` reads them, less backups
+    (``.pre-``). Keyed by (session, failed turn); the holder is (folder, complaint turn).
+
+    Rows of earlier rules hold nothing (`trajectory.RULES`): what was usable
+    then is not what is usable now -- the pilot's cyc-seattle-isthmia-74 was
+    usable on a status summary -- and the runs folder holds SWE-chat's
+    experiments, judged under every rule there has been (review, 10-02).
+    """
+    from ..find.trajectory import RULES
+
+    taken: dict[tuple[str, int], tuple[str, int]] = {}
+    for f in sorted(paths.root.parent.glob("*/trajectories.jsonl")):
+        if ".pre-" in f.parent.name:
+            continue
+        for r in load(f):
+            # A malformed row of another folder holds nothing, and stops nothing.
+            if (isinstance(r, dict) and r.get("usable") and r.get("rules") == RULES
+                    and isinstance(r.get("session_id"), str) and isinstance(r.get("failed"), int)
+                    and r["failed"] >= 0):
+                taken.setdefault((r["session_id"], r["failed"]), (f.parent.name, r.get("complaint")))
+    return taken
+
+
 async def stage_locate(paths: Paths, limit: int, concurrency: int) -> Progress:
     """Find the four turns that define each task."""
     from ..corpus.turns import load_session_turns
@@ -223,11 +310,16 @@ async def stage_locate(paths: Paths, limit: int, concurrency: int) -> Progress:
 
     p = Progress("locate")
     t0 = time.monotonic()
-    viable = [
-        r
+    # One row a moment: a reading written twice would be located twice, and
+    # the same moment is never refused against itself (review, 10-02).
+    viable = list({
+        key_of(r): r
         for r in load(paths.readings)
         if (r.get("reading") or {}).get("benchmark_viable")
-    ]
+    }.values())
+    viable, branched = unbranched(viable)
+    if branched:
+        p.notes.append(f"{branched} viable readings are not located: their session's rows hold an abandoned branch")
     done = already_done(paths.trajectories)
     todo = p.cap([r for r in viable if key_of(r) not in done], limit, len(viable))
     if not todo:
@@ -235,11 +327,31 @@ async def stage_locate(paths: Paths, limit: int, concurrency: int) -> Progress:
         return p
 
     turns = recovered(load_session_turns({r["session_id"] for r in todo}))
+    # One failed answer, one usable trajectory (pilot audit, 10-02): two
+    # objections to one answer -- a session's first pushback and a later one,
+    # drawn into two runs -- were both located as usable. A usable trajectory
+    # whose failed answer another moment's already holds is not usable; the
+    # same moment located again, in another folder, is not refused. Read for
+    # each usable answer, so a sibling run going at the same time is seen, and
+    # this run's own rows: nothing is awaited between the reading and the
+    # writing. The two share their input -- the cut, the tree, the failed
+    # answer -- but not their complaint or their resolution, so a moment held
+    # here might have passed the checks the holder failed. The hold does not
+    # give way: an accepted cost, for one task per failed answer and for runs
+    # that give the same tasks again (#17, 10-03).
+    from ..find.trajectory import RULES
 
     async def one(r):
         try:
             t = await locate(turns[r["session_id"]], r["turn_number"])
             b = boundaries(t)
+            held_by = None
+            if b.usable:
+                holder = failures_held(paths).get((r["session_id"], t.failed_turn))
+                if holder and holder[1] != r["turn_number"]:
+                    held_by = f"{holder[0]}:{holder[1]}"
+                    b = dataclasses.replace(b, usable=False,
+                                            reason=f"the same failed answer as the trajectory at {held_by}")
             append_used(
                 paths.trajectories,
                 {
@@ -255,6 +367,10 @@ async def stage_locate(paths: Paths, limit: int, concurrency: int) -> Progress:
                     "defect": t.defect,
                     "resolution": t.resolution,
                     "rounds": t.rounds,
+                    "resolution_fixes_it": t.resolution_fixes_it,
+                    "looked_to": getattr(t, "_looked_to", -1),
+                    "held_by": held_by,
+                    "rules": RULES,
                     "find_model": model_name(),
                 },
             )
@@ -288,6 +404,9 @@ async def stage_signature(paths: Paths, limit: int, concurrency: int) -> Progres
     p = Progress("signature")
     t0 = time.monotonic()
     usable = [r for r in load(paths.trajectories) if r.get("usable")]
+    usable, branched = unbranched(usable)
+    if branched:
+        p.notes.append(f"{branched} trajectories are not signed: their session's rows hold an abandoned branch")
     done = already_done(paths.signatures)
     todo = p.cap([r for r in usable if key_of(r) not in done], limit, len(usable))
 
@@ -476,6 +595,9 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
     p = Progress("screen")
     t0 = time.monotonic()
     rows = [r for r in load(paths.signatures) if r.get("kind")]
+    rows, branched = unbranched(rows)
+    if branched:
+        p.notes.append(f"{branched} signatures are not screened: their session's rows hold an abandoned branch")
     # The pass count is part of what makes a screened row done. Without it,
     # `--only screen --passes 5` over a directory screened at one pass reported
     # "51 already done" and changed nothing, while the user believed the
@@ -483,8 +605,13 @@ async def stage_screen(paths: Paths, limit: int, concurrency: int, passes: int =
     # than asked for is re-screened; one screened at more is left alone.
     # And a row screened before the gates read the candidate's view (G-81), which
     # carries no `text_recovered`, is screened again: the build refuses it.
+    # A row the free pre-check set aside (`scripts/prescreen_buildable.py`)
+    # asked no gate, and is done at any pass count: read as one pass, it was
+    # screened again at three, paying back what the pre-check saved (review,
+    # 10-03).
     done = {
-        key_of(r): r.get("screen_passes", 1) for r in completed(paths.screened) if "text_recovered" in r
+        key_of(r): (float("inf") if r.get("prescreened") else r.get("screen_passes", 1))
+        for r in completed(paths.screened) if "text_recovered" in r
     }
     due = [r for r in rows if done.get(key_of(r), 0) < passes]
     # Only when asked: each such row is read again whole, at the gates' price,

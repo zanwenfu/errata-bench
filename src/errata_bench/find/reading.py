@@ -80,7 +80,39 @@ class Reading(BaseModel):
         description="The turns and quotes that justify objection_kind and failure_modes. At least one when objection_kind is not 'unclear'.",
     )
 
-    # --- could this become a benchmark task? ---
+    # --- could this become a benchmark task? Four checks first (gate 2, 10-02) ---
+    pushback_is_the_developers: bool = Field(
+        description=(
+            "Whether the pushback is the developer's own objection to work the agent did. False when it is "
+            "another agent's message, a notice, or text pasted in without the developer standing behind it; "
+            "when it questions code that was in the repository before the agent touched it, unless it disputes "
+            "what the agent said or did about that code; and when the developer only picks one of the options "
+            "the agent itself offered."
+        )
+    )
+    knowable_at_the_failing_turn: bool = Field(
+        description=(
+            "Whether the agent could have got it right at its failing turn with what it had: the conversation "
+            "before that turn, the repository, its tools and general knowledge. The pushback reporting the "
+            "error does not make it unknowable: ask whether the agent could have found it by checking. False "
+            "only when the right answer depended on a fact only the developer knew, a requirement or decision "
+            "first given in or after the pushback, or information outside the conversation and the repository."
+        )
+    )
+    visible_from_the_repository: bool = Field(
+        description=(
+            "Whether the defect can be seen from the repository and the conversation. False when it shows "
+            "only in a live service, a deployment, an account, a device, or a recording that no checkout of "
+            "the repository reproduces."
+        )
+    )
+    consistent_with_instructions: bool = Field(
+        description=(
+            "Whether getting it right means doing what the developer asked. False when the criterion would "
+            "have a model override the developer's explicit instruction or the project's own documented "
+            "decision."
+        )
+    )
     benchmark_viable: bool = Field(
         description=(
             "True only if another model could be given the transcript up to the agent's "
@@ -106,12 +138,31 @@ class Reading(BaseModel):
         ),
     )
     context_sufficient: bool = Field(
-        description="Whether enough preceding turns exist to understand what the agent did wrong."
+        description=(
+            "Whether the excerpt shows the failing answer and the objection, and enough of the work behind "
+            "them to tell what went wrong. False only when the output, edit, plan or message the judgement "
+            "turns on is cut or missing from the excerpt; not because it holds no reproduction or does not "
+            "name the faulty line."
+        )
     )
+
+    @property
+    def checks_failed(self) -> list[str]:
+        """The checks a viable moment must pass and this one does not (gate 2, 10-02); and a preference or an
+        unclear objection, which the instructions call not viable."""
+        failed = [name for name in ("pushback_is_the_developers", "knowable_at_the_failing_turn",
+                                    "visible_from_the_repository", "consistent_with_instructions",
+                                    "context_sufficient") if not getattr(self, name)]
+        if self.objection_kind in ("preference", "unclear"):
+            failed.append(f"objection_kind {self.objection_kind}")
+        return failed
     notes: str = Field(
         default="", description="Anything surprising, or why this was hard to judge."
     )
 
+
+# How long the reader's view may be before its tool output is squeezed.
+READ_CHARS = 100_000
 
 INSTRUCTIONS = """\
 You are reading a real conversation between a developer and a coding agent, at a \
@@ -151,6 +202,31 @@ If the answer depends on taste, or the context is too thin to know what went \
 wrong, say it is not viable. Being strict here is more useful than being \
 generous -- we are trying to find out if this data supports a benchmark at all, \
 and an optimistic answer helps nobody.
+
+Before you decide, answer four questions from the excerpt, each on its own:
+
+  * Is the pushback the developer's own objection to the agent's work? Not \
+another agent's message, a notice, or pasted text the developer does not stand \
+behind; not a question about code that was there before the agent, unless it \
+disputes what the agent said or did about it; not the developer picking one of \
+the options the agent offered.
+  * Could the agent have got it right at its failing turn, with the \
+conversation so far, the repository, its tools and what it knows? The pushback \
+reporting the error is how you learn of it, not a reason it was unknowable. \
+No only when the right answer depended on a fact only the developer knew, or a \
+requirement or decision first given in or after the pushback.
+  * Can the defect be seen from the repository and the conversation? Not when \
+it shows only in a live service, a deployment, an account, a device or a \
+recording that no checkout reproduces.
+  * Would getting it right mean doing what the developer asked? Not when the \
+criterion has a model override the developer's explicit instruction or the \
+project's own documented decision.
+
+A moment is viable only when all four are yes and the context is sufficient. \
+The criterion must name what this agent should have checked or done here: a \
+moment whose checks say no is not rescued by restating its criterion as a rule \
+almost any moment would meet. If your notes give a reason one of the answers is \
+no, it is no.
 """
 
 
@@ -162,7 +238,14 @@ async def read_pushback(
     from agents import Agent, Runner
 
     configure_client()
-    excerpt = build_excerpt(turns, pushback_turn, mark_pushback=True)
+    # Every message whole, each call with its input, and every cut of a call or
+    # a result said with how much went (G-92): record 1 cut each message at
+    # 4,000 characters with nothing said, in 383 of the first 681 Entire moments.
+    # Fitted to READ_CHARS: at 60,000 the whole messages left the results so
+    # little room that 8 of the pilot's 20 views cut them to 40 characters,
+    # among them a deleted branch's hash the fix needed (pilot audit, 10-02).
+    excerpt = build_excerpt(turns, pushback_turn, mark_pushback=True, record=2, whole_messages=True,
+                            max_chars=READ_CHARS)
     agent = Agent(
         name="pushback-reader",
         instructions=with_field_guide(INSTRUCTIONS, Reading),
@@ -174,6 +257,26 @@ async def read_pushback(
         f"the conversation up to and including that moment.\n\n{excerpt}"
     )
     result = await resilient(lambda: Runner.run(agent, prompt, max_turns=max_turns))
-    return result.final_output
+    return held_to_its_checks(result.final_output)
+
+
+def held_to_its_checks(reading: "Reading") -> "Reading":
+    """A reading whose own checks say no is not viable, whatever its verdict says (gate 2, 10-02).
+
+    Six of fifteen sampled "viable" verdicts were wrong, and in five the
+    reader's notes gave the reason: a live server, a correction only the
+    developer could know, an instruction the criterion would have a model
+    defy. The verdict now follows the checks, as triage's follows its two.
+    """
+    failed = reading.checks_failed
+    if reading.benchmark_viable and failed:
+        said = f"Not viable, by these checks: {', '.join(failed)}."
+        if reading.success_criterion:
+            said += f" The criterion it proposed: {reading.success_criterion}"
+        reading.benchmark_viable = False
+        reading.success_criterion = ""
+        reading.justifying_turn = -1
+        reading.notes = (reading.notes + " " if reading.notes else "") + said
+    return reading
 
 

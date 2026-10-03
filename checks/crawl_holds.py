@@ -308,6 +308,8 @@ entries = [
     {"type": "queue-operation", "timestamp": T.format(5), "operation": "enqueue", "content": "no, don't touch tests"},
     {"type": "queue-operation", "timestamp": T.format(5), "operation": "enqueue", "content": "<task-notification>done</task-notification>"},
     {"type": "user", "timestamp": T.format(6), "message": {"role": "user", "content": "<command-name>/model</command-name>"}},
+    {"type": "user", "timestamp": T.format(6), "message": {"role": "user", "content":
+        "<command-message>review</command-message>\n<command-name>/review</command-name>"}},
     {"type": "user", "timestamp": T.format(6), "isMeta": True, "message": {"role": "user", "content": [
         {"type": "text", "text": "Review the diff carefully."}]}},
     {"type": "user", "timestamp": T.format(7), "message": {"role": "user", "content": [
@@ -334,9 +336,348 @@ check(read["file_path"] == "/r/p.py" and call["command"] == "pytest" and call["t
 user = [(r["turn_type"], r["content"]) for r in rows if r["role"] == "user"]
 check(("user_prompt", "no, don't touch tests") in user and ("system_injected", "<task-notification>done</task-notification>") in user,
       "a message typed while the agent was busy is the developer's; a queued task notice is not")
+# G-84. Newer versions write a queued message again where it is delivered: as
+# the developer's own entry, or mid-turn as a queued_command attachment.
+queued = [
+    {"type": "user", "timestamp": T.format(0), "message": {"role": "user", "content": "start"}},
+    *[{"type": "queue-operation", "timestamp": T.format(1), "operation": "enqueue", "content": text}
+      for text in ("use the other branch", "keep the tests", "wait", "wait", "again", "again", "not delivered")],
+    {"type": "assistant", "timestamp": T.format(2), "message": {"id": "m9", "model": "x",
+     "content": [{"type": "text", "text": "working"}]}},
+    {"type": "attachment", "timestamp": T.format(3), "attachment": {"type": "queued_command", "prompt": "keep the tests",
+                                                                     "commandMode": "prompt"}},
+    {"type": "queue-operation", "timestamp": T.format(4), "operation": "dequeue"},
+    {"type": "user", "timestamp": T.format(4), "message": {"role": "user", "content": "use  the other branch"}},
+    {"type": "user", "timestamp": T.format(5), "message": {"role": "user", "content": "wait"}},
+    {"type": "user", "timestamp": T.format(6), "message": {"role": "user", "content": "wait"}},
+    {"type": "user", "timestamp": T.format(7), "message": {"role": "user", "content": "again"}},
+]
+qrows = claude_code_rows("q", "o/r", "o/r#q", queued)
+said = {}
+for r in qrows:
+    if r["turn_type"] == "user_prompt":
+        said[" ".join(r["content"].split())] = said.get(" ".join(r["content"].split()), 0) + 1
+working = next(i for i, r in enumerate(qrows) if r["turn_type"] == "assistant_response")
+branch = [i for i, r in enumerate(qrows) if r["turn_type"] == "user_prompt" and "other branch" in r["content"]]
+check(said == {"start": 1, "use the other branch": 1, "keep the tests": 1, "wait": 2, "again": 2, "not delivered": 1}
+      and len(branch) == 1 and branch[0] > working,
+      f"a queued message written again on delivery is one row, where it was delivered; one queued twice is "
+      f"two, delivered once or twice; never delivered, the queue entry is its row (G-84): {said}")
+# A slash command is queued as typed and delivered as Claude Code's command form;
+# an attachment whose prompt is content blocks makes no row of its own.
+commands = [
+    {"type": "user", "timestamp": T.format(0), "message": {"role": "user", "content": "start"}},
+    {"type": "queue-operation", "timestamp": T.format(1), "operation": "enqueue", "content": "/ship-it  merge it to main"},
+    {"type": "queue-operation", "timestamp": T.format(1), "operation": "enqueue", "content": "/compact"},
+    {"type": "queue-operation", "timestamp": T.format(1), "operation": "enqueue", "content": "hold on"},
+    {"type": "attachment", "timestamp": T.format(2), "attachment": {"type": "queued_command", "commandMode": "prompt",
+                                                                     "prompt": [{"type": "text", "text": "hold on"}]}},
+    {"type": "user", "timestamp": T.format(3), "message": {"role": "user", "content":
+        "<command-message>ship-it</command-message>\n<command-name>/ship-it</command-name>\n"
+        "<command-args>merge it to main</command-args>"}},
+    {"type": "user", "timestamp": T.format(4), "message": {"role": "user", "content":
+        "<command-name>/compact</command-name>\n<command-message>compact</command-message>\n<command-args></command-args>"}},
+    {"type": "user", "timestamp": T.format(5), "message": {"role": "user", "content": "hold on"}},
+    {"type": "queue-operation", "timestamp": T.format(6), "operation": "enqueue", "content": "/notes ok"},
+    {"type": "user", "timestamp": T.format(7), "message": {"role": "user", "content":
+        "<command-message>notes</command-message>\n<command-name>notes</command-name>\n<command-args>ok</command-args>"}},
+]
+said = {}
+for r in claude_code_rows("c", "o/r", "o/r#c", commands):
+    if r["turn_type"] == "user_prompt":
+        said[" ".join(r["content"].split())] = said.get(" ".join(r["content"].split()), 0) + 1
+check(said == {"start": 1, "<command-message>ship-it</command-message> <command-name>/ship-it</command-name> "
+               "<command-args>merge it to main</command-args>": 1, "hold on": 2,
+               "<command-message>notes</command-message> <command-name>notes</command-name> <command-args>ok</command-args>": 1},
+      f"a queued slash command is paired with its command form by name and arguments, a built-in one leaves no "
+      f"developer row, and a queue entry delivered as content blocks stays the row for its message (G-84): {said}")
+# G-85. A transcript can hold its history twice (the same uuids), and a call can be
+# re-sent in another message under the id of one already written.
+history = [
+    {"type": "user", "uuid": "u1", "timestamp": T.format(0), "message": {"role": "user", "content": "go"}},
+    {"type": "assistant", "uuid": "a1", "timestamp": T.format(1), "message": {"id": "m1", "model": "x", "content": [
+        {"type": "tool_use", "id": "c1", "name": "Edit", "input": {"file_path": "/r/a.py"}}]}},
+    {"type": "user", "uuid": "u2", "timestamp": T.format(2), "message": {"role": "user", "content": [
+        {"type": "tool_result", "tool_use_id": "c1", "content": "ok"}]}},
+]
+twice = [*history, *history,
+         {"type": "assistant", "uuid": "a2", "timestamp": T.format(3), "message": {"id": "m2", "model": "x", "content": [
+             {"type": "tool_use", "id": "c1", "name": "Edit", "input": {"file_path": "/r/a.py"}}]}},
+         {"type": "user", "uuid": "u3", "timestamp": T.format(4), "message": {"role": "user", "content": [
+             {"type": "tool_result", "tool_use_id": "c1", "content": "ok"}]}},
+         {"type": "user", "uuid": "u4", "timestamp": T.format(5), "message": {"role": "user", "content": "go"}}]
+kinds2 = [r["turn_type"] for r in claude_code_rows("t", "o/r", "o/r#t", twice)]
+check(kinds2.count("tool_use") == 1 and kinds2.count("tool_result") == 1 and kinds2.count("user_prompt") == 2,
+      f"an entry written twice is read once, a call re-sent under its own id is one call with one result, and a "
+      f"message said again in an entry of its own stays (G-85): {kinds2}")
 check(("system_injected", "<command-name>/model</command-name>") in user and ("user_prompt", "Review the diff carefully.") in user,
       "a built-in command is injected; a command's expanded instructions are the developer's request")
 check(("user_prompt", "see this\n[Image: image/png]") in user, "an image is kept as SWE-chat wrote it")
+# G-90. Who wrote a user message: the developer, another agent, or Claude Code.
+# By the marks Claude Code writes on the entry, and by the text where it wrote
+# none. Each entry names the one before it, as Claude Code's do.
+U90 = lambda uid, parent, content, **kw: {"type": "user", "uuid": uid, "parentUuid": parent, "timestamp": T.format(0),
+                                          "message": {"role": "user", "content": content}, **kw}
+M90 = lambda uid, parent, text, **kw: U90(uid, parent, [{"type": "text", "text": text}], isMeta=True, **kw)
+A90 = lambda uid, parent, *blocks: {"type": "assistant", "uuid": uid, "parentUuid": parent, "timestamp": T.format(1),
+                                    "message": {"id": "m-" + uid, "model": "x", "content": list(blocks)}}
+said90 = [
+    U90("u1", None, "please fix the parser"),
+    A90("a1", "u1", {"type": "text", "text": "On it."}),
+    U90("p1", "a1", '<teammate-message teammate_id="tester" color="green">P1 done</teammate-message>'),
+    U90("p2", "p1", "please review the API", origin={"kind": "peer", "from": "lead", "body": "please review the API"}),
+    U90("p3", "p2", "the tests pass now", turnOrigin="peer"),
+    {"type": "queue-operation", "timestamp": T.format(2), "operation": "enqueue",
+     "content": '<agent-message from="a9">[Subagent hand-back] done</agent-message>'},
+    {"type": "attachment", "uuid": "q1", "parentUuid": "p3", "timestamp": T.format(2), "attachment": {
+        "type": "queued_command", "commandMode": "prompt",
+        "prompt": '<cross-session-message from="uds:/tmp/s">fix the lint</cross-session-message>'}},
+    A90("a2", "q1", {"type": "tool_use", "id": "s1", "name": "Skill", "input": {"skill": "review"}}),
+    U90("r1", "a2", [{"type": "tool_result", "tool_use_id": "s1", "content": "Launching skill: review"}]),
+    M90("k1", "r1", "Base directory for this skill: /x\n# Review", sourceToolUseID="s1"),
+    U90("c1", "k1", "<command-message>ship</command-message>\n<command-name>/ship</command-name>"),
+    M90("k2", "c1", "Ship it: run the tests, then push."),
+    M90("k2b", "k2", "[Image: original 80x60, displayed at 80x60.]"),
+    M90("k1b", "c1", "Base directory for this skill: /y\n# Lint", sourceToolUseID="s9"),
+    A90("a3", "c1", {"type": "text", "text": "Pushed."}),
+    M90("k4", "a3", "Check the build again."),
+    U90("c2", "k4", "<command-name>/context</command-name>"),
+    M90("k3", "c2", "## Context Usage 12k of 200k"),
+    M90("k5", "k3", "Stop hook feedback: run the linter first"),
+    M90("k6", "k5", "Continue from where you left off."),
+    U90("d1", "k6", "Continue from where you left off."),
+    M90("k7", "d1", "[Image: original 100x80, displayed at 100x80.]"),
+    A90("a4", "k7", {"type": "tool_use", "id": "ts", "name": "ToolSearch", "input": {"query": "select:Read"}}),
+    U90("r2", "a4", [{"type": "tool_result", "tool_use_id": "ts", "content": "Read"}, {"type": "text", "text": "Tool loaded."}]),
+    A90("a5", "r2", {"type": "tool_use", "id": "e1", "name": "Edit", "input": {"file_path": "/r/a.py"}}),
+    U90("r3", "a5", [{"type": "tool_result", "tool_use_id": "e1", "content": "ok"},
+                     {"type": "text", "text": "use the other file"}]),
+    U90("h1", "r3", "update", promptSource="system"),
+    U90("h2", "h1", "Background agent X was stopped", origin={"kind": "task-notification"}),
+    U90("h3", "h2", "Goal set: finish the roadmap", origin={"kind": "auto-continuation"}),
+    U90("h4", "h3", "Check the CI run", turnOrigin="task_notification"),
+    U90("h5", "h4", "the nightly job finished", turnOrigin="system"),
+    U90("c3", "h5", "<command-message>good-night</command-message>\n<command-name>/good-night</command-name>",
+        turnOrigin="scheduled"),
+    M90("k8", "c3", "Run the overnight improvements."),
+    U90("d2", "k8", "now the docs", promptSource="typed", origin={"kind": "human"}),
+    M90("k9", "d2", "<command-message>brainstorm</command-message>\n<command-name>brainstorm</command-name>"),
+    M90("k10", "k9", "# Brainstorming\nAsk one question at a time."),
+    U90("cs", "k10", "This session is being continued from a previous conversation. Summary: ...",
+        isCompactSummary=True, turnOrigin="task_notification"),
+    {"type": "assistant", "uuid": "sy", "parentUuid": "cs", "timestamp": T.format(2), "message": {
+        "id": "m-sy", "model": "<synthetic>", "content": [{"type": "text", "text": "No response requested."}]}},
+]
+rows90 = claude_code_rows("w", "o/r", "o/r#w", said90)
+got90 = [(r["turn_type"], r["content"]) for r in rows90 if r["role"] == "user"]
+kind90 = lambda text: [k for k, c in got90 if c == text]
+check(kind90('<teammate-message teammate_id="tester" color="green">P1 done</teammate-message>') == ["peer_message"]
+      and kind90("please review the API") == ["peer_message"] and kind90("the tests pass now") == ["peer_message"]
+      and kind90('<agent-message from="a9">[Subagent hand-back] done</agent-message>') == ["peer_message"]
+      and kind90('<cross-session-message from="uds:/tmp/s">fix the lint</cross-session-message>') == ["peer_message"],
+      f"another agent's message is another agent's, marked as one (`origin`, `turnOrigin`) or only tagged, written as "
+      f"an entry, a queue entry or an attachment (G-90): {[(k, c[:20]) for k, c in got90[:6]]}")
+check(kind90("Ship it: run the tests, then push.") == ["user_prompt"]
+      and kind90("please fix the parser") == ["user_prompt"] and kind90("now the docs") == ["user_prompt"]
+      and kind90("Continue from where you left off.") == ["system_injected", "user_prompt"],
+      f"a command's expansion is the developer's; what they typed is theirs, the resume line too when they type "
+      f"it (G-90): {[(k, c[:20]) for k, c in got90 if k == 'user_prompt']}")
+check(all(kind90(text) == ["system_injected"] for text in (
+          "Base directory for this skill: /x\n# Review", "Base directory for this skill: /y\n# Lint",
+          "Check the build again.", "## Context Usage 12k of 200k", "Stop hook feedback: run the linter first",
+          "[Image: original 80x60, displayed at 80x60.]",
+          "[Image: original 100x80, displayed at 100x80.]", "Run the overnight improvements.",
+          "<command-message>brainstorm</command-message>\n<command-name>brainstorm</command-name>",
+          "# Brainstorming\nAsk one question at a time.")),
+      f"every other meta entry is Claude Code's: a skill the agent's call loaded, even right after the developer's "
+      f"command; one written after an expansion; a timer's prompt after the agent's turn; a built-in command's "
+      f"output; a hook's feedback; the resume line; a note on an image; what follows a command a timer ran, or a "
+      f"skill that loaded itself (G-90): "
+      f"{[(k, c[:24]) for k, c in got90 if c.startswith(('Base', 'Check', '##', 'Stop', '[Image', 'Run', '<command-message>b', '# B'))]}")
+check(all(kind90(text) == ["system_injected"] for text in (
+          "update", "Background agent X was stopped", "Goal set: finish the roadmap", "Check the CI run",
+          "the nightly job finished", "<command-message>good-night</command-message>\n<command-name>/good-night</command-name>",
+          "Tool loaded.")) and kind90("use the other file") == ["user_prompt"],
+      f"a prompt the harness or a timer sent, a notice and an automatic continuation are Claude Code's by the marks "
+      f"on the entry; beside a tool's result, \"Tool loaded.\" is Claude Code's and what the developer typed is "
+      f"theirs (G-90): {[(k, c[:20]) for k, c in got90 if c in ('update', 'Tool loaded.', 'use the other file')]}")
+agent90 = {r["content"]: r["turn_type"] for r in rows90 if r["role"] == "assistant"}
+check(agent90.get("No response requested.") == "system_injected" and agent90.get("On it.") == "assistant_response"
+      and agent90.get("Pushed.") == "assistant_response",
+      f"a message Claude Code writes in the agent's turn (model <synthetic>) is its own, not the agent's (G-94): "
+      f"{agent90}")
+# Pilot audit, 10-02: another agent's message queued, then delivered wrapped
+# ("Another Claude session sent a message:" before it, a note of the harness's
+# after), was shown twice. The queued copy is Claude Code's; no row moves.
+hand_back = '<agent-message from="z9">[Subagent hand-back] the report</agent-message>'
+wrapped = "Another Claude session sent a message:\n" + hand_back + "\n\nThat is an agent of this session."
+queued_copy = claude_code_rows("pq", "o/r", "o/r#pq", [
+    U90("g0", None, "go"),
+    {"type": "queue-operation", "timestamp": T.format(1), "operation": "enqueue", "content": hand_back},
+    M90("g2", "g0", wrapped, origin={"kind": "peer"})])
+attached_copy = claude_code_rows("pa", "o/r", "o/r#pa", [
+    U90("g0", None, "go"),
+    {"type": "attachment", "uuid": "g1", "parentUuid": "g0", "timestamp": T.format(1), "attachment": {
+        "type": "queued_command", "commandMode": "prompt", "prompt": hand_back}},
+    M90("g2", "g1", wrapped, origin={"kind": "peer"})])
+alone = claude_code_rows("pn", "o/r", "o/r#pn", [U90("g0", None, "go"), M90("g2", "g0", wrapped, origin={"kind": "peer"}),
+                                                 U90("g3", "g2", hand_back)])
+kinds_of = lambda rows: [(r["turn_number"], r["turn_type"]) for r in rows if r["role"] == "user"]
+check(kinds_of(queued_copy) == [(0, "user_prompt"), (2, "system_injected"), (3, "peer_message")]
+      and kinds_of(attached_copy) == [(0, "user_prompt"), (1, "system_injected"), (2, "peer_message")]
+      and kinds_of(alone) == [(0, "user_prompt"), (1, "peer_message"), (2, "peer_message")],
+      f"a queued or attached copy of another agent's message, delivered again whole, is Claude Code's and no row "
+      f"moves; a message with no copy before it stays another agent's: {kinds_of(queued_copy)} "
+      f"{kinds_of(attached_copy)} {kinds_of(alone)}")
+# As newer versions write it: the queue entry, the attachment that delivers it
+# mid-turn (`queued_and_delivered` makes the queue entry no row), then the
+# wrapped delivery. The attachment is the copy (review, 10-02).
+enqueue = lambda t: {"type": "queue-operation", "timestamp": T.format(1), "operation": "enqueue", "content": t}
+attach = lambda uid, parent, t: {"type": "attachment", "uuid": uid, "parentUuid": parent, "timestamp": T.format(1),
+                                 "attachment": {"type": "queued_command", "commandMode": "prompt", "prompt": t}}
+as_written = claude_code_rows("pw", "o/r", "o/r#pw", [
+    U90("g0", None, "go"), enqueue(hand_back), attach("g1", "g0", hand_back),
+    M90("g2", "g1", wrapped, origin={"kind": "peer"})])
+# The same words delivered earlier as they were, then queued again and
+# delivered wrapped: the earlier delivery stays, the later copy goes.
+twice_over = claude_code_rows("pt", "o/r", "o/r#pt", [
+    U90("g0", None, "go"), enqueue(hand_back), attach("g1", "g0", hand_back),
+    A90("g2", "g1", {"type": "text", "text": "Read it."}), enqueue(hand_back),
+    M90("g3", "g2", wrapped, origin={"kind": "peer"})])
+# A long report queued, then a short one it quotes; delivered in that order.
+short_back = '<agent-message from="z8">ok</agent-message>'
+long_back = '<agent-message from="z9">[Subagent hand-back] the report; it quotes ' + short_back + '</agent-message>'
+quoted = claude_code_rows("pq2", "o/r", "o/r#pq2", [
+    U90("g0", None, "go"), enqueue(long_back), enqueue(short_back),
+    M90("g3", "g0", "Another Claude session sent a message:\n" + long_back + "\n\nThat is an agent.",
+        origin={"kind": "peer"}),
+    M90("g4", "g3", "Another Claude session sent a message:\n" + short_back + "\n\nThat is an agent.",
+        origin={"kind": "peer"})])
+check(kinds_of(quoted) == [(0, "user_prompt"), (2, "system_injected"), (4, "system_injected"), (5, "peer_message"),
+                           (6, "peer_message")],
+      f"a delivery is paired with the longest copy it holds, not a shorter message it quotes: {kinds_of(quoted)}")
+check(kinds_of(as_written) == [(0, "user_prompt"), (2, "system_injected"), (3, "peer_message")]
+      and kinds_of(twice_over) == [(0, "user_prompt"), (2, "peer_message"), (5, "system_injected"),
+                                   (6, "peer_message")],
+      f"with the attachment newer versions write between them, the attachment is the copy; an earlier delivery of "
+      f"the same words is left as it was: {kinds_of(as_written)} {kinds_of(twice_over)}")
+# G-95: a message the developer edited and sent again after the agent had
+# answered it leaves the first branch in the transcript.
+from errata_bench.crawl.shape import rewound  # noqa: E402
+branch95 = [U90("e1", None, "add retries"), A90("f1", "e1", {"type": "text", "text": "Added."}),
+            U90("e2", "f1", "now test it"), A90("f2", "e2", {"type": "text", "text": "Tested."}),
+            U90("e3", "f1", "now test it on Windows"), A90("f3", "e3", {"type": "text", "text": "On Windows: fine."})]
+unanswered95 = [U90("e1", None, "add retries"), A90("f1", "e1", {"type": "text", "text": "Added."}),
+                U90("e2", "f1", "now test it"), U90("e3", "f1", "now test it on Windows"),
+                A90("f3", "e3", {"type": "text", "text": "On Windows: fine."})]
+# An edit made before a compaction: the boundary has no parent and names the
+# entry it follows in `logicalParentUuid`, and the conversation goes on from it.
+compacted95 = branch95 + [
+    {"type": "system", "subtype": "compact_boundary", "uuid": "cb", "parentUuid": None, "logicalParentUuid": "f3",
+     "timestamp": T.format(2)},
+    U90("e4", "cb", "now the docs"), A90("f4", "e4", {"type": "text", "text": "Docs written."})]
+check(rewound(compacted95) == 1,
+      f"an edit made before a compaction counts once, its kept side reached through the boundary: "
+      f"{rewound(compacted95)}")
+# A boundary naming an entry the file does not hold follows the entry before
+# it: an edit made before any answer abandons nothing (review, 10-02: 491 of
+# the corpus's 1,624 boundaries name one it does not hold).
+dangling95 = [U90("e1", None, "add retries"), A90("f1", "e1", {"type": "text", "text": "Added."}),
+              U90("e2", "f1", "now test it"), U90("e3", "f1", "now test it on Windows"),
+              A90("f3", "e3", {"type": "text", "text": "On Windows: fine."}),
+              {"type": "system", "subtype": "compact_boundary", "uuid": "cb", "parentUuid": None,
+               "logicalParentUuid": "gone", "timestamp": T.format(2)},
+              U90("e4", "cb", "now the docs"), A90("f4", "e4", {"type": "text", "text": "Docs written."})]
+# A compaction inside the abandoned branch: its answer comes after the boundary.
+inside95 = [U90("e1", None, "add retries"), A90("f1", "e1", {"type": "text", "text": "Added."}),
+            U90("e2", "f1", "now test it"),
+            {"type": "system", "subtype": "compact_boundary", "uuid": "cb2", "parentUuid": None,
+             "logicalParentUuid": "e2", "timestamp": T.format(2)},
+            A90("f2", "cb2", {"type": "text", "text": "Tested."}),
+            U90("e3", "f1", "now test it on Windows"), A90("f3", "e3", {"type": "text", "text": "On Windows: fine."})]
+# The shapes the third review found (10-03), each with the count it must give.
+cmd95 = [U90("e1", None, "add retries"), A90("f1", "e1", {"type": "text", "text": "Added."}),
+         U90("e2", "f1", "now test it"), A90("f2", "e2", {"type": "text", "text": "Tested."}),
+         U90("c3", "f1", "<command-name>/model</command-name>\n<command-message>model</command-message>"),
+         U90("e4", "c3", "now test it on Windows"), A90("f4", "e4", {"type": "text", "text": "Fine."})]
+side95 = [U90("e1", None, "add retries"), A90("f1", "e1", {"type": "text", "text": "Added."}),
+          U90("e2", "f1", "now test it"), A90("f2", "e2", {"type": "text", "text": "Tested."}),
+          U90("sc1", "f1", "survey the tests", isSidechain=True),
+          {**A90("sc2", "sc1", {"type": "text", "text": "Surveyed."}), "isSidechain": True}]
+missing95 = [U90("e1", None, "add retries"), A90("f1", "e1", {"type": "text", "text": "Added."}),
+             U90("e2b", "f1", "now test i"), U90("e2", "f1", "now test it"),
+             A90("f2", "e2", {"type": "text", "text": "Tested."}),
+             U90("e3", "gone", "and the docs"), A90("f3", "e3", {"type": "text", "text": "Docs."})]
+synthetic95 = [U90("e1", None, "add retries"), A90("f1", "e1", {"type": "text", "text": "Added."}),
+               U90("e2", "f1", "now test it"),
+               {**A90("s2", "e2", {"type": "text", "text": "API Error: overloaded"}),
+                "message": {"id": "m-s2", "model": "<synthetic>", "content": [{"type": "text", "text": "API Error"}]}},
+               U90("e3", "f1", "now test it, please"), A90("f3", "e3", {"type": "text", "text": "Tested."})]
+named95 = [U90("e1", None, "add retries"), A90("f1", "e1", {"type": "text", "text": "Added."}),
+           U90("e3", "f1", "now test it on Windows"), A90("f3", "e3", {"type": "text", "text": "Fine."}),
+           U90("e2", "f1", "now test it"),
+           {"type": "system", "subtype": "compact_boundary", "uuid": "cb", "parentUuid": None,
+            "logicalParentUuid": "f3", "timestamp": T.format(2)},
+           U90("e4", "cb", "now the docs"), A90("f4", "e4", {"type": "text", "text": "Docs."})]
+restarted95 = [U90("e1", None, "add retries"), A90("f1", "e1", {"type": "text", "text": "Added."}),
+               U90("e2a", "f1", "now test it"), A90("f2a", "e2a", {"type": "text", "text": "Tested."}),
+               U90("e2b", "f1", "now test it on Windows"), A90("f2b", "e2b", {"type": "text", "text": "Fine."}),
+               U90("e5", None, "start again"), A90("f5", "e5", {"type": "text", "text": "Started."})]
+got95 = {name: rewound(shape) for name, shape in (
+    ("a command in its place", cmd95), ("a sub-agent's entry last", side95), ("a parent missing", missing95),
+    ("only Claude Code's text", synthetic95), ("a boundary's named parent", named95),
+    ("an edit before a restart", restarted95))}
+check(got95 == {"a command in its place": 1, "a sub-agent's entry last": 0, "a parent missing": 0,
+                "only Claude Code's text": 0, "a boundary's named parent": 0, "an edit before a restart": 2},
+      f"a rewind replaced by a command counts; a sub-agent's last entry, a missing parent, an answer of Claude "
+      f"Code's own text, and a boundary's named parent make no count; an edit before a restart counts both "
+      f"sides: {got95}")
+# An entry with a uuid and no parent key, last in the file, ends no
+# conversation; a cycle of parents ends its walk; a re-written copy of a kept
+# message, sharing its uuid, is not its own sibling (fourth review, 10-03).
+nokey95 = [U90("e1", None, "add retries"), A90("f1", "e1", {"type": "text", "text": "Added."}),
+           U90("e2a", "f1", "now test it"), A90("f2a", "e2a", {"type": "text", "text": "Tested."}),
+           U90("e2b", "f1", "now test it on Windows"), A90("f2b", "e2b", {"type": "text", "text": "Fine."}),
+           {"type": "summary", "uuid": "sm", "summary": "Retries added and tested"}]
+cycle95 = [U90("x1", "x2", "hello"), A90("x2", "x1", {"type": "text", "text": "Hi."})]
+# A cycle below a message off the conversation, where the walk under it must end.
+looped95 = [U90("i", "c", "first"), A90("c", "i", {"type": "text", "text": "Answered."}), U90("i2", "c", "second"),
+            U90("e1", None, "go"), A90("f1", "e1", {"type": "text", "text": "Gone."})]
+copied95 = [U90("e1", None, "add retries"), A90("f1", "e1", {"type": "text", "text": "Added."}),
+            U90("e2", "f1", "now test it"), A90("f2", "e2", {"type": "text", "text": "Tested."}),
+            U90("e3", "f2", "and the docs"), A90("f3", "e3", {"type": "text", "text": "Docs."}),
+            U90("e2", "f1", [{"type": "text", "text": "now test it"}])]
+import signal as signal95
+alarm95 = signal95.signal(signal95.SIGALRM, lambda *a: (_ for _ in ()).throw(TimeoutError("a walk did not end")))
+signal95.alarm(10)
+try:
+    counted95 = tuple(rewound(shape) for shape in (
+        branch95, unanswered95, said90, compacted95, dangling95, inside95, cmd95, side95, missing95, synthetic95,
+        named95, restarted95, nokey95, cycle95, copied95, looped95))
+except TimeoutError as e95:
+    counted95 = (str(e95),)
+finally:
+    signal95.alarm(0)
+    signal95.signal(signal95.SIGALRM, alarm95)
+from errata_bench.corpus.sessions import REWOUND_RULES as rules95
+# The number a list is stamped with goes with the rule that counted it: a
+# change to the rule changes these counts, and must change the number too.
+check((rules95, counted95) == (4, (1, 0, 0, 1, 0, 1, 1, 0, 0, 0, 0, 2, 1, 0, 0, 1)),
+      f"every shape counts as the rule numbered {rules95} counts it: a last entry with no parent, a cycle and a "
+      f"copy of a uuid among them: {counted95}")
+check(rewound(dangling95) == 0 and rewound(inside95) == 1,
+      f"a boundary naming an entry the file lacks follows the one before it, and an answer after a boundary "
+      f"inside the abandoned branch is under it: {rewound(dangling95)}, {rewound(inside95)}")
+check(rewound(branch95) == 1 and rewound(unanswered95) == 0 and rewound(said90) == 0,
+      f"a message edited and sent again after the agent answered it is counted; one resent before any answer, "
+      f"or none, is not (G-95): {rewound(branch95)}, {rewound(unanswered95)}, {rewound(said90)}")
+summary90 = next((r for r in rows90 if (r["content"] or "").startswith("This session is being continued")), {})
+check(summary90.get("turn_type") == "user_prompt" and summary90.get("is_continuation") is True
+      and [r["turn_number"] for r in rows90] == list(range(len(rows90)))
+      # every entry but r1, which holds only a result, is a row
+      and len(got90) == sum(1 for e in said90 if e["type"] in ("user", "queue-operation", "attachment")) - 1,
+      f"the summary that opens a continued session stays as it was, whatever turn it came in on, and every message "
+      f"is still a row in its place, only who wrote it decided (G-90): {summary90.get('turn_type')}, {len(got90)}")
 snap = next(r for r in rows if r["turn_type"] == "file_snapshot")
 check(snap["role"] == "metadata" and snap["timestamp"] is None and not any(r["content"].startswith('{"type": "custom-title"')
       for r in rows), "a snapshot is a metadata row without a time; a title is no row")
@@ -421,10 +762,25 @@ with tempfile.TemporaryDirectory() as t:
     (out / "discover" / "repos.jsonl").write_text(json.dumps({"query_repo": "o/full", "full_name": "o/full",
                                                              "license": "MIT", "language": "Go", "fork": False}) + "\n")
     (out / "discover" / "commits.jsonl").write_text("")
-    summary = assemble(out, log=lambda *_: None)
+    # `rewound` is checked on its own above; here, that assembly asks it of each
+    # session and writes what it says (review, 10-02: reverting either line kept
+    # this green when the answer was always none).
+    import errata_bench.crawl.corpus as corpus_module
+    asked_rewound = []
+    real_rewound = corpus_module.rewound
+    corpus_module.rewound = lambda entries: asked_rewound.append(len(entries)) or 2
+    try:
+        summary = assemble(out, log=lambda *_: None)
+    finally:
+        corpus_module.rewound = real_rewound
     corpus = out / "corpus"
     check(summary["sessions"] == 1 and summary["left_out"] == {"not a Claude Code transcript (for later)": 1},
           f"only Claude Code sessions are written, the others counted, a new format included: {summary}")
+    from errata_bench.corpus.sessions import REWOUND_RULES
+    check(json.loads((corpus / "rewound.json").read_text()) == {"rules": REWOUND_RULES, "sessions": {"cc1": 2}}
+          and summary.get("rewound sessions") == 1 and len(asked_rewound) >= 1,
+          f"the corpus lists each session whose developer edited and resent an answered message, with how many "
+          f"(G-95): {(corpus / 'rewound.json').read_text().strip()}, {summary.get('rewound sessions')}")
     cc1 = corpus / "transcripts" / "cc1.jsonl"
     check(cc1.exists() and cc1.read_bytes() == cc_transcript("cc1", "please fix a.txt", "toolu_e1")
           and (corpus / "subagents" / "cc1" / "toolu_e1" / "agent-s1.jsonl").exists(),
@@ -464,6 +820,115 @@ print(json.dumps({"has": [recover.has_transcript("cc1"), recover.has_transcript(
     check(got.get("unrecorded") == ["toolu_gone"], "a sub-agent call with no record at all is named, one with a record is not")
     check(got.get("before_cut") == [["toolu_gone"], []],
           "and the build refuses it only when the call came at or before the cut")
+
+print("7. A session several repositories hold is credited to its original, not to a copy (G-80)")
+# Every repository whose settings name one checkpoint repository is given all of
+# its sessions. A copy of entireio/cli under another account, not a GitHub
+# fork, kept its settings, and its copied history kept the trailers too. It
+# sorted first by name, and name order credited 1,512 of Entire's sessions to
+# it. Here seven code repositories name one checkpoint repository holding seven
+# sessions, and an eighth holds one of them in its own refs.
+with tempfile.TemporaryDirectory() as t:
+    import pyarrow.parquet as pq  # noqa: E402
+
+    tmp = Path(t)
+    srv, works, out = tmp / "srv", tmp / "works", tmp / "out"
+    works.mkdir()
+    # Each session's checkpoints in the checkpoint repository, oldest first.
+    cps = {"g80": ["a1b2c3d4e5f6"], "pair": ["b2c3d4e5f6a1"], "orphan": ["c3d4e5f6a1b2"], "forkonly": ["d4e5f6a1b2c3"],
+           "early": ["e5f6a1b2c3d4", "f6a1b2c3d4e5"], "late": ["a2b3c4d5e6f7", "b3c4d5e6f7a2"], "multi": ["c4d5e6f7a2b3"]}
+    own = "d5e6f7a2b3c4"  # "multi"'s checkpoint in s/own's own refs
+
+    def checkpoint(cid: str, sid: str, when: str) -> dict:
+        """One checkpoint of the v1 layout, holding one session."""
+        return {f"{cid[:2]}/{cid[2:]}/metadata.json": json.dumps({"checkpoint_id": cid}),
+                f"{cid[:2]}/{cid[2:]}/0/metadata.json": session_meta(sid, when),
+                f"{cid[:2]}/{cid[2:]}/0/full.jsonl": cc_transcript(sid, f"please fix {sid}", f"toolu_{sid}")}
+
+    cp_files = {}
+    for sid, ids in cps.items():
+        for i, cid in enumerate(ids):
+            cp_files.update(checkpoint(cid, sid, f"2026-05-01T1{i}:00:05Z"))
+    serve(srv, "o/cps", {entire.V1_BRANCH: build_tree(works, cp_files)})
+
+    def code_repo(name: str, trailers: list[str], refs: dict | None = None) -> Path:
+        """A code repository served at srv/name, with one commit per checkpoint trailer."""
+        repo = serve(srv, name, refs or {})
+        for cid in trailers:
+            (repo / "x.txt").write_text(cid + "\n")
+            sh("git", "add", "-A", cwd=repo)
+            sh("git", "commit", "-q", "-m", f"work\n\nEntire-Checkpoint: {cid}", cwd=repo)
+        return repo
+
+    orig = code_repo("o/orig", cps["g80"])
+    trailer_sha = sh("git", "rev-parse", "HEAD", cwd=orig).strip()
+    code_repo("z/late", cps["pair"] + cps["late"][1:])  # "late"'s latest checkpoint
+    back = code_repo("b/back", cps["early"][:1] + cps["late"][:1])  # only earlier checkpoints
+    early_sha = sh("git", "rev-parse", "HEAD~1", cwd=back).strip()
+    code_repo("a/early", [])
+    code_repo("f/fork", cps["forkonly"])
+    code_repo("s/own", [own], {entire.V1_BRANCH: build_tree(works, checkpoint(own, "multi", "2026-05-01T12:00:05Z"))})
+    for name in ("C/copy", "A/nometa"):  # the original's history, trailers and all; both sort first
+        copy = srv / name
+        copy.parent.mkdir(parents=True, exist_ok=True)
+        sh("git", "clone", "-q", "--bare", str(orig), str(copy))
+        sh("git", "config", "uploadpack.allowFilter", "true", cwd=copy)
+        sh("git", "config", "uploadpack.allowAnySHA1InWant", "true", cwd=copy)
+    # Created, fork, and the name search found it under ("a/early" was renamed since). A/nometa has
+    # no metadata, as when fetched by name; s/own names no checkpoint repository.
+    held = {"C/copy": ("2026-09-06T00:00:00Z", False, "C/copy"), "o/orig": ("2026-01-01T00:00:00Z", False, "o/orig"),
+            "z/late": ("2026-05-01T00:00:00Z", False, "z/late"), "b/back": ("2025-06-01T00:00:00Z", False, "b/back"),
+            "a/early": ("2025-01-01T00:00:00Z", False, "a/early-was"),
+            "f/fork": ("2024-01-01T00:00:00Z", True, "f/fork"), "s/own": ("2026-02-01T00:00:00Z", False, "s/own")}
+    names_cps = json.dumps({"strategy_options": {"checkpoint_remote": {"provider": "github", "repo": "o/cps"}}})
+    where = {"base": srv.as_uri()}
+    for name in [*held, "A/nometa"]:
+        append(out / "fetch.jsonl", fetch_repo(name, out, settings=lambda r: None if r == "s/own" else names_cps,
+                                               **where))
+        link_repo(name, out, **where)
+    (out / "discover").mkdir(parents=True, exist_ok=True)
+    (out / "discover" / "repos.jsonl").write_text("".join(json.dumps({
+        "query_repo": query, "full_name": name, "license": "MIT", "language": "Go", "fork": fork,
+        "created_at": when}) + "\n" for name, (when, fork, query) in held.items())
+        + json.dumps({"query_repo": "gone/x", "missing": True, "error": None}) + "\n")  # a 404: no full_name
+    (out / "discover" / "commits.jsonl").write_text("")
+    summary = assemble(out, log=lambda *_: None)
+    corpus = out / "corpus"
+    credited = {r["session_id"]: r["repo_id"] for r in pq.read_table(corpus / "sessions.parquet").to_pylist()}
+    check(credited.get("g80") == "o/orig",
+          "a session two copies also hold, with the original's settings and its trailers, one of them with no "
+          f"metadata, is credited to the original, the earliest-created holder that is not a fork (G-80): "
+          f"{credited.get('g80')}")
+    check(credited.get("pair") == "z/late",
+          f"a session only one holder's commits link stays with that holder, however new: {credited.get('pair')}")
+    check(credited.get("orphan") == "a/early",
+          "a session no holder's commits link goes to the earliest-created holder, never to a fork, its "
+          f"creation read under the name it is fetched by: {credited.get('orphan')}")
+    check(credited.get("forkonly") == "f/fork", f"a session only a fork's commits link goes to the fork: "
+          f"{credited.get('forkonly')}")
+    check(credited.get("early") == "b/back",
+          "a session no holder links by its latest checkpoint goes to one that links an earlier checkpoint: "
+          f"{credited.get('early')}")
+    check(credited.get("late") == "z/late",
+          "and a holder linking its latest checkpoint comes before an older one linking only an earlier "
+          f"checkpoint: {credited.get('late')}")
+    check(credited.get("multi") == "s/own",
+          "each holder is judged by its own copy's checkpoints: a session a repository also holds in its own "
+          f"refs, which its commits link, is credited to it: {credited.get('multi')}")
+    repos = {r["repo_id"] for r in pq.read_table(corpus / "repositories.parquet").to_pylist()}
+    check(summary["sessions"] == 7 and summary["left_out"] == {"the same session under a second repository": 43}
+          and repos == {"a/early", "b/back", "f/fork", "o/orig", "s/own", "z/late"},
+          f"each session is written once and every second copy counted; a repository credited with none is not "
+          f"in the corpus: {summary['sessions']} sessions, {summary['left_out']}, {sorted(repos)}")
+    rows = {(r["session_id"], r["repo_id"]) for r in
+            pq.read_table(corpus / "conversations.parquet", columns=["session_id", "repo_id"]).to_pylist()}
+    shas = {r["checkpoint_pk"]: json.loads(r["commit_shas"]) for r in
+            pq.read_table(corpus / "checkpoints.parquet").to_pylist()}
+    check(set(credited) == set(cps) and rows == {(s, credited[s]) for s in cps}
+          and shas.get(f"o/orig#{cps['g80'][0]}") == [trailer_sha] and shas.get(f"b/back#{cps['early'][0]}") == [early_sha]
+          and not any(pk.startswith(("C/copy#", "A/nometa#")) for pk in shas),
+          "every table files a session under the repository credited, its checkpoints linked to that "
+          "repository's commits")
 
 print("\n" + ("ALL CHECKS PASS" if not FAIL else f"{len(FAIL)} FAILED"))
 sys.exit(1 if FAIL else 0)

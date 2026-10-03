@@ -33,7 +33,7 @@ from dataclasses import dataclass
 from pydantic import BaseModel, Field
 
 from ..llm import MODEL, configure_client, resilient, served_models, usage_of, with_field_guide
-from ..spec import Task
+from ..spec import Task, kept, was_cut
 
 class Verdict(BaseModel):
     """What a candidate's answer does, as separate observations.
@@ -683,6 +683,17 @@ async def judge(
     first, second = (
         (task.criterion, task.oracle) if swap_references else (task.oracle, task.criterion)
     )
+    # Each reference whole, as the task keeps it. Cut again here at 6,000
+    # characters with nothing said, a long one was read as if it ended there
+    # (G-96, 10-02); one that is cut says so, and the judge is told what that
+    # means. Every reference of v1's 55 tasks is shorter, so their prompts are
+    # unchanged.
+    first, second = kept(first), kept(second)
+    cut_note = "".join(
+        f"\nReference answer {name} was longer than shown: where it says how many characters were cut, the "
+        f"rest of it is not shown.\n"
+        for name, reference in (("A", first), ("B", second)) if was_cut(reference)
+    )
     # An introduced-defect task asks the opposite question, and asking the
     # wrong one wrecks the scoring. Lightprotocol's defect is that the agent
     # *wrote* a false warning into CLAUDE.md; a candidate cut before that turn
@@ -756,11 +767,11 @@ async def judge(
 {framing}
 
 {conversation_section(context, None if budget is None else budget)}Reference answer A, from this conversation:
-{first[:6000]}
+{first}
 
 Reference answer B, from this conversation:
-{second[:6000]}
-
+{second}
+{cut_note}
 The CANDIDATE's answer, to be judged:
 {answer if budget is None else answer[:12000]}
 {trace}{render_files(changed)}"""
