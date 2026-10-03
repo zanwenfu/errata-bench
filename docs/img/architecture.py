@@ -144,7 +144,7 @@ def draw(palette: dict) -> str:
     f.inner(xs[0], 96, iw, 132, bstroke, "Find",
             ["pushbacks on the", "agent's work, then", "read in full"], stat="1,040 of 2,458")
     f.inner(xs[1], 96, iw, 132, bstroke, "Cut and screen",
-            ["cut before the", "faulty report; three", "gates, each read", "three times"], stat="301 pass")
+            ["cut before the", "faulty report; three", "gates, each read", "three times"], stat="249 pass")
     f.inner(xs[2], 96, iw, 132, bstroke, "Rebuild",
             ["the base commit,", "every edit replayed", "and compared"], stat="95 rebuilt")
     f.inner(xs[3], 96, iw, 132, bstroke, "Admit",

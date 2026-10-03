@@ -295,7 +295,8 @@ reverted alone fails a suite):
   judge was asked. Grading, the pipeline's candidate and grading stages and a
   re-judge refuse an admission made under other rules, and the dataset build
   will not ship one. So this code does not grade v1.0.2's tasks, whose
-  admission was made under rules 3: use the code at tag `v1.0.4` for them;
+  admission was made under judge rules 3 and trace rules 5: use the code at
+  tag `v1.0.4` for them;
 - every stage that calls a model records each row's token use, from finding
   tasks to grading, as do the release re-screen and the admission, and the
   spend guard can stop them at a dollar line. A call that failed after the
@@ -339,6 +340,14 @@ error.
   container. A submitter could therefore forge the record (G-78 in the
   research log). Until that is closed, only runs we execute ourselves can be
   called verified.
+- **Free of developers' home paths.** The per-answer records under
+  `results/d40` to `results/d45`, and their flag files, quote conversations as
+  SWE-chat holds them. That includes file paths under developers' home
+  folders, which carry their user names: 337 tracked files hold 42 such
+  names. A few checks and docs use such paths too. SWE-chat publishes them
+  behind a gate; this repository does not gate them, and it should hold no
+  names, user names or home paths. The redaction is recorded here and put off
+  until after the paper (10-03).
 
 ## Fixed in v1.0.2
 

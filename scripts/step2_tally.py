@@ -5,7 +5,8 @@
 Admission is `score.rejudge.admitted` under gpt-6-astra: calibration read
 correctly on every one of the gate's seven readings, and all three controls
 behaved. A session that produced two admitted tasks keeps its first pushback
-(decided on 09-24 before any was read; none did). Reads only the run
+(decided on 09-24 before any was read). None had on 09-24; in the final set
+one did, and entireio-cli-128, a later moment, gave way. Reads only the run
 directories, not the corpus.
 """
 from __future__ import annotations
@@ -28,7 +29,7 @@ RUNS = [("later-sample", "later"), ("later-cap20", "later"), ("step2-later", "la
         ("grid1-reprocess", "first")]
 grid = {t.session_id: t.repo_id for t in read(Path("runs/phaseA-grid1-DeepSeek-V4-Pro/tasks.jsonl"))}
 grid_repos = set(grid.values())
-rows, funnel = [], []
+rows, funnel, kind_of = [], [], {}
 for name, kind in RUNS:
     p = Paths(Path("runs") / name)
     tasks = {t.task_id: t for t in read(p.tasks)}
@@ -38,6 +39,7 @@ for name, kind in RUNS:
     funnel.append((name, n("moments.jsonl"), n("screened.jsonl"), len(tasks), len(sound), len(adm)))
     for tid in sorted(adm):
         t = tasks[tid]
+        kind_of[(name, tid)] = t.kind
         rows.append({"run": name, "kind": kind, "task_id": tid, "session_id": t.session_id, "repo_id": t.repo_id})
 print(f"{'run':18s} {'moments':>8s} {'screened':>9s} {'built':>6s} {'sound':>6s} {'admitted':>9s}")
 for f in funnel:
@@ -63,4 +65,14 @@ fresh = [r for r in kept if r["repo_id"] not in grid_repos]
 print(f"outside the first grid's 18 repositories (eligible for D-39's fresh set): {len(fresh)}")
 repos = Counter(r["repo_id"] for r in kept)
 print(f"repositories: {len(repos)}; most tasks: {repos.most_common(6)}")
+# results/step2-admission.txt carries these lines too; printed here so the
+# committed script writes that file whole (10-03).
+print(f"\nkinds: {dict(Counter(kind_of[(r['run'], r['task_id'])] for r in kept))}")
+for cap in (5, 8, 10):
+    print(f"at most {cap} per repository: {sum(min(c, cap) for c in repos.values())} tasks")
+grid_kept = len(groups["the first grid, reprocessed"])
+print(f"without the first grid's {grid_kept} reprocessed tasks: {len(kept) - grid_kept}")
+print("\nkept tasks:")
+for r in sorted(kept, key=lambda r: (r["run"], r["task_id"])):
+    print(f"  {r['run']:16s} {r['task_id']}")
 json.dump({"funnel": funnel, "kept": kept, "dropped": dropped}, open(sys.argv[1], "w"), indent=1)

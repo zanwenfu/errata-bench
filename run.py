@@ -411,7 +411,8 @@ def main() -> None:
     )
     ap.add_argument(
         "--judge",
-        help="the model (on Azure, the deployment) to grade with (the `rejudge` command only)",
+        help="the model (on Azure, the deployment) to grade with (the `rejudge` and `gate` commands, "
+             "which both require it)",
     )
     args = ap.parse_args()
 

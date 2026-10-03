@@ -256,8 +256,11 @@ Each: what was chosen, what it replaced or was chosen over, and why.
   already present, swept on every exit. `9f0a3cf`, P-10.
 - **D-13 · A whole-attempt time budget**, not only a per-command one. `201c72d`,
   P-11.
-- **D-14 · First pushback per session only**, at least three agent turns before
-  it. Later pushbacks sit in conversations already full of friction.
+- **D-14 · First pushback per session only** (superseded · 09-23: later
+  pushbacks are used too, one per session, from the later sample on; step 2,
+  which gave 31 of the 55 tasks, drew both kinds and kept a session's first
+  pushback when both were admitted). As written: at least three agent turns
+  before it. Later pushbacks sit in conversations already full of friction.
   `748284b`, `2c27055`.
 - **D-15 · Leaking conversations are repaired, not discarded**: hint-carrying
   turns are dropped by default, rewritten only when dropping would lose
@@ -266,8 +269,11 @@ Each: what was chosen, what it replaced or was chosen over, and why.
 - **D-16 · Gates before expensive work**: triage, answerability, scope and
   leakage are model calls run before any container. `2c27055`, `7172375`,
   `dbfd78d`.
-- **D-17 · Diversity by construction**: round-robin across repositories with a
-  per-repository cap (30). `942a6f6`, `96475a3`.
+- **D-17 · Diversity by construction** (superseded · 09-23/24: the later
+  sample capped each repository at 5 moments and later-cap20 at 20; step 2,
+  which gave 31 of the 55 tasks, had no cap, and the released set has none,
+  with entireio/cli holding 16 of the 55). As written: round-robin across
+  repositories with a per-repository cap (30). `942a6f6`, `96475a3`.
 - **D-18 · Resumable, append-only stages**; errored rows are retried; whole-file
   rewrites are atomic. `748284b`, `5da9d83`, `a35ac4f`, P-13.
 - **D-19 · Other providers are opt-in and additive**: `ERRATA_PROVIDER=azure`,
@@ -6808,7 +6814,8 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     tasks, the first pushback is kept, being the earlier moment with less
     friction.
   - **Concentration, accepted for yield.** The later list comes from 17
-    repositories, entireio/cli 399 of them. The analysis will treat the
+    repositories, entireio/cli ~~399~~ **395** of them *(corrected 10-03: the
+    list, `runs/step2-later.moments-full-0924.jsonl`, holds 395)*. The analysis will treat the
     repository as a cluster, and D-39's fresh set still excludes the first
     grid's repositories.
   - **Order, one after another, from a pinned worktree of the commit that
@@ -10933,3 +10940,41 @@ Beyond [`SWE-CHAT-FINDINGS.md`](SWE-CHAT-FINDINGS.md). Each was measured here.
     matches the reader's theme. "How it works" is now seven steps, matching
     the figure's numbers. The figure's numbers, and the README's results
     table, match the website's data.
+- **10-03, 05:5x UTC** — **Seven statements in the docs corrected against the
+  stored rows.** The Entire session found them when it read v1's record to match
+  its runs to v1's settings (#16). Each was recounted here from the six run
+  folders behind the 55 tasks before it was changed.
+  - *Screening.* 301 moments reached screening and 249 passed all three gates,
+    counted under the build's own rules (`construct/build.py`): 37 kept a leak
+    no repair removed, 8 asked for nothing and 7 lay outside the request. The
+    README, its figure, method.md and validation.md said 301 passed.
+  - *The funnel left out the gate.* Of the 64 calibrated tasks, 62 held all
+    seven gate readings, and 56 of those passed their controls too.
+  - *Caps.* Only the collections before step 2 capped a repository: 5 in the
+    later sample, 20 in later-cap20. Step 2, which gave 31 of the 55 tasks, had
+    no cap, and neither does the released set. method.md said every collection
+    was capped. D-14 and D-17 are now marked superseded.
+  - *`scripts/step2_tally.py`.* Its docstring said no session gave two admitted
+    tasks. In the final set one did: entireio-cli-128 gave way. The script also
+    now prints the lines `results/step2-admission.txt` carries (kinds, caps and
+    the kept list), so it writes that file and `results/step2-tally.json` byte
+    for byte. Neither results file changed.
+  - *The later list held 395 entireio/cli moments,* not 399 (09-24 entry).
+  - *Which rules admitted what.* known-issues.md said v1.0.2 was admitted under
+    "rules 3" without saying whose rules. The dataset's admission ran under
+    judge rules 3 and trace rules 5: its control rows record trace rules 5, and
+    `judge.py` held `RULES = 3` at fda6a3891. The 55 themselves were chosen
+    earlier, by the pipeline's admission at bd13ad757: a 60,000-character view,
+    the seven-reading gate, and controls under trace rules 3, before the
+    judge's rules were numbered.
+  - *`run.py --judge`.* Its help named only `rejudge`, but `gate` requires it too.
+  - *The website:* errata-web states the same screening figure and leaves out
+    the gate, in its copy of this sentence, `src/lib/research.ts`,
+    `src/lib/release.ts` and its facts test. Its own session is told; the
+    website's change is its own.
+  - *Recorded, not fixed:* 337 tracked files hold paths under developers' home
+    folders, with 42 user names, quoted from SWE-chat's conversations, mostly in
+    `results/d40` to `d45`. The Entire session found them. They are listed in
+    known-issues.md ("What v1 is not yet"). The user put the redaction off on
+    10-03: until the defense, the paper's data, implementation and results come
+    first.

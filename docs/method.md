@@ -135,8 +135,10 @@ For a session's first pushback the filters are:
 | **1,808** | in a language with a sandbox (TypeScript, JavaScript, Go, Python, Shell, Astro) | a task that cannot be sandboxed is not run |
 
 Later pushbacks in a session are used too, one per session, since first
-pushbacks alone give about 25 usable tasks. Each collection spreads its sample
-across repositories with a per-repository cap.
+pushbacks alone give about 25 usable tasks. The collections before step 2
+capped each repository (at most 5 moments in the later sample, 20 in
+later-cap20). Step 2, which gave 31 of the 55 tasks, had no cap, and the
+released set has none (entireio/cli holds 16 of the 55).
 
 ## Step 3. Reading each moment
 
@@ -251,9 +253,10 @@ that the task itself is right (G-72): no person has yet checked the tasks
     leaves the benchmark.
 - **One task per session**, so no session counts twice.
 
-Of 2,458 moments examined for the current set, 301 passed screening, 95 were
-built, 64 passed calibration, 56 passed their controls, and 55 were kept after
-the one-per-session rule. About one moment in 45 becomes a task.
+Of 2,458 moments examined for the current set, 301 reached screening and 249
+passed it, 95 were built, 64 passed calibration, 62 held all seven gate
+readings, 56 of those passed their controls too, and 55 were kept after the
+one-per-session rule. About one moment in 45 becomes a task.
 
 **The 55 tasks.** 25 repositories (entireio/cli 16, obsessiondb/rudel 6,
 hutusi/amytis 4, 22 others with 1 to 3 each). TypeScript 29, Go 18, Shell 4,

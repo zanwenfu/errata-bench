@@ -87,7 +87,8 @@ against known answers the agent never sees. The numbers on the figure are the st
    first check, and each of those is read in full.
 2. **Cut and screen.** Cut the conversation just before the agent's faulty report. Three gates,
    each read three times, ask whether the developer asks for something, whether the defect is
-   within it, and whether the conversation already gives the answer away. 301 pass.
+   within it, and whether the conversation already gives the answer away. Of the 301 that
+   reach screening, 249 pass.
 3. **Rebuild.** Rebuild the repository from the last commit before the session, with the
    agent's file edits replayed and checked against the files the conversation shows. Other
    commands' effects are not replayed.
